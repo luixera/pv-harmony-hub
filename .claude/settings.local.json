@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install:*)",
+      "Skill(update-config)",
+      "Skill(update-config:*)",
+      "Bash(claude mcp:*)",
+      "mcp__supabase__execute_sql",
+      "Bash(npx tsc:*)",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(netstat -ano)",
+      "Bash(npm run:*)",
+      "mcp__supabase__list_projects",
+      "mcp__supabase__list_tables",
+      "mcp__supabase__apply_migration",
+      "Bash(npm audit:*)",
+      "Bash(findstr \"google\\\\|maps\")",
+      "Bash(npm list *)",
+      "Bash(git add *)",
+      "Bash(git commit -m 're01: ponto de restauração — sistema completo antes da melhoria de preview/download de documentos *)",
+      "Bash(git config *)",
+      "Bash(git commit *)",
+      "Bash(git tag *)"
+    ]
+  }
+}

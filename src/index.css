@@ -1,0 +1,292 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* GD Manager Design System - Light Theme */
+    --background: 0 0% 94%;
+    --foreground: 0 0% 10%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 10%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 10%;
+
+    --primary: 41 100% 48%;
+    --primary-foreground: 0 0% 10%;
+
+    --secondary: 0 0% 96%;
+    --secondary-foreground: 0 0% 10%;
+
+    --muted: 0 0% 90%;
+    --muted-foreground: 0 0% 40%;
+
+    --accent: 41 100% 48%;
+    --accent-foreground: 0 0% 10%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 142 76% 36%;
+    --success-foreground: 0 0% 100%;
+
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 10%;
+
+    --info: 199 89% 48%;
+    --info-foreground: 0 0% 100%;
+
+    --border: 0 0% 86%;
+    --input: 0 0% 86%;
+    --ring: 41 100% 48%;
+
+    --radius: 0.75rem;
+
+    /* Brand colors */
+    --brand-gold: #F5A800;
+    --brand-gold-soft: #FEF3D0;
+    --brand-dark: #1A1A1A;
+    --brand-green: #2D6A4F;
+
+    /* Sidebar */
+    --sidebar-background: 0 0% 10%;
+    --sidebar-foreground: 0 0% 60%;
+    --sidebar-primary: 41 100% 48%;
+    --sidebar-primary-foreground: 0 0% 10%;
+    --sidebar-accent: 0 0% 16%;
+    --sidebar-accent-foreground: 0 0% 98%;
+    --sidebar-border: 0 0% 16%;
+    --sidebar-ring: 41 100% 48%;
+
+    /* Kanban colors */
+    --kanban-pending: 240 5% 25%;
+    --kanban-analysis: 199 89% 48%;
+    --kanban-progress: 38 92% 50%;
+    --kanban-approved: 142 76% 36%;
+    --kanban-completed: 270 60% 50%;
+
+    /* Gradients */
+    --gradient-primary: linear-gradient(135deg, hsl(24, 95%, 53%), hsl(24, 100%, 45%));
+    --gradient-dark: linear-gradient(180deg, hsl(240, 6%, 10%), hsl(240, 6%, 6%));
+    --gradient-card: linear-gradient(145deg, hsl(0, 0%, 100%), hsl(0, 0%, 98%));
+  }
+
+  .dark {
+    --background: 0 0% 94%;
+    --foreground: 0 0% 10%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 10%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+@layer components {
+  .glass-card {
+    @apply bg-card/95 backdrop-blur-xl border border-white/10 shadow-xl;
+  }
+
+  .glow-primary {
+    box-shadow: 0 0 30px -5px hsl(var(--primary) / 0.3);
+  }
+
+  .sidebar-item {
+    @apply flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200;
+    color: rgba(255, 255, 255, 0.6);
+  }
+
+  .sidebar-item:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: rgba(255, 255, 255, 0.9);
+  }
+
+  .sidebar-item.active {
+    background: #F5A800;
+    color: #1A1A1A;
+    font-weight: 500;
+  }
+
+  .kanban-column {
+    @apply bg-muted/50 rounded-xl p-4 min-h-[calc(100vh-200px)];
+  }
+
+  .kanban-card {
+    @apply bg-card rounded-lg p-4 shadow-lg border border-white/10 cursor-grab active:cursor-grabbing transition-all duration-200;
+  }
+
+  .kanban-card:hover {
+    @apply shadow-xl -translate-y-0.5;
+  }
+
+  .status-badge {
+    @apply inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium;
+  }
+
+  .kpi-card {
+    @apply bg-card rounded-xl p-6 shadow-lg;
+    border: 0.5px solid rgba(245, 168, 0, 0.15);
+  }
+
+  .form-wizard-step {
+    @apply flex items-center justify-center w-10 h-10 rounded-full text-sm font-semibold transition-all duration-300;
+  }
+
+  .form-wizard-step.completed {
+    @apply bg-success text-success-foreground;
+  }
+
+  .form-wizard-step.active {
+    @apply bg-primary text-primary-foreground glow-primary;
+  }
+
+  .form-wizard-step.pending {
+    @apply bg-muted text-muted-foreground;
+  }
+}
+
+@layer utilities {
+  .animate-fade-in {
+    animation: fadeIn 0.3s ease-out forwards;
+  }
+
+  .animate-slide-up {
+    animation: slideUp 0.4s ease-out forwards;
+  }
+
+  .animate-slide-in-left {
+    animation: slideInLeft 0.3s ease-out forwards;
+  }
+
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes slideUp {
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes slideInLeft {
+    from {
+      opacity: 0;
+      transform: translateX(-20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--muted)) transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background: hsl(var(--muted));
+    border-radius: 3px;
+  }
+
+  /* Mobile: safe area for bottom navigation */
+  .safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+}
+
+/* Mobile global overrides — prevents iOS auto-zoom and ensures tap targets */
+@media (max-width: 767px) {
+  /* Prevent iOS zoom on input focus */
+  input,
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+
+  /* Minimum tap target size */
+  button,
+  [role="button"],
+  a,
+  label[for],
+  .sidebar-item {
+    min-height: 48px;
+  }
+
+  /* Larger select trigger */
+  [data-radix-select-trigger],
+  [data-radix-dropdown-menu-trigger] {
+    min-height: 48px;
+  }
+
+  /* Dialogs as bottom sheets on mobile */
+  [data-radix-dialog-content] {
+    position: fixed !important;
+    bottom: 0 !important;
+    top: auto !important;
+    left: 0 !important;
+    right: 0 !important;
+    transform: none !important;
+    border-radius: 1rem 1rem 0 0 !important;
+    max-height: 90vh;
+    overflow-y: auto;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  /* kpi-card padding reduced on mobile */
+  .kpi-card {
+    padding: 1rem;
+  }
+
+  /* Kanban column minimum height reduced */
+  .kanban-column {
+    min-height: 100px;
+  }
+}
+
+@media print {
+  .sidebar-hide-print,
+  .topbar-hide-print,
+  .filter-bar-hide-print,
+  .export-btn-hide-print {
+    display: none !important;
+  }
+  .reports-print-header {
+    display: block !important;
+  }
+}
