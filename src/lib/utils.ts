@@ -49,15 +49,19 @@ export function validateFile(file: File): string | null {
 }
 
 /**
- * Sanitiza o nome de um arquivo: remove caracteres especiais,
- * previne path traversal e limita o comprimento.
+ * Sanitiza o nome de um arquivo para upload no Supabase Storage:
+ * - Remove acentos (\u00E9\u2192e, \u00E3\u2192a, \u00E7\u2192c etc.) \u2014 Storage n\u00E3o aceita Unicode no path
+ * - Remove caracteres especiais, previne path traversal
+ * - Limita o comprimento a 100 chars
  */
 export function sanitizeFileName(name: string): string {
   return name
-    .replace(/[^a-zA-Z0-9._\-\u00C0-\u024F]/g, '_') // keep accented latin chars
-    .replace(/\.{2,}/g, '.')                          // no double dots (path traversal)
-    .replace(/^[._]+/, '')                            // no leading dots/underscores
-    .substring(0, 100);                               // max 100 chars
+    .normalize('NFD')                        // decomp\u00F5e acentos: \u00E9 \u2192 e + combining mark
+    .replace(/[\u0300-\u036F]/g, '')         // remove os diacr\u00EDticos (range oficial Unicode)
+    .replace(/[^a-zA-Z0-9._\-]/g, '_')      // s\u00F3 ASCII seguro \u2014 sem espa\u00E7os, sem especiais
+    .replace(/\.{2,}/g, '.')                 // sem ponto duplo (path traversal)
+    .replace(/^[._]+/, '')                   // sem ponto/underscore no in\u00EDcio
+    .substring(0, 100);                      // m\u00E1x 100 chars
 }
 
 /**
