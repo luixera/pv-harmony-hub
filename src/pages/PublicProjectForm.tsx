@@ -7,7 +7,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { motion } from 'framer-motion';
-import { ArrowLeft, ArrowRight, Check, User, Zap, Upload, Sun, Building2, Loader2, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, User, Zap, Upload, Building2, Loader2, ShieldCheck } from 'lucide-react';
 import { Turnstile } from '@marsidev/react-turnstile';
 import { toast } from 'sonner';
 import { DocumentUploadField } from '@/components/forms/DocumentUploadField';
@@ -390,15 +390,12 @@ export default function PublicProjectForm() {
           padding: '14px 20px',
           display: 'flex', alignItems: 'center', gap: 14,
         }}>
-          {/* Logo mark */}
-          <div style={{
-            width: 42, height: 42, borderRadius: 10,
-            background: 'linear-gradient(135deg, #F5A800 0%, #E07B00 100%)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            flexShrink: 0,
-          }}>
-            <Sun style={{ width: 22, height: 22, color: '#fff' }} />
-          </div>
+          {/* Logo */}
+          <img
+            src="/logo.png"
+            alt="GD Manager"
+            style={{ width: 42, height: 42, objectFit: 'contain', flexShrink: 0 }}
+          />
           <div>
             <div style={{ fontWeight: 800, fontSize: 16, color: '#1A1A1A', lineHeight: 1.2 }}>
               GD Manager
