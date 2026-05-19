@@ -7,13 +7,17 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { motion } from 'framer-motion';
-import { ArrowLeft, ArrowRight, Check, User, Zap, Upload, Sun, Building2, Loader2 } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, User, Zap, Upload, Sun, Building2, Loader2, ShieldCheck } from 'lucide-react';
+import { Turnstile } from '@marsidev/react-turnstile';
 import { toast } from 'sonner';
 import { DocumentUploadField } from '@/components/forms/DocumentUploadField';
 import { useCompanyByToken, useCompany } from '@/hooks/useCompanies';
 import { supabase } from '@/integrations/supabase/client';
 import { Database } from '@/integrations/supabase/types';
 import { useEnergyConcessionaires } from '@/hooks/useEnergyConcessionaires';
+import { validateFile, sanitizeFileName } from '@/lib/utils';
+
+const TURNSTILE_SITE_KEY = import.meta.env.VITE_TURNSTILE_SITE_KEY as string | undefined;
 
 type DocumentType = Database['public']['Enums']['document_type'];
 
@@ -111,6 +115,9 @@ export default function PublicProjectForm() {
     otherPhotos: [],
   });
 
+  // Turnstile CAPTCHA token (null = ainda não resolvido)
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+
   const calculatedPower =
     formData.modulePower && formData.moduleQuantity
       ? ((parseFloat(formData.modulePower) * parseInt(formData.moduleQuantity)) / 1000).toFixed(2)
@@ -183,12 +190,17 @@ export default function PublicProjectForm() {
   };
 
   const uploadDocument = async (file: File, projectId: string, companyId: string, docType: DocumentType) => {
-    const filePath = `public/${companyId}/${projectId}/${docType}/${Date.now()}_${file.name}`;
+    // Validate MIME type and size (previne upload de PHP/JS disfarçado)
+    const validationError = validateFile(file);
+    if (validationError) throw new Error(validationError);
+
+    const safeFileName = sanitizeFileName(file.name);
+    const filePath = `public/${companyId}/${projectId}/${docType}/${Date.now()}_${safeFileName}`;
     const { error: uploadError } = await supabase.storage.from('project-documents').upload(filePath, file);
     if (uploadError) throw uploadError;
     const { error: dbError } = await supabase.from('documents').insert({
       project_id: projectId,
-      file_name: file.name,
+      file_name: safeFileName,
       file_type: file.type,
       file_url: filePath,
       document_type: docType,
@@ -199,6 +211,29 @@ export default function PublicProjectForm() {
   const handleSubmit = async () => {
     if (!validateStep(3)) return;
     if (!company) { toast.error('Empresa não encontrada'); return; }
+
+    // Verificar CAPTCHA se site key configurada
+    if (TURNSTILE_SITE_KEY) {
+      if (!turnstileToken) {
+        toast.error('Resolva o desafio de segurança antes de enviar.');
+        return;
+      }
+      try {
+        const { data: verifyData, error: verifyError } = await supabase.functions.invoke('verify-turnstile', {
+          body: { token: turnstileToken, companyId: company.id },
+        });
+        if (verifyError || !verifyData?.valid) {
+          const msg = verifyData?.error || 'Verificação de segurança falhou. Tente novamente.';
+          toast.error(msg);
+          setTurnstileToken(null); // reset para o usuário tentar de novo
+          return;
+        }
+      } catch {
+        toast.error('Erro ao verificar segurança. Tente novamente.');
+        return;
+      }
+    }
+
     setIsSubmitting(true);
     try {
       const fullAddress = [
@@ -714,6 +749,28 @@ export default function PublicProjectForm() {
                 </FieldGroup>
               </div>
 
+              {/* CAPTCHA Turnstile — só renderiza se a site key estiver configurada */}
+              {TURNSTILE_SITE_KEY && (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: '8px 0' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#6B7280' }}>
+                    <ShieldCheck style={{ width: 14, height: 14, color: '#10B981' }} />
+                    <span>Verificação de segurança</span>
+                  </div>
+                  <Turnstile
+                    siteKey={TURNSTILE_SITE_KEY}
+                    onSuccess={(token) => setTurnstileToken(token)}
+                    onExpire={() => setTurnstileToken(null)}
+                    onError={() => { setTurnstileToken(null); toast.error('Erro no CAPTCHA. Recarregue a página.'); }}
+                    options={{ theme: 'light', language: 'pt-BR' }}
+                  />
+                  {!turnstileToken && (
+                    <p style={{ fontSize: 11, color: '#EF4444', margin: 0 }}>
+                      Complete a verificação acima para enviar o projeto.
+                    </p>
+                  )}
+                </div>
+              )}
+
               {/* Summary */}
               <div style={{ background: '#F9FAFB', border: '1px solid #F3F4F6', borderRadius: 12, padding: '16px 20px', fontSize: 13 }}>
                 <h4 style={{ fontWeight: 700, color: '#1A1A1A', marginBottom: 12 }}>Resumo do Projeto</h4>
@@ -766,14 +823,15 @@ export default function PublicProjectForm() {
           ) : (
             <button
               onClick={handleSubmit}
-              disabled={isSubmitting}
+              disabled={isSubmitting || (!!TURNSTILE_SITE_KEY && !turnstileToken)}
               style={{
                 display: 'flex', alignItems: 'center', gap: 6,
                 padding: '10px 24px', borderRadius: 8,
                 border: 'none',
-                background: isSubmitting ? '#FCD34D' : '#F5A800',
-                color: '#fff',
-                cursor: isSubmitting ? 'not-allowed' : 'pointer',
+                background: isSubmitting || (!!TURNSTILE_SITE_KEY && !turnstileToken)
+                  ? '#D1D5DB' : '#F5A800',
+                color: isSubmitting || (!!TURNSTILE_SITE_KEY && !turnstileToken) ? '#9CA3AF' : '#fff',
+                cursor: isSubmitting || (!!TURNSTILE_SITE_KEY && !turnstileToken) ? 'not-allowed' : 'pointer',
                 fontWeight: 700, fontSize: 14,
               }}
             >

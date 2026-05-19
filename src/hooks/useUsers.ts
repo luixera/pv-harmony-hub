@@ -54,37 +54,30 @@ export function useUser(id: string | undefined) {
 
 export function useUpdateUser() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
-    mutationFn: async ({ 
-      id, 
-      ...updates 
+    mutationFn: async ({
+      id,
+      ...updates
     }: Partial<Profile> & { id: string }) => {
-      const { data, error } = await supabase
-        .from('profiles')
-        .update(updates)
-        .eq('id', id)
-        .select()
-        .single();
+      // Mutations sensíveis (role, company_id, active) são tratadas pela Edge Function
+      // que valida no servidor que o solicitante é admin antes de aplicar.
+      const { data, error } = await supabase.functions.invoke('update-user', {
+        body: { userId: id, updates },
+      });
 
       if (error) throw error;
+      if (data?.error) throw new Error(data.error);
 
-      // Also update user_roles table if role changed
-      if (updates.role) {
-        await supabase
-          .from('user_roles')
-          .upsert({ user_id: id, role: updates.role }, { onConflict: 'user_id' });
-      }
-
-      return data;
+      return data.user as Profile;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
       toast.success('Usuário atualizado');
     },
-    onError: (error) => {
+    onError: (error: Error) => {
       console.error('Error updating user:', error);
-      toast.error('Erro ao atualizar usuário');
+      toast.error(error.message || 'Erro ao atualizar usuário');
     },
   });
 }
