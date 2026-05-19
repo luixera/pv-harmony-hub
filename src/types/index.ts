@@ -22,20 +22,21 @@ export interface Company {
   createdAt: Date;
 }
 
-export type ProjectStatus = 
-  | 'pending' 
-  | 'analysis' 
-  | 'documentation' 
-  | 'approval' 
-  | 'approved' 
+export type ProjectStatus =
+  | 'pending'
+  | 'analysis'
+  | 'documentation'
+  | 'approval'
+  | 'approved'
+  | 'rejected'
   | 'completed';
 
-export type DocumentType = 
+export type DocumentType =
   | 'energy_bill_generator'
   | 'energy_bill_beneficiaries'
   | 'holder_document'
   | 'entrance_standard_photo'
-  | 'circuit_breaker_photo'
+  | 'breaker_photo'
   | 'other_photos';
 
 export interface ProjectDocument {

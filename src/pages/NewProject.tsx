@@ -695,7 +695,7 @@ export default function NewProject() {
                   onFilesChange={files => updateDocuments('entranceStandardPhoto', files)}
                 />
                 <DocumentUploadField
-                  id="circuit_breaker_photo"
+                  id="breaker_photo"
                   label="Foto do disjuntor de entrada"
                   required
                   files={documents.circuitBreakerPhoto}
