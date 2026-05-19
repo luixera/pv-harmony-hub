@@ -8,7 +8,7 @@ import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { GripVertical, Plus, Trash2, Edit, Flag, CheckCircle, AlertTriangle } from 'lucide-react';
+import { GripVertical, Plus, Trash2, Edit, Flag, CheckCircle, AlertTriangle, Clock } from 'lucide-react';
 import { KanbanColumn, KanbanModel, useCreateKanbanColumn, useUpdateKanbanColumn, useDeleteKanbanColumn, useUpdateColumnOrder, useUpdateColumnRejectionStage } from '@/hooks/useKanbanConfig';
 import { toast } from 'sonner';
 
@@ -38,6 +38,7 @@ export function KanbanColumnEditor({ model }: KanbanColumnEditorProps) {
     is_initial: false,
     is_final: false,
     is_rejection_stage: false,
+    stale_days: '' as string,
   });
 
   const createColumn = useCreateKanbanColumn();
@@ -66,6 +67,8 @@ export function KanbanColumnEditor({ model }: KanbanColumnEditorProps) {
   const handleAddColumn = () => {
     if (!newColumn.status_key || !newColumn.status_label) return;
 
+    const staleDays = newColumn.stale_days !== '' ? parseInt(newColumn.stale_days, 10) : null;
+
     createColumn.mutate({
       kanban_model_id: model.id,
       status_key: newColumn.status_key,
@@ -76,6 +79,7 @@ export function KanbanColumnEditor({ model }: KanbanColumnEditorProps) {
       is_final: newColumn.is_final,
       is_rejection_stage: newColumn.is_rejection_stage,
       triggers_revision: newColumn.is_rejection_stage,
+      stale_days: isNaN(staleDays as number) ? null : staleDays,
     }, {
       onSuccess: (created) => {
         // If this is the rejection stage, ensure uniqueness
@@ -94,6 +98,7 @@ export function KanbanColumnEditor({ model }: KanbanColumnEditorProps) {
           is_initial: false,
           is_final: false,
           is_rejection_stage: false,
+          stale_days: '',
         });
       }
     });
@@ -108,6 +113,7 @@ export function KanbanColumnEditor({ model }: KanbanColumnEditorProps) {
       color: editingColumn.color,
       is_initial: editingColumn.is_initial,
       is_final: editingColumn.is_final,
+      stale_days: editingColumn.stale_days ?? null,
     }, {
       onSuccess: () => {
         // Handle rejection stage change separately (needs uniqueness enforcement)
@@ -229,6 +235,22 @@ export function KanbanColumnEditor({ model }: KanbanColumnEditorProps) {
                     onCheckedChange={(v) => setNewColumn({ ...newColumn, is_rejection_stage: v })}
                   />
                 </div>
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-2">
+                    <Clock className="w-4 h-4 text-amber-600" />
+                    Alerta de projeto parado (dias)
+                  </Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    placeholder="Ex: 7 (deixe vazio para sem limite)"
+                    value={newColumn.stale_days}
+                    onChange={(e) => setNewColumn({ ...newColumn, stale_days: e.target.value })}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Projetos sem movimentação por este número de dias gerarão alertas. Deixe vazio para desativar.
+                  </p>
+                </div>
               </div>
               <DialogFooter>
                 <Button variant="outline" onClick={() => setShowAddDialog(false)}>
@@ -296,6 +318,19 @@ export function KanbanColumnEditor({ model }: KanbanColumnEditorProps) {
                             >
                               <AlertTriangle className="w-2.5 h-2.5" />
                               Reprovação
+                            </Badge>
+                          )}
+                          {column.stale_days != null && (
+                            <Badge
+                              className="text-[9px] gap-1"
+                              style={{
+                                background: '#FFFBEB',
+                                color: '#92400E',
+                                border: '0.5px solid #F59E0B',
+                              }}
+                            >
+                              <Clock className="w-2.5 h-2.5" />
+                              {column.stale_days}d
                             </Badge>
                           )}
                         </div>
@@ -404,6 +439,27 @@ export function KanbanColumnEditor({ model }: KanbanColumnEditorProps) {
                   checked={editingColumn.is_rejection_stage}
                   onCheckedChange={(v) => setEditingColumn({ ...editingColumn, is_rejection_stage: v })}
                 />
+              </div>
+              <div className="space-y-2">
+                <Label className="flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-amber-600" />
+                  Alerta de projeto parado (dias)
+                </Label>
+                <Input
+                  type="number"
+                  min={1}
+                  placeholder="Ex: 7 (deixe vazio para sem limite)"
+                  value={editingColumn.stale_days ?? ''}
+                  onChange={(e) =>
+                    setEditingColumn({
+                      ...editingColumn,
+                      stale_days: e.target.value === '' ? null : parseInt(e.target.value, 10),
+                    })
+                  }
+                />
+                <p className="text-xs text-muted-foreground">
+                  Projetos sem movimentação por este número de dias gerarão alertas. Deixe vazio para desativar.
+                </p>
               </div>
             </div>
           )}

@@ -1,12 +1,10 @@
-import { useState, useRef } from 'react';
-import PizZip from 'pizzip';
-import Docxtemplater from 'docxtemplater';
+import { useState, useRef, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   FileText, Loader2, Download, FileOutput,
-  AlertTriangle, Eye, Pencil, Info, X,
+  AlertTriangle, Eye, Info, X, RotateCcw,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -19,6 +17,7 @@ import {
 import { ProjectWithDetails } from '@/hooks/useProjects';
 import { RevisionGeneralData, RevisionEquipment } from '@/hooks/useProjectRevisions';
 import { useDocumentPreview } from '@/hooks/useDocumentPreview';
+import { detectTemplateTags, generateDocxFromTemplate } from '@/utils/docxGenerator';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -35,60 +34,95 @@ interface GenerateDocumentDialogProps {
   revisionData?: RevisionData;
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─── Tag → human-readable label ───────────────────────────────────────────────
 
-const styledHtml = (html: string) => `
+const TAG_LABELS: Record<string, string> = {
+  codigo_projeto:    'Código do projeto',
+  empresa:           'Empresa',
+  concessionaria:    'Concessionária',
+  nome_titular:      'Nome do titular',
+  cpf_cnpj:          'CPF / CNPJ',
+  telefone_titular:  'Telefone',
+  email_titular:     'E-mail',
+  endereco:          'Endereço',
+  cidade:            'Cidade',
+  estado:            'Estado / UF',
+  uf:                'UF',
+  cep:               'CEP',
+  endereco_completo: 'Endereço completo',
+  uc:                'Número da UC',
+  numero_uc:         'Número da UC',
+  disjuntor:         'Disjuntor (A)',
+  fase:              'Tipo de fase',
+  tipo_fase:         'Tipo de fase',
+  rural:             'Área rural',
+  coordenadas:       'Coordenadas GPS',
+  marca_inversor:    'Inversor — Marca',
+  modelo_inversor:   'Inversor — Modelo',
+  potencia_inversor: 'Inversor — Potência',
+  qtd_inversores:    'Inversor — Qtd.',
+  marca_modulo:      'Módulo — Marca',
+  modelo_modulo:     'Módulo — Modelo',
+  potencia_modulo:   'Módulo — Potência',
+  qtd_modulos:       'Módulo — Qtd.',
+  potencia_total:    'Potência total',
+  kwp:               'kWp instalado',
+  data:              'Data',
+  data_emissao:      'Data de emissão',
+  data_atual:        'Data atual',
+  data_criacao:      'Data de criação',
+};
+
+// ─── Scoped CSS for mammoth HTML output ───────────────────────────────────────
+
+const buildStyledHtml = (html: string) => `
   <style>
-    h1 { font-size:16px; font-weight:700; text-align:center; margin-bottom:8px; color:#1A1A1A; }
-    h2 { font-size:13px; font-weight:700; margin:12px 0 6px; color:#1A1A1A; }
-    p  { font-size:12px; margin-bottom:6px; line-height:1.6; color:#333; }
-    table { width:100%; border-collapse:collapse; margin-bottom:10px; }
-    td, th { border:0.5px solid #E0E0E0; padding:6px 10px; font-size:11px; }
-    th { background:#F8F8F8; font-weight:600; }
-    strong { font-weight:700; }
-    em { font-style:italic; }
+    .doc-content {
+      font-family: Arial, sans-serif;
+      font-size: 11px;
+      color: #1A1A1A;
+      line-height: 1.6;
+    }
+    .doc-content h1 {
+      font-size: 14px; font-weight: 700;
+      margin: 16px 0 8px; color: #1A1A1A;
+    }
+    .doc-content h2 {
+      font-size: 12px; font-weight: 700;
+      margin: 12px 0 6px;
+    }
+    .doc-content p { margin-bottom: 6px; }
+    .doc-content table {
+      width: 100%; border-collapse: collapse;
+      margin-bottom: 12px; font-size: 10px;
+    }
+    .doc-content td, .doc-content th {
+      border: 0.5px solid #CCCCCC;
+      padding: 5px 8px; vertical-align: top;
+    }
+    .doc-content th { background: #F0F0F0; font-weight: 600; }
+    .doc-content img { max-width: 100%; height: auto; }
+    .doc-content strong { font-weight: 700; }
+    .doc-content em { font-style: italic; }
   </style>
-  ${html}
+  <div class="doc-content">${html}</div>
 `;
 
-function SidebarRow({ label, value }: { label: string; value?: string | null }) {
-  if (!value) return null;
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-      <span style={{ fontSize: 9, color: '#aaa', textTransform: 'uppercase', letterSpacing: '.04em', fontWeight: 600 }}>
-        {label}
-      </span>
-      <span style={{ fontSize: 11, color: '#1A1A1A', fontWeight: 500, lineHeight: 1.3 }}>
-        {value}
-      </span>
-    </div>
-  );
-}
-
-function SidebarCard({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div style={{ background: '#fff', borderRadius: 9, border: '0.5px solid #EFEFEF', overflow: 'hidden' }}>
-      <div style={{ padding: '6px 10px', background: '#F0F0F0', fontSize: 9, fontWeight: 700, color: '#888', textTransform: 'uppercase', letterSpacing: '.04em' }}>
-        {title}
-      </div>
-      <div style={{ padding: '10px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {children}
-      </div>
-    </div>
-  );
-}
-
 // ─── Inline keyframe injection (once) ─────────────────────────────────────────
+
 const STYLE_ID = 'doc-preview-keyframes';
 if (!document.getElementById(STYLE_ID)) {
-  const style = document.createElement('style');
-  style.id = STYLE_ID;
-  style.textContent = `
-    @keyframes dp-spin { to { transform: rotate(360deg) } }
+  const s = document.createElement('style');
+  s.id = STYLE_ID;
+  s.textContent = `
+    @keyframes dp-spin     { to { transform: rotate(360deg) } }
     @keyframes dp-progress { from { width:0% } to { width:90% } }
   `;
-  document.head.appendChild(style);
+  document.head.appendChild(s);
 }
+
+const DOCX_MIME =
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
@@ -98,112 +132,236 @@ export function GenerateDocumentDialog({
   project,
   revisionData,
 }: GenerateDocumentDialogProps) {
-  // ── Existing state (unchanged) ──────────────────────────────────────────────
-  const [selectedTemplate, setSelectedTemplate] = useState<ConcessionaireTemplate | null>(null);
-  const [isGenerating, setIsGenerating] = useState(false);
+  // ── Template selector state ────────────────────────────────────────────────
+  const [selectedTemplate, setSelectedTemplate] =
+    useState<ConcessionaireTemplate | null>(null);
+  const [isGenerating,     setIsGenerating]     = useState(false);
+
+  // ── Download loading states ────────────────────────────────────────────────
+  const [isDownloading,    setIsDownloading]    = useState(false);
+  const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
+
+  // ── Editable field state ───────────────────────────────────────────────────
+  const [originalValues, setOriginalValues] = useState<Record<string, string>>({});
+  const [editedValues,   setEditedValues]   = useState<Record<string, string>>({});
+  const [templateTags,   setTemplateTags]   = useState<string[]>([]);
+  const [templateBuffer, setTemplateBuffer] = useState<ArrayBuffer | null>(null);
+  const [isRegenerating, setIsRegenerating] = useState(false);
 
   const { data: templates = [], isLoading } = useConcessionaireTemplates(
     project.concessionaire_id ?? undefined,
   );
 
-  // ── Preview state (new) ─────────────────────────────────────────────────────
-  const preview = useDocumentPreview();
+  const preview    = useDocumentPreview();
   const previewRef = useRef<HTMLDivElement>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
 
-  // Derive display name from selected template
+  // Derive display name
   const getDisplayName = (name: string) => name.replace(/^\d+_/, '');
-  const templateDisplayName = selectedTemplate ? getDisplayName(selectedTemplate.name) : '';
+  const templateDisplayName = selectedTemplate
+    ? getDisplayName(selectedTemplate.name) : '';
   const fileName = `${project?.code ?? 'documento'}_${templateDisplayName || 'requerimento'}`;
 
-  // ── Template data builder (unchanged) ──────────────────────────────────────
-  const buildTemplateData = () => {
-    const g = revisionData?.general_data ?? project.generalData;
-    const e = revisionData?.equipment ?? project.equipment;
+  // ── Computed: how many fields were edited ──────────────────────────────────
+  const editCount = Object.entries(editedValues)
+    .filter(([k, v]) => v !== originalValues[k]).length;
+
+  // ── Template values builder ────────────────────────────────────────────────
+  const buildProjectValues = (): Record<string, string> => {
+    const g = revisionData?.general_data ?? project.generalData ?? {};
+    const e = revisionData?.equipment    ?? project.equipment    ?? {};
+    const today = format(new Date(), 'dd/MM/yyyy', { locale: ptBR });
+
+    const endereco_completo = [
+      g.address, g.city, g.state,
+      g.cep ? `CEP: ${g.cep}` : '',
+    ].filter(Boolean).join(', ');
 
     return {
-      codigo_projeto:    project.code ?? '',
-      empresa:           project.companyName ?? '',
-      concessionaria:    project.concessionaireName ?? g?.utility_company ?? '',
+      codigo_projeto:    project.code              ?? '',
+      empresa:           project.companyName       ?? '',
+      concessionaria:    project.concessionaireName ?? g.utility_company ?? '',
+      nome_titular:      g.holder_name             ?? '',
+      cpf_cnpj:          g.holder_cpf_cnpj         ?? '',
+      email_titular:     g.holder_email            ?? '',
+      telefone_titular:  g.holder_phone            ?? '',
+      endereco:          g.address                 ?? '',
+      cidade:            g.city                    ?? '',
+      estado:            g.state                   ?? '',
+      uf:                g.state                   ?? '',
+      cep:               g.cep                     ?? '',
+      endereco_completo,
+      uc:                g.uc_number               ?? '',
+      numero_uc:         g.uc_number               ?? '',
+      disjuntor:         g.circuit_breaker_current ?? '',
+      fase:              g.phase_type              ?? '',
+      tipo_fase:         g.phase_type              ?? '',
+      rural:             g.is_rural ? 'Sim' : 'Não',
+      coordenadas:       g.coordinates             ?? '',
+      marca_inversor:    e.inverter_brand          ?? '',
+      modelo_inversor:   e.inverter_model          ?? '',
+      potencia_inversor: e.inverter_power   != null ? `${e.inverter_power} kW`   : '',
+      qtd_inversores:    String(e.inverter_quantity ?? ''),
+      marca_modulo:      e.module_brand            ?? '',
+      modelo_modulo:     e.module_model            ?? '',
+      potencia_modulo:   e.module_power    != null ? `${e.module_power} Wp`      : '',
+      qtd_modulos:       String(e.module_quantity  ?? ''),
+      potencia_total:    e.total_installed_power != null
+        ? `${e.total_installed_power} kWp` : '',
+      kwp:               String(e.total_installed_power ?? ''),
+      data:              today,
+      data_emissao:      today,
+      data_atual:        today,
       data_criacao:      format(new Date(project.created_at), 'dd/MM/yyyy', { locale: ptBR }),
-
-      nome_titular:      g?.holder_name ?? '',
-      cpf_cnpj:          g?.holder_cpf_cnpj ?? '',
-      email_titular:     g?.holder_email ?? '',
-      telefone_titular:  g?.holder_phone ?? '',
-
-      endereco:          g?.address ?? '',
-      cidade:            g?.city ?? '',
-      estado:            g?.state ?? '',
-      endereco_completo: g ? `${g.address}, ${g.city}/${g.state}` : '',
-      uc:                g?.uc_number ?? '',
-      fase:              g?.phase_type ?? '',
-      disjuntor:         g?.circuit_breaker_current ?? '',
-      rural:             g?.is_rural ? 'Sim' : 'Não',
-      coordenadas:       g?.coordinates ?? '',
-
-      marca_modulo:      e?.module_brand ?? '',
-      modelo_modulo:     e?.module_model ?? '',
-      potencia_modulo:   e?.module_power != null ? `${e.module_power} W` : '',
-      qtd_modulos:       String(e?.module_quantity ?? 0),
-      marca_inversor:    e?.inverter_brand ?? '',
-      modelo_inversor:   e?.inverter_model ?? '',
-      potencia_inversor: e?.inverter_power != null ? `${e.inverter_power} kW` : '',
-      qtd_inversores:    String(e?.inverter_quantity ?? 1),
-      potencia_total:    e?.total_installed_power != null ? `${e.total_installed_power} kWp` : '',
     };
   };
 
-  // ── Generate: fill template → preview (instead of direct download) ──────────
+  // ── Debounced reactive preview ─────────────────────────────────────────────
+  useEffect(() => {
+    if (!templateBuffer || preview.isFormTemplate) return;
+    if (Object.keys(editedValues).length === 0)    return;
+
+    clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(async () => {
+      setIsRegenerating(true);
+      try {
+        const blob        = await generateDocxFromTemplate(templateBuffer, editedValues);
+        const arrayBuffer = await blob.arrayBuffer();
+        const mammoth     = await import('mammoth');
+        const result      = await mammoth.convertToHtml({ arrayBuffer });
+        preview.updateHtml(result.value);
+      } catch (err) {
+        console.error('[GenerateDoc] Erro ao atualizar prévia:', err);
+      } finally {
+        setIsRegenerating(false);
+      }
+    }, 600);
+
+    return () => clearTimeout(debounceRef.current);
+  }, [editedValues]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Generate ───────────────────────────────────────────────────────────────
   const handleGenerate = async () => {
     if (!selectedTemplate) return;
     setIsGenerating(true);
 
     try {
       const buffer = await downloadTemplateBuffer(selectedTemplate.path);
-      const zip = new PizZip(buffer);
-      const doc = new Docxtemplater(zip, { paragraphLoop: true, linebreaks: true });
+      const { hasTags, tags } = await detectTemplateTags(buffer);
+      console.log('[GenerateDoc] hasTags:', hasTags, '| tags:', tags);
 
-      doc.render(buildTemplateData());
+      if (hasTags) {
+        const values = buildProjectValues();
+        console.log('[GenerateDoc] Valores do projeto:', values);
 
-      const blob = doc.getZip().generate({
-        type: 'blob',
-        mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      });
+        setOriginalValues(values);
+        setEditedValues({ ...values });
+        setTemplateTags(tags);
+        setTemplateBuffer(buffer);
 
-      // Hand off to preview hook instead of direct download
-      await preview.generatePreview(blob);
+        const blob = await generateDocxFromTemplate(buffer, values);
+        await preview.generatePreview(blob, values, buffer, false);
+      } else {
+        setOriginalValues({});
+        setEditedValues({});
+        setTemplateTags([]);
+        setTemplateBuffer(buffer);
 
+        const blob = new Blob([buffer], { type: DOCX_MIME });
+        await preview.generatePreview(blob, {}, buffer, true);
+      }
     } catch (error) {
-      console.error('Error generating document:', error);
+      console.error('[GenerateDoc] Erro:', error);
       toast.error('Erro ao gerar documento. Verifique se o template é válido.');
     } finally {
       setIsGenerating(false);
     }
   };
 
+  // ── Field edit handler ─────────────────────────────────────────────────────
+  const handleFieldEdit = (tag: string, newValue: string) => {
+    setEditedValues(prev => ({ ...prev, [tag]: newValue }));
+  };
+
+  // ── DOCX download with edited values ──────────────────────────────────────
+  const handleDownloadDocx = async () => {
+    if (!templateBuffer) return;
+    try {
+      setIsDownloading(true);
+
+      if (preview.isFormTemplate) {
+        // Type B: plain form → download original blob unchanged
+        preview.downloadDocx(fileName);
+        toast.success('Documento .DOCX baixado!');
+        return;
+      }
+
+      // Type A: re-generate with edited values
+      const blob = await generateDocxFromTemplate(templateBuffer, editedValues);
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href     = url;
+      a.download = editCount > 0
+        ? `${fileName}_editado.docx`
+        : `${fileName}.docx`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success('Documento .DOCX baixado!');
+    } catch (err) {
+      console.error(err);
+      toast.error('Erro ao baixar .DOCX');
+    } finally {
+      setIsDownloading(false);
+    }
+  };
+
+  // ── PDF download from current preview ─────────────────────────────────────
+  const handleDownloadPdf = async () => {
+    if (!previewRef.current) return;
+    try {
+      setIsDownloadingPdf(true);
+      const html2pdf = (await import('html2pdf.js')).default;
+      const clone    = previewRef.current.cloneNode(true) as HTMLElement;
+
+      clone.querySelectorAll('[data-watermark]').forEach(el => el.remove());
+
+      await html2pdf()
+        .set({
+          margin:     [15, 15, 15, 15],
+          filename:   `${fileName}.pdf`,
+          image:      { type: 'jpeg', quality: 0.98 },
+          html2canvas: { scale: 2, useCORS: true, letterRendering: true },
+          jsPDF:      { unit: 'mm', format: 'a4', orientation: 'portrait' as const },
+        })
+        .from(clone)
+        .save();
+
+      toast.success('PDF gerado com sucesso!');
+    } catch (err) {
+      console.error(err);
+      toast.error('Erro ao gerar PDF');
+    } finally {
+      setIsDownloadingPdf(false);
+    }
+  };
+
   const handleOpenChange = (value: boolean) => {
     if (!value) {
       setSelectedTemplate(null);
+      setOriginalValues({});
+      setEditedValues({});
+      setTemplateTags([]);
+      setTemplateBuffer(null);
       preview.reset();
     }
     onOpenChange(value);
   };
 
-  // ── Toolbar execCommand helper ──────────────────────────────────────────────
-  const exec = (cmd: string) => {
-    document.execCommand(cmd, false, undefined);
-    previewRef.current?.focus();
-  };
-
-  // ── Sidebar data (mirrors buildTemplateData) ────────────────────────────────
-  const g = revisionData?.general_data ?? project.generalData;
-  const e = revisionData?.equipment ?? project.equipment;
-
   // ============================================================
   //  RENDER
   // ============================================================
 
-  // ── IDLE: original template selector UI ────────────────────────────────────
+  // ── IDLE: template selector ────────────────────────────────────────────────
   if (preview.step === 'idle') {
     return (
       <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -254,7 +412,7 @@ export function GenerateDocumentDialog({
             ) : (
               <ScrollArea className="h-[260px]">
                 <div className="space-y-2">
-                  {templates.map((template) => (
+                  {templates.map(template => (
                     <button
                       key={template.path}
                       type="button"
@@ -292,11 +450,9 @@ export function GenerateDocumentDialog({
               disabled={!selectedTemplate || isGenerating}
               className="gap-2"
             >
-              {isGenerating ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Eye className="w-4 h-4" />
-              )}
+              {isGenerating
+                ? <Loader2 className="w-4 h-4 animate-spin" />
+                : <Eye className="w-4 h-4" />}
               {isGenerating ? 'Processando…' : 'Visualizar prévia'}
             </Button>
           </DialogFooter>
@@ -305,25 +461,15 @@ export function GenerateDocumentDialog({
     );
   }
 
-  // ── LOADING ─────────────────────────────────────────────────────────────────
+  // ── LOADING ──────────────────────────────────────────────────────────────────
   if (preview.step === 'loading') {
     return (
       <Dialog open={open} onOpenChange={handleOpenChange}>
         <DialogContent className="sm:max-w-sm">
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '40px 20px', gap: 20 }}>
-            {/* Spinner */}
-            <div style={{
-              width: 40, height: 40, borderRadius: '50%',
-              border: '3px solid #F0F0F0',
-              borderTopColor: '#F5A800',
-              animation: 'dp-spin 0.8s linear infinite',
-            }} />
-            {/* Progress bar */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '40px 20px', gap: 20 }}>
+            <div style={{ width: 40, height: 40, borderRadius: '50%', border: '3px solid #F0F0F0', borderTopColor: '#F5A800', animation: 'dp-spin 0.8s linear infinite' }} />
             <div style={{ width: 240, height: 5, background: '#F0F0F0', borderRadius: 3, overflow: 'hidden' }}>
-              <div style={{
-                height: '100%', borderRadius: 3, background: '#F5A800',
-                animation: 'dp-progress 2s ease-in-out forwards',
-              }} />
+              <div style={{ height: '100%', borderRadius: 3, background: '#F5A800', animation: 'dp-progress 2s ease-in-out forwards' }} />
             </div>
             <p style={{ fontSize: 13, color: '#888', textAlign: 'center' }}>
               Processando template e preenchendo dados…
@@ -376,179 +522,158 @@ export function GenerateDocumentDialog({
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent
         className="p-0 overflow-hidden gap-0"
-        style={{ width: '95vw', maxWidth: 1200, height: '92vh', display: 'flex', flexDirection: 'column' }}
+        style={{ width: '95vw', maxWidth: 1280, height: '92vh', display: 'flex', flexDirection: 'column' }}
       >
         {/* ── Header ── */}
         <div style={{ background: '#1A1A1A', padding: '14px 20px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
-          {/* Left: title + subtitle */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
             <div style={{ width: 32, height: 32, borderRadius: 8, background: '#FEF3D0', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
               <FileOutput size={15} style={{ color: '#854F0B' }} />
             </div>
             <div style={{ minWidth: 0 }}>
-              <p style={{ fontSize: 14, fontWeight: 700, color: '#fff', margin: 0 }}>Prévia do Documento</p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <p style={{ fontSize: 14, fontWeight: 700, color: '#fff', margin: 0 }}>Prévia do Documento</p>
+                {/* Edit count badge */}
+                {editCount > 0 && (
+                  <span style={{ background: '#E1F5EE', color: '#0F6E56', fontSize: 10, fontWeight: 700, padding: '2px 9px', borderRadius: 20, border: '0.5px solid #9FE1CB' }}>
+                    ✏ {editCount} campo{editCount !== 1 ? 's' : ''} editado{editCount !== 1 ? 's' : ''}
+                  </span>
+                )}
+              </div>
               <p style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {templateDisplayName}{project.concessionaireName ? ` — ${project.concessionaireName}` : ''} · {project.code}
+                {preview.isFormTemplate && (
+                  <span style={{ marginLeft: 6, background: 'rgba(55,138,221,0.3)', color: '#92C8F5', padding: '1px 6px', borderRadius: 4, fontSize: 9, fontWeight: 600 }}>
+                    formulário
+                  </span>
+                )}
               </p>
             </div>
           </div>
 
-          {/* Right: edit/preview toggle + close */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-            {/* Toggle tabs */}
-            <div style={{ display: 'flex', background: 'rgba(255,255,255,0.1)', borderRadius: 8, padding: 3, gap: 2 }}>
-              {[
-                { label: 'Editar', value: true, icon: <Pencil size={11} /> },
-                { label: 'Prévia', value: false, icon: <Eye size={11} /> },
-              ].map(tab => (
-                <button
-                  key={String(tab.value)}
-                  onClick={() => preview.setEditing(tab.value)}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 5,
-                    padding: '5px 10px', borderRadius: 6, border: 'none', cursor: 'pointer',
-                    fontSize: 11, fontWeight: 600, transition: 'all .15s',
-                    background: preview.isEditing === tab.value ? '#fff' : 'transparent',
-                    color: preview.isEditing === tab.value ? '#1A1A1A' : 'rgba(255,255,255,0.5)',
-                  }}
-                >
-                  {tab.icon}{tab.label}
-                </button>
-              ))}
-            </div>
-            {/* Close */}
-            <button
-              onClick={() => preview.reset()}
-              style={{ width: 28, height: 28, borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,0.1)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
-            >
-              <X size={13} />
-            </button>
-          </div>
+          {/* Close */}
+          <button
+            onClick={() => handleOpenChange(false)}
+            style={{ width: 28, height: 28, borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,0.1)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}
+          >
+            <X size={13} />
+          </button>
         </div>
 
-        {/* ── Editing toolbar ── */}
-        {preview.isEditing && (
-          <div style={{ background: '#F8F8F8', borderBottom: '1px solid #F0F0F0', padding: '7px 16px', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, flexWrap: 'wrap' }}>
-            {/* Separator helper */}
-            {(() => {
-              const Sep = () => <div style={{ width: 1, height: 18, background: '#E0E0E0', margin: '0 4px' }} />;
+        {/* ── Main area: sidebar | document ── */}
+        <div style={{ display: 'grid', gridTemplateColumns: '260px 1fr', flex: 1, overflow: 'hidden', minHeight: 0 }}>
+
+          {/* ── Editable Fields Sidebar ── */}
+          <div style={{ background: '#F8F8F8', borderRight: '0.5px solid #F0F0F0', padding: '12px 12px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 10 }}>
+
+            {/* Sidebar header */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
+              <span style={{ fontSize: 10, fontWeight: 700, color: '#888', textTransform: 'uppercase', letterSpacing: '.05em' }}>
+                Editar campos
+              </span>
+              {editCount > 0 && (
+                <span style={{ background: '#E1F5EE', color: '#0F6E56', fontSize: 9, fontWeight: 700, padding: '1px 7px', borderRadius: 20, border: '0.5px solid #9FE1CB' }}>
+                  {editCount} editado{editCount !== 1 ? 's' : ''}
+                </span>
+              )}
+            </div>
+
+            {/* Form template: no editable fields */}
+            {preview.isFormTemplate && (
+              <div style={{ background: '#E6F1FB', border: '0.5px solid #378ADD', borderRadius: 8, padding: '8px 10px', fontSize: 10, color: '#185FA5', lineHeight: 1.5 }}>
+                <Info size={12} style={{ display: 'inline', marginRight: 5 }} />
+                <strong>Formulário sem tags.</strong> Este template não possui campos automáticos. Baixe o arquivo e preencha manualmente.
+              </div>
+            )}
+
+            {/* Editable inputs for each detected tag */}
+            {templateTags.map(tag => {
+              const label      = TAG_LABELS[tag] ?? tag;
+              const value      = editedValues[tag]   ?? '';
+              const original   = originalValues[tag] ?? '';
+              const isEdited   = value !== original;
 
               return (
-                <>
-                  <span style={{ fontSize: 10, color: '#aaa', fontWeight: 600, marginRight: 2 }}>Texto:</span>
-                  {[
-                    { label: 'B', cmd: 'bold',      style: { fontWeight: 700 } },
-                    { label: 'I', cmd: 'italic',    style: { fontStyle: 'italic' } },
-                    { label: 'U', cmd: 'underline', style: { textDecoration: 'underline' } },
-                  ].map(btn => (
-                    <button key={btn.cmd} onMouseDown={e => { e.preventDefault(); exec(btn.cmd); }}
-                      style={{ width: 26, height: 26, borderRadius: 5, border: '0.5px solid #E0E0E0', background: '#fff', cursor: 'pointer', fontSize: 11, ...btn.style, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      {btn.label}
-                    </button>
-                  ))}
-
-                  <Sep />
-                  <span style={{ fontSize: 10, color: '#aaa', fontWeight: 600, marginRight: 2 }}>Alinhamento:</span>
-                  {[
-                    { label: '⬛', cmd: 'justifyLeft',   title: 'Alinhar à esquerda' },
-                    { label: '☰', cmd: 'justifyCenter', title: 'Centralizar' },
-                    { label: '⬛', cmd: 'justifyRight',  title: 'Alinhar à direita' },
-                  ].map((btn, i) => (
-                    <button key={btn.cmd} onMouseDown={e => { e.preventDefault(); exec(btn.cmd); }}
-                      title={btn.title}
-                      style={{ width: 26, height: 26, borderRadius: 5, border: '0.5px solid #E0E0E0', background: '#fff', cursor: 'pointer', fontSize: i === 0 ? 9 : 13, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      {i === 0 ? '←' : i === 1 ? '≡' : '→'}
-                    </button>
-                  ))}
-
-                  <Sep />
-                  {[
-                    { label: '↩', cmd: 'undo', title: 'Desfazer' },
-                    { label: '↪', cmd: 'redo', title: 'Refazer' },
-                  ].map(btn => (
-                    <button key={btn.cmd} onMouseDown={e => { e.preventDefault(); exec(btn.cmd); }}
-                      title={btn.title}
-                      style={{ width: 26, height: 26, borderRadius: 5, border: '0.5px solid #E0E0E0', background: '#fff', cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      {btn.label}
-                    </button>
-                  ))}
-
-                  <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 5, padding: '3px 10px', borderRadius: 20, background: '#FEF3D0', border: '0.5px solid #F5A800' }}>
-                    <Pencil size={10} style={{ color: '#854F0B' }} />
-                    <span style={{ fontSize: 11, color: '#854F0B', fontWeight: 600 }}>Modo edição ativo</span>
-                  </div>
-                </>
-              );
-            })()}
-          </div>
-        )}
-
-        {/* ── Main area: sidebar | document ── */}
-        <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', flex: 1, overflow: 'hidden', minHeight: 0 }}>
-
-          {/* Sidebar */}
-          <div style={{ background: '#F8F8F8', borderRight: '0.5px solid #F0F0F0', padding: 14, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <SidebarCard title="Dados do projeto">
-              <SidebarRow label="Titular" value={g?.holder_name} />
-              <SidebarRow label="CPF / CNPJ" value={g?.holder_cpf_cnpj} />
-              <SidebarRow label="Número UC" value={g?.uc_number} />
-              <SidebarRow label="Concessionária" value={g?.utility_company ?? project.concessionaireName} />
-              <SidebarRow label="Endereço" value={g?.address} />
-              <SidebarRow label="Cidade / UF" value={g?.city && g?.state ? `${g.city}/${g.state}` : undefined} />
-              <SidebarRow label="Disjuntor (A)" value={g?.circuit_breaker_current} />
-              <SidebarRow label="Tipo de fase" value={g?.phase_type} />
-            </SidebarCard>
-
-            <SidebarCard title="Equipamentos">
-              <SidebarRow label="Inversor" value={e?.inverter_brand && e?.inverter_model ? `${e.inverter_brand} ${e.inverter_model}` : (e?.inverter_model ?? undefined)} />
-              <SidebarRow label="Qtd. inversores" value={e?.inverter_quantity != null ? String(e.inverter_quantity) : undefined} />
-              <SidebarRow label="Módulo" value={e?.module_brand && e?.module_model ? `${e.module_brand} ${e.module_model}` : (e?.module_model ?? undefined)} />
-              <SidebarRow label="Qtd. módulos" value={e?.module_quantity != null ? String(e.module_quantity) : undefined} />
-              {e?.total_installed_power != null && (
-                <div style={{ background: '#FEF3D0', borderRadius: 7, padding: '7px 9px', display: 'flex', flexDirection: 'column', gap: 2 }}>
-                  <span style={{ fontSize: 9, color: '#aaa', textTransform: 'uppercase', letterSpacing: '.04em', fontWeight: 600 }}>Potência total</span>
-                  <span style={{ fontSize: 13, color: '#F5A800', fontWeight: 700 }}>{e.total_installed_power} kWp</span>
+                <div key={tag} style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                  <label style={{ fontSize: 9, color: '#aaa', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', display: 'flex', alignItems: 'center', gap: 5 }}>
+                    {label}
+                    {isEdited && (
+                      <span style={{ background: '#E1F5EE', color: '#0F6E56', fontSize: 8, fontWeight: 700, padding: '1px 5px', borderRadius: 10 }}>
+                        editado
+                      </span>
+                    )}
+                  </label>
+                  <input
+                    type="text"
+                    value={value}
+                    onChange={e => handleFieldEdit(tag, e.target.value)}
+                    style={{
+                      padding: '6px 9px',
+                      borderRadius: 7,
+                      border: isEdited ? '1px solid #2D6A4F' : '0.5px solid #E0E0E0',
+                      fontSize: 11,
+                      color: '#1A1A1A',
+                      background: isEdited ? '#F0FFF8' : '#fff',
+                      outline: 'none',
+                      width: '100%',
+                      boxSizing: 'border-box',
+                      transition: 'border-color .15s, background .15s',
+                    }}
+                    onFocus={e => {
+                      e.target.style.borderColor = '#F5A800';
+                      e.target.style.boxShadow   = '0 0 0 2px rgba(245,168,0,0.14)';
+                    }}
+                    onBlur={e => {
+                      e.target.style.borderColor = isEdited ? '#2D6A4F' : '#E0E0E0';
+                      e.target.style.boxShadow   = 'none';
+                    }}
+                  />
                 </div>
-              )}
-            </SidebarCard>
+              );
+            })}
 
-            {/* Editing tip */}
-            {preview.isEditing && (
-              <div style={{ background: '#FEF3D0', border: '0.5px solid #F5A800', borderRadius: 9, padding: 10 }}>
-                <p style={{ fontSize: 10, color: '#B87A20', lineHeight: 1.5, margin: 0 }}>
-                  <strong>💡 Dica</strong><br />
-                  Clique diretamente no texto do documento para editar. Use a barra de formatação acima para negrito, itálico e alinhamento.
-                </p>
+            {/* Restore button */}
+            {editCount > 0 && (
+              <button
+                onClick={() => setEditedValues({ ...originalValues })}
+                style={{ marginTop: 4, padding: '7px', background: '#F0F0F0', border: 'none', borderRadius: 7, fontSize: 10, color: '#555', cursor: 'pointer', fontWeight: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}
+              >
+                <RotateCcw size={11} /> Restaurar valores originais
+              </button>
+            )}
+
+            {/* Regenerating spinner */}
+            {isRegenerating && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10, color: '#888', padding: '6px 8px', background: '#FEF3D0', borderRadius: 7 }}>
+                <div style={{ width: 12, height: 12, border: '2px solid #F0F0F0', borderTopColor: '#F5A800', borderRadius: '50%', animation: 'dp-spin 0.8s linear infinite', flexShrink: 0 }} />
+                Atualizando prévia…
               </div>
             )}
           </div>
 
-          {/* Document preview area */}
+          {/* ── Document Preview Area ── */}
           <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }}>
             {/* Sub-header */}
-            <div style={{ padding: '7px 16px', background: '#FAFAFA', borderBottom: '0.5px solid #F0F0F0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <Eye size={12} style={{ color: '#888' }} />
-                <span style={{ fontSize: 11, color: '#555' }}>
-                  {preview.isEditing ? 'Clique nos campos para editar' : 'Modo leitura'}
+            <div style={{ padding: '7px 16px', background: '#FAFAFA', borderBottom: '0.5px solid #F0F0F0', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+              <Eye size={12} style={{ color: '#888' }} />
+              <span style={{ fontSize: 11, color: '#555' }}>Prévia do documento</span>
+              {isRegenerating && (
+                <span style={{ fontSize: 9, color: '#854F0B', background: '#FEF3D0', padding: '1px 8px', borderRadius: 20, fontWeight: 600 }}>
+                  ⟳ atualizando…
                 </span>
-                <span style={{
-                  fontSize: 9, fontWeight: 600, padding: '2px 8px', borderRadius: 20,
-                  background: preview.isEditing ? '#FEF3D0' : '#E1F5EE',
-                  color: preview.isEditing ? '#854F0B' : '#0F6E56',
-                }}>
-                  {preview.isEditing ? '✏ Editável' : '👁 Apenas leitura'}
+              )}
+              {!isRegenerating && editCount > 0 && (
+                <span style={{ fontSize: 9, color: '#0F6E56', background: '#E1F5EE', padding: '1px 8px', borderRadius: 20, fontWeight: 600 }}>
+                  ✓ prévia atualizada
                 </span>
-              </div>
-              <span style={{ fontSize: 10, color: '#aaa' }}>
-                Campos em amarelo = preenchidos automaticamente
-              </span>
+              )}
             </div>
 
-            {/* Document scroll area */}
+            {/* Scroll area */}
             <div style={{ flex: 1, overflowY: 'auto', padding: 24, background: '#E8E8E8', display: 'flex', justifyContent: 'center' }}>
               {/* A4 sheet */}
               <div style={{ background: '#fff', maxWidth: 680, width: '100%', minHeight: 500, borderRadius: 4, boxShadow: '0 2px 12px rgba(0,0,0,0.12)', padding: '48px 52px', position: 'relative' }}>
+
                 {/* Watermark */}
                 <div
                   data-watermark="true"
@@ -557,13 +682,11 @@ export function GenerateDocumentDialog({
                   RASCUNHO
                 </div>
 
-                {/* Content */}
+                {/* Document content */}
                 <div
                   ref={previewRef}
-                  contentEditable={preview.isEditing}
-                  suppressContentEditableWarning
-                  dangerouslySetInnerHTML={{ __html: styledHtml(preview.htmlContent) }}
-                  style={{ outline: 'none', lineHeight: 1.6, fontSize: 12, color: '#1A1A1A' }}
+                  dangerouslySetInnerHTML={{ __html: buildStyledHtml(preview.htmlContent) }}
+                  style={{ outline: 'none', userSelect: 'text', cursor: 'default' }}
                 />
               </div>
             </div>
@@ -572,18 +695,18 @@ export function GenerateDocumentDialog({
 
         {/* ── Footer ── */}
         <div style={{ background: '#F8F8F8', borderTop: '1px solid #F0F0F0', padding: '11px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
-          {/* Left: info */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#888' }}>
+          {/* Left: hint */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#888' }}>
             <Info size={12} style={{ color: '#aaa', flexShrink: 0 }} />
-            <span>Campos em </span>
-            <span style={{ background: 'rgba(245,168,0,0.2)', color: '#854F0B', fontWeight: 600, padding: '0 5px', borderRadius: 4 }}>amarelo</span>
-            <span> foram preenchidos automaticamente</span>
+            {templateTags.length > 0
+              ? 'Edite os campos na barra lateral — a prévia atualiza automaticamente'
+              : 'Baixe o documento e preencha manualmente'}
           </div>
 
           {/* Right: actions */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <button
-              onClick={() => preview.reset()}
+              onClick={() => handleOpenChange(false)}
               style={{ padding: '7px 14px', borderRadius: 8, border: '0.5px solid #E0E0E0', background: '#fff', color: '#555', fontSize: 11, fontWeight: 500, cursor: 'pointer' }}
             >
               Cancelar
@@ -593,18 +716,28 @@ export function GenerateDocumentDialog({
 
             {/* Download .DOCX */}
             <button
-              onClick={() => preview.downloadDocx(fileName)}
-              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 8, border: 'none', background: '#2B579A', color: '#fff', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+              onClick={handleDownloadDocx}
+              disabled={isDownloading}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 8, border: 'none', background: isDownloading ? '#aaa' : '#2B579A', color: '#fff', fontSize: 11, fontWeight: 700, cursor: isDownloading ? 'not-allowed' : 'pointer' }}
             >
-              <Download size={13} /> Baixar .DOCX
+              {isDownloading
+                ? <Loader2 size={13} className="animate-spin" />
+                : <Download size={13} />}
+              {isDownloading
+                ? 'Gerando…'
+                : editCount > 0 ? `Baixar .DOCX (${editCount} edit.)` : 'Baixar .DOCX'}
             </button>
 
             {/* Download .PDF */}
             <button
-              onClick={() => previewRef.current && preview.downloadPdf(fileName, previewRef.current)}
-              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 8, border: 'none', background: '#E24B4A', color: '#fff', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+              onClick={handleDownloadPdf}
+              disabled={isDownloadingPdf}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 8, border: 'none', background: isDownloadingPdf ? '#aaa' : '#E24B4A', color: '#fff', fontSize: 11, fontWeight: 700, cursor: isDownloadingPdf ? 'not-allowed' : 'pointer' }}
             >
-              <Download size={13} /> Baixar .PDF
+              {isDownloadingPdf
+                ? <Loader2 size={13} className="animate-spin" />
+                : <Download size={13} />}
+              {isDownloadingPdf ? 'Gerando PDF…' : 'Baixar .PDF'}
             </button>
           </div>
         </div>

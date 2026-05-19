@@ -4,7 +4,8 @@ import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea
 import { useProjects, useUpdateProjectStatus } from '@/hooks/useProjects';
 import { useCompanies } from '@/hooks/useCompanies';
 import { useCompanyDisplay } from '@/hooks/useCompanyDisplay';
-import { useDefaultKanbanModel } from '@/hooks/useKanbanConfig';
+import { useDefaultKanbanModel, useStaleProjects } from '@/hooks/useKanbanConfig';
+import { useStaleNotifications } from '@/hooks/useStaleNotifications';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useAuth } from '@/contexts/AuthContext';
 import { motion } from 'framer-motion';
@@ -16,7 +17,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { NewRevisionDialog } from '@/components/revisions/NewRevisionDialog';
 import { useSearchParams } from 'react-router-dom';
-import { Search, Building2, Zap, MapPin, Loader2, ChevronRight, ArrowRight, AlertCircle, DollarSign, MoreVertical, Trash2, Users, FileOutput, ExternalLink, XCircle } from 'lucide-react';
+import { Search, Building2, Zap, MapPin, Loader2, ChevronRight, ArrowRight, AlertCircle, DollarSign, MoreVertical, Trash2, Users, FileOutput, ExternalLink, XCircle, Clock } from 'lucide-react';
 import { useProjectRevisions } from '@/hooks/useProjectRevisions';
 import { Database } from '@/integrations/supabase/types';
 import { ProjectModal } from '@/components/projects/ProjectModal';
@@ -230,7 +231,14 @@ export default function ProjectsKanban() {
   const { data: companies = [] } = useCompanies();
   const { getCompanyDisplayName, shouldHideCompanyName } = useCompanyDisplay();
   const { data: kanbanModel, isLoading: isLoadingModel } = useDefaultKanbanModel();
+  const { data: staleProjectsData = [] } = useStaleProjects();
   const updateStatus = useUpdateProjectStatus();
+
+  // Generate stale notifications (admin only, runs in background)
+  useStaleNotifications();
+
+  // Build a lookup map: project id → days_stale
+  const staleMap = new Map(staleProjectsData.map(s => [s.id, Math.floor(s.days_stale)]));
 
   const [searchTerm, setSearchTerm] = useState('');
   const [companyFilter, setCompanyFilter] = useState<string>('all');
@@ -392,12 +400,15 @@ export default function ProjectsKanban() {
               filteredProjects.map((project) => {
                 const col = kanbanColumns.find(c => c.id === project.status);
                 const noValue = hasNoValue(project);
+                const daysStale = staleMap.get(project.id);
+                const isStale = daysStale !== undefined;
                 return (
                   <motion.div
                     key={project.id}
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     className="bg-card rounded-xl p-4 border border-white/10 shadow-md"
+                    style={isStale ? { borderLeft: '3px solid #F59E0B' } : undefined}
                     onClick={() => setModalProjectId(project.id)}
                   >
                     <div className="flex items-start justify-between gap-3 mb-2">
@@ -411,6 +422,15 @@ export default function ProjectsKanban() {
                         <Badge variant={statusVariants[project.status] as any} className="text-xs">
                           {col?.title || project.status}
                         </Badge>
+                        {isStale && (
+                          <span
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium"
+                            style={{ background: '#FFFBEB', color: '#92400E', border: '0.5px solid #F59E0B' }}
+                          >
+                            <Clock className="w-2.5 h-2.5" />
+                            {daysStale}d parado
+                          </span>
+                        )}
                         {isAdmin && noValue && (
                           <Badge className="text-[10px] gap-1" style={{ background: '#FFF0E6', color: '#993C1D', border: 'none' }}>
                             <DollarSign className="w-2.5 h-2.5" />
@@ -505,6 +525,8 @@ export default function ProjectsKanban() {
                       >
                         {getProjectsByStatus(column.id).map((project, index) => {
                           const noValue = hasNoValue(project);
+                          const daysStale = staleMap.get(project.id);
+                          const isStale = daysStale !== undefined;
                           return (
                             <Draggable key={project.id} draggableId={project.id} index={index}>
                               {(provided, snapshot) => (
@@ -516,11 +538,28 @@ export default function ProjectsKanban() {
                                   className={`kanban-card mb-3 ${
                                     snapshot.isDragging ? 'shadow-2xl ring-2 ring-primary' : ''
                                   }`}
+                                  style={isStale ? { borderLeft: '3px solid #F59E0B', borderRadius: 8 } : undefined}
                                 >
                                   <div className="flex items-start justify-between mb-3">
                                     <span className="text-xs font-mono text-primary">{project.code}</span>
                                     <div className="flex items-center gap-1">
                                       <RevisionBadge projectId={project.id} />
+                                      {isStale && (
+                                        <Tooltip>
+                                          <TooltipTrigger asChild>
+                                            <span
+                                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium cursor-default"
+                                              style={{ background: '#FFFBEB', color: '#92400E', border: '0.5px solid #F59E0B' }}
+                                            >
+                                              <Clock className="w-2.5 h-2.5" />
+                                              {daysStale}d parado
+                                            </span>
+                                          </TooltipTrigger>
+                                          <TooltipContent>
+                                            <p>Projeto sem movimentação há {daysStale} dia{daysStale !== 1 ? 's' : ''}</p>
+                                          </TooltipContent>
+                                        </Tooltip>
+                                      )}
                                       {isAdmin && noValue && (
                                         <Tooltip>
                                           <TooltipTrigger asChild>

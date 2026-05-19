@@ -142,7 +142,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                     style={{ background: 'rgba(255,255,255,0.05)', border: 'none', cursor: 'pointer' }}
                   >
                     <p className="text-xs" style={{ color: 'rgba(255,255,255,0.4)' }}>Conectado como</p>
-                    <p className="text-sm font-medium text-white truncate">{user.name}</p>
+                    <p className="text-sm font-medium truncate" style={{ color: 'rgba(255,255,255,0.6)' }}>{user.name}</p>
                     <p className="text-xs capitalize font-medium" style={{ color: '#F5A800' }}>{user.role}</p>
                   </button>
                 </div>
@@ -225,7 +225,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
           >
             <p className="text-xs text-muted-foreground">Conectado como</p>
             <div className="flex items-center justify-between">
-              <p className="text-sm font-medium text-foreground truncate">{user.name}</p>
+              <p className="text-sm font-medium truncate" style={{ color: 'rgba(255,255,255,0.6)' }}>{user.name}</p>
               <UserCircle className="w-4 h-4 text-primary opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 ml-2" />
             </div>
             <p className="text-xs text-primary capitalize">{user.role}</p>

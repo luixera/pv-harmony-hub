@@ -13,6 +13,7 @@ export interface KanbanColumn {
   is_final: boolean;
   is_rejection_stage: boolean;
   triggers_revision: boolean;
+  stale_days: number | null;
   created_at: string;
 }
 
@@ -465,6 +466,40 @@ export function useUpdateColumnRejectionStage() {
         variant: 'destructive',
       });
     },
+  });
+}
+
+// ── Stale projects ────────────────────────────────────────────────────────────
+
+export interface StaleProject {
+  id: string;
+  code: string;
+  status: string;
+  last_status_change: string;
+  company_id: string;
+  column_id: string;
+  status_label: string;
+  stale_days: number;
+  days_stale: number;
+}
+
+/**
+ * Returns every project that has been in its current column longer than the
+ * column's `stale_days` threshold (querying the `stale_projects` view).
+ */
+export function useStaleProjects() {
+  return useQuery({
+    queryKey: ['stale-projects'],
+    queryFn: async (): Promise<StaleProject[]> => {
+      const { data, error } = await supabase
+        .from('stale_projects' as any)
+        .select('*');
+      if (error) throw error;
+      return (data ?? []) as StaleProject[];
+    },
+    // Refresh every 10 minutes — stale detection doesn't need real-time precision
+    staleTime: 10 * 60 * 1000,
+    refetchInterval: 10 * 60 * 1000,
   });
 }
 
