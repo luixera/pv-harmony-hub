@@ -12,6 +12,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { sanitizeFileName } from '@/lib/utils';
 import { useUsers } from '@/hooks/useUsers';
 
 type Tab = 'info' | 'security' | 'company' | 'users';
@@ -186,8 +187,8 @@ export default function Profile() {
     setAvatarPreview(preview);
 
     try {
-      const ext = file.name.split('.').pop() || 'jpg';
-      const filePath = `${user.id}/avatar.${ext}`;
+      const safeExt = sanitizeFileName(file.name.split('.').pop() || 'jpg');
+      const filePath = `${user.id}/avatar.${safeExt}`;
       const { error: uploadError } = await supabase.storage
         .from('avatars')
         .upload(filePath, file, { upsert: true });

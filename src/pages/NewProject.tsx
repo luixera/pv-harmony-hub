@@ -17,6 +17,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { DocumentUploadField } from '@/components/forms/DocumentUploadField';
 import { Database } from '@/integrations/supabase/types';
 import { useEnergyConcessionaires } from '@/hooks/useEnergyConcessionaires';
+import { validateFile, sanitizeFileName } from '@/lib/utils';
 import { useQuery } from '@tanstack/react-query';
 
 type DocumentType = Database['public']['Enums']['document_type'];
@@ -201,12 +202,17 @@ export default function NewProject() {
   };
 
   const uploadDocument = async (file: File, projectId: string, companyId: string, docType: DocumentType) => {
-    const filePath = `${companyId}/${projectId}/${docType}/${Date.now()}_${file.name}`;
+    // Validate MIME type and size (previne upload de PHP/JS disfarçado)
+    const validationError = validateFile(file);
+    if (validationError) throw new Error(validationError);
+
+    const safeFileName = sanitizeFileName(file.name);
+    const filePath = `${companyId}/${projectId}/${docType}/${Date.now()}_${safeFileName}`;
     const { error: uploadError } = await supabase.storage.from('project-documents').upload(filePath, file);
     if (uploadError) throw uploadError;
     const { error: dbError } = await supabase.from('documents').insert({
       project_id: projectId,
-      file_name: file.name,
+      file_name: safeFileName,
       file_type: file.type,
       file_url: filePath,
       document_type: docType,

@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { validateFile, sanitizeFileName } from '@/lib/utils';
 import { toast } from 'sonner';
 
 export interface ConcessionaireDocument {
@@ -42,10 +43,15 @@ export function useUploadConcessionaireDocument() {
       concessionaireId: string; 
       file: File;
     }) => {
+      // Validate MIME type and size before upload
+      const validationError = validateFile(file);
+      if (validationError) throw new Error(validationError);
+
       const { data: { user } } = await supabase.auth.getUser();
-      
-      // Upload file to storage
-      const filePath = `${concessionaireId}/${Date.now()}_${file.name}`;
+
+      // Upload file to storage (sanitize filename to prevent path traversal)
+      const safeFileName = sanitizeFileName(file.name);
+      const filePath = `${concessionaireId}/${Date.now()}_${safeFileName}`;
       
       const { error: uploadError } = await supabase.storage
         .from('concessionaire-documents')
@@ -58,7 +64,7 @@ export function useUploadConcessionaireDocument() {
         .from('concessionaire_documents')
         .insert({
           concessionaire_id: concessionaireId,
-          file_name: file.name,
+          file_name: safeFileName,
           file_path: filePath,
           file_type: file.type,
           uploaded_by: user?.id,
