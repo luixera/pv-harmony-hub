@@ -4,12 +4,13 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { motion } from 'framer-motion';
-import { Plus, Search, Users as UsersIcon, Pencil, User, Loader2 } from 'lucide-react';
+import { Plus, Search, Users as UsersIcon, Pencil, User, Loader2, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { UserRole } from '@/types';
-import { useUsers, useUpdateUser } from '@/hooks/useUsers';
+import { useUsers, useUpdateUser, useDeleteUser } from '@/hooks/useUsers';
 import { useCompanies } from '@/hooks/useCompanies';
 import { supabase } from '@/integrations/supabase/client';
+import { useQueryClient } from '@tanstack/react-query';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -31,6 +32,7 @@ export default function Users() {
     isActive?: boolean;
   } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [deletingUser, setDeletingUser] = useState<{ id: string; name: string } | null>(null);
   const {
     data: users = [],
     isLoading: usersLoading
@@ -39,6 +41,8 @@ export default function Users() {
     data: companies = []
   } = useCompanies();
   const updateUser = useUpdateUser();
+  const deleteUser = useDeleteUser();
+  const queryClient = useQueryClient();
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -162,6 +166,7 @@ export default function Users() {
         if (data?.error) {
           throw new Error(data.error);
         }
+        queryClient.invalidateQueries({ queryKey: ['users'] });
         toast.success('Usuário criado com sucesso!');
       }
       setIsDialogOpen(false);
@@ -244,6 +249,15 @@ export default function Users() {
                         <Button variant="ghost" size="icon" title="Editar" onClick={() => handleEdit(user)}>
                           <Pencil className="w-4 h-4" />
                         </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title="Excluir"
+                          className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                          onClick={() => setDeletingUser({ id: user.id, name: user.name })}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
                       </div>
                     </td>
                   </tr>)}
@@ -257,6 +271,38 @@ export default function Users() {
             </div>}
         </motion.div>
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={!!deletingUser} onOpenChange={open => { if (!open) setDeletingUser(null); }}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Excluir Usuário</DialogTitle>
+            <DialogDescription>
+              Tem certeza que deseja excluir o usuário <strong>{deletingUser?.name}</strong>?
+              Esta ação não pode ser desfeita.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-3 pt-2">
+            <Button variant="outline" onClick={() => setDeletingUser(null)} disabled={deleteUser.isPending}>
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={deleteUser.isPending}
+              onClick={() => {
+                if (!deletingUser) return;
+                deleteUser.mutate(deletingUser.id, {
+                  onSuccess: () => setDeletingUser(null),
+                });
+              }}
+            >
+              {deleteUser.isPending ? (
+                <><Loader2 className="w-4 h-4 animate-spin mr-2" />Excluindo...</>
+              ) : 'Excluir'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* User Form Dialog */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
