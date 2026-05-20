@@ -77,25 +77,37 @@ export function useFinancials() {
 }
 
 // Fetch financials by company — reads from project_financials (canonical table)
+// Filters via projects.company_id to avoid null company_id on project_financials rows
 export function useFinancialsByCompany(companyId: string | undefined) {
   return useQuery({
     queryKey: ['financials', 'company', companyId],
     queryFn: async () => {
       if (!companyId) return [];
 
+      // Get project IDs for this company first (projects.company_id is always set)
+      const { data: companyProjects, error: projErr } = await supabase
+        .from('projects')
+        .select('id')
+        .eq('company_id', companyId)
+        .eq('is_deleted', false);
+
+      if (projErr) throw projErr;
+      const projectIds = (companyProjects || []).map(p => p.id);
+      if (projectIds.length === 0) return [];
+
       const { data, error } = await supabase
         .from('project_financials')
         .select('*')
-        .eq('company_id', companyId)
+        .in('project_id', projectIds)
         .order('due_date', { ascending: true });
 
       if (error) throw error;
 
-      const projectIds = [...new Set((data || []).map(f => f.project_id))];
+      const finProjectIds = (data || []).map(f => f.project_id);
 
-      const [projectsRes, generalDataRes, companiesRes] = await Promise.all([
-        supabase.from('projects').select('id, code').in('id', projectIds),
-        supabase.from('project_general_data').select('project_id, holder_name').in('project_id', projectIds),
+      const [projectsRes, generalDataRes, companyRes] = await Promise.all([
+        supabase.from('projects').select('id, code').in('id', finProjectIds),
+        supabase.from('project_general_data').select('project_id, holder_name').in('project_id', finProjectIds),
         supabase.from('companies').select('id, name').eq('id', companyId).maybeSingle(),
       ]);
 
@@ -110,7 +122,7 @@ export function useFinancialsByCompany(companyId: string | undefined) {
           code: projectsMap.get(item.project_id)?.code || '',
           holder_name: generalDataMap.get(item.project_id)?.holder_name || '',
         },
-        company: companiesRes.data ? { name: companiesRes.data.name } : null,
+        company: companyRes.data ? { name: companyRes.data.name } : null,
       })) as Financial[];
     },
     enabled: !!companyId,
