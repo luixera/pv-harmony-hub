@@ -20,7 +20,7 @@ export type Database = {
           id: string
           message: string
           project_id: string
-          type: string
+          type: string | null
           user_id: string
         }
         Insert: {
@@ -28,7 +28,7 @@ export type Database = {
           id?: string
           message: string
           project_id: string
-          type?: string
+          type?: string | null
           user_id: string
         }
         Update: {
@@ -36,7 +36,7 @@ export type Database = {
           id?: string
           message?: string
           project_id?: string
-          type?: string
+          type?: string | null
           user_id?: string
         }
         Relationships: [
@@ -45,6 +45,13 @@ export type Database = {
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "comments_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "stale_projects"
             referencedColumns: ["id"]
           },
         ]
@@ -172,6 +179,53 @@ export type Database = {
           },
         ]
       }
+      concessionaire_templates: {
+        Row: {
+          concessionaire_id: string
+          created_at: string | null
+          file_name: string
+          file_path: string
+          file_type: string
+          id: string
+          name: string
+          tag_mapping: Json
+          updated_at: string | null
+          uploaded_by: string | null
+        }
+        Insert: {
+          concessionaire_id: string
+          created_at?: string | null
+          file_name: string
+          file_path: string
+          file_type: string
+          id?: string
+          name: string
+          tag_mapping?: Json
+          updated_at?: string | null
+          uploaded_by?: string | null
+        }
+        Update: {
+          concessionaire_id?: string
+          created_at?: string | null
+          file_name?: string
+          file_path?: string
+          file_type?: string
+          id?: string
+          name?: string
+          tag_mapping?: Json
+          updated_at?: string | null
+          uploaded_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "concessionaire_templates_concessionaire_id_fkey"
+            columns: ["concessionaire_id"]
+            isOneToOne: false
+            referencedRelation: "energy_concessionaires"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       documents: {
         Row: {
           created_at: string
@@ -209,6 +263,13 @@ export type Database = {
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "documents_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "stale_projects"
             referencedColumns: ["id"]
           },
         ]
@@ -322,6 +383,13 @@ export type Database = {
             columns: ["project_id"]
             isOneToOne: true
             referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "financials_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: true
+            referencedRelation: "stale_projects"
             referencedColumns: ["id"]
           },
         ]
@@ -465,12 +533,14 @@ export type Database = {
           id: string
           is_final: boolean
           is_initial: boolean
-          is_rejection_stage: boolean
-          triggers_revision: boolean
+          is_rejection_stage: boolean | null
           kanban_model_id: string
           order_index: number
+          requires_protocol: boolean
+          stale_days: number | null
           status_key: string
           status_label: string
+          triggers_revision: boolean | null
         }
         Insert: {
           color?: string
@@ -478,12 +548,14 @@ export type Database = {
           id?: string
           is_final?: boolean
           is_initial?: boolean
-          is_rejection_stage?: boolean
-          triggers_revision?: boolean
+          is_rejection_stage?: boolean | null
           kanban_model_id: string
           order_index?: number
+          requires_protocol?: boolean
+          stale_days?: number | null
           status_key: string
           status_label: string
+          triggers_revision?: boolean | null
         }
         Update: {
           color?: string
@@ -491,12 +563,14 @@ export type Database = {
           id?: string
           is_final?: boolean
           is_initial?: boolean
-          is_rejection_stage?: boolean
-          triggers_revision?: boolean
+          is_rejection_stage?: boolean | null
           kanban_model_id?: string
           order_index?: number
+          requires_protocol?: boolean
+          stale_days?: number | null
           status_key?: string
           status_label?: string
+          triggers_revision?: boolean | null
         }
         Relationships: [
           {
@@ -542,6 +616,99 @@ export type Database = {
             columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      notifications: {
+        Row: {
+          created_at: string | null
+          id: string
+          message: string
+          project_id: string | null
+          read: boolean | null
+          title: string
+          type: string | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          message: string
+          project_id?: string | null
+          read?: boolean | null
+          title: string
+          type?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          message?: string
+          project_id?: string | null
+          read?: boolean | null
+          title?: string
+          type?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notifications_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notifications_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "stale_projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      payment_history: {
+        Row: {
+          amount: number
+          created_at: string | null
+          id: string
+          notes: string | null
+          payment_date: string
+          project_id: string
+          registered_by: string | null
+        }
+        Insert: {
+          amount: number
+          created_at?: string | null
+          id?: string
+          notes?: string | null
+          payment_date: string
+          project_id: string
+          registered_by?: string | null
+        }
+        Update: {
+          amount?: number
+          created_at?: string | null
+          id?: string
+          notes?: string | null
+          payment_date?: string
+          project_id?: string
+          registered_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payment_history_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payment_history_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "stale_projects"
             referencedColumns: ["id"]
           },
         ]
@@ -640,6 +807,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "project_assignments_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "stale_projects"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "project_assignments_staff_user_id_fkey"
             columns: ["staff_user_id"]
             isOneToOne: false
@@ -699,10 +873,18 @@ export type Database = {
             referencedRelation: "projects"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "project_equipment_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: true
+            referencedRelation: "stale_projects"
+            referencedColumns: ["id"]
+          },
         ]
       }
       project_financials: {
         Row: {
+          company_id: string | null
           created_at: string
           due_date: string | null
           id: string
@@ -713,6 +895,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          company_id?: string | null
           created_at?: string
           due_date?: string | null
           id?: string
@@ -723,6 +906,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          company_id?: string | null
           created_at?: string
           due_date?: string | null
           id?: string
@@ -734,10 +918,24 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "project_financials_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "project_financials_project_id_fkey"
             columns: ["project_id"]
             isOneToOne: true
             referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_financials_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: true
+            referencedRelation: "stale_projects"
             referencedColumns: ["id"]
           },
         ]
@@ -811,175 +1009,11 @@ export type Database = {
             referencedRelation: "projects"
             referencedColumns: ["id"]
           },
-        ]
-      }
-      project_revisions: {
-        Row: {
-          id: string
-          project_id: string
-          revision_number: number
-          status: string
-          is_current: boolean
-          rejection_reason: string | null
-          rejected_by: string | null
-          rejected_at: string | null
-          created_by: string | null
-          created_at: string
-          updated_at: string
-        }
-        Insert: {
-          id?: string
-          project_id: string
-          revision_number?: number
-          status?: string
-          is_current?: boolean
-          rejection_reason?: string | null
-          rejected_by?: string | null
-          rejected_at?: string | null
-          created_by?: string | null
-          created_at?: string
-          updated_at?: string
-        }
-        Update: {
-          id?: string
-          project_id?: string
-          revision_number?: number
-          status?: string
-          is_current?: boolean
-          rejection_reason?: string | null
-          rejected_by?: string | null
-          rejected_at?: string | null
-          created_by?: string | null
-          created_at?: string
-          updated_at?: string
-        }
-        Relationships: [
           {
-            foreignKeyName: "project_revisions_project_id_fkey"
+            foreignKeyName: "project_general_data_project_id_fkey"
             columns: ["project_id"]
-            isOneToOne: false
-            referencedRelation: "projects"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      revision_general_data: {
-        Row: {
-          id: string
-          revision_id: string
-          holder_name: string | null
-          holder_cpf_cnpj: string | null
-          holder_phone: string | null
-          holder_email: string | null
-          address: string | null
-          city: string | null
-          state: string | null
-          cep: string | null
-          uc_number: string | null
-          utility_company: string | null
-          circuit_breaker_current: string | null
-          phase_type: string | null
-          coordinates: string | null
-          is_rural: boolean
-          created_at: string
-        }
-        Insert: {
-          id?: string
-          revision_id: string
-          holder_name?: string | null
-          holder_cpf_cnpj?: string | null
-          holder_phone?: string | null
-          holder_email?: string | null
-          address?: string | null
-          city?: string | null
-          state?: string | null
-          cep?: string | null
-          uc_number?: string | null
-          utility_company?: string | null
-          circuit_breaker_current?: string | null
-          phase_type?: string | null
-          coordinates?: string | null
-          is_rural?: boolean
-          created_at?: string
-        }
-        Update: {
-          id?: string
-          revision_id?: string
-          holder_name?: string | null
-          holder_cpf_cnpj?: string | null
-          holder_phone?: string | null
-          holder_email?: string | null
-          address?: string | null
-          city?: string | null
-          state?: string | null
-          cep?: string | null
-          uc_number?: string | null
-          utility_company?: string | null
-          circuit_breaker_current?: string | null
-          phase_type?: string | null
-          coordinates?: string | null
-          is_rural?: boolean
-          created_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "revision_general_data_revision_id_fkey"
-            columns: ["revision_id"]
-            isOneToOne: false
-            referencedRelation: "project_revisions"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      revision_equipment: {
-        Row: {
-          id: string
-          revision_id: string
-          inverter_brand: string | null
-          inverter_model: string | null
-          inverter_power: number | null
-          inverter_quantity: number | null
-          module_brand: string | null
-          module_model: string | null
-          module_power: number | null
-          module_quantity: number | null
-          total_installed_power: number | null
-          created_at: string
-        }
-        Insert: {
-          id?: string
-          revision_id: string
-          inverter_brand?: string | null
-          inverter_model?: string | null
-          inverter_power?: number | null
-          inverter_quantity?: number | null
-          module_brand?: string | null
-          module_model?: string | null
-          module_power?: number | null
-          module_quantity?: number | null
-          total_installed_power?: number | null
-          created_at?: string
-        }
-        Update: {
-          id?: string
-          revision_id?: string
-          inverter_brand?: string | null
-          inverter_model?: string | null
-          inverter_power?: number | null
-          inverter_quantity?: number | null
-          module_brand?: string | null
-          module_model?: string | null
-          module_power?: number | null
-          module_quantity?: number | null
-          total_installed_power?: number | null
-          created_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "revision_equipment_revision_id_fkey"
-            columns: ["revision_id"]
-            isOneToOne: false
-            referencedRelation: "project_revisions"
+            isOneToOne: true
+            referencedRelation: "stale_projects"
             referencedColumns: ["id"]
           },
         ]
@@ -1020,6 +1054,118 @@ export type Database = {
             referencedRelation: "projects"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "project_history_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "stale_projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      project_protocols: {
+        Row: {
+          id: string
+          no_protocol: boolean
+          no_protocol_reason: string | null
+          project_id: string
+          protocol_number: string | null
+          registered_at: string | null
+          registered_by: string | null
+          revision_number: number
+        }
+        Insert: {
+          id?: string
+          no_protocol?: boolean
+          no_protocol_reason?: string | null
+          project_id: string
+          protocol_number?: string | null
+          registered_at?: string | null
+          registered_by?: string | null
+          revision_number?: number
+        }
+        Update: {
+          id?: string
+          no_protocol?: boolean
+          no_protocol_reason?: string | null
+          project_id?: string
+          protocol_number?: string | null
+          registered_at?: string | null
+          registered_by?: string | null
+          revision_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_protocols_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_protocols_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "stale_projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      project_revisions: {
+        Row: {
+          created_at: string | null
+          created_by: string | null
+          id: string
+          is_current: boolean
+          project_id: string
+          rejected_at: string | null
+          rejected_by: string | null
+          rejection_reason: string | null
+          revision_number: number
+          status: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          is_current?: boolean
+          project_id: string
+          rejected_at?: string | null
+          rejected_by?: string | null
+          rejection_reason?: string | null
+          revision_number?: number
+          status?: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          is_current?: boolean
+          project_id?: string
+          rejected_at?: string | null
+          rejected_by?: string | null
+          rejection_reason?: string | null
+          revision_number?: number
+          status?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_revisions_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_revisions_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "stale_projects"
+            referencedColumns: ["id"]
+          },
         ]
       }
       projects: {
@@ -1036,6 +1182,8 @@ export type Database = {
           id: string
           is_deleted: boolean
           kanban_model_id: string | null
+          last_status_change: string | null
+          protocol_number: string | null
           source: Database["public"]["Enums"]["project_source"]
           status: Database["public"]["Enums"]["project_status"]
           title: string
@@ -1054,6 +1202,8 @@ export type Database = {
           id?: string
           is_deleted?: boolean
           kanban_model_id?: string | null
+          last_status_change?: string | null
+          protocol_number?: string | null
           source?: Database["public"]["Enums"]["project_source"]
           status?: Database["public"]["Enums"]["project_status"]
           title: string
@@ -1072,6 +1222,8 @@ export type Database = {
           id?: string
           is_deleted?: boolean
           kanban_model_id?: string | null
+          last_status_change?: string | null
+          protocol_number?: string | null
           source?: Database["public"]["Enums"]["project_source"]
           status?: Database["public"]["Enums"]["project_status"]
           title?: string
@@ -1115,6 +1267,157 @@ export type Database = {
           },
         ]
       }
+      revision_equipment: {
+        Row: {
+          created_at: string | null
+          id: string
+          inverter_brand: string | null
+          inverter_model: string | null
+          inverter_power: number | null
+          inverter_quantity: number | null
+          module_brand: string | null
+          module_model: string | null
+          module_power: number | null
+          module_quantity: number | null
+          revision_id: string
+          total_installed_power: number | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          inverter_brand?: string | null
+          inverter_model?: string | null
+          inverter_power?: number | null
+          inverter_quantity?: number | null
+          module_brand?: string | null
+          module_model?: string | null
+          module_power?: number | null
+          module_quantity?: number | null
+          revision_id: string
+          total_installed_power?: number | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          inverter_brand?: string | null
+          inverter_model?: string | null
+          inverter_power?: number | null
+          inverter_quantity?: number | null
+          module_brand?: string | null
+          module_model?: string | null
+          module_power?: number | null
+          module_quantity?: number | null
+          revision_id?: string
+          total_installed_power?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "revision_equipment_revision_id_fkey"
+            columns: ["revision_id"]
+            isOneToOne: false
+            referencedRelation: "project_revisions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      revision_general_data: {
+        Row: {
+          address: string | null
+          cep: string | null
+          circuit_breaker_current: string | null
+          city: string | null
+          coordinates: string | null
+          created_at: string | null
+          holder_cpf_cnpj: string | null
+          holder_email: string | null
+          holder_name: string | null
+          holder_phone: string | null
+          id: string
+          is_rural: boolean | null
+          phase_type: string | null
+          revision_id: string
+          state: string | null
+          uc_number: string | null
+          utility_company: string | null
+        }
+        Insert: {
+          address?: string | null
+          cep?: string | null
+          circuit_breaker_current?: string | null
+          city?: string | null
+          coordinates?: string | null
+          created_at?: string | null
+          holder_cpf_cnpj?: string | null
+          holder_email?: string | null
+          holder_name?: string | null
+          holder_phone?: string | null
+          id?: string
+          is_rural?: boolean | null
+          phase_type?: string | null
+          revision_id: string
+          state?: string | null
+          uc_number?: string | null
+          utility_company?: string | null
+        }
+        Update: {
+          address?: string | null
+          cep?: string | null
+          circuit_breaker_current?: string | null
+          city?: string | null
+          coordinates?: string | null
+          created_at?: string | null
+          holder_cpf_cnpj?: string | null
+          holder_email?: string | null
+          holder_name?: string | null
+          holder_phone?: string | null
+          id?: string
+          is_rural?: boolean | null
+          phase_type?: string | null
+          revision_id?: string
+          state?: string | null
+          uc_number?: string | null
+          utility_company?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "revision_general_data_revision_id_fkey"
+            columns: ["revision_id"]
+            isOneToOne: false
+            referencedRelation: "project_revisions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      stage_checklists: {
+        Row: {
+          created_at: string | null
+          custom_items: string[] | null
+          enabled: boolean | null
+          from_status: string
+          id: string
+          required_documents: string[] | null
+          to_status: string
+        }
+        Insert: {
+          created_at?: string | null
+          custom_items?: string[] | null
+          enabled?: boolean | null
+          from_status: string
+          id?: string
+          required_documents?: string[] | null
+          to_status: string
+        }
+        Update: {
+          created_at?: string | null
+          custom_items?: string[] | null
+          enabled?: boolean | null
+          from_status?: string
+          id?: string
+          required_documents?: string[] | null
+          to_status?: string
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           id: string
@@ -1135,7 +1438,28 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      stale_projects: {
+        Row: {
+          code: string | null
+          column_id: string | null
+          company_id: string | null
+          days_stale: number | null
+          id: string | null
+          last_status_change: string | null
+          stale_days: number | null
+          status: string | null
+          status_label: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "projects_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
       get_company_by_public_token: {
@@ -1158,8 +1482,6 @@ export type Database = {
           id: string
           is_final: boolean
           is_initial: boolean
-          is_rejection_stage: boolean
-          triggers_revision: boolean
           order_index: number
           status_key: string
           status_label: string
@@ -1226,9 +1548,9 @@ export type Database = {
         | "documentation"
         | "approval"
         | "approved"
+        | "completed"
         | "pendencia"
         | "vistoria_solicitada"
-        | "completed"
       staff_access_mode: "global" | "assigned_only"
       user_role: "admin" | "staff" | "company"
     }
@@ -1399,9 +1721,9 @@ export const Constants = {
         "documentation",
         "approval",
         "approved",
+        "completed",
         "pendencia",
         "vistoria_solicitada",
-        "completed",
       ],
       staff_access_mode: ["global", "assigned_only"],
       user_role: ["admin", "staff", "company"],

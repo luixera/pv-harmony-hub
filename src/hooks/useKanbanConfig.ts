@@ -215,6 +215,17 @@ export function useUpdateKanbanColumn() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['kanban-model'] });
+      toast({
+        title: 'Coluna salva',
+        description: 'As configurações da coluna foram salvas com sucesso.'
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: 'Erro ao salvar coluna',
+        description: error.message,
+        variant: 'destructive'
+      });
     }
   });
 }
