@@ -1,13 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { Database } from '@/integrations/supabase/types';
 
 type StaffAccessMode = Database['public']['Enums']['staff_access_mode'];
@@ -49,29 +42,29 @@ export function StaffAccessSettings({
       
       <div className="space-y-2">
         <Label>Modo de Acesso</Label>
-        <Select value={mode} onValueChange={handleModeChange} disabled={disabled}>
-          <SelectTrigger>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="global">
-              <div className="flex flex-col">
-                <span>Acesso Global</span>
-                <span className="text-xs text-muted-foreground">
-                  Visualiza todos os projetos
-                </span>
-              </div>
-            </SelectItem>
-            <SelectItem value="assigned_only">
-              <div className="flex flex-col">
-                <span>Apenas Projetos Atribuídos</span>
-                <span className="text-xs text-muted-foreground">
-                  Visualiza apenas projetos designados
-                </span>
-              </div>
-            </SelectItem>
-          </SelectContent>
-        </Select>
+        <div className="grid grid-cols-2 gap-2">
+          {([
+            { value: 'global', label: 'Acesso Global', sub: 'Visualiza todos os projetos' },
+            { value: 'assigned_only', label: 'Apenas Atribuídos', sub: 'Somente projetos designados' },
+          ] as { value: StaffAccessMode; label: string; sub: string }[]).map(opt => (
+            <button
+              key={opt.value}
+              type="button"
+              disabled={disabled}
+              onClick={() => handleModeChange(opt.value)}
+              className={[
+                'py-2 px-3 rounded-md border text-left text-sm transition-colors',
+                mode === opt.value
+                  ? 'bg-primary text-primary-foreground border-primary'
+                  : 'bg-background border-input hover:bg-muted text-foreground',
+                disabled ? 'opacity-50 cursor-not-allowed' : '',
+              ].join(' ')}
+            >
+              <div className="font-medium leading-tight">{opt.label}</div>
+              <div className={['text-xs mt-0.5 leading-tight', mode === opt.value ? 'text-primary-foreground/70' : 'text-muted-foreground'].join(' ')}>{opt.sub}</div>
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="flex items-center justify-between">

@@ -304,8 +304,8 @@ export default function Users() {
         </DialogContent>
       </Dialog>
 
-      {/* User Form Dialog */}
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+      {/* User Form Dialog — modal=false so Select dropdowns (company) are not blocked by DismissableLayer */}
+      <Dialog modal={false} open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>
@@ -357,20 +357,31 @@ export default function Users() {
             
             <div className="space-y-2">
               <Label>Tipo de Usuário *</Label>
-              <Select value={formData.role} onValueChange={v => setFormData({
-              ...formData,
-              role: v as UserRole,
-              companyId: v !== 'company' ? '' : formData.companyId
-            })}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="admin">Administrador</SelectItem>
-                  <SelectItem value="staff">Staff</SelectItem>
-                  <SelectItem value="company">Empresa</SelectItem>
-                </SelectContent>
-              </Select>
+              <div className="grid grid-cols-3 gap-2">
+                {([
+                  { value: 'admin', label: 'Administrador' },
+                  { value: 'staff', label: 'Staff' },
+                  { value: 'company', label: 'Empresa' },
+                ] as { value: UserRole; label: string }[]).map(opt => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setFormData({
+                      ...formData,
+                      role: opt.value,
+                      companyId: opt.value !== 'company' ? '' : formData.companyId,
+                    })}
+                    className={[
+                      'py-2 px-2 rounded-md border text-sm font-medium transition-colors text-center',
+                      formData.role === opt.value
+                        ? 'bg-primary text-primary-foreground border-primary'
+                        : 'bg-background border-input hover:bg-muted text-foreground',
+                    ].join(' ')}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
             </div>
             
             {formData.role === 'company' && <div className="space-y-2">
