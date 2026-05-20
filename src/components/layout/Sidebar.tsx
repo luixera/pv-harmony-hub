@@ -20,8 +20,10 @@ import {
   UserCircle,
   BarChart2,
   CheckSquare,
+  Mail,
 } from 'lucide-react';
 import { useMyPendingTasks } from '@/hooks/useTasks';
+import { useEmailUpdates } from '@/hooks/useEmailUpdates';
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -39,6 +41,7 @@ const sidebarItems: SidebarItem[] = [
   { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard-company', roles: ['company'] },
   { icon: Kanban, label: 'Kanban', path: '/projects', roles: ['admin', 'staff'] },
   { icon: CheckSquare, label: 'Tarefas', path: '/tasks', roles: ['admin', 'staff'] },
+  { icon: Mail, label: 'Email', path: '/email-updates', roles: ['admin', 'staff'] },
   { icon: DollarSign, label: 'Financeiro', path: '/admin/financial', roles: ['admin'] },
   { icon: BarChart2, label: 'Relatórios', path: '/reports', roles: ['admin'] },
   { icon: FolderOpen, label: 'Meus Projetos', path: '/company/projects', roles: ['company'] },
@@ -65,8 +68,10 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
   const [collapsed, setCollapsed] = useState(false);
-  const { data: pendingTasks = [] } = useMyPendingTasks();
+  const { data: pendingTasks  = [] } = useMyPendingTasks();
   const pendingCount = pendingTasks.length;
+  const { data: emailUpdates = [] } = useEmailUpdates({ status: 'pending' });
+  const emailBadge = emailUpdates.filter(u => u.ai_suggested_status !== null).length;
 
   const filteredItems = sidebarItems.filter(item =>
     user && item.roles.includes(user.role)
@@ -122,7 +127,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
               <nav className="flex-1 py-4 px-3 space-y-1 overflow-y-auto scrollbar-thin">
                 {filteredItems.map((item) => {
                   const isActive = location.pathname === item.path;
-                  const badge = item.path === '/tasks' && pendingCount > 0 ? pendingCount : 0;
+                  const badge = item.path === '/tasks' && pendingCount > 0 ? pendingCount : item.path === '/email-updates' && emailBadge > 0 ? emailBadge : 0;
                   return (
                     <button
                       key={item.path}
