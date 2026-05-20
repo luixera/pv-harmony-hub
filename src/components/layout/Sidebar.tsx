@@ -19,7 +19,9 @@ import {
   Map,
   UserCircle,
   BarChart2,
+  CheckSquare,
 } from 'lucide-react';
+import { useMyPendingTasks } from '@/hooks/useTasks';
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -36,6 +38,7 @@ const sidebarItems: SidebarItem[] = [
   { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard-staff', roles: ['staff'] },
   { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard-company', roles: ['company'] },
   { icon: Kanban, label: 'Kanban', path: '/projects', roles: ['admin', 'staff'] },
+  { icon: CheckSquare, label: 'Tarefas', path: '/tasks', roles: ['admin', 'staff'] },
   { icon: DollarSign, label: 'Financeiro', path: '/admin/financial', roles: ['admin'] },
   { icon: BarChart2, label: 'Relatórios', path: '/reports', roles: ['admin'] },
   { icon: FolderOpen, label: 'Meus Projetos', path: '/company/projects', roles: ['company'] },
@@ -62,6 +65,8 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
   const [collapsed, setCollapsed] = useState(false);
+  const { data: pendingTasks = [] } = useMyPendingTasks();
+  const pendingCount = pendingTasks.length;
 
   const filteredItems = sidebarItems.filter(item =>
     user && item.roles.includes(user.role)
@@ -117,6 +122,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
               <nav className="flex-1 py-4 px-3 space-y-1 overflow-y-auto scrollbar-thin">
                 {filteredItems.map((item) => {
                   const isActive = location.pathname === item.path;
+                  const badge = item.path === '/tasks' && pendingCount > 0 ? pendingCount : 0;
                   return (
                     <button
                       key={item.path}
@@ -126,7 +132,14 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                         isActive && "active"
                       )}
                     >
-                      <item.icon className="w-5 h-5 flex-shrink-0" />
+                      <div className="relative flex-shrink-0">
+                        <item.icon className="w-5 h-5" />
+                        {badge > 0 && (
+                          <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-[16px] px-0.5 rounded-full text-[10px] font-bold text-white flex items-center justify-center" style={{ background: '#E24B4A' }}>
+                            {badge > 99 ? '99+' : badge}
+                          </span>
+                        )}
+                      </div>
                       <span className="truncate text-base">{item.label}</span>
                     </button>
                   );
@@ -191,6 +204,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
       <nav className="flex-1 py-6 px-3 space-y-1 overflow-y-auto scrollbar-thin">
         {filteredItems.map((item) => {
           const isActive = location.pathname === item.path;
+          const badge = item.path === '/tasks' && pendingCount > 0 ? pendingCount : 0;
           return (
             <button
               key={item.path}
@@ -200,7 +214,14 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                 isActive && "active"
               )}
             >
-              <item.icon className="w-5 h-5 flex-shrink-0" />
+              <div className="relative flex-shrink-0">
+                <item.icon className="w-5 h-5" />
+                {badge > 0 && (
+                  <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-[16px] px-0.5 rounded-full text-[10px] font-bold text-white flex items-center justify-center" style={{ background: '#E24B4A' }}>
+                    {badge > 99 ? '99+' : badge}
+                  </span>
+                )}
+              </div>
               {!collapsed && (
                 <motion.span
                   initial={{ opacity: 0 }}

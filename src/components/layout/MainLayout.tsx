@@ -7,6 +7,7 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
 import { LayoutGrid, Kanban, PlusCircle, FolderOpen, Bell } from 'lucide-react';
+import { useTaskAlerts } from '@/hooks/useTaskAlerts';
 
 interface MainLayoutProps {
   children: React.ReactNode;
@@ -60,6 +61,7 @@ function BottomNav() {
 export function MainLayout({ children }: MainLayoutProps) {
   const isMobile = useIsMobile();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  useTaskAlerts();
 
   return (
     <div className="min-h-screen bg-[#F0F0F0]">

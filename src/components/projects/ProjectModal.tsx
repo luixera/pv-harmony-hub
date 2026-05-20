@@ -25,6 +25,7 @@ import {
   X, ExternalLink, Pencil, FileOutput, MoreVertical, Users, Trash2,
   Check, ChevronRight, Upload, Download, Send, Paperclip, FileText,
   Image, Loader2, AlertTriangle, Save, Lock, DollarSign, Clock, MapPin, Hash,
+  CheckSquare, Plus, Circle, CheckCircle2, Calendar, User as UserIcon,
 } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -32,6 +33,8 @@ import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { Database } from '@/integrations/supabase/types';
 import { ProjectWithDetails } from '@/hooks/useProjects';
+import { useProjectTasks, useUpdateTask, Task, TaskPriority } from '@/hooks/useTasks';
+import { TaskDialog } from '@/components/tasks/TaskDialog';
 
 type ProjectStatus = Database['public']['Enums']['project_status'];
 type DocumentType = Database['public']['Enums']['document_type'];
@@ -1128,6 +1131,158 @@ function TabHistory({ projectId }: { projectId: string }) {
   );
 }
 
+// ── Tab Tarefas ────────────────────────────────────────────────────────────────
+const TASK_PRIORITY_CFG: Record<TaskPriority, { label: string; color: string; bg: string }> = {
+  low:    { label: 'Baixa',   color: '#2D6A4F', bg: '#E1F5EE' },
+  medium: { label: 'Média',   color: '#F5A800', bg: '#FEF3D0' },
+  high:   { label: 'Alta',    color: '#D85A30', bg: '#FFF0E6' },
+  urgent: { label: 'Urgente', color: '#E24B4A', bg: '#FCEBEB' },
+};
+
+function formatTaskDate(dateStr: string) {
+  return new Date(dateStr + 'T12:00:00').toLocaleDateString('pt-BR');
+}
+
+function TabTarefas({ projectId, canEdit }: { projectId: string; canEdit: boolean }) {
+  const { data: tasks = [], isLoading } = useProjectTasks(projectId);
+  const updateTask = useUpdateTask();
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingTask, setEditingTask] = useState<Task | undefined>(undefined);
+  const today = new Date().toISOString().split('T')[0];
+
+  const open  = tasks.filter(t => t.status !== 'completed');
+  const done  = tasks.filter(t => t.status === 'completed');
+
+  function handleToggle(task: Task) {
+    if (task.status === 'completed') return;
+    updateTask.mutate({ id: task.id, status: 'completed' });
+  }
+
+  function openCreate() { setEditingTask(undefined); setDialogOpen(true); }
+  function openEdit(t: Task) { setEditingTask(t); setDialogOpen(true); }
+
+  return (
+    <div style={{ padding: '16px 24px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {/* Header row */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <span style={{ fontSize: 13, fontWeight: 700, color: '#1A1A1A' }}>Tarefas do projeto</span>
+        {canEdit && (
+          <button
+            onClick={openCreate}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '6px 14px', borderRadius: 8, border: 'none',
+              background: '#F5A800', color: '#fff', fontSize: 12, fontWeight: 700,
+              cursor: 'pointer',
+            }}
+          >
+            <Plus size={13} />
+            + Tarefa
+          </button>
+        )}
+      </div>
+
+      {isLoading ? (
+        <div style={{ display: 'flex', justifyContent: 'center', padding: '32px 0' }}>
+          <Loader2 size={22} className="animate-spin" style={{ color: '#F5A800' }} />
+        </div>
+      ) : tasks.length === 0 ? (
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '32px 0', gap: 8 }}>
+          <CheckSquare size={32} style={{ color: '#E0E0E0' }} />
+          <span style={{ fontSize: 13, color: '#aaa' }}>Nenhuma tarefa para este projeto</span>
+          {canEdit && (
+            <button onClick={openCreate} style={{ marginTop: 4, padding: '6px 16px', borderRadius: 8, border: 'none', background: '#F5A800', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+              Criar tarefa
+            </button>
+          )}
+        </div>
+      ) : (
+        <>
+          {/* Open tasks */}
+          {open.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {open.map(task => {
+                const p = TASK_PRIORITY_CFG[task.priority];
+                const overdue = task.due_date && task.due_date < today && task.status !== 'completed';
+                return (
+                  <div
+                    key={task.id}
+                    style={{
+                      display: 'flex', alignItems: 'flex-start', gap: 10,
+                      padding: '10px 12px', borderRadius: 10,
+                      border: '1px solid #F0F0F0', background: '#FAFAFA',
+                      borderLeft: `3px solid ${p.bg}`,
+                    }}
+                  >
+                    <button onClick={() => handleToggle(task)} style={{ padding: 0, border: 'none', background: 'none', cursor: 'pointer', color: '#CCC', marginTop: 2 }}>
+                      <Circle size={16} />
+                    </button>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: '#1A1A1A' }}>{task.title}</span>
+                        {canEdit && (
+                          <button onClick={() => openEdit(task)} style={{ padding: 0, border: 'none', background: 'none', cursor: 'pointer', color: '#ccc' }}>
+                            <Pencil size={12} />
+                          </button>
+                        )}
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 5 }}>
+                        <span style={{ padding: '1px 8px', borderRadius: 99, fontSize: 11, fontWeight: 600, color: p.color, background: p.bg }}>{p.label}</span>
+                        {task.assignee && (
+                          <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 11, color: '#999' }}>
+                            <UserIcon size={10} /> {task.assignee.name}
+                          </span>
+                        )}
+                        {task.due_date && (
+                          <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 11, fontWeight: 600, color: overdue ? '#E24B4A' : '#999' }}>
+                            <Calendar size={10} /> {formatTaskDate(task.due_date)}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Completed tasks */}
+          {done.length > 0 && (
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#999', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>
+                Concluídas ({done.length})
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {done.map(task => (
+                  <div
+                    key={task.id}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 10,
+                      padding: '8px 12px', borderRadius: 10,
+                      border: '1px solid #F0F0F0', background: '#FAFAFA',
+                      opacity: 0.6,
+                    }}
+                  >
+                    <CheckCircle2 size={16} style={{ color: '#2D6A4F', flexShrink: 0 }} />
+                    <span style={{ fontSize: 12, color: '#666', textDecoration: 'line-through' }}>{task.title}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      <TaskDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        task={editingTask}
+        defaultProjectId={projectId}
+      />
+    </div>
+  );
+}
+
 // ── Main Modal ─────────────────────────────────────────────────────────────────
 export function ProjectModal({ projectId, onClose, initialTab = 'geral' }: ProjectModalProps) {
   const navigate = useNavigate();
@@ -1207,6 +1362,7 @@ export function ProjectModal({ projectId, onClose, initialTab = 'geral' }: Proje
   const TABS = [
     { id: 'geral', label: isMobile ? 'Geral' : 'Geral & Comentários', icon: <FileText size={13} style={{ marginRight: 5 }} /> },
     { id: 'documentos', label: 'Documentos', icon: <Paperclip size={13} style={{ marginRight: 5 }} /> },
+    ...(canEdit ? [{ id: 'tarefas', label: 'Tarefas', icon: <CheckSquare size={13} style={{ marginRight: 5 }} /> }] : []),
     { id: 'financeiro', label: 'Financeiro', icon: <DollarSign size={13} style={{ marginRight: 5 }} /> },
     { id: 'historico', label: 'Histórico', icon: <Clock size={13} style={{ marginRight: 5 }} /> },
   ];
@@ -1455,6 +1611,9 @@ export function ProjectModal({ projectId, onClose, initialTab = 'geral' }: Proje
                 )}
                 {activeTab === 'documentos' && (
                   <TabDocuments project={project} canUpload={canEdit} />
+                )}
+                {activeTab === 'tarefas' && (
+                  <TabTarefas projectId={project.id} canEdit={canEdit} />
                 )}
                 {activeTab === 'financeiro' && (
                   <TabFinanceiro project={project} isAdmin={isAdmin} />
