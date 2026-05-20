@@ -19,6 +19,8 @@ interface MapFiltersProps {
   companies: ChipOption[];
   staffList: ChipOption[];
   concessionaires: ChipOption[];
+  hideCompany?: boolean;
+  hideStaff?: boolean;
 }
 
 const STATUS_OPTIONS: ChipOption[] = [
@@ -134,7 +136,7 @@ function Chip({ label, icon, options, onSelect, selectedId }: ChipProps) {
   );
 }
 
-export function MapFilters({ filters, onChange, companies, staffList, concessionaires }: MapFiltersProps) {
+export function MapFilters({ filters, onChange, companies, staffList, concessionaires, hideCompany = false, hideStaff = false }: MapFiltersProps) {
   const activeCount = [filters.companyId, filters.staffId, filters.concessionaireId, filters.status].filter(Boolean).length;
 
   const tags: { key: keyof MapFilterState; label: string; value: string }[] = [];
@@ -159,20 +161,24 @@ export function MapFilters({ filters, onChange, companies, staffList, concession
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       {/* Chips row */}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
-        <Chip
-          label="Empresa"
-          icon={<Building2 size={11} />}
-          options={companies}
-          selectedId={filters.companyId}
-          onSelect={id => onChange({ ...filters, companyId: id })}
-        />
-        <Chip
-          label="Projetista"
-          icon={<User size={11} />}
-          options={staffList}
-          selectedId={filters.staffId}
-          onSelect={id => onChange({ ...filters, staffId: id })}
-        />
+        {!hideCompany && (
+          <Chip
+            label="Empresa"
+            icon={<Building2 size={11} />}
+            options={companies}
+            selectedId={filters.companyId}
+            onSelect={id => onChange({ ...filters, companyId: id })}
+          />
+        )}
+        {!hideStaff && (
+          <Chip
+            label="Projetista"
+            icon={<User size={11} />}
+            options={staffList}
+            selectedId={filters.staffId}
+            onSelect={id => onChange({ ...filters, staffId: id })}
+          />
+        )}
         <Chip
           label="Concessionária"
           icon={<Zap size={11} />}

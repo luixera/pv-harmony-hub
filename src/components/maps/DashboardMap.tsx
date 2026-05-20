@@ -56,9 +56,10 @@ interface DashboardMapProps {
   isLoading: boolean;
   userId?: string;
   userRole?: string;
+  companyMode?: boolean;
 }
 
-export function DashboardMap({ projects, isLoading, userId, userRole }: DashboardMapProps) {
+export function DashboardMap({ projects, isLoading, userId, userRole, companyMode = false }: DashboardMapProps) {
   const navigate = useNavigate();
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string;
 
@@ -151,6 +152,8 @@ export function DashboardMap({ projects, isLoading, userId, userRole }: Dashboar
           companies={chipCompanies}
           staffList={chipStaff}
           concessionaires={chipConc}
+          hideCompany={companyMode}
+          hideStaff={companyMode}
         />
       </div>
 

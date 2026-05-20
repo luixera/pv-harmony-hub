@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
+import { DashboardMap } from '@/components/maps/DashboardMap';
 
 const statusLabels: Record<string, string> = {
   pending: 'Aguardando',
@@ -116,11 +117,26 @@ export default function DashboardCompany() {
           </motion.div>
         </div>
 
-        {/* Projects List */}
+        {/* Map */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3 }}
+        >
+          <DashboardMap
+            projects={companyProjects}
+            isLoading={isLoading}
+            userId={user?.id}
+            userRole="company"
+            companyMode
+          />
+        </motion.div>
+
+        {/* Projects List */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.4 }}
           className="kpi-card"
         >
           <div className="flex items-center justify-between mb-6">
