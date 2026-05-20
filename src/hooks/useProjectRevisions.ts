@@ -101,6 +101,7 @@ export function useProjectRevisions(projectId: string | undefined) {
       })) as ProjectRevision[];
     },
     enabled: !!projectId,
+    staleTime: 5 * 60 * 1000, // cache for 5 min — explicit invalidation still works
     retry: shouldRetry,
     retryDelay: 1000,
   });

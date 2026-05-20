@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback, memo } from 'react';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
 import { useProjects, useUpdateProjectStatus } from '@/hooks/useProjects';
@@ -113,6 +113,138 @@ function KanbanNewRevisionLoader({
     />
   );
 }
+
+// ── Shared column type (keeps prop types DRY) ────────────────────────────────
+type KanbanCol = {
+  id: string;
+  title: string;
+  color: string;
+  isRejectionStage: boolean | null | undefined;
+  requiresProtocol: boolean;
+};
+
+// ── Memoized card inner content ──────────────────────────────────────────────
+// Extracted so React.memo can skip re-renders during drag (only outer div
+// needs updating for isDragging class; the inner content is data-driven).
+const KanbanCardContent = memo(function KanbanCardContent({
+  project,
+  isAdmin,
+  daysStale,
+  columns,
+  companyDisplayName,
+  onOpenModal,
+  onChangeStatus,
+}: {
+  project: ProjectWithDetails;
+  isAdmin: boolean;
+  daysStale: number | undefined;
+  columns: KanbanCol[];
+  companyDisplayName: string;
+  onOpenModal: (id: string) => void;
+  onChangeStatus: (id: string, status: ProjectStatus) => void;
+}) {
+  const noValue = hasNoValue(project);
+  const isStale = daysStale !== undefined;
+  return (
+    <>
+      <div className="flex items-start justify-between mb-3">
+        <span className="text-xs font-mono text-primary">{project.code}</span>
+        <div className="flex items-center gap-1">
+          <RevisionBadge projectId={project.id} />
+          {isStale && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span
+                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium cursor-default"
+                  style={{ background: '#FFFBEB', color: '#92400E', border: '0.5px solid #F59E0B' }}
+                >
+                  <Clock className="w-2.5 h-2.5" />
+                  {daysStale}d parado
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Projeto sem movimentação há {daysStale} dia{daysStale !== 1 ? 's' : ''}</p>
+              </TooltipContent>
+            </Tooltip>
+          )}
+          {isAdmin && noValue && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span
+                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium cursor-default"
+                  style={{ background: '#FFF0E6', color: '#993C1D' }}
+                >
+                  <DollarSign className="w-2.5 h-2.5" />
+                  Sem valor
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Projeto sem valor atribuído</p>
+              </TooltipContent>
+            </Tooltip>
+          )}
+          <CardMenu
+            project={project}
+            isAdmin={isAdmin}
+            columns={columns}
+            onOpenModal={onOpenModal}
+            onChangeStatus={onChangeStatus}
+          />
+        </div>
+      </div>
+      <h4 className="font-medium text-card-foreground text-sm mb-2">
+        {project.generalData?.holder_name || project.title}
+      </h4>
+      <div className="flex items-center gap-2 text-xs text-muted-foreground mb-2">
+        <Building2 className="w-3 h-3" />
+        <span className="truncate">{companyDisplayName}</span>
+      </div>
+      <div className="flex items-center gap-2 text-xs text-muted-foreground mb-3">
+        <MapPin className="w-3 h-3" />
+        <span className="truncate">
+          {project.generalData?.city}/{project.generalData?.state}
+        </span>
+      </div>
+      <div className="flex items-center justify-between pt-3 border-t border-border/50">
+        <span className="text-xs text-muted-foreground">
+          {project.equipment?.total_installed_power || 0} kWp
+        </span>
+        <span className="text-xs text-muted-foreground">
+          {project.equipment?.module_quantity || 0} módulos
+        </span>
+      </div>
+      {project.protocol_number && (() => {
+        const noProto = project.protocol_number.toLowerCase().includes('sem protocolo');
+        return (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              marginTop: 6,
+              paddingTop: 6,
+              borderTop: '0.5px solid #F0F0F0',
+            }}
+          >
+            <Hash size={10} color={noProto ? '#aaa' : '#378ADD'} />
+            <span
+              style={{
+                fontSize: 10,
+                fontWeight: 600,
+                color: noProto ? '#aaa' : '#378ADD',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {project.protocol_number}
+            </span>
+          </div>
+        );
+      })()}
+    </>
+  );
+});
 
 // ── Card "..." context menu ───────────────────────────────────────────────────
 function CardMenu({
@@ -270,9 +402,6 @@ export default function ProjectsKanban() {
   // Generate stale notifications (admin only, runs in background)
   useStaleNotifications();
 
-  // Build a lookup map: project id → days_stale
-  const staleMap = new Map(staleProjectsData.map(s => [s.id, Math.floor(s.days_stale)]));
-
   const [searchTerm, setSearchTerm] = useState('');
   const [companyFilter, setCompanyFilter] = useState<string>('all');
   const [utilityFilter, setUtilityFilter] = useState<string>('all');
@@ -297,7 +426,14 @@ export default function ProjectsKanban() {
     }
   }, [searchParams]);
 
-  const filteredProjects = projects.filter(project => {
+  // ── Memoized derivations ─────────────────────────────────────────────────
+  // staleMap: id → days_stale (only recomputed when staleProjectsData changes)
+  const staleMap = useMemo(
+    () => new Map(staleProjectsData.map(s => [s.id, Math.floor(s.days_stale)])),
+    [staleProjectsData]
+  );
+
+  const filteredProjects = useMemo(() => projects.filter(project => {
     const holderName = project.generalData?.holder_name || project.title || '';
     const matchesSearch =
       project.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -307,20 +443,36 @@ export default function ProjectsKanban() {
     const matchesStatus = mobileStatusFilter === 'all' || project.status === mobileStatusFilter;
     const matchesNoValue = !noValueFilter || hasNoValue(project);
     return matchesSearch && matchesCompany && matchesUtility && matchesNoValue && (isMobile ? matchesStatus : true);
-  });
+  }), [projects, searchTerm, companyFilter, utilityFilter, mobileStatusFilter, noValueFilter, isMobile]);
 
-  const kanbanColumns = kanbanModel?.columns?.map(col => ({
+  const kanbanColumns = useMemo(() => kanbanModel?.columns?.map(col => ({
     id: col.status_key,
     title: col.status_label,
     color: col.color,
     isRejectionStage: col.is_rejection_stage,
     requiresProtocol: col.requires_protocol ?? false,
-  })) || fallbackColumns;
+  })) || fallbackColumns, [kanbanModel]);
 
-  const getProjectsByStatus = (status: string) =>
-    filteredProjects.filter(p => p.status === status);
+  // Pre-grouped projects per column — O(N) once, not O(N×C) in the render loop
+  const projectsByStatus = useMemo(() => {
+    const map = new Map<string, ProjectWithDetails[]>();
+    for (const col of kanbanColumns) {
+      map.set(col.id, []);
+    }
+    for (const p of filteredProjects) {
+      const bucket = map.get(p.status);
+      if (bucket) bucket.push(p);
+    }
+    return map;
+  }, [filteredProjects, kanbanColumns]);
 
-  const handleDragEnd = (result: DropResult) => {
+  // ── Stable callbacks (prevent KanbanCardContent re-renders via React.memo) ─
+  const handleOpenModal = useCallback((id: string) => setModalProjectId(id), []);
+  const handleChangeStatus = useCallback((id: string, status: ProjectStatus) => {
+    updateStatus.mutate({ projectId: id, status });
+  }, [updateStatus]);
+
+  const handleDragEnd = useCallback((result: DropResult) => {
     if (!result.destination) return;
     const { draggableId, destination } = result;
     const newStatus = destination.droppableId as ProjectStatus;
@@ -337,7 +489,6 @@ export default function ProjectsKanban() {
     if (targetCol.requiresProtocol) {
       const project = projects.find(p => p.id === draggableId);
       if (!project) return;
-      // Buscar revisão atual para obter número
       setProtocolDialog({
         open: true,
         projectId: draggableId,
@@ -350,12 +501,10 @@ export default function ProjectsKanban() {
     }
 
     updateStatus.mutate({ projectId: draggableId, status: newStatus });
-  };
+  }, [kanbanColumns, projects, updateStatus]);
 
-  const handleProtocolConfirm = async (data: ProtocolData) => {
+  const handleProtocolConfirm = useCallback(async (data: ProtocolData) => {
     if (!protocolDialog) return;
-    // Buscar revisão atual
-    const project = projects.find(p => p.id === protocolDialog.projectId);
     const revisionNumber = protocolDialog.currentRevisionNumber;
     await registerProtocol.mutateAsync({
       projectId: protocolDialog.projectId,
@@ -366,12 +515,11 @@ export default function ProjectsKanban() {
       newStatus: protocolDialog.newStatus,
     });
     setProtocolDialog(null);
-  };
+  }, [protocolDialog, registerProtocol]);
 
-  const handleProtocolCancel = () => {
+  const handleProtocolCancel = useCallback(() => {
     setProtocolDialog(null);
-    // Card volta automaticamente pois não foi movido
-  };
+  }, []);
 
   if (isLoading || isLoadingModel) {
     return (
@@ -583,7 +731,7 @@ export default function ProjectsKanban() {
                           padding: '1px 8px',
                         }}
                       >
-                        {getProjectsByStatus(column.id).length}
+                        {(projectsByStatus.get(column.id) || []).length}
                       </span>
                     </div>
                   ) : (
@@ -591,7 +739,7 @@ export default function ProjectsKanban() {
                       <div className={`w-3 h-3 rounded-full ${column.color}`} />
                       <h3 className="font-semibold text-foreground">{column.title}</h3>
                       <Badge variant="secondary" className="ml-auto">
-                        {getProjectsByStatus(column.id).length}
+                        {(projectsByStatus.get(column.id) || []).length}
                       </Badge>
                     </div>
                   )}
@@ -605,10 +753,8 @@ export default function ProjectsKanban() {
                           snapshot.isDraggingOver ? 'bg-primary/10 ring-2 ring-primary/20' : ''
                         }`}
                       >
-                        {getProjectsByStatus(column.id).map((project, index) => {
-                          const noValue = hasNoValue(project);
+                        {(projectsByStatus.get(column.id) || []).map((project, index) => {
                           const daysStale = staleMap.get(project.id);
-                          const isStale = daysStale !== undefined;
                           return (
                             <Draggable key={project.id} draggableId={project.id} index={index}>
                               {(provided, snapshot) => (
@@ -616,115 +762,28 @@ export default function ProjectsKanban() {
                                   ref={provided.innerRef}
                                   {...provided.draggableProps}
                                   {...provided.dragHandleProps}
-                                  onClick={() => setModalProjectId(project.id)}
+                                  onClick={() => handleOpenModal(project.id)}
                                   className={`kanban-card mb-3 ${
                                     snapshot.isDragging ? 'shadow-2xl ring-2 ring-primary' : ''
                                   }`}
-                                  style={isStale ? { borderLeft: '3px solid #F59E0B', borderRadius: 8 } : undefined}
+                                  style={daysStale !== undefined ? { borderLeft: '3px solid #F59E0B', borderRadius: 8 } : undefined}
                                 >
-                                  <div className="flex items-start justify-between mb-3">
-                                    <span className="text-xs font-mono text-primary">{project.code}</span>
-                                    <div className="flex items-center gap-1">
-                                      <RevisionBadge projectId={project.id} />
-                                      {isStale && (
-                                        <Tooltip>
-                                          <TooltipTrigger asChild>
-                                            <span
-                                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium cursor-default"
-                                              style={{ background: '#FFFBEB', color: '#92400E', border: '0.5px solid #F59E0B' }}
-                                            >
-                                              <Clock className="w-2.5 h-2.5" />
-                                              {daysStale}d parado
-                                            </span>
-                                          </TooltipTrigger>
-                                          <TooltipContent>
-                                            <p>Projeto sem movimentação há {daysStale} dia{daysStale !== 1 ? 's' : ''}</p>
-                                          </TooltipContent>
-                                        </Tooltip>
-                                      )}
-                                      {isAdmin && noValue && (
-                                        <Tooltip>
-                                          <TooltipTrigger asChild>
-                                            <span
-                                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium cursor-default"
-                                              style={{ background: '#FFF0E6', color: '#993C1D' }}
-                                            >
-                                              <DollarSign className="w-2.5 h-2.5" />
-                                              Sem valor
-                                            </span>
-                                          </TooltipTrigger>
-                                          <TooltipContent>
-                                            <p>Projeto sem valor atribuído</p>
-                                          </TooltipContent>
-                                        </Tooltip>
-                                      )}
-                                      <CardMenu
-                                        project={project}
-                                        isAdmin={isAdmin}
-                                        columns={kanbanColumns}
-                                        onOpenModal={setModalProjectId}
-                                        onChangeStatus={(id, status) => updateStatus.mutate({ projectId: id, status })}
-                                      />
-                                    </div>
-                                  </div>
-                                  <h4 className="font-medium text-card-foreground text-sm mb-2">
-                                    {project.generalData?.holder_name || project.title}
-                                  </h4>
-                                  <div className="flex items-center gap-2 text-xs text-muted-foreground mb-2">
-                                    <Building2 className="w-3 h-3" />
-                                    <span className="truncate">{getCompanyDisplayName(project.companyName)}</span>
-                                  </div>
-                                  <div className="flex items-center gap-2 text-xs text-muted-foreground mb-3">
-                                    <MapPin className="w-3 h-3" />
-                                    <span className="truncate">
-                                      {project.generalData?.city}/{project.generalData?.state}
-                                    </span>
-                                  </div>
-                                  <div className="flex items-center justify-between pt-3 border-t border-border/50">
-                                    <span className="text-xs text-muted-foreground">
-                                      {project.equipment?.total_installed_power || 0} kWp
-                                    </span>
-                                    <span className="text-xs text-muted-foreground">
-                                      {project.equipment?.module_quantity || 0} módulos
-                                    </span>
-                                  </div>
-                                  {/* Número de protocolo */}
-                                  {project.protocol_number && (() => {
-                                    const noProto = project.protocol_number.toLowerCase().includes('sem protocolo');
-                                    return (
-                                      <div
-                                        style={{
-                                          display: 'flex',
-                                          alignItems: 'center',
-                                          gap: 4,
-                                          marginTop: 6,
-                                          paddingTop: 6,
-                                          borderTop: '0.5px solid #F0F0F0',
-                                        }}
-                                      >
-                                        <Hash size={10} color={noProto ? '#aaa' : '#378ADD'} />
-                                        <span
-                                          style={{
-                                            fontSize: 10,
-                                            fontWeight: 600,
-                                            color: noProto ? '#aaa' : '#378ADD',
-                                            overflow: 'hidden',
-                                            textOverflow: 'ellipsis',
-                                            whiteSpace: 'nowrap',
-                                          }}
-                                        >
-                                          {project.protocol_number}
-                                        </span>
-                                      </div>
-                                    );
-                                  })()}
+                                  <KanbanCardContent
+                                    project={project}
+                                    isAdmin={isAdmin}
+                                    daysStale={daysStale}
+                                    columns={kanbanColumns}
+                                    companyDisplayName={getCompanyDisplayName(project.companyName)}
+                                    onOpenModal={handleOpenModal}
+                                    onChangeStatus={handleChangeStatus}
+                                  />
                                 </div>
                               )}
                             </Draggable>
                           );
                         })}
                         {provided.placeholder}
-                        {getProjectsByStatus(column.id).length === 0 && (
+                        {(projectsByStatus.get(column.id) || []).length === 0 && (
                           <div className="text-center py-8 text-muted-foreground text-sm">
                             Nenhum projeto
                           </div>
