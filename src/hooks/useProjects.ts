@@ -116,11 +116,27 @@ export function useUpdateProjectStatus() {
   const queryClient = useQueryClient();
 
   return useMutation({
+    // ── 1. Optimistic update: move the card instantly in the UI ────────────
+    onMutate: async ({ projectId, status }) => {
+      // Cancel any in-flight refetches to avoid overwriting our optimistic update
+      await queryClient.cancelQueries({ queryKey: ['projects'] });
+
+      // Snapshot previous state so we can roll back on error
+      const previousProjects = queryClient.getQueryData<ProjectWithDetails[]>(['projects']);
+
+      // Immediately reflect new status in the cache — card moves at once
+      queryClient.setQueryData<ProjectWithDetails[]>(['projects'], (old) => {
+        if (!old) return old;
+        return old.map(p => p.id === projectId ? { ...p, status } : p);
+      });
+
+      return { previousProjects };
+    },
+
+    // ── 2. Actual DB call — just the status update (1 round-trip) ──────────
     mutationFn: async ({ projectId, status }: { projectId: string; status: ProjectStatus }) => {
       const safeStatus = toProjectStatus(status as string);
-      if (!safeStatus) return;
-
-      console.log('Tentando atualizar status para:', safeStatus, '| tipo:', typeof safeStatus);
+      if (!safeStatus) throw new Error(`Status inválido: ${status}`);
 
       const { error } = await supabase
         .from('projects')
@@ -129,39 +145,37 @@ export function useUpdateProjectStatus() {
         .select();
 
       if (error) {
-        console.error('Erro detalhado:', {
-          message: error.message,
-          code: error.code,
-          details: error.details,
-          hint: error.hint,
-          status: safeStatus,
-        });
+        console.error('Erro ao atualizar status:', error);
         throw error;
       }
 
-      // Add history entry
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('name')
-          .eq('id', user.id)
-          .single();
-
-        await supabase.from('project_history').insert({
-          project_id: projectId,
-          action: 'Status alterado',
-          description: `Status alterado para "${status}"`,
-          user_id: user.id,
-          user_name: profile?.name || user.email,
-        });
-      }
+      // History insert — fire and forget (non-critical, does NOT block the mutation)
+      supabase.auth.getUser().then(({ data: { user } }) => {
+        if (!user) return;
+        supabase.from('profiles').select('name').eq('id', user.id).single()
+          .then(({ data: profile }) => {
+            supabase.from('project_history').insert({
+              project_id: projectId,
+              action: 'Status alterado',
+              description: `Status alterado para "${status}"`,
+              user_id: user.id,
+              user_name: profile?.name || user.email,
+            });
+          });
+      });
     },
+
     onSuccess: () => {
+      // Sync with server in the background (card already in correct position)
       queryClient.invalidateQueries({ queryKey: ['projects'] });
       toast.success('Status atualizado');
     },
-    onError: (error) => {
+
+    onError: (error, _vars, context) => {
+      // Roll back to previous state if the DB call failed
+      if (context?.previousProjects) {
+        queryClient.setQueryData(['projects'], context.previousProjects);
+      }
       console.error('Error updating status:', error);
       toast.error('Erro ao atualizar status');
     },

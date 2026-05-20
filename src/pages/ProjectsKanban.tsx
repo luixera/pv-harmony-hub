@@ -20,7 +20,7 @@ import { ProtocolDialog, ProtocolData } from '@/components/projects/ProtocolDial
 import { useRegisterProtocol } from '@/hooks/useProjectProtocol';
 import { useSearchParams } from 'react-router-dom';
 import { Search, Building2, Zap, MapPin, Loader2, ChevronRight, ArrowRight, AlertCircle, DollarSign, MoreVertical, Trash2, Users, FileOutput, ExternalLink, XCircle, Clock, Hash } from 'lucide-react';
-import { useProjectRevisions } from '@/hooks/useProjectRevisions';
+import { useProjectRevisions, useProjectRevisionSummary } from '@/hooks/useProjectRevisions';
 import { Database } from '@/integrations/supabase/types';
 import { ProjectModal } from '@/components/projects/ProjectModal';
 import { StaffAssignmentDialog } from '@/components/projects/StaffAssignmentDialog';
@@ -68,7 +68,8 @@ function hasNoValue(project: { financials?: { project_value?: number | null } | 
 }
 
 function RevisionBadge({ projectId }: { projectId: string }) {
-  const { data: revisions = [] } = useProjectRevisions(projectId);
+  // Uses the lightweight summary hook (no joins) to avoid N heavy queries on mount
+  const { data: revisions = [] } = useProjectRevisionSummary(projectId);
   if (revisions.length <= 1) return null;
   const current = revisions.find(r => r.is_current) ?? revisions[revisions.length - 1];
   if (!current) return null;

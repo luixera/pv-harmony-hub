@@ -72,6 +72,33 @@ function shouldRetry(failureCount: number, error: any): boolean {
   return failureCount < 2;
 }
 
+// ── Lightweight summary (only revision_number + is_current, no heavy joins) ──
+// Used by RevisionBadge on kanban cards: avoids firing N heavy queries on mount.
+export interface RevisionSummary {
+  id: string;
+  revision_number: number;
+  is_current: boolean;
+}
+
+export function useProjectRevisionSummary(projectId: string | undefined) {
+  return useQuery({
+    queryKey: ['project-revision-summary', projectId],
+    queryFn: async (): Promise<RevisionSummary[]> => {
+      if (!projectId) return [];
+      const { data, error } = await supabase
+        .from('project_revisions')
+        .select('id, revision_number, is_current')
+        .eq('project_id', projectId)
+        .order('revision_number', { ascending: true });
+      if (error) throw error;
+      return (data || []) as RevisionSummary[];
+    },
+    enabled: !!projectId,
+    staleTime: 5 * 60 * 1000,
+    retry: false,
+  });
+}
+
 export function useProjectRevisions(projectId: string | undefined) {
   return useQuery({
     queryKey: ['project-revisions', projectId],
