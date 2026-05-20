@@ -12,6 +12,8 @@ import { useStageChecklists } from '@/hooks/useStageChecklists';
 import { usePaymentHistory, useAddPaymentHistory, useUpdateProjectValue } from '@/hooks/usePaymentHistory';
 import { useProjectRevisions } from '@/hooks/useProjectRevisions';
 import { useRejectionColumn } from '@/hooks/useKanbanConfig';
+import { useProjectProtocols, useRegisterProtocol } from '@/hooks/useProjectProtocol';
+import { ProtocolDialog } from './ProtocolDialog';
 import { RevisionSelector } from '@/components/revisions/RevisionSelector';
 import { RevisionTimeline } from '@/components/revisions/RevisionTimeline';
 import { NewRevisionDialog } from '@/components/revisions/NewRevisionDialog';
@@ -22,7 +24,7 @@ import { Badge } from '@/components/ui/badge';
 import {
   X, ExternalLink, Pencil, FileOutput, MoreVertical, Users, Trash2,
   Check, ChevronRight, Upload, Download, Send, Paperclip, FileText,
-  Image, Loader2, AlertTriangle, Save, Lock, DollarSign, Clock, MapPin,
+  Image, Loader2, AlertTriangle, Save, Lock, DollarSign, Clock, MapPin, Hash,
 } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -248,6 +250,27 @@ function TabGeneral({ project, isEditing, onSave, onCancel, onEdit }: {
   onCancel: () => void;
   onEdit: () => void;
 }) {
+  // ── Protocol state ──────────────────────────────────────────────────────────
+  const [protocolDialogOpen, setProtocolDialogOpen] = useState(false);
+  const [showProtocolHistory, setShowProtocolHistory] = useState(false);
+  const { data: protocols = [] } = useProjectProtocols(project.id);
+  const registerProtocol = useRegisterProtocol();
+  const { data: revisions = [] } = useProjectRevisions(project.id);
+  const currentRevision = revisions.find(r => r.is_current);
+  const revisionNumber = currentRevision?.revision_number ?? 1;
+  const protocolNumber = (project as any).protocol_number as string | null;
+
+  const handleProtocolConfirm = async (data: import('./ProtocolDialog').ProtocolData) => {
+    await registerProtocol.mutateAsync({
+      projectId: project.id,
+      revisionNumber,
+      protocolNumber: data.protocol_number,
+      noProtocol: data.no_protocol,
+      noProtocolReason: data.no_protocol_reason,
+      newStatus: project.status as string,
+    });
+    setProtocolDialogOpen(false);
+  };
   const gd = project.generalData;
   const eq = project.equipment;
 
@@ -352,6 +375,123 @@ function TabGeneral({ project, isEditing, onSave, onCancel, onEdit }: {
           {field('Cidade', 'city')}
         </div>
       </div>
+
+      {/* ── Seção Protocolo ─────────────────────────────────────────────────── */}
+      {protocolNumber && (
+        <div style={{ marginBottom: 24 }}>
+          <div
+            style={{
+              background: '#E6F1FB',
+              border: '0.5px solid #378ADD',
+              borderRadius: 8,
+              padding: '10px 14px',
+            }}
+          >
+            {/* Header */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                <Hash size={12} color="#185FA5" />
+                <span style={{ fontSize: 10, fontWeight: 700, color: '#185FA5', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                  Protocolo
+                </span>
+              </div>
+              <button
+                onClick={() => setProtocolDialogOpen(true)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 4,
+                  padding: '3px 8px', borderRadius: 5, border: '0.5px solid #378ADD',
+                  background: 'transparent', color: '#185FA5', fontSize: 10, fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                <Pencil size={9} />
+                Editar
+              </button>
+            </div>
+
+            {/* Número atual */}
+            <div>
+              <p style={{ fontSize: 9, color: '#4A7BB5', margin: '0 0 2px' }}>Número atual</p>
+              <p style={{ fontSize: 14, fontWeight: 700, color: '#1A1A1A', margin: 0 }}>
+                {protocolNumber}
+              </p>
+            </div>
+
+            {/* Histórico expansível */}
+            {protocols.length > 0 && (
+              <div style={{ marginTop: 10, borderTop: '0.5px solid rgba(55,138,221,0.25)', paddingTop: 8 }}>
+                <button
+                  onClick={() => setShowProtocolHistory(v => !v)}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 10, color: '#185FA5', fontWeight: 600, padding: 0, display: 'flex', alignItems: 'center', gap: 4 }}
+                >
+                  {showProtocolHistory ? '▲' : '▼'} Ver histórico ({protocols.length} registro{protocols.length !== 1 ? 's' : ''})
+                </button>
+                {showProtocolHistory && (
+                  <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    {protocols.map(p => (
+                      <div
+                        key={p.id}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 6,
+                          fontSize: 10, color: '#555', padding: '4px 6px',
+                          background: 'rgba(255,255,255,0.5)', borderRadius: 5,
+                        }}
+                      >
+                        <span style={{ fontWeight: 700, color: '#185FA5', whiteSpace: 'nowrap' }}>
+                          Rev. {p.revision_number}
+                        </span>
+                        <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {p.no_protocol ? (p.no_protocol_reason || 'Sem protocolo') : (p.protocol_number || '—')}
+                        </span>
+                        {p.registrar && (
+                          <span style={{ color: '#888', whiteSpace: 'nowrap' }}>
+                            {(p.registrar as any)?.name?.split(' ')[0] || ''}
+                          </span>
+                        )}
+                        <span style={{ color: '#aaa', whiteSpace: 'nowrap' }}>
+                          {format(new Date(p.registered_at), 'dd/MM/yy', { locale: ptBR })}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Botão para registrar protocolo se ainda não tem */}
+      {!protocolNumber && (
+        <div style={{ marginBottom: 16 }}>
+          <button
+            onClick={() => setProtocolDialogOpen(true)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '7px 14px', borderRadius: 7, border: '0.5px dashed #378ADD',
+              background: 'transparent', color: '#378ADD', fontSize: 11, fontWeight: 600, cursor: 'pointer',
+            }}
+          >
+            <Hash size={12} />
+            Registrar número de protocolo
+          </button>
+        </div>
+      )}
+
+      {/* ProtocolDialog para edição no modal */}
+      {protocolDialogOpen && (
+        <ProtocolDialog
+          open={protocolDialogOpen}
+          onOpenChange={setProtocolDialogOpen}
+          projectId={project.id}
+          projectCode={project.code}
+          concessionaireName={(project as any).concessionaireName || ''}
+          currentRevisionNumber={revisionNumber}
+          initialProtocolNumber={protocolNumber}
+          onConfirm={handleProtocolConfirm}
+          onCancel={() => setProtocolDialogOpen(false)}
+        />
+      )}
 
       {/* Equipamentos */}
       <div>

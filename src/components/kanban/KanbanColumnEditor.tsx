@@ -8,7 +8,7 @@ import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { GripVertical, Plus, Trash2, Edit, Flag, CheckCircle, AlertTriangle, Clock } from 'lucide-react';
+import { GripVertical, Plus, Trash2, Edit, Flag, CheckCircle, AlertTriangle, Clock, Hash } from 'lucide-react';
 import { KanbanColumn, KanbanModel, useCreateKanbanColumn, useUpdateKanbanColumn, useDeleteKanbanColumn, useUpdateColumnOrder, useUpdateColumnRejectionStage } from '@/hooks/useKanbanConfig';
 import { toast } from 'sonner';
 
@@ -38,6 +38,7 @@ export function KanbanColumnEditor({ model }: KanbanColumnEditorProps) {
     is_initial: false,
     is_final: false,
     is_rejection_stage: false,
+    requires_protocol: false,
     stale_days: '' as string,
   });
 
@@ -79,6 +80,7 @@ export function KanbanColumnEditor({ model }: KanbanColumnEditorProps) {
       is_final: newColumn.is_final,
       is_rejection_stage: newColumn.is_rejection_stage,
       triggers_revision: newColumn.is_rejection_stage,
+      requires_protocol: newColumn.requires_protocol,
       stale_days: isNaN(staleDays as number) ? null : staleDays,
     }, {
       onSuccess: (created) => {
@@ -98,6 +100,7 @@ export function KanbanColumnEditor({ model }: KanbanColumnEditorProps) {
           is_initial: false,
           is_final: false,
           is_rejection_stage: false,
+          requires_protocol: false,
           stale_days: '',
         });
       }
@@ -113,6 +116,7 @@ export function KanbanColumnEditor({ model }: KanbanColumnEditorProps) {
       color: editingColumn.color,
       is_initial: editingColumn.is_initial,
       is_final: editingColumn.is_final,
+      requires_protocol: editingColumn.requires_protocol,
       stale_days: editingColumn.stale_days ?? null,
     }, {
       onSuccess: () => {
@@ -235,6 +239,35 @@ export function KanbanColumnEditor({ model }: KanbanColumnEditorProps) {
                     onCheckedChange={(v) => setNewColumn({ ...newColumn, is_rejection_stage: v })}
                   />
                 </div>
+                {/* Toggle: Exige protocolo */}
+                <div
+                  style={{
+                    background: '#F8F8F8',
+                    borderRadius: 8,
+                    padding: '10px 12px',
+                    marginTop: 4,
+                    border: '0.5px solid #EFEFEF',
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: 10,
+                  }}
+                >
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+                      <Hash size={13} color="#378ADD" />
+                      <span style={{ fontSize: 12, fontWeight: 600, color: '#1A1A1A' }}>
+                        Exige número de protocolo
+                      </span>
+                    </div>
+                    <p style={{ fontSize: 10, color: '#888', margin: 0, lineHeight: 1.4 }}>
+                      Ao mover projeto para esta coluna, o sistema solicitará o número de protocolo da concessionária
+                    </p>
+                  </div>
+                  <Switch
+                    checked={newColumn.requires_protocol}
+                    onCheckedChange={(v) => setNewColumn({ ...newColumn, requires_protocol: v })}
+                  />
+                </div>
                 <div className="space-y-2">
                   <Label className="flex items-center gap-2">
                     <Clock className="w-4 h-4 text-amber-600" />
@@ -318,6 +351,20 @@ export function KanbanColumnEditor({ model }: KanbanColumnEditorProps) {
                             >
                               <AlertTriangle className="w-2.5 h-2.5" />
                               Reprovação
+                            </Badge>
+                          )}
+                          {column.requires_protocol && (
+                            <Badge
+                              className="text-[9px] gap-1"
+                              style={{
+                                background: '#E6F1FB',
+                                color: '#185FA5',
+                                border: '0.5px solid #378ADD',
+                                borderRadius: 20,
+                              }}
+                            >
+                              <Hash className="w-2.5 h-2.5" />
+                              Protocolo obrigatório
                             </Badge>
                           )}
                           {column.stale_days != null && (
@@ -438,6 +485,35 @@ export function KanbanColumnEditor({ model }: KanbanColumnEditorProps) {
                 <Switch
                   checked={editingColumn.is_rejection_stage}
                   onCheckedChange={(v) => setEditingColumn({ ...editingColumn, is_rejection_stage: v })}
+                />
+              </div>
+              {/* Toggle: Exige protocolo (Edit) */}
+              <div
+                style={{
+                  background: '#F8F8F8',
+                  borderRadius: 8,
+                  padding: '10px 12px',
+                  marginTop: 4,
+                  border: '0.5px solid #EFEFEF',
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: 10,
+                }}
+              >
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+                    <Hash size={13} color="#378ADD" />
+                    <span style={{ fontSize: 12, fontWeight: 600, color: '#1A1A1A' }}>
+                      Exige número de protocolo
+                    </span>
+                  </div>
+                  <p style={{ fontSize: 10, color: '#888', margin: 0, lineHeight: 1.4 }}>
+                    Ao mover projeto para esta coluna, o sistema solicitará o número de protocolo da concessionária
+                  </p>
+                </div>
+                <Switch
+                  checked={editingColumn.requires_protocol ?? false}
+                  onCheckedChange={(v) => setEditingColumn({ ...editingColumn, requires_protocol: v })}
                 />
               </div>
               <div className="space-y-2">

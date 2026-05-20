@@ -16,8 +16,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { NewRevisionDialog } from '@/components/revisions/NewRevisionDialog';
+import { ProtocolDialog, ProtocolData } from '@/components/projects/ProtocolDialog';
+import { useRegisterProtocol } from '@/hooks/useProjectProtocol';
 import { useSearchParams } from 'react-router-dom';
-import { Search, Building2, Zap, MapPin, Loader2, ChevronRight, ArrowRight, AlertCircle, DollarSign, MoreVertical, Trash2, Users, FileOutput, ExternalLink, XCircle, Clock } from 'lucide-react';
+import { Search, Building2, Zap, MapPin, Loader2, ChevronRight, ArrowRight, AlertCircle, DollarSign, MoreVertical, Trash2, Users, FileOutput, ExternalLink, XCircle, Clock, Hash } from 'lucide-react';
 import { useProjectRevisions } from '@/hooks/useProjectRevisions';
 import { Database } from '@/integrations/supabase/types';
 import { ProjectModal } from '@/components/projects/ProjectModal';
@@ -28,12 +30,12 @@ import { ProjectWithDetails } from '@/hooks/useProjects';
 
 type ProjectStatus = Database['public']['Enums']['project_status'];
 
-const fallbackColumns: { id: string; title: string; color: string; isRejectionStage: boolean }[] = [
-  { id: 'pending', title: 'Pendente', color: 'bg-muted', isRejectionStage: false },
-  { id: 'analysis', title: 'Em Análise', color: 'bg-kanban-analysis', isRejectionStage: false },
-  { id: 'documentation', title: 'Documentação', color: 'bg-kanban-progress', isRejectionStage: false },
-  { id: 'approval', title: 'Aprovação', color: 'bg-kanban-progress', isRejectionStage: false },
-  { id: 'approved', title: 'Aprovado', color: 'bg-kanban-approved', isRejectionStage: false },
+const fallbackColumns: { id: string; title: string; color: string; isRejectionStage: boolean; requiresProtocol: boolean }[] = [
+  { id: 'pending', title: 'Pendente', color: 'bg-muted', isRejectionStage: false, requiresProtocol: false },
+  { id: 'analysis', title: 'Em Análise', color: 'bg-kanban-analysis', isRejectionStage: false, requiresProtocol: false },
+  { id: 'documentation', title: 'Documentação', color: 'bg-kanban-progress', isRejectionStage: false, requiresProtocol: false },
+  { id: 'approval', title: 'Aprovação', color: 'bg-kanban-progress', isRejectionStage: false, requiresProtocol: false },
+  { id: 'approved', title: 'Aprovado', color: 'bg-kanban-approved', isRejectionStage: false, requiresProtocol: false },
 ];
 
 const utilityCompanies = ['CPFL Energia', 'Enel SP', 'Elektro', 'EDP São Paulo', 'Energisa', 'Light', 'Cemig', 'Copel', 'Celesc', 'CEEE'];
@@ -220,6 +222,36 @@ function CardMenu({
   );
 }
 
+// ── Protocol dialog com revisão carregada ─────────────────────────────────────
+function ProtocolDialogWithRevision({
+  protocolDialog,
+  projects,
+  onConfirm,
+  onCancel,
+}: {
+  protocolDialog: { open: boolean; projectId: string; projectCode: string; concessionaireName: string; newStatus: string; currentRevisionNumber: number };
+  projects: ProjectWithDetails[];
+  onConfirm: (data: import('@/components/projects/ProtocolDialog').ProtocolData) => void;
+  onCancel: () => void;
+}) {
+  const { data: revisions = [] } = useProjectRevisions(protocolDialog.projectId);
+  const currentRevision = revisions.find(r => r.is_current);
+  const revisionNumber = currentRevision?.revision_number ?? 1;
+  const project = projects.find(p => p.id === protocolDialog.projectId);
+  return (
+    <ProtocolDialog
+      open={protocolDialog.open}
+      onOpenChange={(open) => { if (!open) onCancel(); }}
+      projectId={protocolDialog.projectId}
+      projectCode={protocolDialog.projectCode}
+      concessionaireName={project?.concessionaireName || protocolDialog.concessionaireName}
+      currentRevisionNumber={revisionNumber}
+      onConfirm={onConfirm}
+      onCancel={onCancel}
+    />
+  );
+}
+
 // ── Main Kanban ───────────────────────────────────────────────────────────────
 export default function ProjectsKanban() {
   const [searchParams] = useSearchParams();
@@ -233,6 +265,7 @@ export default function ProjectsKanban() {
   const { data: kanbanModel, isLoading: isLoadingModel } = useDefaultKanbanModel();
   const { data: staleProjectsData = [] } = useStaleProjects();
   const updateStatus = useUpdateProjectStatus();
+  const registerProtocol = useRegisterProtocol();
 
   // Generate stale notifications (admin only, runs in background)
   useStaleNotifications();
@@ -248,6 +281,14 @@ export default function ProjectsKanban() {
   const [modalProjectId, setModalProjectId] = useState<string | null>(null);
   const [pendingDrop, setPendingDrop] = useState<{ projectId: string; targetStatus: ProjectStatus } | null>(null);
   const [showKanbanRevision, setShowKanbanRevision] = useState(false);
+  const [protocolDialog, setProtocolDialog] = useState<{
+    open: boolean;
+    projectId: string;
+    projectCode: string;
+    concessionaireName: string;
+    currentRevisionNumber: number;
+    newStatus: string;
+  } | null>(null);
 
   // Auto-activate from query param ?filter=no-value
   useEffect(() => {
@@ -273,6 +314,7 @@ export default function ProjectsKanban() {
     title: col.status_label,
     color: col.color,
     isRejectionStage: col.is_rejection_stage,
+    requiresProtocol: col.requires_protocol ?? false,
   })) || fallbackColumns;
 
   const getProjectsByStatus = (status: string) =>
@@ -284,11 +326,51 @@ export default function ProjectsKanban() {
     const newStatus = destination.droppableId as ProjectStatus;
     const targetCol = kanbanColumns.find(c => c.id === newStatus);
     if (!targetCol) return;
+
+    // Interceptar coluna de reprovação
     if (targetCol.isRejectionStage) {
       setPendingDrop({ projectId: draggableId, targetStatus: newStatus });
       return;
     }
+
+    // Interceptar coluna que exige protocolo
+    if (targetCol.requiresProtocol) {
+      const project = projects.find(p => p.id === draggableId);
+      if (!project) return;
+      // Buscar revisão atual para obter número
+      setProtocolDialog({
+        open: true,
+        projectId: draggableId,
+        projectCode: project.code,
+        concessionaireName: project.concessionaireName || '',
+        currentRevisionNumber: 1, // será atualizado pelo componente
+        newStatus,
+      });
+      return;
+    }
+
     updateStatus.mutate({ projectId: draggableId, status: newStatus });
+  };
+
+  const handleProtocolConfirm = async (data: ProtocolData) => {
+    if (!protocolDialog) return;
+    // Buscar revisão atual
+    const project = projects.find(p => p.id === protocolDialog.projectId);
+    const revisionNumber = protocolDialog.currentRevisionNumber;
+    await registerProtocol.mutateAsync({
+      projectId: protocolDialog.projectId,
+      revisionNumber,
+      protocolNumber: data.protocol_number,
+      noProtocol: data.no_protocol,
+      noProtocolReason: data.no_protocol_reason,
+      newStatus: protocolDialog.newStatus,
+    });
+    setProtocolDialog(null);
+  };
+
+  const handleProtocolCancel = () => {
+    setProtocolDialog(null);
+    // Card volta automaticamente pois não foi movido
   };
 
   if (isLoading || isLoadingModel) {
@@ -606,6 +688,36 @@ export default function ProjectsKanban() {
                                       {project.equipment?.module_quantity || 0} módulos
                                     </span>
                                   </div>
+                                  {/* Número de protocolo */}
+                                  {project.protocol_number && (() => {
+                                    const noProto = project.protocol_number.toLowerCase().includes('sem protocolo');
+                                    return (
+                                      <div
+                                        style={{
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          gap: 4,
+                                          marginTop: 6,
+                                          paddingTop: 6,
+                                          borderTop: '0.5px solid #F0F0F0',
+                                        }}
+                                      >
+                                        <Hash size={10} color={noProto ? '#aaa' : '#378ADD'} />
+                                        <span
+                                          style={{
+                                            fontSize: 10,
+                                            fontWeight: 600,
+                                            color: noProto ? '#aaa' : '#378ADD',
+                                            overflow: 'hidden',
+                                            textOverflow: 'ellipsis',
+                                            whiteSpace: 'nowrap',
+                                          }}
+                                        >
+                                          {project.protocol_number}
+                                        </span>
+                                      </div>
+                                    );
+                                  })()}
                                 </div>
                               )}
                             </Draggable>
@@ -632,6 +744,16 @@ export default function ProjectsKanban() {
         <ProjectModal
           projectId={modalProjectId}
           onClose={() => setModalProjectId(null)}
+        />
+      )}
+
+      {/* Protocol Dialog */}
+      {protocolDialog?.open && (
+        <ProtocolDialogWithRevision
+          protocolDialog={protocolDialog}
+          projects={projects}
+          onConfirm={handleProtocolConfirm}
+          onCancel={handleProtocolCancel}
         />
       )}
 

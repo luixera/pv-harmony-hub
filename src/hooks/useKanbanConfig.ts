@@ -13,6 +13,7 @@ export interface KanbanColumn {
   is_final: boolean;
   is_rejection_stage: boolean;
   triggers_revision: boolean;
+  requires_protocol: boolean;
   stale_days: number | null;
   created_at: string;
 }
@@ -174,6 +175,8 @@ export function useCreateKanbanColumn() {
       is_final?: boolean;
       is_rejection_stage?: boolean;
       triggers_revision?: boolean;
+      requires_protocol?: boolean;
+      stale_days?: number | null;
     }) => {
       const { data: column, error } = await supabase
         .from('kanban_columns')
