@@ -42,6 +42,7 @@ const statusColors: Record<string, string> = {
 export function ProjectFinancialCard({ projectId, companyId, financial, isAdmin }: ProjectFinancialCardProps) {
   const [projectValue, setProjectValue] = useState(financial?.project_value?.toString() || '');
   const [dueDate, setDueDate] = useState(financial?.due_date || '');
+
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0]);
   const [paymentNotes, setPaymentNotes] = useState('');
@@ -50,10 +51,10 @@ export function ProjectFinancialCard({ projectId, companyId, financial, isAdmin 
   
   const upsertFinancial = useUpsertFinancial();
   const addPayment = useAddPayment();
-  const { data: payments = [] } = useFinancialPayments(financial?.id);
+  const { data: payments = [] } = useFinancialPayments(projectId);
 
-  const pendingAmount = financial 
-    ? financial.project_value - financial.amount_paid 
+  const pendingAmount = financial
+    ? financial.project_value - financial.paid_value
     : 0;
 
   const handleSaveFinancial = async () => {
@@ -80,27 +81,22 @@ export function ProjectFinancialCard({ projectId, companyId, financial, isAdmin 
   };
 
   const handleAddPayment = async () => {
-    if (!financial?.id) {
-      toast.error("Salve os dados financeiros primeiro");
-      return;
-    }
-    
     if (!paymentAmount || Number(paymentAmount) <= 0) {
       toast.error("Informe um valor válido");
       return;
     }
-    
+
     if (Number(paymentAmount) > pendingAmount) {
       toast.error("O valor do pagamento não pode ser maior que o saldo em aberto");
       return;
     }
-    
+
     try {
       await addPayment.mutateAsync({
-        financialId: financial.id,
+        projectId,
         paymentDate,
         amount: Number(paymentAmount),
-        notes: paymentNotes || undefined
+        notes: paymentNotes || undefined,
       });
       toast.success("Pagamento registrado com sucesso");
       setPaymentAmount('');
@@ -120,8 +116,8 @@ export function ProjectFinancialCard({ projectId, companyId, financial, isAdmin 
           Financeiro
         </CardTitle>
         {financial && (
-          <Badge variant="outline" className={statusColors[financial.status]}>
-            {statusLabels[financial.status]}
+          <Badge variant="outline" className={statusColors[financial.payment_status]}>
+            {statusLabels[financial.payment_status]}
           </Badge>
         )}
       </CardHeader>
@@ -135,7 +131,7 @@ export function ProjectFinancialCard({ projectId, companyId, financial, isAdmin 
             </div>
             <div className="text-center p-3 bg-green-500/10 rounded-lg">
               <p className="text-xs text-muted-foreground">Total Pago</p>
-              <p className="text-lg font-bold text-green-600">{formatCurrency(financial.amount_paid)}</p>
+              <p className="text-lg font-bold text-green-600">{formatCurrency(financial.paid_value)}</p>
             </div>
             <div className="text-center p-3 bg-yellow-500/10 rounded-lg">
               <p className="text-xs text-muted-foreground">Saldo Restante</p>
@@ -185,7 +181,7 @@ export function ProjectFinancialCard({ projectId, companyId, financial, isAdmin 
                   )}
                 </Button>
                 
-                {financial && financial.status !== 'paid' && (
+                {financial && financial.payment_status !== 'paid' && (
                   <Dialog open={isPaymentDialogOpen} onOpenChange={setIsPaymentDialogOpen}>
                     <DialogTrigger asChild>
                       <Button variant="outline">

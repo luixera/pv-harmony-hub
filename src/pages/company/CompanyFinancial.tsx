@@ -36,8 +36,8 @@ export default function CompanyFinancial() {
 
   const summary = financials.reduce((acc, f) => {
     acc.totalBilled += f.project_value;
-    acc.totalPaid += f.amount_paid;
-    acc.totalPending += f.project_value - f.amount_paid;
+    acc.totalPaid += f.paid_value;
+    acc.totalPending += f.project_value - f.paid_value;
     return acc;
   }, { totalBilled: 0, totalPaid: 0, totalPending: 0 });
 
@@ -148,10 +148,10 @@ export default function CompanyFinancial() {
                 </TableHeader>
                 <TableBody>
                   {financials.map(f => {
-                    const pending = f.project_value - f.amount_paid;
-                    
+                    const pending = f.project_value - f.paid_value;
+
                     return (
-                      <TableRow 
+                      <TableRow
                         key={f.id}
                         className="cursor-pointer hover:bg-muted/50"
                         onClick={() => navigate(`/project/${f.project_id}`)}
@@ -168,7 +168,7 @@ export default function CompanyFinancial() {
                           {formatCurrency(f.project_value)}
                         </TableCell>
                         <TableCell className="text-right text-green-600">
-                          {formatCurrency(f.amount_paid)}
+                          {formatCurrency(f.paid_value)}
                         </TableCell>
                         <TableCell className={`text-right font-medium ${pending > 0 ? 'text-yellow-600' : ''}`}>
                           {formatCurrency(pending)}
@@ -176,15 +176,15 @@ export default function CompanyFinancial() {
                         <TableCell>
                           <div className="flex items-center gap-2">
                             <Calendar className="h-4 w-4 text-muted-foreground" />
-                            {f.due_date 
+                            {f.due_date
                               ? format(new Date(f.due_date), 'dd/MM/yyyy', { locale: ptBR })
                               : '-'
                             }
                           </div>
                         </TableCell>
                         <TableCell>
-                          <Badge variant="outline" className={statusColors[f.status]}>
-                            {statusLabels[f.status]}
+                          <Badge variant="outline" className={statusColors[f.payment_status]}>
+                            {statusLabels[f.payment_status]}
                           </Badge>
                         </TableCell>
                       </TableRow>
