@@ -38,7 +38,7 @@ Deno.serve(async (req) => {
 
   const supabase = createClient(
     Deno.env.get('SUPABASE_URL')!,
-    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    Deno.env.get('SUPA_SERVICE_ROLE_KEY')!
   )
 
   try {
@@ -297,7 +297,7 @@ Deno.serve(async (req) => {
     try {
       const supabase2 = createClient(
         Deno.env.get('SUPABASE_URL')!,
-        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+        Deno.env.get('SUPA_SERVICE_ROLE_KEY')!
       )
       await supabase2
         .from('email_scan_runs')
