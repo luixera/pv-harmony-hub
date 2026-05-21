@@ -159,7 +159,7 @@ export function useApplySuggestion() {
         .insert({
           project_id: projectId,
           user_id:    user?.id,
-          message:    `📧 Status atualizado pelo agente de email para: ${newStatus}`,
+          message:    `📧 Status atualizado pelo Claudinho dos Emails para: ${newStatus}`,
           type:       'email_agent',
         });
     },

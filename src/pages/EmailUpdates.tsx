@@ -221,7 +221,7 @@ function EmailCard({ update }: { update: EmailUpdate }) {
               {update.ai_summary && (
                 <div style={{ marginTop: 12, padding: '10px 14px', borderRadius: 8, border: '1.5px solid #F5A800', background: '#FFFBF0' }}>
                   <p style={{ fontSize: 11, fontWeight: 700, color: '#854F0B', margin: '0 0 4px', display: 'flex', alignItems: 'center', gap: 4 }}>
-                    🤖 Resumo do Agente IA
+                    🤖 Resumo do Claudinho
                     {update.ai_confidence > 0 && (
                       <span style={{ fontSize: 10, fontWeight: 600, color: '#aaa', marginLeft: 4 }}>
                         {update.ai_confidence}% confiança
@@ -294,7 +294,7 @@ function EmailCard({ update }: { update: EmailUpdate }) {
                   border: `1.5px solid ${suggestion.border}`,
                 }}>
                   <p style={{ fontSize: 12, fontWeight: 700, color: suggestion.color, margin: '0 0 5px' }}>
-                    💡 Sugestão do agente
+                    💡 Sugestão do Claudinho
                   </p>
                   <p style={{ fontSize: 12, color: '#1A1A1A', margin: '0 0 10px' }}>
                     Mover projeto <strong>{update.project?.code}</strong> de{' '}
@@ -539,8 +539,8 @@ export default function EmailUpdates() {
           : 'active';
 
   const AGENT_STATUS_CFG = {
-    active:         { label: '🟢 Agente ativo',       color: '#0F6E56', bg: '#E1F5EE', pulse: true  },
-    paused:         { label: '⏸ Agente pausado',      color: '#854F0B', bg: '#FEF3D0', pulse: false },
+    active:         { label: '🟢 Claudinho ativo',       color: '#0F6E56', bg: '#E1F5EE', pulse: true  },
+    paused:         { label: '⏸ Claudinho pausado',      color: '#854F0B', bg: '#FEF3D0', pulse: false },
     not_configured: { label: '⚠ Não configurado',     color: '#854F0B', bg: '#FEF3D0', pulse: false },
     error:          { label: '🔴 Erro de conexão',    color: '#A32D2D', bg: '#FCEBEB', pulse: false },
   };
@@ -559,7 +559,7 @@ export default function EmailUpdates() {
               <Mail size={20} style={{ color: '#fff' }} />
             </div>
             <div>
-              <h1 style={{ fontSize: 20, fontWeight: 800, color: '#1A1A1A', margin: 0 }}>Atualizações por Email</h1>
+              <h1 style={{ fontSize: 20, fontWeight: 800, color: '#1A1A1A', margin: 0 }}>Claudinho dos Emails</h1>
               <p style={{ fontSize: 12, color: '#999', margin: 0 }}>
                 {isLoading ? '…' : `${total} email${total !== 1 ? 's' : ''} analisado${total !== 1 ? 's' : ''}`}
               </p>
@@ -696,7 +696,7 @@ export default function EmailUpdates() {
                     onClick={() => setConfigOpen(true)}
                     style={{ padding: '8px 20px', borderRadius: 8, border: 'none', background: '#F5A800', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', marginTop: 4 }}
                   >
-                    Configurar agente →
+                    Configurar Claudinho →
                   </button>
                 )}
               </div>

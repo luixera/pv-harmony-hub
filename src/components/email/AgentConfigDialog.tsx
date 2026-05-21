@@ -97,7 +97,7 @@ export function AgentConfigDialog({ open, onOpenChange }: AgentConfigDialogProps
           <div style={{ background: '#1A1A1A', padding: '18px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <Mail size={18} style={{ color: '#F5A800' }} />
-              <span style={{ color: '#fff', fontWeight: 700, fontSize: 15 }}>Configurar Agente de Email</span>
+              <span style={{ color: '#fff', fontWeight: 700, fontSize: 15 }}>Configurar Claudinho dos Emails</span>
             </div>
             <button onClick={() => onOpenChange(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.5)', padding: 4 }}>
               <X size={18} />
@@ -231,7 +231,7 @@ export function AgentConfigDialog({ open, onOpenChange }: AgentConfigDialogProps
                 {/* Toggle ativo */}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 14px', background: '#FAFAFA', borderRadius: 8, border: '1px solid #F0F0F0' }}>
                   <div>
-                    <p style={{ fontSize: 13, fontWeight: 700, color: '#1A1A1A', margin: 0 }}>Agente ativo</p>
+                    <p style={{ fontSize: 13, fontWeight: 700, color: '#1A1A1A', margin: 0 }}>Claudinho ativo</p>
                     <p style={{ fontSize: 11, color: '#999', margin: 0 }}>Varredura automática nos horários configurados</p>
                   </div>
                   <button
