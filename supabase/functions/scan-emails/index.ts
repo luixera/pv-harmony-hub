@@ -226,11 +226,10 @@ Deno.serve(async (req) => {
       }
 
       // ════════════════════════════════════════════════════════════════════
-      // FASE 2 — Busca por remetente das concessionárias cadastradas
+      // FASE 2 — Busca por remetente das concessionárias (com body + PDF)
       // ════════════════════════════════════════════════════════════════════
 
       for (const conc of concessionaires) {
-        // Busca por "@nomeconcessionaria" no campo From — sem baixar o body completo
         const fromTerm = `@${conc.name.toLowerCase()}`
 
         let uids: number[] = []
@@ -239,13 +238,13 @@ Deno.serve(async (req) => {
         } catch { continue }
         if (!uids || uids.length === 0) continue
 
+        // Limite menor na Fase 2 para controlar tempo total
         if (uids.length > MAX_EMAILS_PER_CONC) uids = uids.slice(-MAX_EMAILS_PER_CONC)
 
-        // Fase 2: busca apenas envelope (sem source/body) — muito mais rápido
-        for await (const msg of client.fetch(uids, { uid: true, envelope: true }, { uid: true })) {
+        for await (const msg of client.fetch(uids, { uid: true, envelope: true, source: true }, { uid: true })) {
           const messageId = (msg.envelope?.messageId || `imap-uid-${msg.uid}`).trim()
 
-          // Já processado na Fase 1 desta sessão → atualiza concessionária
+          // Já processado na Fase 1 → só atualiza concessionária
           if (processedIds.has(messageId)) {
             await supabase.from('email_updates')
               .update({ concessionaire_id: conc.id, concessionaire_name: conc.name, match_type: 'both' })
@@ -253,7 +252,7 @@ Deno.serve(async (req) => {
             continue
           }
 
-          // Já existe no banco de execuções anteriores?
+          // Já existe no banco → atualiza concessionária
           const { data: existing } = await supabase
             .from('email_updates').select('id, match_type').eq('gmail_message_id', messageId).maybeSingle()
 
@@ -271,45 +270,60 @@ Deno.serve(async (req) => {
 
           processedIds.add(messageId)
 
-          // Verifica se o ASSUNTO contém algum protocolo cadastrado (sem baixar o body)
-          const subjectLower = (msg.envelope?.subject || '').toLowerCase()
+          let parsed: any
+          try { parsed = await simpleParser(msg.source as any) } catch { continue }
+
+          const email = extractParsed(parsed, msg.uid)
+
+          // Busca protocolo no ASSUNTO + CORPO (CEMIG coloca o número no texto do email)
+          const fullText = `${email.subject} ${email.bodyText}`.toLowerCase()
           let matchedProj: ProjectItem | null = null
           for (const proj of protocols) {
-            if (subjectLower.includes(proj.protocol.toLowerCase())) {
+            if (fullText.includes(proj.protocol.toLowerCase())) {
               matchedProj = proj
               break
             }
           }
 
-          const sender      = msg.envelope?.from?.[0]
-            ? `${msg.envelope.from[0].name || ''} <${msg.envelope.from[0].mailbox}@${msg.envelope.from[0].host}>`.trim()
-            : 'desconhecido'
-          const receivedAt  = msg.envelope?.date?.toISOString() || new Date().toISOString()
-          const subject     = msg.envelope?.subject || '(sem assunto)'
+          // Só chama Claude se encontrou protocolo — evita timeout
+          let bodyAnalysis: EmailAnalysis | null = matchedProj
+            ? await analyzeEmailBody(email.bodyText, matchedProj.protocol, email.subject)
+            : null
 
-          // Salva sem análise Claude — registra a existência do email rapidamente
-          await supabase.from('email_updates').insert({
+          const { data: savedUpdate } = await supabase.from('email_updates').insert({
             gmail_message_id:    messageId,
-            subject,
-            sender,
-            received_at:         receivedAt,
-            email_body:          null,
+            subject:             email.subject,
+            sender:              email.sender,
+            received_at:         email.receivedAt,
+            email_body:          email.bodyText || null,
             project_id:          matchedProj?.projectId || null,
             protocol_number:     matchedProj?.protocol  || null,
             concessionaire_id:   conc.id,
             concessionaire_name: conc.name,
             protocol_matched:    !!matchedProj,
             match_type:          'concessionaire',
-            ai_summary:          null,
-            ai_classification:   'unknown',
-            ai_suggested_status: null,
-            ai_confidence:       0,
-            ai_reasoning:        null,
+            ai_summary:          bodyAnalysis?.summary          || null,
+            ai_classification:   bodyAnalysis?.classification   || 'unknown',
+            ai_suggested_status: bodyAnalysis?.suggestedStatus  || null,
+            ai_confidence:       bodyAnalysis?.confidence       || 0,
+            ai_reasoning:        bodyAnalysis?.reasoning        || null,
             status:              'pending',
             scan_run_id:         scanRun.id,
-          })
+          }).select().single()
 
+          if (!savedUpdate) continue
           totalFound++
+
+          // Processa PDF/imagem apenas quando há protocolo vinculado
+          if (matchedProj && email.attachments.length > 0 && bodyAnalysis) {
+            const { processed, bestConf, bestClass, bestSummary } =
+              await processAttachments(supabase, email.attachments, savedUpdate.id, msg.uid, matchedProj.protocol, globalAttachmentCount, MAX_SCAN_ATTACHMENTS)
+            globalAttachmentCount += processed
+            totalAttachments      += processed
+            await consolidateUpdate(supabase, savedUpdate.id, bodyAnalysis, bestConf, bestClass, bestSummary, email.attachments)
+            const cl = (bestConf >= 70 && bestClass ? bestClass : bodyAnalysis.classification) as keyof typeof counts
+            if (cl in counts) counts[cl]++
+          }
         }
       }
 
