@@ -30,6 +30,8 @@ export interface EmailAttachment {
   created_at: string;
 }
 
+export type MatchType = 'protocol' | 'concessionaire' | 'both';
+
 export interface EmailUpdate {
   id: string;
   gmail_message_id: string;
@@ -39,6 +41,12 @@ export interface EmailUpdate {
   email_body: string | null;
   project_id: string | null;
   protocol_number: string | null;
+  // Concessionária
+  concessionaire_id: string | null;
+  concessionaire_name: string | null;
+  protocol_matched: boolean;
+  match_type: MatchType;
+  // IA
   ai_summary: string | null;
   ai_classification: EmailClassification;
   ai_suggested_status: string | null;
@@ -75,7 +83,11 @@ export interface ScanRun {
 
 // ── useEmailUpdates ───────────────────────────────────────────────────────────
 
-export function useEmailUpdates(filters?: { classification?: string; status?: string }) {
+export function useEmailUpdates(filters?: {
+  classification?: string;
+  status?: string;
+  matchType?: MatchType | 'protocol_matched';
+}) {
   return useQuery({
     queryKey: ['email-updates', filters],
     queryFn: async () => {
@@ -87,10 +99,15 @@ export function useEmailUpdates(filters?: { classification?: string; status?: st
           attachments:email_attachments(*)
         `)
         .order('received_at', { ascending: false })
-        .limit(50);
+        .limit(100);
 
       if (filters?.classification) q = q.eq('ai_classification', filters.classification);
       if (filters?.status)         q = q.eq('status', filters.status);
+      if (filters?.matchType === 'protocol_matched') {
+        q = q.eq('protocol_matched', true).neq('match_type', 'protocol');
+      } else if (filters?.matchType) {
+        q = q.eq('match_type', filters.matchType);
+      }
 
       const { data, error } = await q;
       if (error) throw error;

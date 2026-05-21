@@ -136,13 +136,26 @@ function EmailCard({ update }: { update: EmailUpdate }) {
 
   const domain = extractDomain(update.sender);
 
+  // Lógica de destaque: email da concessionária COM protocolo vinculado
+  const isProtocolMatch = update.protocol_matched && update.match_type !== 'protocol';
+  const isConcOnly      = update.match_type === 'concessionaire' && !update.protocol_matched;
+
+  const borderLeftColor = isProtocolMatch
+    ? '#F5A800'          // âmbar — protocolo vinculado via concessionária
+    : isConcOnly
+      ? '#B0B8C1'        // cinza — só da concessionária, sem protocolo
+      : cfg.border;      // cor da classificação (comportamento original)
+
+  const cardBg = isProtocolMatch ? '#FFFDF5' : '#fff';
+
   return (
     <div style={{
-      background: '#fff', borderRadius: 12,
-      border: `1px solid #F0F0F0`,
-      borderLeft: `4px solid ${cfg.border}`,
+      background: cardBg, borderRadius: 12,
+      border: `1px solid ${isProtocolMatch ? '#F5D580' : '#F0F0F0'}`,
+      borderLeft: `4px solid ${borderLeftColor}`,
       overflow: 'hidden',
       opacity: update.status === 'applied' || update.status === 'ignored' ? 0.65 : 1,
+      transition: 'box-shadow 0.15s',
     }}>
       {/* Header (sempre visível) */}
       <button
@@ -164,6 +177,28 @@ function EmailCard({ update }: { update: EmailUpdate }) {
         <div style={{ flex: 1, minWidth: 0 }}>
           {/* Linha 1 */}
           <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginBottom: 3 }}>
+            {/* Badge concessionária */}
+            {update.concessionaire_name && (
+              <span style={{
+                fontSize: 10, fontWeight: 800, padding: '2px 7px', borderRadius: 5,
+                background: isProtocolMatch ? '#FEF3D0' : '#F0F0F0',
+                color: isProtocolMatch ? '#854F0B' : '#555',
+                letterSpacing: '0.03em',
+              }}>
+                {update.concessionaire_name}
+              </span>
+            )}
+            {/* Badge protocolo vinculado */}
+            {isProtocolMatch && (
+              <span style={{
+                fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 5,
+                background: '#FEF3D0', color: '#854F0B',
+                border: '1px solid #F5D580',
+                display: 'flex', alignItems: 'center', gap: 3,
+              }}>
+                🔗 Protocolo vinculado
+              </span>
+            )}
             {update.project && (
               <span style={{ fontSize: 12, fontWeight: 700, color: '#1A1A1A', background: '#F5F5F5', padding: '2px 7px', borderRadius: 5 }}>
                 {update.project.code}
@@ -500,14 +535,16 @@ function Sidebar({ updates, scanRuns }: { updates: EmailUpdate[]; scanRuns: Scan
 
 // ── Página principal ──────────────────────────────────────────────────────────
 
-type FilterCL = EmailClassification | 'all';
+type FilterCL     = EmailClassification | 'all';
+type FilterSource = 'all' | 'concessionaire' | 'protocol_matched';
 
 export default function EmailUpdates() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
 
-  const [configOpen, setConfigOpen]   = useState(false);
-  const [filterCL,   setFilterCL]     = useState<FilterCL>('all');
+  const [configOpen,    setConfigOpen]    = useState(false);
+  const [filterCL,      setFilterCL]      = useState<FilterCL>('all');
+  const [filterSource,  setFilterSource]  = useState<FilterSource>('all');
 
   const countdown = useCountdown();
 
@@ -523,10 +560,14 @@ export default function EmailUpdates() {
   const pending     = allUpdates.filter(u => u.ai_classification === 'pending').length;
   const actionable  = allUpdates.filter(u => u.status === 'pending' && u.ai_suggested_status).length;
 
-  // Lista filtrada
-  const filtered = filterCL === 'all'
-    ? allUpdates
-    : allUpdates.filter(u => u.ai_classification === filterCL);
+  // Lista filtrada (classificação + origem)
+  const filtered = allUpdates
+    .filter(u => filterCL === 'all' || u.ai_classification === filterCL)
+    .filter(u => {
+      if (filterSource === 'concessionaire')    return u.match_type === 'concessionaire' || u.match_type === 'both';
+      if (filterSource === 'protocol_matched')  return u.protocol_matched && u.match_type !== 'protocol';
+      return true;
+    });
 
   // Status do agente
   const agentStatus: 'active' | 'paused' | 'not_configured' | 'error' =
@@ -654,14 +695,14 @@ export default function EmailUpdates() {
           {/* Lista */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
 
-            {/* Filtros */}
+            {/* Filtros — linha 1: classificação */}
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
               {([
-                { id: 'all',         label: 'Todas' },
-                { id: 'approved',    label: 'Aprovações' },
-                { id: 'rejected',    label: 'Reprovações' },
-                { id: 'pending',     label: 'Pendências' },
-                { id: 'inspection',  label: 'Vistoria' },
+                { id: 'all',           label: 'Todas' },
+                { id: 'approved',      label: 'Aprovações' },
+                { id: 'rejected',      label: 'Reprovações' },
+                { id: 'pending',       label: 'Pendências' },
+                { id: 'inspection',    label: 'Vistoria' },
                 { id: 'informational', label: 'Informativo' },
               ] as { id: FilterCL; label: string }[]).map(f => (
                 <button
@@ -673,6 +714,29 @@ export default function EmailUpdates() {
                     borderColor: filterCL === f.id ? '#F5A800' : '#E0E0E0',
                     background:  filterCL === f.id ? '#F5A800' : '#fff',
                     color:       filterCL === f.id ? '#fff'    : '#666',
+                  }}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Filtros — linha 2: origem do email */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {([
+                { id: 'all',              label: '📥 Todos os emails' },
+                { id: 'concessionaire',   label: '⚡ Concessionárias' },
+                { id: 'protocol_matched', label: '🔗 Protocolo vinculado' },
+              ] as { id: FilterSource; label: string }[]).map(f => (
+                <button
+                  key={f.id}
+                  onClick={() => setFilterSource(f.id)}
+                  style={{
+                    padding: '4px 12px', borderRadius: 99, border: '1.5px solid',
+                    fontSize: 11, fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s',
+                    borderColor: filterSource === f.id ? '#378ADD' : '#E0E0E0',
+                    background:  filterSource === f.id ? '#E6F1FB' : '#fff',
+                    color:       filterSource === f.id ? '#185FA5' : '#888',
                   }}
                 >
                   {f.label}
