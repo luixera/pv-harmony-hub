@@ -17,17 +17,27 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Supabase CLI
-        uses: supabase/setup-cli@v1
-        with:
-          version: latest
+      - name: Install Supabase CLI
+        run: |
+          curl -fsSL https://github.com/supabase/cli/releases/latest/download/supabase_linux_amd64.tar.gz | tar xz
+          sudo mv supabase /usr/local/bin/supabase
+          supabase --version
 
-      - name: Deploy Edge Functions
+      - name: Deploy scan-emails
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: |
-          supabase functions deploy scan-emails --project-ref yqsqrdndvsnhbsoaoilf --no-verify-jwt
-          supabase functions deploy test-gmail  --project-ref yqsqrdndvsnhbsoaoilf --no-verify-jwt
+          supabase functions deploy scan-emails \
+            --project-ref yqsqrdndvsnhbsoaoilf \
+            --no-verify-jwt
+
+      - name: Deploy test-gmail
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          supabase functions deploy test-gmail \
+            --project-ref yqsqrdndvsnhbsoaoilf \
+            --no-verify-jwt
 
   build-and-deploy:
     runs-on: ubuntu-latest
