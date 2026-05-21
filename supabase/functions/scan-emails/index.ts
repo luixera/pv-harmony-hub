@@ -379,13 +379,28 @@ Deno.serve(async (req) => {
 
 // ── HELPERS ───────────────────────────────────────────────────────────────────
 
+function stripHtml(html: string): string {
+  return html
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
+    .replace(/\s+/g, ' ').trim()
+}
+
 function extractParsed(parsed: any, uid: number): { messageId: string; subject: string; sender: string; receivedAt: string; bodyText: string; attachments: any[] } {
+  // Muitas concessionárias enviam emails HTML-only — fallback para parsed.html com strip de tags
+  let bodyText = (parsed.text || '').replace(/\s+/g, ' ').trim()
+  if (!bodyText && parsed.html) {
+    bodyText = stripHtml(parsed.html)
+  }
   return {
     messageId:   `imap-uid-${uid}`,
     subject:     parsed.subject    || '(sem assunto)',
     sender:      parsed.from?.text || 'desconhecido',
     receivedAt:  parsed.date?.toISOString() || new Date().toISOString(),
-    bodyText:    (parsed.text || '').replace(/\s+/g, ' ').trim().substring(0, 3000),
+    bodyText:    bodyText.substring(0, 3000),
     attachments: (parsed.attachments || []).filter((a: any) =>
       a.contentType === 'application/pdf' || a.contentType?.startsWith('image/')
     ).slice(0, 5),
