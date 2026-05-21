@@ -245,7 +245,7 @@ Deno.serve(async (req) => {
         } catch { continue }
         if (!uids || uids.length === 0) continue
 
-        // Passo 1: só envelope — filtra emails que já têm projeto vinculado
+        // Passo 1: só envelope — filtra emails que já têm protocolo vinculado
         const needsSource: Array<{ uid: number; messageId: string; existingId: string | null }> = []
         for await (const msg of client.fetch(uids, { uid: true, envelope: true }, { uid: true })) {
           const messageId = (msg.envelope?.messageId || `imap-uid-${msg.uid}`).trim()
@@ -259,10 +259,10 @@ Deno.serve(async (req) => {
           }
 
           const { data: existing } = await supabase
-            .from('email_updates').select('id, match_type, project_id').eq('gmail_message_id', messageId).maybeSingle()
+            .from('email_updates').select('id, match_type, protocol_number').eq('gmail_message_id', messageId).maybeSingle()
 
-          if (existing && existing.project_id) {
-            // Já existe com projeto vinculado — só atualiza concessionária
+          if (existing && existing.protocol_number) {
+            // Já existe com protocolo vinculado — só atualiza concessionária
             processedIds.add(messageId)
             await supabase.from('email_updates')
               .update({
@@ -274,7 +274,7 @@ Deno.serve(async (req) => {
             continue
           }
 
-          // Sem projeto vinculado (ou nunca visto) → reprocessa para tentar vincular
+          // Sem protocolo vinculado (ou nunca visto) → reprocessa para tentar vincular
           processedIds.add(messageId)
           needsSource.push({ uid: msg.uid, messageId, existingId: existing?.id || null })
         }
