@@ -1,3 +1,4 @@
+import { ImapFlow } from 'npm:imapflow'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const corsHeaders = {
@@ -16,55 +17,45 @@ Deno.serve(async (req) => {
   )
 
   try {
-    const { clientId, clientSecret, refreshToken } = await req.json()
+    const { email, appPassword } = await req.json()
 
-    if (!clientId || !clientSecret || !refreshToken) {
+    if (!email || !appPassword) {
       return new Response(
-        JSON.stringify({ success: false, error: 'Campos obrigatórios ausentes' }),
+        JSON.stringify({ success: false, error: 'Email e App Password são obrigatórios' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
-    // Tentar obter access token
-    const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        client_id:     clientId,
-        client_secret: clientSecret,
-        refresh_token: refreshToken,
-        grant_type:    'refresh_token',
-      }),
+    // Testar conexão IMAP
+    const client = new ImapFlow({
+      host:   'imap.gmail.com',
+      port:   993,
+      secure: true,
+      auth: {
+        user: email.trim(),
+        pass: appPassword.replace(/\s+/g, ''),
+      },
+      logger:           false,
+      connectionTimeout: 10000,
     })
-    const tokenData = await tokenRes.json()
 
-    if (!tokenData.access_token) {
+    let messagesTotal = 0
+
+    try {
+      await client.connect()
+      const mailbox = await client.mailboxOpen('INBOX')
+      messagesTotal = mailbox.exists || 0
+      await client.logout()
+    } catch (imapError: any) {
+      const msg = imapError.message || 'Falha na conexão IMAP'
+
       await supabase
         .from('agent_config')
         .update({
           last_tested_at:    new Date().toISOString(),
           last_test_success: false,
-          last_test_error:   tokenData.error_description || tokenData.error || 'Credenciais inválidas',
+          last_test_error:   msg,
         })
-        .eq('config_key', 'email_agent')
-
-      return new Response(
-        JSON.stringify({ success: false, error: tokenData.error_description || tokenData.error || 'Credenciais inválidas' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
-
-    // Testar acesso ao perfil Gmail
-    const profileRes = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/profile', {
-      headers: { Authorization: `Bearer ${tokenData.access_token}` },
-    })
-    const profile = await profileRes.json()
-
-    if (profile.error) {
-      const msg = profile.error.message || 'Acesso ao Gmail negado'
-      await supabase
-        .from('agent_config')
-        .update({ last_tested_at: new Date().toISOString(), last_test_success: false, last_test_error: msg })
         .eq('config_key', 'email_agent')
 
       return new Response(
@@ -73,7 +64,7 @@ Deno.serve(async (req) => {
       )
     }
 
-    // Sucesso — atualizar status no banco
+    // Sucesso
     await supabase
       .from('agent_config')
       .update({
@@ -85,10 +76,9 @@ Deno.serve(async (req) => {
 
     return new Response(
       JSON.stringify({
-        success:        true,
-        emailAddress:   profile.emailAddress,
-        messagesTotal:  profile.messagesTotal,
-        threadsTotal:   profile.threadsTotal,
+        success:       true,
+        emailAddress:  email,
+        messagesTotal,
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )

@@ -19,6 +19,7 @@ export interface AgentConfigSafe {
   last_test_error: string | null;
   has_client_id: boolean;
   has_refresh_token: boolean;
+  has_app_password: boolean;
 }
 
 // ── useAgentConfig (usa view segura — sem credenciais) ────────────────────────
@@ -48,9 +49,7 @@ export function useSaveAgentConfig() {
   return useMutation({
     mutationFn: async (payload: {
       gmail_email: string;
-      gmail_client_id: string;
-      gmail_client_secret: string;
-      gmail_refresh_token: string;
+      gmail_app_password: string;
       scan_times: string[];
       is_active: boolean;
     }) => {
@@ -58,11 +57,10 @@ export function useSaveAgentConfig() {
         .from('agent_config')
         .update({
           ...payload,
-          is_configured:  true,
-          configured_by:  user?.id,
-          configured_at:  new Date().toISOString(),
-          updated_at:     new Date().toISOString(),
-          // Resetar status de teste ao salvar novas credenciais
+          is_configured:     true,
+          configured_by:     user?.id,
+          configured_at:     new Date().toISOString(),
+          updated_at:        new Date().toISOString(),
           last_test_success: null,
           last_test_error:   null,
         })
@@ -83,11 +81,7 @@ export function useTestGmailConnection() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (creds: {
-      clientId: string;
-      clientSecret: string;
-      refreshToken: string;
-    }) => {
+    mutationFn: async (creds: { email: string; appPassword: string }) => {
       const { data: { session } } = await supabase.auth.getSession();
       const res = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/test-gmail`,
@@ -98,9 +92,8 @@ export function useTestGmailConnection() {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            clientId:     creds.clientId,
-            clientSecret: creds.clientSecret,
-            refreshToken: creds.refreshToken,
+            email:       creds.email,
+            appPassword: creds.appPassword,
           }),
         }
       );
@@ -110,7 +103,7 @@ export function useTestGmailConnection() {
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['agent-config'] });
-      toast.success(`✅ Conexão OK — ${data.emailAddress}`);
+      toast.success(`✅ Conexão OK — ${data.emailAddress} (${data.messagesTotal} emails)`);
     },
     onError: (e: Error) => toast.error(`❌ Falha: ${e.message}`),
   });

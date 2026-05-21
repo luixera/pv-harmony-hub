@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { X, Mail, Clock, HelpCircle, Eye, EyeOff, Loader2, CheckCircle2, XCircle, Plus, ExternalLink } from 'lucide-react';
 import { useAgentConfig, useSaveAgentConfig, useTestGmailConnection } from '@/hooks/useAgentConfig';
-import { cn } from '@/lib/utils';
 
 interface AgentConfigDialogProps {
   open: boolean;
@@ -14,32 +13,25 @@ const MAX_TIMES = 4;
 
 export function AgentConfigDialog({ open, onOpenChange }: AgentConfigDialogProps) {
   const { data: config, isLoading } = useAgentConfig();
-  const saveConfig  = useSaveAgentConfig();
-  const testGmail   = useTestGmailConnection();
+  const saveConfig = useSaveAgentConfig();
+  const testGmail  = useTestGmailConnection();
 
   const [tab, setTab] = useState<Tab>('gmail');
 
   // Form fields
-  const [gmailEmail,      setGmailEmail]      = useState('');
-  const [clientId,        setClientId]        = useState('');
-  const [clientSecret,    setClientSecret]    = useState('');
-  const [refreshToken,    setRefreshToken]    = useState('');
-  const [isActive,        setIsActive]        = useState(true);
-  const [scanTimes,       setScanTimes]       = useState<string[]>(['08:00', '17:00']);
-  const [newTime,         setNewTime]         = useState('');
-
-  // Show/hide password fields
-  const [showClientId,     setShowClientId]     = useState(false);
-  const [showClientSecret, setShowClientSecret] = useState(false);
-  const [showRefreshToken, setShowRefreshToken] = useState(false);
+  const [gmailEmail,   setGmailEmail]   = useState('');
+  const [appPassword,  setAppPassword]  = useState('');
+  const [isActive,     setIsActive]     = useState(true);
+  const [scanTimes,    setScanTimes]    = useState<string[]>(['08:00', '17:00']);
+  const [newTime,      setNewTime]      = useState('');
+  const [showPassword, setShowPassword] = useState(false);
 
   // Test state
   const [testResult, setTestResult] = useState<{ ok: boolean; email?: string } | null>(null);
 
-  // Populate from existing config (without secret fields — they stay blank = keep existing)
   useEffect(() => {
     if (config) {
-      if (config.gmail_email)  setGmailEmail(config.gmail_email);
+      if (config.gmail_email) setGmailEmail(config.gmail_email);
       if (config.scan_times?.length) setScanTimes(config.scan_times);
       setIsActive(config.is_active ?? true);
     }
@@ -47,19 +39,16 @@ export function AgentConfigDialog({ open, onOpenChange }: AgentConfigDialogProps
 
   if (!open) return null;
 
-  const canSave =
-    gmailEmail.trim() !== '' &&
-    clientId.trim()   !== '' &&
-    clientSecret.trim() !== '' &&
-    refreshToken.trim() !== '';
+  const canSave   = gmailEmail.trim() !== '' && appPassword.trim() !== '';
+  const canTest   = gmailEmail.trim() !== '' && appPassword.trim() !== '';
+  const hasConfig = config?.is_configured && config?.has_app_password;
 
   async function handleTest() {
     setTestResult(null);
     try {
       const result = await testGmail.mutateAsync({
-        clientId:     clientId.trim(),
-        clientSecret: clientSecret.trim(),
-        refreshToken: refreshToken.trim(),
+        email:       gmailEmail.trim(),
+        appPassword: appPassword.trim(),
       });
       setTestResult({ ok: true, email: result.emailAddress });
     } catch {
@@ -69,12 +58,10 @@ export function AgentConfigDialog({ open, onOpenChange }: AgentConfigDialogProps
 
   async function handleSave() {
     await saveConfig.mutateAsync({
-      gmail_email:         gmailEmail.trim(),
-      gmail_client_id:     clientId.trim(),
-      gmail_client_secret: clientSecret.trim(),
-      gmail_refresh_token: refreshToken.trim(),
-      scan_times:          scanTimes,
-      is_active:           isActive,
+      gmail_email:        gmailEmail.trim(),
+      gmail_app_password: appPassword.trim(),
+      scan_times:         scanTimes,
+      is_active:          isActive,
     });
     onOpenChange(false);
   }
@@ -89,7 +76,6 @@ export function AgentConfigDialog({ open, onOpenChange }: AgentConfigDialogProps
     setScanTimes(prev => prev.filter(x => x !== t));
   }
 
-  // ── render ──
   return (
     <>
       {/* Overlay */}
@@ -100,21 +86,11 @@ export function AgentConfigDialog({ open, onOpenChange }: AgentConfigDialogProps
 
       {/* Dialog */}
       <div
-        style={{
-          position: 'fixed', inset: 0, zIndex: 9999,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          padding: '24px 16px',
-        }}
+        style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px 16px' }}
         onClick={e => { if (e.target === e.currentTarget) onOpenChange(false); }}
       >
         <div
-          style={{
-            background: '#fff', borderRadius: 16,
-            width: '100%', maxWidth: 540,
-            boxShadow: '0 24px 80px rgba(0,0,0,0.35)',
-            display: 'flex', flexDirection: 'column',
-            maxHeight: '90vh', overflow: 'hidden',
-          }}
+          style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 520, boxShadow: '0 24px 80px rgba(0,0,0,0.35)', display: 'flex', flexDirection: 'column', maxHeight: '90vh', overflow: 'hidden' }}
           onClick={e => e.stopPropagation()}
         >
           {/* Header */}
@@ -131,10 +107,10 @@ export function AgentConfigDialog({ open, onOpenChange }: AgentConfigDialogProps
           {/* Tabs */}
           <div style={{ display: 'flex', borderBottom: '1px solid #F0F0F0', flexShrink: 0 }}>
             {([
-              { id: 'gmail',    icon: <Mail size={13} />,        label: '📧 Conta Gmail' },
-              { id: 'schedule', icon: <Clock size={13} />,       label: '⏱ Horários' },
-              { id: 'help',     icon: <HelpCircle size={13} />,  label: 'ℹ Ajuda' },
-            ] as { id: Tab; icon: React.ReactNode; label: string }[]).map(t => (
+              { id: 'gmail',    label: '📧 Conta Gmail' },
+              { id: 'schedule', label: '⏱ Horários' },
+              { id: 'help',     label: 'ℹ Ajuda' },
+            ] as { id: Tab; label: string }[]).map(t => (
               <button
                 key={t.id}
                 onClick={() => setTab(t.id)}
@@ -159,25 +135,37 @@ export function AgentConfigDialog({ open, onOpenChange }: AgentConfigDialogProps
               </div>
             ) : tab === 'gmail' ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+
                 {/* Status atual */}
-                {config?.is_configured && (
+                {hasConfig && (
                   <div style={{
                     padding: '10px 14px', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 8,
-                    background: config.last_test_success ? '#E1F5EE' : '#FCEBEB',
-                    border: `1px solid ${config.last_test_success ? '#2D6A4F' : '#E24B4A'}`,
+                    background: config!.last_test_success ? '#E1F5EE' : '#FCEBEB',
+                    border: `1px solid ${config!.last_test_success ? '#2D6A4F' : '#E24B4A'}`,
                   }}>
-                    {config.last_test_success
+                    {config!.last_test_success
                       ? <CheckCircle2 size={15} style={{ color: '#2D6A4F', flexShrink: 0 }} />
                       : <XCircle size={15} style={{ color: '#E24B4A', flexShrink: 0 }} />
                     }
-                    <span style={{ fontSize: 12, color: config.last_test_success ? '#2D6A4F' : '#E24B4A', fontWeight: 600 }}>
-                      {config.last_test_success
-                        ? `Conectado — ${config.gmail_email}`
-                        : `Erro: ${config.last_test_error || 'Conexão falhou'}`
+                    <span style={{ fontSize: 12, color: config!.last_test_success ? '#2D6A4F' : '#E24B4A', fontWeight: 600 }}>
+                      {config!.last_test_success
+                        ? `Conectado — ${config!.gmail_email}`
+                        : `Erro: ${config!.last_test_error || 'Conexão falhou'}`
                       }
                     </span>
                   </div>
                 )}
+
+                {/* Dica de App Password */}
+                <div style={{ padding: '10px 14px', borderRadius: 8, background: '#FFF8E7', border: '1px solid #F5A800' }}>
+                  <p style={{ margin: 0, fontSize: 12, color: '#854F0B', fontWeight: 600 }}>
+                    🔑 Use uma Senha de App — não sua senha normal!
+                  </p>
+                  <p style={{ margin: '4px 0 0', fontSize: 11, color: '#9A6000' }}>
+                    Acesse: Conta Google → Segurança → Verificação em 2 etapas → Senhas de app → Gerar.
+                    O resultado será uma senha de 16 letras (ex: <code style={{ background: '#FEF3D0', padding: '1px 4px', borderRadius: 3 }}>abcd efgh ijkl mnop</code>).
+                  </p>
+                </div>
 
                 {/* Email */}
                 <FieldGroup label="Email Gmail" hint="Conta a ser monitorada">
@@ -185,41 +173,19 @@ export function AgentConfigDialog({ open, onOpenChange }: AgentConfigDialogProps
                     type="email"
                     value={gmailEmail}
                     onChange={e => setGmailEmail(e.target.value)}
-                    placeholder="conta@empresa.com.br"
+                    placeholder="conta@gmail.com"
                     style={inputStyle}
                   />
                 </FieldGroup>
 
-                {/* Client ID */}
-                <FieldGroup label="Client ID" hint="Do Google Cloud Console">
+                {/* App Password */}
+                <FieldGroup label="Senha de App" hint="16 caracteres gerada pela Google (com ou sem espaços)">
                   <PasswordField
-                    value={clientId}
-                    onChange={setClientId}
-                    show={showClientId}
-                    onToggle={() => setShowClientId(v => !v)}
-                    placeholder={config?.has_client_id ? '(mantém atual se vazio)' : 'Cole o Client ID aqui'}
-                  />
-                </FieldGroup>
-
-                {/* Client Secret */}
-                <FieldGroup label="Client Secret" hint="Do Google Cloud Console">
-                  <PasswordField
-                    value={clientSecret}
-                    onChange={setClientSecret}
-                    show={showClientSecret}
-                    onToggle={() => setShowClientSecret(v => !v)}
-                    placeholder={config?.has_client_id ? '(mantém atual se vazio)' : 'Cole o Client Secret aqui'}
-                  />
-                </FieldGroup>
-
-                {/* Refresh Token */}
-                <FieldGroup label="Refresh Token" hint="Do OAuth Playground">
-                  <PasswordField
-                    value={refreshToken}
-                    onChange={setRefreshToken}
-                    show={showRefreshToken}
-                    onToggle={() => setShowRefreshToken(v => !v)}
-                    placeholder={config?.has_refresh_token ? '(mantém atual se vazio)' : 'Cole o Refresh Token aqui'}
+                    value={appPassword}
+                    onChange={setAppPassword}
+                    show={showPassword}
+                    onToggle={() => setShowPassword(v => !v)}
+                    placeholder={hasConfig ? '(mantém atual se vazio)' : 'Ex: abcd efgh ijkl mnop'}
                   />
                 </FieldGroup>
 
@@ -227,12 +193,12 @@ export function AgentConfigDialog({ open, onOpenChange }: AgentConfigDialogProps
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   <button
                     onClick={handleTest}
-                    disabled={!clientId || !clientSecret || !refreshToken || testGmail.isPending}
+                    disabled={!canTest || testGmail.isPending}
                     style={{
                       padding: '8px 20px', borderRadius: 8, border: '1.5px solid #F5A800',
                       background: 'transparent', color: '#F5A800', fontSize: 13, fontWeight: 700,
-                      cursor: (!clientId || !clientSecret || !refreshToken) ? 'not-allowed' : 'pointer',
-                      opacity: (!clientId || !clientSecret || !refreshToken) ? 0.5 : 1,
+                      cursor: canTest ? 'pointer' : 'not-allowed',
+                      opacity: canTest ? 1 : 0.5,
                       display: 'flex', alignItems: 'center', gap: 6,
                     }}
                   >
@@ -244,19 +210,19 @@ export function AgentConfigDialog({ open, onOpenChange }: AgentConfigDialogProps
                     <span style={{ fontSize: 12, fontWeight: 600, color: testResult.ok ? '#2D6A4F' : '#E24B4A', display: 'flex', alignItems: 'center', gap: 4 }}>
                       {testResult.ok
                         ? <><CheckCircle2 size={13} /> {testResult.email}</>
-                        : <><XCircle size={13} /> Falhou</>
+                        : <><XCircle size={13} /> Falhou — verifique email e senha de app</>
                       }
                     </span>
                   )}
                 </div>
 
                 <a
-                  href="/docs/GMAIL_SETUP.md"
+                  href="https://myaccount.google.com/apppasswords"
                   target="_blank"
                   rel="noopener noreferrer"
                   style={{ fontSize: 12, color: '#378ADD', display: 'inline-flex', alignItems: 'center', gap: 4, textDecoration: 'none' }}
                 >
-                  <ExternalLink size={12} /> Como obter as credenciais →
+                  <ExternalLink size={12} /> Abrir Senhas de App da Google →
                 </a>
               </div>
 
@@ -270,17 +236,9 @@ export function AgentConfigDialog({ open, onOpenChange }: AgentConfigDialogProps
                   </div>
                   <button
                     onClick={() => setIsActive(v => !v)}
-                    style={{
-                      width: 40, height: 22, borderRadius: 99, border: 'none', cursor: 'pointer',
-                      background: isActive ? '#F5A800' : '#E0E0E0',
-                      position: 'relative', transition: 'background 0.2s',
-                    }}
+                    style={{ width: 40, height: 22, borderRadius: 99, border: 'none', cursor: 'pointer', background: isActive ? '#F5A800' : '#E0E0E0', position: 'relative', transition: 'background 0.2s' }}
                   >
-                    <span style={{
-                      position: 'absolute', top: 2, left: isActive ? 20 : 2,
-                      width: 18, height: 18, borderRadius: '50%', background: '#fff',
-                      transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
-                    }} />
+                    <span style={{ position: 'absolute', top: 2, left: isActive ? 20 : 2, width: 18, height: 18, borderRadius: '50%', background: '#fff', transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }} />
                   </button>
                 </div>
 
@@ -301,21 +259,11 @@ export function AgentConfigDialog({ open, onOpenChange }: AgentConfigDialogProps
                   </div>
                   {scanTimes.length < MAX_TIMES && (
                     <div style={{ display: 'flex', gap: 8 }}>
-                      <input
-                        type="time"
-                        value={newTime}
-                        onChange={e => setNewTime(e.target.value)}
-                        style={{ ...inputStyle, width: 120 }}
-                      />
+                      <input type="time" value={newTime} onChange={e => setNewTime(e.target.value)} style={{ ...inputStyle, width: 120 }} />
                       <button
                         onClick={addTime}
                         disabled={!newTime}
-                        style={{
-                          padding: '8px 14px', borderRadius: 8, border: 'none',
-                          background: newTime ? '#F5A800' : '#E0E0E0',
-                          color: '#fff', fontSize: 12, fontWeight: 700, cursor: newTime ? 'pointer' : 'not-allowed',
-                          display: 'flex', alignItems: 'center', gap: 4,
-                        }}
+                        style={{ padding: '8px 14px', borderRadius: 8, border: 'none', background: newTime ? '#F5A800' : '#E0E0E0', color: '#fff', fontSize: 12, fontWeight: 700, cursor: newTime ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', gap: 4 }}
                       >
                         <Plus size={13} /> Adicionar
                       </button>
@@ -323,39 +271,54 @@ export function AgentConfigDialog({ open, onOpenChange }: AgentConfigDialogProps
                   )}
                 </div>
 
-                <p style={{ fontSize: 11, color: '#aaa' }}>
-                  Horários em BRT (Brasília). O cron usa UTC internamente.
-                </p>
+                <p style={{ fontSize: 11, color: '#aaa' }}>Horários em BRT (Brasília).</p>
               </div>
 
             ) : (
               /* ABA AJUDA */
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                <p style={{ fontSize: 13, fontWeight: 700, color: '#1A1A1A' }}>Como configurar o Gmail</p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                <p style={{ fontSize: 13, fontWeight: 700, color: '#1A1A1A', margin: 0 }}>Como configurar em 3 passos</p>
+
                 {[
-                  { n: 1, title: 'Ativar Gmail API', desc: 'Google Cloud Console → APIs e serviços → Biblioteca → "Gmail API" → Ativar.' },
-                  { n: 2, title: 'Criar OAuth 2.0', desc: 'Credenciais → + Criar credenciais → OAuth 2.0 → Tipo: Aplicativo Web. URI de redirecionamento: developers.google.com/oauthplayground' },
-                  { n: 3, title: 'Obter Refresh Token', desc: 'Acesse developers.google.com/oauthplayground → Engrenagem → "Use your own credentials". Escopo: gmail.readonly → Authorize → Exchange tokens → copiar Refresh Token.' },
-                  { n: 4, title: 'Configurar aqui', desc: 'Cole as credenciais na aba "Conta Gmail", teste a conexão e salve.' },
-                  { n: 5, title: 'Configurar Secrets', desc: 'No Supabase Dashboard → Edge Functions → Secrets, adicione ANTHROPIC_API_KEY e SUPABASE_SERVICE_ROLE_KEY.' },
+                  {
+                    n: 1,
+                    title: 'Ativar a Verificação em 2 Etapas',
+                    desc: 'Acesse myaccount.google.com → Segurança → Verificação em 2 etapas → Ativar. (Se já estiver ativa, pule.)',
+                  },
+                  {
+                    n: 2,
+                    title: 'Gerar uma Senha de App',
+                    desc: 'Em Segurança → Verificação em 2 etapas → role até "Senhas de app" → clique → selecione "Outro (nome personalizado)" → coloque "GD Manager" → clique Gerar. Copie os 16 caracteres amarelos.',
+                  },
+                  {
+                    n: 3,
+                    title: 'Configurar aqui',
+                    desc: 'Na aba "Conta Gmail", preencha o email e cole a senha de 16 letras (pode manter os espaços) → Testar conexão → Salvar.',
+                  },
                 ].map(step => (
-                  <div key={step.n} style={{ display: 'flex', gap: 10 }}>
-                    <span style={{ minWidth: 22, height: 22, borderRadius: '50%', background: '#F5A800', color: '#fff', fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{step.n}</span>
+                  <div key={step.n} style={{ display: 'flex', gap: 12 }}>
+                    <span style={{ minWidth: 24, height: 24, borderRadius: '50%', background: '#F5A800', color: '#fff', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{step.n}</span>
                     <div>
                       <p style={{ fontSize: 12, fontWeight: 700, color: '#1A1A1A', margin: 0 }}>{step.title}</p>
-                      <p style={{ fontSize: 11, color: '#666', margin: 0 }}>{step.desc}</p>
+                      <p style={{ fontSize: 11, color: '#666', margin: '3px 0 0' }}>{step.desc}</p>
                     </div>
                   </div>
                 ))}
 
-                <a
-                  href="https://developers.google.com/oauthplayground"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{ fontSize: 12, color: '#378ADD', display: 'inline-flex', alignItems: 'center', gap: 4, textDecoration: 'none', marginTop: 4 }}
-                >
-                  <ExternalLink size={12} /> Abrir OAuth Playground →
-                </a>
+                <div style={{ marginTop: 4, padding: '10px 14px', borderRadius: 8, background: '#F5F5F5', border: '1px solid #E0E0E0' }}>
+                  <p style={{ margin: 0, fontSize: 11, color: '#666' }}>
+                    ⚠️ <strong>IMAP precisa estar habilitado no Gmail:</strong> Gmail → Configurações (⚙️) → Ver todas as configurações → Encaminhamento e POP/IMAP → Habilitar IMAP → Salvar.
+                  </p>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: '#378ADD', display: 'inline-flex', alignItems: 'center', gap: 4, textDecoration: 'none' }}>
+                    <ExternalLink size={12} /> Abrir Senhas de App →
+                  </a>
+                  <a href="https://mail.google.com/mail/u/0/#settings/fwdandpop" target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: '#378ADD', display: 'inline-flex', alignItems: 'center', gap: 4, textDecoration: 'none' }}>
+                    <ExternalLink size={12} /> Configurações de IMAP no Gmail →
+                  </a>
+                </div>
               </div>
             )}
           </div>
@@ -407,14 +370,8 @@ function FieldGroup({ label, hint, children }: { label: string; hint?: string; c
   );
 }
 
-function PasswordField({
-  value, onChange, show, onToggle, placeholder,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  show: boolean;
-  onToggle: () => void;
-  placeholder?: string;
+function PasswordField({ value, onChange, show, onToggle, placeholder }: {
+  value: string; onChange: (v: string) => void; show: boolean; onToggle: () => void; placeholder?: string;
 }) {
   return (
     <div style={{ position: 'relative' }}>
