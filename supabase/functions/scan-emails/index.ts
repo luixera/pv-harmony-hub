@@ -134,12 +134,9 @@ Deno.serve(async (req) => {
     const counts              = { approved: 0, rejected: 0, pending: 0, inspection: 0 }
     let globalAttachmentCount = 0
     const MAX_SCAN_ATTACHMENTS = 15
-    const MAX_EMAILS_PER_CONC  = 5
-    const MAX_NEW_EMAILS_TOTAL = 10 // cap duro — evita timeout por volume
 
     // Set de messageIds já processados nesta sessão (evita duplicata entre as duas buscas)
     const processedIds = new Set<string>()
-    let newEmailsThisScan = 0
 
     const lock = await client.getMailboxLock('INBOX')
     const since = new Date()
@@ -151,8 +148,6 @@ Deno.serve(async (req) => {
       // ════════════════════════════════════════════════════════════════════
 
       for (const proj of protocols) {
-        if (newEmailsThisScan >= MAX_NEW_EMAILS_TOTAL) break
-
         let uids: number[] = []
         try {
           uids = (await client.search({ since, subject: proj.protocol }, { uid: true })) as number[]
@@ -192,7 +187,6 @@ Deno.serve(async (req) => {
         // Passo 2: baixa source apenas para emails novos
         const newUids = needsSource.map(n => n.uid)
         for await (const msg of client.fetch(newUids, { uid: true, envelope: true, source: true }, { uid: true })) {
-          if (newEmailsThisScan >= MAX_NEW_EMAILS_TOTAL) break
           const messageId = (msg.envelope?.messageId || `imap-uid-${msg.uid}`).trim()
 
           let parsed: any
@@ -225,7 +219,6 @@ Deno.serve(async (req) => {
 
           if (!savedUpdate) continue
           totalFound++
-          newEmailsThisScan++
 
           const { processed, bestConf, bestClass, bestSummary } =
             await processAttachments(supabase, email.attachments, savedUpdate.id, msg.uid, proj.protocol, globalAttachmentCount, MAX_SCAN_ATTACHMENTS)
@@ -244,8 +237,6 @@ Deno.serve(async (req) => {
       // ════════════════════════════════════════════════════════════════════
 
       for (const conc of concessionaires) {
-        if (newEmailsThisScan >= MAX_NEW_EMAILS_TOTAL) break
-
         const fromTerm = `@${conc.name.toLowerCase().split(' ')[0]}`
 
         let uids: number[] = []
@@ -254,15 +245,13 @@ Deno.serve(async (req) => {
         } catch { continue }
         if (!uids || uids.length === 0) continue
 
-        if (uids.length > MAX_EMAILS_PER_CONC) uids = uids.slice(-MAX_EMAILS_PER_CONC)
-
-        // Passo 1: só envelope — filtra já processados e já existentes no banco
-        const needsSource: Array<{ uid: number; messageId: string }> = []
+        // Passo 1: só envelope — filtra emails que já têm projeto vinculado
+        const needsSource: Array<{ uid: number; messageId: string; existingId: string | null }> = []
         for await (const msg of client.fetch(uids, { uid: true, envelope: true }, { uid: true })) {
           const messageId = (msg.envelope?.messageId || `imap-uid-${msg.uid}`).trim()
 
           if (processedIds.has(messageId)) {
-            // Já estava na Fase 1 — garante concessionária preenchida
+            // Veio da Fase 1 (tem protocolo vinculado) — só atualiza concessionária
             await supabase.from('email_updates')
               .update({ concessionaire_id: conc.id, concessionaire_name: conc.name, match_type: 'both' })
               .eq('gmail_message_id', messageId)
@@ -270,9 +259,10 @@ Deno.serve(async (req) => {
           }
 
           const { data: existing } = await supabase
-            .from('email_updates').select('id, match_type').eq('gmail_message_id', messageId).maybeSingle()
+            .from('email_updates').select('id, match_type, project_id').eq('gmail_message_id', messageId).maybeSingle()
 
-          if (existing) {
+          if (existing && existing.project_id) {
+            // Já existe com projeto vinculado — só atualiza concessionária
             processedIds.add(messageId)
             await supabase.from('email_updates')
               .update({
@@ -284,17 +274,18 @@ Deno.serve(async (req) => {
             continue
           }
 
+          // Sem projeto vinculado (ou nunca visto) → reprocessa para tentar vincular
           processedIds.add(messageId)
-          needsSource.push({ uid: msg.uid, messageId })
+          needsSource.push({ uid: msg.uid, messageId, existingId: existing?.id || null })
         }
 
         if (needsSource.length === 0) continue
 
-        // Passo 2: baixa source apenas para emails novos
+        // Passo 2: baixa source apenas para emails sem projeto vinculado
         const newUids = needsSource.map(n => n.uid)
         for await (const msg of client.fetch(newUids, { uid: true, envelope: true, source: true }, { uid: true })) {
-          if (newEmailsThisScan >= MAX_NEW_EMAILS_TOTAL) break
           const messageId = (msg.envelope?.messageId || `imap-uid-${msg.uid}`).trim()
+          const existingEntry = needsSource.find(n => n.messageId === messageId)
 
           let parsed: any
           try { parsed = await simpleParser(msg.source as any) } catch { continue }
@@ -316,8 +307,7 @@ Deno.serve(async (req) => {
             ? await analyzeEmailBody(email.bodyText, matchedProj.protocol, email.subject)
             : null
 
-          const { data: savedUpdate } = await supabase.from('email_updates').insert({
-            gmail_message_id:    messageId,
+          const emailPayload = {
             subject:             email.subject,
             sender:              email.sender,
             received_at:         email.receivedAt,
@@ -327,19 +317,33 @@ Deno.serve(async (req) => {
             concessionaire_id:   conc.id,
             concessionaire_name: conc.name,
             protocol_matched:    !!matchedProj,
-            match_type:          'concessionaire',
+            match_type:          matchedProj ? 'both' : 'concessionaire',
             ai_summary:          bodyAnalysis?.summary          || null,
             ai_classification:   bodyAnalysis?.classification   || 'unknown',
             ai_suggested_status: bodyAnalysis?.suggestedStatus  || null,
             ai_confidence:       bodyAnalysis?.confidence       || 0,
             ai_reasoning:        bodyAnalysis?.reasoning        || null,
             status:              'pending',
-            scan_run_id:         scanRun.id,
-          }).select().single()
+          }
 
-          if (!savedUpdate) continue
-          totalFound++
-          newEmailsThisScan++
+          let savedUpdate: any
+          if (existingEntry?.existingId) {
+            // Já existe sem projeto → atualiza com as novas informações
+            const { data } = await supabase.from('email_updates')
+              .update(emailPayload)
+              .eq('id', existingEntry.existingId)
+              .select().single()
+            savedUpdate = data
+          } else {
+            // Email novo → insere
+            const { data } = await supabase.from('email_updates').insert({
+              gmail_message_id: messageId,
+              scan_run_id:      scanRun.id,
+              ...emailPayload,
+            }).select().single()
+            savedUpdate = data
+            if (savedUpdate) totalFound++
+          }
 
           // Processa PDF/imagem apenas quando há protocolo vinculado
           if (matchedProj && email.attachments.length > 0 && bodyAnalysis) {
