@@ -186,89 +186,42 @@ Deno.serve(async (req) => {
     console.log(`Etapa 1 concluída: ${collected} emails novos coletados`)
 
     // ════════════════════════════════════════════════════════════════════
-    // ETAPA 2 — Processamento: matching de protocolo + IA
+    // ETAPA 2 — Matching via SQL + IA apenas nos emails vinculados
     // ════════════════════════════════════════════════════════════════════
 
-    // Carrega TODOS os emails sem protocolo vinculado (inclui os históricos)
-    const { data: unmatched } = await supabase
-      .from('email_updates')
-      .select('id, subject, email_body, sender, attachments_count')
-      .is('protocol_number', null)
-      .order('received_at', { ascending: false })
+    // Matching roda inteiramente no Postgres — sem loop JS, sem risco de timeout
+    const { data: matchedRows, error: matchErr } = await supabase.rpc('match_emails_to_protocols')
+    if (matchErr) console.error('Erro no matching SQL:', matchErr.message)
 
-    // Carrega projetos com protocolo cadastrado
-    const { data: rawProjects } = await supabase
-      .from('projects')
-      .select('id, code, protocol_number, status, concessionaire_id')
-      .not('protocol_number', 'is', null)
-      .not('status', 'in', '("completed","finalizado")')
-      .eq('is_deleted', false)
-
-    const protocols: ProjectItem[] = (rawProjects || [])
-      .filter(p => p.protocol_number && !p.protocol_number.toLowerCase().includes('sem protocolo'))
-      .map(p => ({
-        projectId:        p.id,
-        code:             p.code,
-        protocol:         p.protocol_number!,
-        status:           p.status,
-        concessionaireId: p.concessionaire_id || null,
-      }))
-
-    // Mapa rápido concessionaireId → name
-    const { data: rawConc2 } = await supabase.from('energy_concessionaires').select('id, name')
-    const concMap = new Map((rawConc2 || []).map(c => [c.id, c.name]))
-
-    let processed        = 0
+    let processed        = matchedRows?.length ?? 0
     let matched          = 0
     let totalAttachments = 0
     const counts         = { approved: 0, rejected: 0, pending: 0, inspection: 0 }
 
-    for (const emailRow of (unmatched || [])) {
-      if (isOverBudget()) { console.log('Budget atingido no processamento'); break }
-      if (protocols.length === 0) break
+    // Classificação IA apenas para emails recém-vinculados
+    for (const row of (matchedRows || [])) {
+      if (isOverBudget()) { console.log('Budget atingido na classificacao IA'); break }
 
-      const fullText = `${emailRow.subject || ''} ${emailRow.email_body || ''}`.toLowerCase()
-
-      // Busca protocolo no texto
-      let matchedProj: ProjectItem | null = null
-      for (const proj of protocols) {
-        if (fullText.includes(proj.protocol.toLowerCase())) {
-          matchedProj = proj
-          break
-        }
-      }
-
-      processed++
-      if (!matchedProj) continue // sem match — deixa como está
-
-      // Match encontrado → chama IA
-      matched++
-      const concName = matchedProj.concessionaireId ? (concMap.get(matchedProj.concessionaireId) || null) : null
       const bodyAnalysis = await analyzeEmailBody(
-        emailRow.email_body || '',
-        matchedProj.protocol,
-        emailRow.subject || ''
+        row.email_body || '',
+        row.protocol_number,
+        row.subject || ''
       )
 
       await supabase.from('email_updates').update({
-        project_id:          matchedProj.projectId,
-        protocol_number:     matchedProj.protocol,
-        concessionaire_id:   matchedProj.concessionaireId,
-        concessionaire_name: concName,
-        protocol_matched:    true,
-        match_type:          'both',
         ai_summary:          bodyAnalysis.summary,
         ai_classification:   bodyAnalysis.classification,
         ai_suggested_status: bodyAnalysis.suggestedStatus,
         ai_confidence:       bodyAnalysis.confidence,
         ai_reasoning:        bodyAnalysis.reasoning,
-      }).eq('id', emailRow.id)
+      }).eq('id', row.email_update_id)
 
+      matched++
       const cl = bodyAnalysis.classification as keyof typeof counts
       if (cl in counts) counts[cl]++
     }
 
-    console.log(`Etapa 2 concluída: ${processed} verificados, ${matched} com protocolo vinculado`)
+    console.log(`Etapa 2: ${processed} vinculados pelo SQL, ${matched} classificados pela IA`)
 
     // 5. Finalizar scan run
     const scanStatus = isOverBudget() ? 'timeout' : 'completed'
