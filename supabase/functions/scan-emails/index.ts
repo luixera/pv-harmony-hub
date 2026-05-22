@@ -22,13 +22,12 @@ interface ConcessionaireItem {
   name: string
 }
 
-interface ParsedEmail {
-  messageId: string
-  subject: string
-  sender: string
-  receivedAt: string
-  bodyText: string
-  attachments: any[]
+interface EmailAnalysis {
+  summary: string
+  classification: string
+  suggestedStatus: string | null
+  confidence: number
+  reasoning: string
 }
 
 interface AttachmentAnalysis {
@@ -36,14 +35,6 @@ interface AttachmentAnalysis {
   classification: string
   confidence: number
   extractedText?: string
-}
-
-interface EmailAnalysis {
-  summary: string
-  classification: string
-  suggestedStatus: string | null
-  confidence: number
-  reasoning: string
 }
 
 // ── ENTRADA ───────────────────────────────────────────────────────────────────
@@ -80,7 +71,7 @@ Deno.serve(async (req) => {
       )
     }
 
-    // 2. Limpar varreduras travadas (>2 min sem finalizar — budget é 90s)
+    // 2. Limpar varreduras travadas (>2 min — budget de execução é 90s)
     const twoMinAgo = new Date(Date.now() - 2 * 60 * 1000).toISOString()
     await supabase.from('email_scan_runs')
       .update({ status: 'error', error_message: 'Timeout — worker limit excedido', finished_at: new Date().toISOString() })
@@ -95,11 +86,117 @@ Deno.serve(async (req) => {
       .single()
     if (!scanRun) throw new Error('Falha ao criar scan run')
 
-    const SCAN_START = Date.now()
-    const SCAN_BUDGET_MS = 90_000 // 90s — deixa margem antes do limite do worker
-    const isOverBudget = () => Date.now() - SCAN_START > SCAN_BUDGET_MS
+    const SCAN_START    = Date.now()
+    const SCAN_BUDGET_MS = 85_000
+    const isOverBudget  = () => Date.now() - SCAN_START > SCAN_BUDGET_MS
 
-    // 3. Carregar projetos com protocolo
+    // 4. Carregar concessionárias ativas
+    const { data: rawConc } = await supabase
+      .from('energy_concessionaires')
+      .select('id, name')
+      .eq('is_active', true)
+
+    const concessionaires: ConcessionaireItem[] = (rawConc || []).map(c => ({ id: c.id, name: c.name }))
+    if (concessionaires.length === 0) {
+      await finalizeScan(supabase, scanRun.id, 'completed', 0, 0, 0, {})
+      return new Response(JSON.stringify({ ok: true, collected: 0, processed: 0 }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    }
+
+    // ════════════════════════════════════════════════════════════════════
+    // ETAPA 1 — Coleta via IMAP (remetente + corpo, sem IA)
+    // ════════════════════════════════════════════════════════════════════
+
+    const client = new ImapFlow({
+      host: 'imap.gmail.com', port: 993, secure: true,
+      auth: { user: EMAIL, pass: APP_PASSWORD.replace(/\s+/g, '') },
+      logger: false,
+    })
+    await client.connect()
+
+    let collected = 0
+    const since   = new Date()
+    since.setDate(since.getDate() - 3) // janela de 3 dias
+
+    const lock = await client.getMailboxLock('INBOX')
+    try {
+      for (const conc of concessionaires) {
+        if (isOverBudget()) { console.log('Budget atingido na coleta'); break }
+
+        // Termo de busca: primeiro segmento do nome da concessionária como domínio
+        const fromTerm = conc.name.toLowerCase().split(' ')[0]
+
+        let uids: number[] = []
+        try {
+          uids = (await client.search({ since, from: fromTerm }, { uid: true })) as number[]
+        } catch { continue }
+        if (!uids || uids.length === 0) continue
+
+        // Passo 1: envelopes para filtrar duplicatas sem baixar body
+        const needsSource: Array<{ uid: number; messageId: string }> = []
+        for await (const msg of client.fetch(uids, { uid: true, envelope: true }, { uid: true })) {
+          const messageId = (msg.envelope?.messageId || `imap-uid-${msg.uid}`).trim()
+
+          const { data: existing } = await supabase
+            .from('email_updates')
+            .select('id')
+            .eq('gmail_message_id', messageId)
+            .maybeSingle()
+
+          if (existing) continue // já está no banco
+          needsSource.push({ uid: msg.uid, messageId })
+        }
+
+        if (needsSource.length === 0) continue
+
+        // Passo 2: baixa source (body) apenas para emails novos
+        const newUids = needsSource.map(n => n.uid)
+        for await (const msg of client.fetch(newUids, { uid: true, envelope: true, source: true }, { uid: true })) {
+          if (isOverBudget()) { console.log('Budget atingido no download de bodies'); break }
+
+          const messageId = (msg.envelope?.messageId || `imap-uid-${msg.uid}`).trim()
+          let parsed: any
+          try { parsed = await simpleParser(msg.source as any) } catch { continue }
+
+          const email = extractParsed(parsed, msg.uid)
+
+          // Salva metadados + corpo — sem protocolo, sem IA
+          await supabase.from('email_updates').insert({
+            gmail_message_id:    messageId,
+            subject:             email.subject,
+            sender:              email.sender,
+            received_at:         email.receivedAt,
+            email_body:          email.bodyText,
+            concessionaire_id:   conc.id,
+            concessionaire_name: conc.name,
+            protocol_matched:    false,
+            match_type:          'concessionaire',
+            ai_classification:   'unknown',
+            ai_confidence:       0,
+            status:              'pending',
+            scan_run_id:         scanRun.id,
+          })
+          collected++
+        }
+      }
+    } finally {
+      lock.release()
+      await client.logout()
+    }
+
+    console.log(`Etapa 1 concluída: ${collected} emails novos coletados`)
+
+    // ════════════════════════════════════════════════════════════════════
+    // ETAPA 2 — Processamento: matching de protocolo + IA
+    // ════════════════════════════════════════════════════════════════════
+
+    // Carrega TODOS os emails sem protocolo vinculado (inclui os históricos)
+    const { data: unmatched } = await supabase
+      .from('email_updates')
+      .select('id, subject, email_body, sender, attachments_count')
+      .is('protocol_number', null)
+      .order('received_at', { ascending: false })
+
+    // Carrega projetos com protocolo cadastrado
     const { data: rawProjects } = await supabase
       .from('projects')
       .select('id, code, protocol_number, status, concessionaire_id')
@@ -117,307 +214,74 @@ Deno.serve(async (req) => {
         concessionaireId: p.concessionaire_id || null,
       }))
 
-    // 4. Carregar concessionárias ativas
-    const { data: rawConc } = await supabase
-      .from('energy_concessionaires')
-      .select('id, name')
-      .eq('is_active', true)
-
-    const concessionaires: ConcessionaireItem[] = (rawConc || [])
-      .map(c => ({ id: c.id, name: c.name }))
-
     // Mapa rápido concessionaireId → name
-    const concMap = new Map(concessionaires.map(c => [c.id, c.name]))
+    const { data: rawConc2 } = await supabase.from('energy_concessionaires').select('id, name')
+    const concMap = new Map((rawConc2 || []).map(c => [c.id, c.name]))
 
-    // 5. Conectar via IMAP
-    const client = new ImapFlow({
-      host:   'imap.gmail.com',
-      port:   993,
-      secure: true,
-      auth: { user: EMAIL, pass: APP_PASSWORD.replace(/\s+/g, '') },
-      logger: false,
-    })
-    await client.connect()
+    let processed        = 0
+    let matched          = 0
+    let totalAttachments = 0
+    const counts         = { approved: 0, rejected: 0, pending: 0, inspection: 0 }
 
-    // Contadores globais
-    let totalFound            = 0
-    let totalAttachments      = 0
-    const counts              = { approved: 0, rejected: 0, pending: 0, inspection: 0 }
-    let globalAttachmentCount = 0
-    const MAX_SCAN_ATTACHMENTS = 15
+    for (const emailRow of (unmatched || [])) {
+      if (isOverBudget()) { console.log('Budget atingido no processamento'); break }
+      if (protocols.length === 0) break
 
-    // Set de messageIds já processados nesta sessão (evita duplicata entre as duas buscas)
-    const processedIds = new Set<string>()
+      const fullText = `${emailRow.subject || ''} ${emailRow.email_body || ''}`.toLowerCase()
 
-    const lock = await client.getMailboxLock('INBOX')
-    const since = new Date()
-    since.setDate(since.getDate() - 2)
-
-    try {
-      // ════════════════════════════════════════════════════════════════════
-      // FASE 1 — Busca por número de protocolo (comportamento original)
-      // ════════════════════════════════════════════════════════════════════
-
+      // Busca protocolo no texto
+      let matchedProj: ProjectItem | null = null
       for (const proj of protocols) {
-        if (isOverBudget()) { console.log('Budget atingido na Fase 1'); break }
-
-        let uids: number[] = []
-        try {
-          uids = (await client.search({ since, subject: proj.protocol }, { uid: true })) as number[]
-        } catch { continue }
-        if (!uids || uids.length === 0) continue
-
-        // Passo 1: só envelope — filtra já processados sem baixar o corpo
-        const needsSource: Array<{ uid: number; messageId: string }> = []
-        for await (const msg of client.fetch(uids, { uid: true, envelope: true }, { uid: true })) {
-          const messageId = (msg.envelope?.messageId || `imap-uid-${msg.uid}`).trim()
-          if (processedIds.has(messageId)) continue
-
-          const { data: existing } = await supabase
-            .from('email_updates').select('id, match_type, project_id').eq('gmail_message_id', messageId).maybeSingle()
-
-          if (existing) {
-            processedIds.add(messageId)
-            if (!existing.project_id || existing.match_type === 'concessionaire') {
-              const concName = proj.concessionaireId ? (concMap.get(proj.concessionaireId) || null) : null
-              await supabase.from('email_updates').update({
-                project_id:          proj.projectId,
-                protocol_number:     proj.protocol,
-                concessionaire_id:   proj.concessionaireId,
-                concessionaire_name: concName,
-                protocol_matched:    true,
-                match_type:          existing.match_type === 'concessionaire' ? 'both' : 'protocol',
-              }).eq('id', existing.id)
-            }
-            continue
-          }
-          processedIds.add(messageId)
-          needsSource.push({ uid: msg.uid, messageId })
-        }
-
-        if (needsSource.length === 0) continue
-
-        // Passo 2: baixa source apenas para emails novos
-        const newUids = needsSource.map(n => n.uid)
-        for await (const msg of client.fetch(newUids, { uid: true, envelope: true, source: true }, { uid: true })) {
-          if (isOverBudget()) { console.log('Budget atingido no Passo 2 da Fase 1'); break }
-          const messageId = (msg.envelope?.messageId || `imap-uid-${msg.uid}`).trim()
-
-          let parsed: any
-          try { parsed = await simpleParser(msg.source as any) } catch { continue }
-
-          const email = extractParsed(parsed, msg.uid)
-          const concName = proj.concessionaireId ? (concMap.get(proj.concessionaireId) || null) : null
-          const bodyAnalysis = await analyzeEmailBody(email.bodyText, proj.protocol, email.subject)
-
-          const { data: savedUpdate } = await supabase.from('email_updates').insert({
-            gmail_message_id:    messageId,
-            subject:             email.subject,
-            sender:              email.sender,
-            received_at:         email.receivedAt,
-            email_body:          email.bodyText,
-            project_id:          proj.projectId,
-            protocol_number:     proj.protocol,
-            concessionaire_id:   proj.concessionaireId,
-            concessionaire_name: concName,
-            protocol_matched:    true,
-            match_type:          'protocol',
-            ai_summary:          bodyAnalysis.summary,
-            ai_classification:   bodyAnalysis.classification,
-            ai_suggested_status: bodyAnalysis.suggestedStatus,
-            ai_confidence:       bodyAnalysis.confidence,
-            ai_reasoning:        bodyAnalysis.reasoning,
-            status:              'pending',
-            scan_run_id:         scanRun.id,
-          }).select().single()
-
-          if (!savedUpdate) continue
-          totalFound++
-
-          const { processed, bestConf, bestClass, bestSummary } =
-            await processAttachments(supabase, email.attachments, savedUpdate.id, msg.uid, proj.protocol, globalAttachmentCount, MAX_SCAN_ATTACHMENTS)
-
-          globalAttachmentCount += processed
-          totalAttachments      += processed
-
-          await consolidateUpdate(supabase, savedUpdate.id, bodyAnalysis, bestConf, bestClass, bestSummary, email.attachments)
-          const cl = (bestConf >= 70 && bestClass ? bestClass : bodyAnalysis.classification) as keyof typeof counts
-          if (cl in counts) counts[cl]++
+        if (fullText.includes(proj.protocol.toLowerCase())) {
+          matchedProj = proj
+          break
         }
       }
 
-      // ════════════════════════════════════════════════════════════════════
-      // FASE 2 — Busca por remetente das concessionárias (com body + PDF)
-      // ════════════════════════════════════════════════════════════════════
+      processed++
+      if (!matchedProj) continue // sem match — deixa como está
 
-      for (const conc of concessionaires) {
-        if (isOverBudget()) { console.log('Budget atingido na Fase 2'); break }
+      // Match encontrado → chama IA
+      matched++
+      const concName = matchedProj.concessionaireId ? (concMap.get(matchedProj.concessionaireId) || null) : null
+      const bodyAnalysis = await analyzeEmailBody(
+        emailRow.email_body || '',
+        matchedProj.protocol,
+        emailRow.subject || ''
+      )
 
-        const fromTerm = `@${conc.name.toLowerCase().split(' ')[0]}`
+      await supabase.from('email_updates').update({
+        project_id:          matchedProj.projectId,
+        protocol_number:     matchedProj.protocol,
+        concessionaire_id:   matchedProj.concessionaireId,
+        concessionaire_name: concName,
+        protocol_matched:    true,
+        match_type:          'both',
+        ai_summary:          bodyAnalysis.summary,
+        ai_classification:   bodyAnalysis.classification,
+        ai_suggested_status: bodyAnalysis.suggestedStatus,
+        ai_confidence:       bodyAnalysis.confidence,
+        ai_reasoning:        bodyAnalysis.reasoning,
+      }).eq('id', emailRow.id)
 
-        let uids: number[] = []
-        try {
-          uids = (await client.search({ since, from: fromTerm }, { uid: true })) as number[]
-        } catch { continue }
-        if (!uids || uids.length === 0) continue
-
-        // Passo 1: só envelope — filtra emails que já têm protocolo vinculado
-        const needsSource: Array<{ uid: number; messageId: string; existingId: string | null }> = []
-        for await (const msg of client.fetch(uids, { uid: true, envelope: true }, { uid: true })) {
-          const messageId = (msg.envelope?.messageId || `imap-uid-${msg.uid}`).trim()
-
-          if (processedIds.has(messageId)) {
-            // Veio da Fase 1 (tem protocolo vinculado) — só atualiza concessionária
-            await supabase.from('email_updates')
-              .update({ concessionaire_id: conc.id, concessionaire_name: conc.name, match_type: 'both' })
-              .eq('gmail_message_id', messageId)
-            continue
-          }
-
-          const { data: existing } = await supabase
-            .from('email_updates').select('id, match_type, protocol_number').eq('gmail_message_id', messageId).maybeSingle()
-
-          if (existing && existing.protocol_number) {
-            // Já existe com protocolo vinculado — só atualiza concessionária
-            processedIds.add(messageId)
-            await supabase.from('email_updates')
-              .update({
-                concessionaire_id:   conc.id,
-                concessionaire_name: conc.name,
-                match_type: existing.match_type === 'protocol' ? 'both' : existing.match_type,
-              })
-              .eq('gmail_message_id', messageId)
-            continue
-          }
-
-          // Sem protocolo vinculado (ou nunca visto) → reprocessa para tentar vincular
-          processedIds.add(messageId)
-          needsSource.push({ uid: msg.uid, messageId, existingId: existing?.id || null })
-        }
-
-        if (needsSource.length === 0) continue
-
-        // Passo 2: baixa source apenas para emails sem projeto vinculado
-        const newUids = needsSource.map(n => n.uid)
-        for await (const msg of client.fetch(newUids, { uid: true, envelope: true, source: true }, { uid: true })) {
-          const messageId = (msg.envelope?.messageId || `imap-uid-${msg.uid}`).trim()
-          const existingEntry = needsSource.find(n => n.messageId === messageId)
-
-          let parsed: any
-          try { parsed = await simpleParser(msg.source as any) } catch { continue }
-
-          const email = extractParsed(parsed, msg.uid)
-
-          // Busca protocolo no ASSUNTO + CORPO (CEMIG coloca o número no texto do email)
-          const fullText = `${email.subject} ${email.bodyText}`.toLowerCase()
-          let matchedProj: ProjectItem | null = null
-          for (const proj of protocols) {
-            if (fullText.includes(proj.protocol.toLowerCase())) {
-              matchedProj = proj
-              break
-            }
-          }
-
-          // Se não achou no texto, tenta extrair dos anexos PDF
-          if (!matchedProj && email.attachments.length > 0 && !isOverBudget()) {
-            for (const att of email.attachments) {
-              if (att.contentType !== 'application/pdf' || !att.content) continue
-              const pdfText = extractTextFromPdf((att.content as any).toString('base64'))
-              if (!pdfText) continue
-              const pdfLower = pdfText.toLowerCase()
-              for (const proj of protocols) {
-                if (pdfLower.includes(proj.protocol.toLowerCase())) {
-                  matchedProj = proj
-                  break
-                }
-              }
-              if (matchedProj) break
-            }
-          }
-
-          // Só chama Claude se encontrou protocolo — evita timeout
-          const bodyAnalysis: EmailAnalysis | null = matchedProj
-            ? await analyzeEmailBody(email.bodyText, matchedProj.protocol, email.subject)
-            : null
-
-          const emailPayload = {
-            subject:             email.subject,
-            sender:              email.sender,
-            received_at:         email.receivedAt,
-            email_body:          email.bodyText || null,
-            project_id:          matchedProj?.projectId || null,
-            protocol_number:     matchedProj?.protocol  || null,
-            concessionaire_id:   conc.id,
-            concessionaire_name: conc.name,
-            protocol_matched:    !!matchedProj,
-            match_type:          matchedProj ? 'both' : 'concessionaire',
-            ai_summary:          bodyAnalysis?.summary          || null,
-            ai_classification:   bodyAnalysis?.classification   || 'unknown',
-            ai_suggested_status: bodyAnalysis?.suggestedStatus  || null,
-            ai_confidence:       bodyAnalysis?.confidence       || 0,
-            ai_reasoning:        bodyAnalysis?.reasoning        || null,
-            status:              'pending',
-          }
-
-          let savedUpdate: any
-          if (existingEntry?.existingId) {
-            // Já existe sem projeto → atualiza com as novas informações
-            const { data } = await supabase.from('email_updates')
-              .update(emailPayload)
-              .eq('id', existingEntry.existingId)
-              .select().single()
-            savedUpdate = data
-          } else {
-            // Email novo → insere
-            const { data } = await supabase.from('email_updates').insert({
-              gmail_message_id: messageId,
-              scan_run_id:      scanRun.id,
-              ...emailPayload,
-            }).select().single()
-            savedUpdate = data
-            if (savedUpdate) totalFound++
-          }
-
-          // Processa PDF/imagem apenas quando há protocolo vinculado
-          if (matchedProj && email.attachments.length > 0 && bodyAnalysis) {
-            const { processed, bestConf, bestClass, bestSummary } =
-              await processAttachments(supabase, email.attachments, savedUpdate.id, msg.uid, matchedProj.protocol, globalAttachmentCount, MAX_SCAN_ATTACHMENTS)
-            globalAttachmentCount += processed
-            totalAttachments      += processed
-            await consolidateUpdate(supabase, savedUpdate.id, bodyAnalysis, bestConf, bestClass, bestSummary, email.attachments)
-            const cl = (bestConf >= 70 && bestClass ? bestClass : bodyAnalysis.classification) as keyof typeof counts
-            if (cl in counts) counts[cl]++
-          }
-        }
-      }
-
-    } finally {
-      lock.release()
-      await client.logout()
+      const cl = bodyAnalysis.classification as keyof typeof counts
+      if (cl in counts) counts[cl]++
     }
 
-    // 6. Finalizar scan run
-    const scanStatus = isOverBudget() ? 'timeout' : 'completed'
-    await supabase.from('email_scan_runs').update({
-      finished_at:           new Date().toISOString(),
-      emails_analyzed:       protocols.length + concessionaires.length,
-      projects_found:        totalFound,
-      approved_count:        counts.approved,
-      rejected_count:        counts.rejected,
-      pending_count:         counts.pending,
-      inspection_count:      counts.inspection,
-      attachments_processed: totalAttachments,
-      status:                scanStatus,
-    }).eq('id', scanRun.id)
+    console.log(`Etapa 2 concluída: ${processed} verificados, ${matched} com protocolo vinculado`)
 
-    // 7. Notificações
-    if (totalFound > 0) {
+    // 5. Finalizar scan run
+    const scanStatus = isOverBudget() ? 'timeout' : 'completed'
+    await finalizeScan(supabase, scanRun.id, scanStatus, collected, matched, totalAttachments, counts)
+
+    // 6. Notificação se encontrou novos matches
+    if (matched > 0) {
       const { data: staff } = await supabase.from('profiles').select('id').in('role', ['admin', 'staff'])
       for (const member of staff || []) {
         await supabase.from('notifications').insert({
           user_id:    member.id,
           title:      '📧 Claudinho dos Emails — varredura concluída',
-          message:    `${totalFound} atualização(ões) encontrada(s): ${counts.approved} aprovação(ões), ${counts.rejected} reprovação(ões), ${counts.pending} pendência(s). ${totalAttachments} anexo(s) analisado(s).`,
+          message:    `${matched} protocolo(s) vinculado(s): ${counts.approved} aprovação(ões), ${counts.rejected} reprovação(ões), ${counts.pending} pendência(s).`,
           type:       'email_scan',
           project_id: null,
           read:       false,
@@ -426,7 +290,7 @@ Deno.serve(async (req) => {
     }
 
     return new Response(
-      JSON.stringify({ ok: true, found: totalFound, attachments: totalAttachments }),
+      JSON.stringify({ ok: true, collected, processed, matched }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
 
@@ -444,6 +308,24 @@ Deno.serve(async (req) => {
 
 // ── HELPERS ───────────────────────────────────────────────────────────────────
 
+async function finalizeScan(
+  supabase: any, id: string, status: string,
+  collected: number, matched: number, attachments: number,
+  counts: Record<string, number>
+) {
+  await supabase.from('email_scan_runs').update({
+    finished_at:           new Date().toISOString(),
+    emails_analyzed:       collected,
+    projects_found:        matched,
+    approved_count:        counts.approved  || 0,
+    rejected_count:        counts.rejected  || 0,
+    pending_count:         counts.pending   || 0,
+    inspection_count:      counts.inspection || 0,
+    attachments_processed: attachments,
+    status,
+  }).eq('id', id)
+}
+
 function stripHtml(html: string): string {
   return html
     .replace(/<style[\s\S]*?<\/style>/gi, ' ')
@@ -454,105 +336,24 @@ function stripHtml(html: string): string {
     .replace(/\s+/g, ' ').trim()
 }
 
-function extractParsed(parsed: any, uid: number): { messageId: string; subject: string; sender: string; receivedAt: string; bodyText: string; attachments: any[] } {
-  // Muitas concessionárias enviam emails HTML-only — fallback para parsed.html com strip de tags
+function extractParsed(parsed: any, uid: number) {
   let bodyText = (parsed.text || '').replace(/\s+/g, ' ').trim()
-  if (!bodyText && parsed.html) {
-    bodyText = stripHtml(parsed.html)
-  }
+  if (!bodyText && parsed.html) bodyText = stripHtml(parsed.html)
   return {
     messageId:   `imap-uid-${uid}`,
     subject:     parsed.subject    || '(sem assunto)',
     sender:      parsed.from?.text || 'desconhecido',
     receivedAt:  parsed.date?.toISOString() || new Date().toISOString(),
-    bodyText:    bodyText.substring(0, 3000),
-    attachments: (parsed.attachments || []).filter((a: any) =>
-      a.contentType === 'application/pdf' || a.contentType?.startsWith('image/')
-    ).slice(0, 5),
+    bodyText:    bodyText.substring(0, 5000),
   }
-}
-
-async function processAttachments(
-  supabase: any,
-  attachments: any[],
-  updateId: string,
-  uid: number,
-  protocol: string,
-  globalCount: number,
-  maxCount: number
-): Promise<{ processed: number; bestConf: number; bestClass: string | null; bestSummary: string }> {
-  let processed = 0, bestConf = 0
-  let bestClass: string | null = null, bestSummary = ''
-
-  for (const att of attachments) {
-    if (globalCount + processed >= maxCount) { console.warn('Limite de anexos atingido'); break }
-    try {
-      const base64   = (att.content as any).toString('base64')
-      const analysis = await analyzeAttachment(base64, att.contentType, att.filename || 'documento', protocol)
-      await supabase.from('email_attachments').insert({
-        email_update_id:     updateId,
-        filename:            att.filename || 'documento',
-        mime_type:           att.contentType,
-        size_bytes:          att.size || 0,
-        gmail_attachment_id: `imap-${uid}-${processed}`,
-        extracted_text:      analysis.extractedText || null,
-        ai_summary:          analysis.summary,
-        ai_classification:   analysis.classification,
-        ai_confidence:       analysis.confidence,
-        processing_status:   'processed',
-      })
-      if (analysis.confidence > bestConf && analysis.classification !== 'unknown') {
-        bestConf = analysis.confidence; bestClass = analysis.classification; bestSummary = analysis.summary
-      }
-      processed++
-    } catch (e: any) {
-      await supabase.from('email_attachments').insert({
-        email_update_id:     updateId,
-        filename:            att.filename || 'documento',
-        mime_type:           att.contentType,
-        size_bytes:          att.size || 0,
-        gmail_attachment_id: `imap-${uid}-${processed}`,
-        processing_status:   'failed',
-        processing_error:    e.message,
-      })
-    }
-  }
-  return { processed, bestConf, bestClass, bestSummary }
-}
-
-async function consolidateUpdate(
-  supabase: any,
-  updateId: string,
-  bodyAnalysis: EmailAnalysis,
-  bestConf: number,
-  bestClass: string | null,
-  bestSummary: string,
-  attachments: any[]
-) {
-  const usesAtt           = bestClass && bestConf >= 70
-  const finalClassification = usesAtt ? bestClass! : bodyAnalysis.classification
-  const finalSummary        = usesAtt
-    ? `[Email] ${bodyAnalysis.summary}\n\n[Anexo: ${attachments[0]?.filename || 'documento'}] ${bestSummary}`
-    : bodyAnalysis.summary
-
-  await supabase.from('email_updates').update({
-    attachments_count:         attachments.length,
-    attachments_processed:     attachments.length,
-    attachments_summary:       bestSummary || null,
-    attachment_classification: bestClass,
-    ai_classification:         finalClassification,
-    ai_summary:                finalSummary,
-    ai_suggested_status:       getSuggestedStatus(finalClassification),
-    ai_confidence:             usesAtt ? bestConf : bodyAnalysis.confidence,
-  }).eq('id', updateId)
 }
 
 // ── ANÁLISE CLAUDE ────────────────────────────────────────────────────────────
 
-async function analyzeEmailBody(body: string, context: string, subject: string): Promise<EmailAnalysis> {
+async function analyzeEmailBody(body: string, protocol: string, subject: string): Promise<EmailAnalysis> {
   const prompt = `Você é especialista em homologação fotovoltaica no Brasil.
 
-Analise o email referente a: "${context}".
+Analise o email referente ao protocolo: "${protocol}".
 
 ASSUNTO: ${subject}
 CORPO: ${body || '(corpo vazio)'}
@@ -579,8 +380,16 @@ Se confidence < 60 use unknown e null.`
   try {
     const res    = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': Deno.env.get('ANTHROPIC_API_KEY')!, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 500, messages: [{ role: 'user', content: prompt }] }),
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': Deno.env.get('ANTHROPIC_API_KEY')!,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 400,
+        messages: [{ role: 'user', content: prompt }],
+      }),
     })
     const data   = await res.json()
     const parsed = JSON.parse(data.content?.[0]?.text || '{}')
@@ -592,18 +401,8 @@ Se confidence < 60 use unknown e null.`
       reasoning:       parsed.reasoning       || '',
     }
   } catch {
-    return { summary: 'Não foi possível analisar o email.', classification: 'unknown', suggestedStatus: null, confidence: 0, reasoning: 'Erro.' }
+    return { summary: 'Não foi possível analisar.', classification: 'unknown', suggestedStatus: null, confidence: 0, reasoning: 'Erro.' }
   }
-}
-
-async function analyzeAttachment(base64Data: string, mimeType: string, filename: string, protocol: string): Promise<AttachmentAnalysis> {
-  const apiKey = Deno.env.get('ANTHROPIC_API_KEY')!
-  if (mimeType === 'application/pdf') {
-    const extracted = extractTextFromPdf(base64Data)
-    if (extracted.length >= 100) return await analyzePdfAsText(extracted, filename, protocol, apiKey)
-    return await analyzePdfWithVision(base64Data, filename, protocol, apiKey)
-  }
-  return await analyzeImageWithVision(base64Data, mimeType, filename, protocol, apiKey)
 }
 
 function extractTextFromPdf(b64: string): string {
@@ -624,33 +423,6 @@ function extractTextFromPdf(b64: string): string {
   } catch { return '' }
 }
 
-async function analyzePdfAsText(text: string, filename: string, protocol: string, apiKey: string): Promise<AttachmentAnalysis> {
-  try {
-    const res    = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' }, body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 400, messages: [{ role: 'user', content: `Analise o documento referente a "${protocol}".\nArquivo: ${filename}\n\nCONTEÚDO:\n${text}\n\nRetorne APENAS JSON: {"summary":"resumo 2-3 frases","classification":"approved|rejected|pending|inspection|informational|unknown","confidence":0-100}` }] }) })
-    const data   = await res.json()
-    const parsed = JSON.parse(data.content?.[0]?.text || '{}')
-    return { summary: parsed.summary || '', classification: parsed.classification || 'unknown', confidence: parsed.confidence || 0, extractedText: text.substring(0, 500) }
-  } catch { return { summary: 'Erro ao analisar PDF', classification: 'unknown', confidence: 0 } }
-}
-
-async function analyzePdfWithVision(b64: string, filename: string, protocol: string, apiKey: string): Promise<AttachmentAnalysis> {
-  try {
-    const res    = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-beta': 'pdfs-2024-09-25' }, body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 400, messages: [{ role: 'user', content: [{ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: b64 } }, { type: 'text', text: `Protocolo: "${protocol}"\nArquivo: ${filename}\n\nRetorne APENAS JSON: {"summary":"resumo","classification":"approved|rejected|pending|inspection|informational|unknown","confidence":0-100}` }] }] }) })
-    const data   = await res.json()
-    const parsed = JSON.parse((data.content?.[0]?.text || '{}').replace(/```json|```/g, '').trim())
-    return { summary: parsed.summary || '', classification: parsed.classification || 'unknown', confidence: parsed.confidence || 0 }
-  } catch { return { summary: 'PDF não interpretado', classification: 'unknown', confidence: 0 } }
-}
-
-async function analyzeImageWithVision(b64: string, mimeType: string, filename: string, protocol: string, apiKey: string): Promise<AttachmentAnalysis> {
-  try {
-    const res    = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' }, body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 400, messages: [{ role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type: mimeType, data: b64 } }, { type: 'text', text: `Imagem relacionada a "${protocol}" (${filename}).\nRetorne APENAS JSON: {"summary":"O que aparece","classification":"approved|rejected|pending|inspection|informational|unknown","confidence":0-100}\napproved: DEFERIDO, APROVADO\nrejected: INDEFERIDO, REPROVADO\nSe ilegível: unknown` }] }] }) })
-    const data   = await res.json()
-    const parsed = JSON.parse((data.content?.[0]?.text || '{}').replace(/```json|```/g, '').trim())
-    return { summary: parsed.summary || '', classification: parsed.classification || 'unknown', confidence: parsed.confidence || 0 }
-  } catch { return { summary: 'Imagem não interpretada', classification: 'unknown', confidence: 0 } }
-}
-
 function getSuggestedStatus(cl: string): string | null {
-  return ({ approved: 'approved', rejected: 'pendencia', pending: 'pendencia', inspection: 'vistoria_solicitada' } as Record<string,string>)[cl] || null
+  return ({ approved: 'approved', rejected: 'pendencia', pending: 'pendencia', inspection: 'vistoria_solicitada' } as Record<string, string>)[cl] || null
 }
