@@ -5,7 +5,7 @@ import {
   Mail, RefreshCw, Settings, ChevronDown, ChevronUp,
   Loader2, CheckCircle2, XCircle, Clock, AlertCircle,
   Info, HelpCircle, FileText, Image as ImageIcon,
-  AlertTriangle, CheckSquare, Inbox, Calendar,
+  AlertTriangle, CheckSquare, Inbox, Calendar, ExternalLink,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import {
@@ -71,26 +71,34 @@ const STATUS_LABELS: Record<string, string> = {
 
 // ── Contador regressivo ───────────────────────────────────────────────────────
 
-function getNextScanTime(): Date {
+function getNextScanTime(scanTimes: string[] = ['08:00', '17:00']): Date {
+  // Trabalha inteiramente em BRT (UTC-3) para evitar bug de virada de dia UTC
   const now = new Date();
-  const brtHour = (now.getUTCHours() - 3 + 24) % 24;
-  const next = new Date(now);
-  if (brtHour < 8) {
-    next.setUTCHours(11, 0, 0, 0);
-  } else if (brtHour < 17) {
-    next.setUTCHours(20, 0, 0, 0);
+  const brtNow = new Date(now.getTime() - 3 * 60 * 60 * 1000); // representa horário BRT nos campos UTC
+  const brtMinutes = brtNow.getUTCHours() * 60 + brtNow.getUTCMinutes();
+
+  const times = scanTimes
+    .map(t => { const [h, m] = t.split(':').map(Number); return h * 60 + m; })
+    .sort((a, b) => a - b);
+
+  const nextMin = times.find(t => t > brtMinutes);
+
+  const targetBRT = new Date(brtNow);
+  if (nextMin !== undefined) {
+    targetBRT.setUTCHours(Math.floor(nextMin / 60), nextMin % 60, 0, 0);
   } else {
-    next.setUTCDate(next.getUTCDate() + 1);
-    next.setUTCHours(11, 0, 0, 0);
+    targetBRT.setUTCDate(targetBRT.getUTCDate() + 1);
+    targetBRT.setUTCHours(Math.floor(times[0] / 60), times[0] % 60, 0, 0);
   }
-  return next;
+  // Converte de volta para UTC real
+  return new Date(targetBRT.getTime() + 3 * 60 * 60 * 1000);
 }
 
-function useCountdown() {
+function useCountdown(scanTimes?: string[]) {
   const [remaining, setRemaining] = useState('');
   useEffect(() => {
     const tick = () => {
-      const diff = getNextScanTime().getTime() - Date.now();
+      const diff = getNextScanTime(scanTimes).getTime() - Date.now();
       if (diff <= 0) { setRemaining('agora'); return; }
       const h = Math.floor(diff / 3600000);
       const m = Math.floor((diff % 3600000) / 60000);
@@ -100,7 +108,7 @@ function useCountdown() {
     tick();
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
-  }, []);
+  }, [scanTimes?.join(',')]);
   return remaining;
 }
 
@@ -122,6 +130,15 @@ function ClassBadge({ cl, size = 'sm' }: { cl: string; size?: 'xs' | 'sm' }) {
 }
 
 // ── Card de email ─────────────────────────────────────────────────────────────
+
+function gmailLink(update: EmailUpdate): string {
+  const id = update.gmail_message_id;
+  if (id && !id.startsWith('imap-uid-')) {
+    const clean = id.replace(/^<|>$/g, '');
+    return `https://mail.google.com/mail/u/0/#search/rfc822msgid%3A${encodeURIComponent(clean)}`;
+  }
+  return `https://mail.google.com/mail/u/0/#search/${encodeURIComponent(`subject:(${update.subject})`)}`;
+}
 
 function EmailCard({ update }: { update: EmailUpdate }) {
   const [expanded, setExpanded]       = useState(false);
@@ -372,8 +389,22 @@ function EmailCard({ update }: { update: EmailUpdate }) {
                 </div>
               )}
 
-              {/* 4. Email original */}
-              <div>
+              {/* 4. Ações do email */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <a
+                  href={gmailLink(update)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 5,
+                    padding: '5px 12px', borderRadius: 8,
+                    border: '1px solid #E0E0E0', background: '#fff',
+                    fontSize: 11, fontWeight: 700, color: '#555',
+                    textDecoration: 'none', cursor: 'pointer',
+                  }}
+                >
+                  <ExternalLink size={12} /> Abrir no Gmail
+                </a>
                 <button
                   onClick={() => setShowBody(v => !v)}
                   style={{
@@ -383,22 +414,22 @@ function EmailCard({ update }: { update: EmailUpdate }) {
                   }}
                 >
                   {showBody ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
-                  Email original
+                  Ver corpo do email
                 </button>
-                {showBody && (
-                  <div style={{ marginTop: 8, padding: '10px 12px', borderRadius: 8, background: '#F8F8F8', border: '1px solid #EEE' }}>
-                    <p style={{ fontSize: 11, color: '#888', margin: '0 0 2px' }}>
-                      <strong>De:</strong> {update.sender}
-                    </p>
-                    <p style={{ fontSize: 11, color: '#888', margin: '0 0 8px' }}>
-                      <strong>Recebido:</strong> {formatDateBR(update.received_at)}
-                    </p>
-                    <pre style={{ fontSize: 11, color: '#555', whiteSpace: 'pre-wrap', wordBreak: 'break-word', margin: 0, fontFamily: 'monospace', lineHeight: 1.5, maxHeight: 200, overflowY: 'auto' }}>
-                      {update.email_body || '(corpo vazio)'}
-                    </pre>
-                  </div>
-                )}
               </div>
+              {showBody && (
+                <div style={{ padding: '10px 12px', borderRadius: 8, background: '#F8F8F8', border: '1px solid #EEE' }}>
+                  <p style={{ fontSize: 11, color: '#888', margin: '0 0 2px' }}>
+                    <strong>De:</strong> {update.sender}
+                  </p>
+                  <p style={{ fontSize: 11, color: '#888', margin: '0 0 8px' }}>
+                    <strong>Recebido:</strong> {formatDateBR(update.received_at)}
+                  </p>
+                  <pre style={{ fontSize: 11, color: '#555', whiteSpace: 'pre-wrap', wordBreak: 'break-word', margin: 0, fontFamily: 'monospace', lineHeight: 1.5, maxHeight: 200, overflowY: 'auto' }}>
+                    {update.email_body || '(corpo vazio)'}
+                  </pre>
+                </div>
+              )}
 
             </div>
           </motion.div>
@@ -454,10 +485,13 @@ function Sidebar({ updates, scanRuns }: { updates: EmailUpdate[]; scanRuns: Scan
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <span style={{
                 width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
-                background: lastRun.status === 'completed' ? '#2D6A4F' : lastRun.status === 'running' ? '#F5A800' : '#E24B4A',
+                background: lastRun.status === 'completed' ? '#2D6A4F' : lastRun.status === 'running' ? '#F5A800' : lastRun.status === 'timeout' ? '#F5A800' : '#E24B4A',
               }} />
               <span style={{ fontSize: 12, color: '#fff', fontWeight: 600 }}>
-                {lastRun.status === 'completed' ? 'Concluída' : lastRun.status === 'running' ? 'Em execução' : 'Erro'}
+                {lastRun.status === 'completed' ? 'Concluída'
+                  : lastRun.status === 'running' ? 'Em execução'
+                  : lastRun.status === 'timeout' ? 'Timeout (parcial)'
+                  : 'Erro'}
               </span>
             </div>
             <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', margin: 0 }}>
@@ -546,11 +580,11 @@ export default function EmailUpdates() {
   const [filterCL,      setFilterCL]      = useState<FilterCL>('all');
   const [filterSource,  setFilterSource]  = useState<FilterSource>('all');
 
-  const countdown = useCountdown();
+  const { data: config                     } = useAgentConfig();
+  const countdown = useCountdown(config?.scan_times);
 
   const { data: allUpdates = [], isLoading } = useEmailUpdates();
   const { data: scanRuns   = []            } = useScanRuns();
-  const { data: config                     } = useAgentConfig();
   const triggerScan = useTriggerScan();
 
   // Stats calculados

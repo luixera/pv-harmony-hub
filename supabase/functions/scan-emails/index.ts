@@ -80,13 +80,24 @@ Deno.serve(async (req) => {
       )
     }
 
-    // 2. Iniciar scan run
+    // 2. Limpar varreduras travadas (>5 min sem finalizar)
+    const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString()
+    await supabase.from('email_scan_runs')
+      .update({ status: 'error', error_message: 'Timeout — worker limit excedido', finished_at: new Date().toISOString() })
+      .eq('status', 'running')
+      .lt('started_at', fiveMinAgo)
+
+    // 3. Iniciar scan run
     const { data: scanRun } = await supabase
       .from('email_scan_runs')
       .insert({ status: 'running' })
       .select()
       .single()
     if (!scanRun) throw new Error('Falha ao criar scan run')
+
+    const SCAN_START = Date.now()
+    const SCAN_BUDGET_MS = 90_000 // 90s — deixa margem antes do limite do worker
+    const isOverBudget = () => Date.now() - SCAN_START > SCAN_BUDGET_MS
 
     // 3. Carregar projetos com protocolo
     const { data: rawProjects } = await supabase
@@ -148,6 +159,8 @@ Deno.serve(async (req) => {
       // ════════════════════════════════════════════════════════════════════
 
       for (const proj of protocols) {
+        if (isOverBudget()) { console.log('Budget atingido na Fase 1'); break }
+
         let uids: number[] = []
         try {
           uids = (await client.search({ since, subject: proj.protocol }, { uid: true })) as number[]
@@ -187,6 +200,7 @@ Deno.serve(async (req) => {
         // Passo 2: baixa source apenas para emails novos
         const newUids = needsSource.map(n => n.uid)
         for await (const msg of client.fetch(newUids, { uid: true, envelope: true, source: true }, { uid: true })) {
+          if (isOverBudget()) { console.log('Budget atingido no Passo 2 da Fase 1'); break }
           const messageId = (msg.envelope?.messageId || `imap-uid-${msg.uid}`).trim()
 
           let parsed: any
@@ -237,6 +251,8 @@ Deno.serve(async (req) => {
       // ════════════════════════════════════════════════════════════════════
 
       for (const conc of concessionaires) {
+        if (isOverBudget()) { console.log('Budget atingido na Fase 2'); break }
+
         const fromTerm = `@${conc.name.toLowerCase().split(' ')[0]}`
 
         let uids: number[] = []
@@ -302,6 +318,23 @@ Deno.serve(async (req) => {
             }
           }
 
+          // Se não achou no texto, tenta extrair dos anexos PDF
+          if (!matchedProj && email.attachments.length > 0 && !isOverBudget()) {
+            for (const att of email.attachments) {
+              if (att.contentType !== 'application/pdf' || !att.content) continue
+              const pdfText = extractTextFromPdf((att.content as any).toString('base64'))
+              if (!pdfText) continue
+              const pdfLower = pdfText.toLowerCase()
+              for (const proj of protocols) {
+                if (pdfLower.includes(proj.protocol.toLowerCase())) {
+                  matchedProj = proj
+                  break
+                }
+              }
+              if (matchedProj) break
+            }
+          }
+
           // Só chama Claude se encontrou protocolo — evita timeout
           const bodyAnalysis: EmailAnalysis | null = matchedProj
             ? await analyzeEmailBody(email.bodyText, matchedProj.protocol, email.subject)
@@ -364,6 +397,7 @@ Deno.serve(async (req) => {
     }
 
     // 6. Finalizar scan run
+    const scanStatus = isOverBudget() ? 'timeout' : 'completed'
     await supabase.from('email_scan_runs').update({
       finished_at:           new Date().toISOString(),
       emails_analyzed:       protocols.length + concessionaires.length,
@@ -373,7 +407,7 @@ Deno.serve(async (req) => {
       pending_count:         counts.pending,
       inspection_count:      counts.inspection,
       attachments_processed: totalAttachments,
-      status:                'completed',
+      status:                scanStatus,
     }).eq('id', scanRun.id)
 
     // 7. Notificações
