@@ -72,26 +72,26 @@ const STATUS_LABELS: Record<string, string> = {
 // ── Contador regressivo ───────────────────────────────────────────────────────
 
 function getNextScanTime(scanTimes: string[] = ['08:00', '17:00']): Date {
-  // Trabalha inteiramente em BRT (UTC-3) para evitar bug de virada de dia UTC
   const now = new Date();
-  const brtNow = new Date(now.getTime() - 3 * 60 * 60 * 1000); // representa horário BRT nos campos UTC
-  const brtMinutes = brtNow.getUTCHours() * 60 + brtNow.getUTCMinutes();
+  // Usa Intl para ler hora BRT com precisão, independente do fuso do sistema
+  const brtStr = now.toLocaleTimeString('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
+    hour: '2-digit', minute: '2-digit', hour12: false,
+  });
+  const [brtH, brtM] = brtStr.split(':').map(Number);
+  const brtNowMin = (isNaN(brtH) ? 0 : brtH) * 60 + (isNaN(brtM) ? 0 : brtM);
 
-  const times = scanTimes
+  const times = (scanTimes && scanTimes.length > 0 ? scanTimes : ['08:00', '17:00'])
     .map(t => { const [h, m] = t.split(':').map(Number); return h * 60 + m; })
+    .filter(n => !isNaN(n))
     .sort((a, b) => a - b);
 
-  const nextMin = times.find(t => t > brtMinutes);
+  const nextMin = times.find(t => t > brtNowMin);
+  const diffMin = nextMin !== undefined
+    ? nextMin - brtNowMin
+    : (24 * 60 - brtNowMin) + times[0];
 
-  const targetBRT = new Date(brtNow);
-  if (nextMin !== undefined) {
-    targetBRT.setUTCHours(Math.floor(nextMin / 60), nextMin % 60, 0, 0);
-  } else {
-    targetBRT.setUTCDate(targetBRT.getUTCDate() + 1);
-    targetBRT.setUTCHours(Math.floor(times[0] / 60), times[0] % 60, 0, 0);
-  }
-  // Converte de volta para UTC real
-  return new Date(targetBRT.getTime() + 3 * 60 * 60 * 1000);
+  return new Date(now.getTime() + diffMin * 60 * 1000);
 }
 
 function useCountdown(scanTimes?: string[]) {

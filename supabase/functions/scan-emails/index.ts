@@ -80,12 +80,12 @@ Deno.serve(async (req) => {
       )
     }
 
-    // 2. Limpar varreduras travadas (>5 min sem finalizar)
-    const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString()
+    // 2. Limpar varreduras travadas (>2 min sem finalizar — budget é 90s)
+    const twoMinAgo = new Date(Date.now() - 2 * 60 * 1000).toISOString()
     await supabase.from('email_scan_runs')
       .update({ status: 'error', error_message: 'Timeout — worker limit excedido', finished_at: new Date().toISOString() })
       .eq('status', 'running')
-      .lt('started_at', fiveMinAgo)
+      .lt('started_at', twoMinAgo)
 
     // 3. Iniciar scan run
     const { data: scanRun } = await supabase
