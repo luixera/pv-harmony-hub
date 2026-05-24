@@ -177,7 +177,11 @@ function EmailCard({ update, onOpenProject }: { update: EmailUpdate; onOpenProje
     }}>
       {/* Header (sempre visível) */}
       <button
-        onClick={() => setExpanded(v => !v)}
+        onClick={(e) => {
+          // Não expandir se o clique veio de um badge clicável
+          if ((e.target as HTMLElement).closest('[data-no-expand]')) return;
+          setExpanded(v => !v);
+        }}
         style={{
           width: '100%', padding: '12px 16px', background: 'none', border: 'none',
           cursor: 'pointer', display: 'flex', alignItems: 'flex-start', gap: 12, textAlign: 'left',
@@ -209,10 +213,11 @@ function EmailCard({ update, onOpenProject }: { update: EmailUpdate; onOpenProje
             {/* Badge protocolo vinculado — clique abre o modal do projeto */}
             {isProtocolMatch && update.project_id && (
               <span
+                data-no-expand
                 role="button"
                 tabIndex={0}
-                onClick={(e) => { e.stopPropagation(); onOpenProject(update.project_id!); }}
-                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); onOpenProject(update.project_id!); } }}
+                onClick={() => onOpenProject(update.project_id!)}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onOpenProject(update.project_id!); }}
                 title="Ver projeto vinculado"
                 style={{
                   fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 5,
@@ -230,10 +235,11 @@ function EmailCard({ update, onOpenProject }: { update: EmailUpdate; onOpenProje
             )}
             {update.project && (
               <span
+                data-no-expand
                 role="button"
                 tabIndex={0}
-                onClick={(e) => { e.stopPropagation(); if (update.project_id) onOpenProject(update.project_id); }}
-                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); if (update.project_id) onOpenProject(update.project_id); } }}
+                onClick={() => { if (update.project_id) onOpenProject(update.project_id); }}
+                onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && update.project_id) onOpenProject(update.project_id); }}
                 title="Ver projeto"
                 style={{
                   fontSize: 12, fontWeight: 700, color: '#185FA5', background: '#E6F1FB',
