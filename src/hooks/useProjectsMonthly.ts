@@ -9,10 +9,11 @@ export interface MonthlyData {
   reprovados: number;
 }
 
-// Status reais da tabela kanban_columns
-// is_final = true → aprovados
-const APROVADOS_STATUS = ['vistoria_solicitada', 'completed'];
-// is_rejection_stage = true → reprovados
+// Status que representam projeto aprovado
+// approved = aprovado pela concessionária
+// vistoria_solicitada e completed = etapas finais
+const APROVADOS_STATUS = ['approved', 'vistoria_solicitada', 'completed'];
+// Status que representam reprovação / pendência
 const REPROVADOS_STATUS = ['pendencia'];
 
 const MONTH_NAMES = [
