@@ -175,20 +175,93 @@ function EmailCard({ update, onOpenProject }: { update: EmailUpdate; onOpenProje
       opacity: update.status === 'applied' || update.status === 'ignored' ? 0.65 : 1,
       transition: 'box-shadow 0.15s',
     }}>
-      {/* Header (sempre visível) */}
+      {/* ── Linha de badges (fora do toggle — zero conflito de evento) ── */}
+      <div style={{ padding: '10px 16px 0', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
+        {update.concessionaire_name && (
+          <span style={{
+            fontSize: 10, fontWeight: 800, padding: '2px 7px', borderRadius: 5,
+            background: isProtocolMatch ? '#FEF3D0' : '#F0F0F0',
+            color: isProtocolMatch ? '#854F0B' : '#555',
+            letterSpacing: '0.03em',
+          }}>
+            {update.concessionaire_name}
+          </span>
+        )}
+
+        {/* Badge "Protocolo vinculado" — clicável, abre modal do projeto */}
+        {isProtocolMatch && update.project_id && (
+          <button
+            type="button"
+            onClick={() => onOpenProject(update.project_id!)}
+            title="Ver projeto vinculado"
+            style={{
+              fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 5,
+              background: '#FEF3D0', color: '#854F0B',
+              border: '1px solid #F5D580',
+              display: 'inline-flex', alignItems: 'center', gap: 3,
+              cursor: 'pointer', transition: 'background 0.15s, box-shadow 0.15s',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = '#FAE5A0'; e.currentTarget.style.boxShadow = '0 2px 8px rgba(245,168,0,0.25)'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = '#FEF3D0'; e.currentTarget.style.boxShadow = 'none'; }}
+          >
+            🔗 Protocolo vinculado
+          </button>
+        )}
+
+        {/* Código do projeto — também clicável */}
+        {update.project && update.project_id && (
+          <button
+            type="button"
+            onClick={() => onOpenProject(update.project_id!)}
+            title="Ver projeto"
+            style={{
+              fontSize: 12, fontWeight: 700, color: '#185FA5', background: '#E6F1FB',
+              padding: '2px 7px', borderRadius: 5, border: '1px solid #B8D4F0',
+              cursor: 'pointer', transition: 'background 0.15s',
+              display: 'inline-flex', alignItems: 'center',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = '#C8E0F8'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = '#E6F1FB'; }}
+          >
+            {update.project.code}
+          </button>
+        )}
+
+        {update.protocol_number && (
+          <span style={{ fontSize: 11, color: '#888' }}>#{update.protocol_number}</span>
+        )}
+        <span style={{ fontSize: 11, color: '#aaa' }}>{domain}</span>
+        <ClassBadge cl={cl} size="xs" />
+        {update.attachments_count > 0 && (
+          <span style={{ fontSize: 11, color: '#888', display: 'flex', alignItems: 'center', gap: 3 }}>
+            📎 {update.attachments_count}
+          </span>
+        )}
+        {update.status !== 'pending' && (
+          <span style={{
+            fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 99,
+            background: update.status === 'applied' ? '#E1F5EE' : '#F5F5F5',
+            color: update.status === 'applied' ? '#0F6E56' : '#888',
+          }}>
+            {update.status === 'applied' ? '✓ aplicado' : update.status === 'ignored' ? 'ignorado' : update.status}
+          </span>
+        )}
+      </div>
+
+      {/* ── Área de toggle (assunto + data + chevron) ── */}
       <div
         role="button"
         tabIndex={0}
         onClick={() => setExpanded(v => !v)}
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setExpanded(v => !v); }}
         style={{
-          width: '100%', padding: '12px 16px', background: 'none',
-          cursor: 'pointer', display: 'flex', alignItems: 'flex-start', gap: 12,
+          width: '100%', padding: '6px 16px 12px', background: 'none',
+          cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 12,
         }}
       >
         {/* Ícone classificação */}
         <div style={{
-          width: 34, height: 34, borderRadius: 8, flexShrink: 0, marginTop: 2,
+          width: 34, height: 34, borderRadius: 8, flexShrink: 0,
           background: cfg.bg, display: 'flex', alignItems: 'center', justifyContent: 'center',
           color: cfg.color,
         }}>
@@ -196,82 +269,8 @@ function EmailCard({ update, onOpenProject }: { update: EmailUpdate; onOpenProje
         </div>
 
         <div style={{ flex: 1, minWidth: 0 }}>
-          {/* Linha 1 */}
-          <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginBottom: 3 }}>
-            {/* Badge concessionária */}
-            {update.concessionaire_name && (
-              <span style={{
-                fontSize: 10, fontWeight: 800, padding: '2px 7px', borderRadius: 5,
-                background: isProtocolMatch ? '#FEF3D0' : '#F0F0F0',
-                color: isProtocolMatch ? '#854F0B' : '#555',
-                letterSpacing: '0.03em',
-              }}>
-                {update.concessionaire_name}
-              </span>
-            )}
-            {/* Badge protocolo vinculado — clique abre o modal do projeto */}
-            {isProtocolMatch && update.project_id && (
-              <span
-                role="button"
-                tabIndex={0}
-                onClick={(e) => { e.stopPropagation(); onOpenProject(update.project_id!); }}
-                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); onOpenProject(update.project_id!); } }}
-                title="Ver projeto vinculado"
-                style={{
-                  fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 5,
-                  background: '#FEF3D0', color: '#854F0B',
-                  border: '1px solid #F5D580',
-                  display: 'inline-flex', alignItems: 'center', gap: 3,
-                  cursor: 'pointer',
-                  transition: 'background 0.15s, box-shadow 0.15s',
-                }}
-                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = '#FAE5A0'; (e.currentTarget as HTMLElement).style.boxShadow = '0 2px 8px rgba(245,168,0,0.25)'; }}
-                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = '#FEF3D0'; (e.currentTarget as HTMLElement).style.boxShadow = 'none'; }}
-              >
-                🔗 Projeto vinculado
-              </span>
-            )}
-            {update.project && (
-              <span
-                role="button"
-                tabIndex={0}
-                onClick={(e) => { e.stopPropagation(); if (update.project_id) onOpenProject(update.project_id); }}
-                onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && update.project_id) { e.stopPropagation(); onOpenProject(update.project_id); } }}
-                title="Ver projeto"
-                style={{
-                  fontSize: 12, fontWeight: 700, color: '#185FA5', background: '#E6F1FB',
-                  padding: '2px 7px', borderRadius: 5, border: '1px solid #B8D4F0',
-                  cursor: 'pointer', transition: 'background 0.15s',
-                  display: 'inline-flex', alignItems: 'center',
-                }}
-                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = '#C8E0F8'; }}
-                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = '#E6F1FB'; }}
-              >
-                {update.project.code}
-              </span>
-            )}
-            {update.protocol_number && (
-              <span style={{ fontSize: 11, color: '#888' }}>#{update.protocol_number}</span>
-            )}
-            <span style={{ fontSize: 11, color: '#aaa' }}>{domain}</span>
-            <ClassBadge cl={cl} size="xs" />
-            {update.attachments_count > 0 && (
-              <span style={{ fontSize: 11, color: '#888', display: 'flex', alignItems: 'center', gap: 3 }}>
-                📎 {update.attachments_count}
-              </span>
-            )}
-            {update.status !== 'pending' && (
-              <span style={{
-                fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 99,
-                background: update.status === 'applied' ? '#E1F5EE' : '#F5F5F5',
-                color: update.status === 'applied' ? '#0F6E56' : '#888',
-              }}>
-                {update.status === 'applied' ? '✓ aplicado' : update.status === 'ignored' ? 'ignorado' : update.status}
-              </span>
-            )}
-          </div>
           {/* Assunto */}
-          <p style={{ fontSize: 13, fontWeight: 600, color: '#1A1A1A', margin: 0, lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' }}>
+          <p style={{ fontSize: 13, fontWeight: 600, color: '#1A1A1A', margin: 0, lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {update.subject}
           </p>
           {/* Data */}
@@ -281,7 +280,7 @@ function EmailCard({ update, onOpenProject }: { update: EmailUpdate; onOpenProje
         </div>
 
         {/* Chevron */}
-        <div style={{ color: '#ccc', flexShrink: 0, marginTop: 6 }}>
+        <div style={{ color: '#ccc', flexShrink: 0 }}>
           {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
         </div>
       </div>
