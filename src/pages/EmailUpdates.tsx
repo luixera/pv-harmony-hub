@@ -15,6 +15,7 @@ import {
 } from '@/hooks/useEmailUpdates';
 import { useAgentConfig } from '@/hooks/useAgentConfig';
 import { AgentConfigDialog } from '@/components/email/AgentConfigDialog';
+import { ProjectModal } from '@/components/projects/ProjectModal';
 import { cn } from '@/lib/utils';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -140,7 +141,7 @@ function gmailLink(update: EmailUpdate): string {
   return `https://mail.google.com/mail/u/0/#search/${encodeURIComponent(`subject:(${update.subject})`)}`;
 }
 
-function EmailCard({ update }: { update: EmailUpdate }) {
+function EmailCard({ update, onOpenProject }: { update: EmailUpdate; onOpenProject: (id: string) => void }) {
   const [expanded, setExpanded]       = useState(false);
   const [showBody, setShowBody]       = useState(false);
   const applySuggestion  = useApplySuggestion();
@@ -205,21 +206,39 @@ function EmailCard({ update }: { update: EmailUpdate }) {
                 {update.concessionaire_name}
               </span>
             )}
-            {/* Badge protocolo vinculado */}
-            {isProtocolMatch && (
-              <span style={{
-                fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 5,
-                background: '#FEF3D0', color: '#854F0B',
-                border: '1px solid #F5D580',
-                display: 'flex', alignItems: 'center', gap: 3,
-              }}>
-                🔗 Protocolo vinculado
-              </span>
+            {/* Badge protocolo vinculado — clique abre o modal do projeto */}
+            {isProtocolMatch && update.project_id && (
+              <button
+                onClick={(e) => { e.stopPropagation(); onOpenProject(update.project_id!); }}
+                title="Ver projeto vinculado"
+                style={{
+                  fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 5,
+                  background: '#FEF3D0', color: '#854F0B',
+                  border: '1px solid #F5D580',
+                  display: 'inline-flex', alignItems: 'center', gap: 3,
+                  cursor: 'pointer',
+                  transition: 'background 0.15s, box-shadow 0.15s',
+                }}
+                onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = '#FAE5A0'; (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 2px 8px rgba(245,168,0,0.25)'; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = '#FEF3D0'; (e.currentTarget as HTMLButtonElement).style.boxShadow = 'none'; }}
+              >
+                🔗 Projeto vinculado
+              </button>
             )}
             {update.project && (
-              <span style={{ fontSize: 12, fontWeight: 700, color: '#1A1A1A', background: '#F5F5F5', padding: '2px 7px', borderRadius: 5 }}>
+              <button
+                onClick={(e) => { e.stopPropagation(); if (update.project_id) onOpenProject(update.project_id); }}
+                title="Ver projeto"
+                style={{
+                  fontSize: 12, fontWeight: 700, color: '#185FA5', background: '#E6F1FB',
+                  padding: '2px 7px', borderRadius: 5, border: '1px solid #B8D4F0',
+                  cursor: 'pointer', transition: 'background 0.15s',
+                }}
+                onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = '#C8E0F8'; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = '#E6F1FB'; }}
+              >
                 {update.project.code}
-              </span>
+              </button>
             )}
             {update.protocol_number && (
               <span style={{ fontSize: 11, color: '#888' }}>#{update.protocol_number}</span>
@@ -576,9 +595,10 @@ export default function EmailUpdates() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
 
-  const [configOpen,    setConfigOpen]    = useState(false);
-  const [filterCL,      setFilterCL]      = useState<FilterCL>('all');
-  const [filterSource,  setFilterSource]  = useState<FilterSource>('all');
+  const [configOpen,      setConfigOpen]      = useState(false);
+  const [filterCL,        setFilterCL]        = useState<FilterCL>('all');
+  const [filterSource,    setFilterSource]    = useState<FilterSource>('all');
+  const [modalProjectId,  setModalProjectId]  = useState<string | null>(null);
 
   const { data: config                     } = useAgentConfig();
   const countdown = useCountdown(config?.scan_times);
@@ -800,7 +820,9 @@ export default function EmailUpdates() {
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {filtered.map(u => <EmailCard key={u.id} update={u} />)}
+                {filtered.map(u => (
+                  <EmailCard key={u.id} update={u} onOpenProject={setModalProjectId} />
+                ))}
               </div>
             )}
           </div>
@@ -809,6 +831,14 @@ export default function EmailUpdates() {
           <Sidebar updates={allUpdates} scanRuns={scanRuns} />
         </div>
       </div>
+
+      {/* Modal do projeto vinculado */}
+      {modalProjectId && (
+        <ProjectModal
+          projectId={modalProjectId}
+          onClose={() => setModalProjectId(null)}
+        />
+      )}
 
       {/* Dialog de configuração */}
       {isAdmin && (
