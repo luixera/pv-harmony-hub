@@ -208,8 +208,11 @@ function EmailCard({ update, onOpenProject }: { update: EmailUpdate; onOpenProje
             )}
             {/* Badge protocolo vinculado — clique abre o modal do projeto */}
             {isProtocolMatch && update.project_id && (
-              <button
+              <span
+                role="button"
+                tabIndex={0}
                 onClick={(e) => { e.stopPropagation(); onOpenProject(update.project_id!); }}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); onOpenProject(update.project_id!); } }}
                 title="Ver projeto vinculado"
                 style={{
                   fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 5,
@@ -219,26 +222,30 @@ function EmailCard({ update, onOpenProject }: { update: EmailUpdate; onOpenProje
                   cursor: 'pointer',
                   transition: 'background 0.15s, box-shadow 0.15s',
                 }}
-                onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = '#FAE5A0'; (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 2px 8px rgba(245,168,0,0.25)'; }}
-                onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = '#FEF3D0'; (e.currentTarget as HTMLButtonElement).style.boxShadow = 'none'; }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = '#FAE5A0'; (e.currentTarget as HTMLElement).style.boxShadow = '0 2px 8px rgba(245,168,0,0.25)'; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = '#FEF3D0'; (e.currentTarget as HTMLElement).style.boxShadow = 'none'; }}
               >
                 🔗 Projeto vinculado
-              </button>
+              </span>
             )}
             {update.project && (
-              <button
+              <span
+                role="button"
+                tabIndex={0}
                 onClick={(e) => { e.stopPropagation(); if (update.project_id) onOpenProject(update.project_id); }}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); if (update.project_id) onOpenProject(update.project_id); } }}
                 title="Ver projeto"
                 style={{
                   fontSize: 12, fontWeight: 700, color: '#185FA5', background: '#E6F1FB',
                   padding: '2px 7px', borderRadius: 5, border: '1px solid #B8D4F0',
                   cursor: 'pointer', transition: 'background 0.15s',
+                  display: 'inline-flex', alignItems: 'center',
                 }}
-                onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = '#C8E0F8'; }}
-                onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = '#E6F1FB'; }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = '#C8E0F8'; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = '#E6F1FB'; }}
               >
                 {update.project.code}
-              </button>
+              </span>
             )}
             {update.protocol_number && (
               <span style={{ fontSize: 11, color: '#888' }}>#{update.protocol_number}</span>
