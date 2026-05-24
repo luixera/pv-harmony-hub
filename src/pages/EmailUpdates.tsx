@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -15,7 +16,6 @@ import {
 } from '@/hooks/useEmailUpdates';
 import { useAgentConfig } from '@/hooks/useAgentConfig';
 import { AgentConfigDialog } from '@/components/email/AgentConfigDialog';
-import { ProjectModal } from '@/components/projects/ProjectModal';
 import { cn } from '@/lib/utils';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -604,10 +604,14 @@ export default function EmailUpdates() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
 
-  const [configOpen,      setConfigOpen]      = useState(false);
-  const [filterCL,        setFilterCL]        = useState<FilterCL>('all');
-  const [filterSource,    setFilterSource]    = useState<FilterSource>('all');
-  const [modalProjectId,  setModalProjectId]  = useState<string | null>(null);
+  const navigate = useNavigate();
+  const [configOpen,    setConfigOpen]    = useState(false);
+  const [filterCL,      setFilterCL]      = useState<FilterCL>('all');
+  const [filterSource,  setFilterSource]  = useState<FilterSource>('all');
+
+  const openProject = useCallback((id: string) => {
+    navigate(`/projects?openProject=${id}`);
+  }, [navigate]);
 
   const { data: config                     } = useAgentConfig();
   const countdown = useCountdown(config?.scan_times);
@@ -830,7 +834,7 @@ export default function EmailUpdates() {
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {filtered.map(u => (
-                  <EmailCard key={u.id} update={u} onOpenProject={setModalProjectId} />
+                  <EmailCard key={u.id} update={u} onOpenProject={openProject} />
                 ))}
               </div>
             )}
@@ -840,14 +844,6 @@ export default function EmailUpdates() {
           <Sidebar updates={allUpdates} scanRuns={scanRuns} />
         </div>
       </div>
-
-      {/* Modal do projeto vinculado */}
-      {modalProjectId && (
-        <ProjectModal
-          projectId={modalProjectId}
-          onClose={() => setModalProjectId(null)}
-        />
-      )}
 
       {/* Dialog de configuração */}
       {isAdmin && (

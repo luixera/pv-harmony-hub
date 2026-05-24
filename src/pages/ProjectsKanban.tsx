@@ -427,6 +427,12 @@ export default function ProjectsKanban() {
     }
   }, [searchParams]);
 
+  // Auto-open project modal from query param ?openProject=<id>
+  useEffect(() => {
+    const id = searchParams.get('openProject');
+    if (id) setModalProjectId(id);
+  }, [searchParams]);
+
   // ── Memoized derivations ─────────────────────────────────────────────────
   // staleMap: id → days_stale (only recomputed when staleProjectsData changes)
   const staleMap = useMemo(
