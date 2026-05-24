@@ -176,15 +176,14 @@ function EmailCard({ update, onOpenProject }: { update: EmailUpdate; onOpenProje
       transition: 'box-shadow 0.15s',
     }}>
       {/* Header (sempre visível) */}
-      <button
-        onClick={(e) => {
-          // Não expandir se o clique veio de um badge clicável
-          if ((e.target as HTMLElement).closest('[data-no-expand]')) return;
-          setExpanded(v => !v);
-        }}
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={() => setExpanded(v => !v)}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setExpanded(v => !v); }}
         style={{
-          width: '100%', padding: '12px 16px', background: 'none', border: 'none',
-          cursor: 'pointer', display: 'flex', alignItems: 'flex-start', gap: 12, textAlign: 'left',
+          width: '100%', padding: '12px 16px', background: 'none',
+          cursor: 'pointer', display: 'flex', alignItems: 'flex-start', gap: 12,
         }}
       >
         {/* Ícone classificação */}
@@ -213,11 +212,10 @@ function EmailCard({ update, onOpenProject }: { update: EmailUpdate; onOpenProje
             {/* Badge protocolo vinculado — clique abre o modal do projeto */}
             {isProtocolMatch && update.project_id && (
               <span
-                data-no-expand
                 role="button"
                 tabIndex={0}
-                onClick={() => onOpenProject(update.project_id!)}
-                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onOpenProject(update.project_id!); }}
+                onClick={(e) => { e.stopPropagation(); onOpenProject(update.project_id!); }}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); onOpenProject(update.project_id!); } }}
                 title="Ver projeto vinculado"
                 style={{
                   fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 5,
@@ -235,11 +233,10 @@ function EmailCard({ update, onOpenProject }: { update: EmailUpdate; onOpenProje
             )}
             {update.project && (
               <span
-                data-no-expand
                 role="button"
                 tabIndex={0}
-                onClick={() => { if (update.project_id) onOpenProject(update.project_id); }}
-                onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && update.project_id) onOpenProject(update.project_id); }}
+                onClick={(e) => { e.stopPropagation(); if (update.project_id) onOpenProject(update.project_id); }}
+                onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && update.project_id) { e.stopPropagation(); onOpenProject(update.project_id); } }}
                 title="Ver projeto"
                 style={{
                   fontSize: 12, fontWeight: 700, color: '#185FA5', background: '#E6F1FB',
@@ -287,7 +284,7 @@ function EmailCard({ update, onOpenProject }: { update: EmailUpdate; onOpenProje
         <div style={{ color: '#ccc', flexShrink: 0, marginTop: 6 }}>
           {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
         </div>
-      </button>
+      </div>
 
       {/* Body expansível */}
       <AnimatePresence>
