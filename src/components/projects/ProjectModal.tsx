@@ -798,17 +798,66 @@ function TabDocuments({ project, canUpload }: { project: ProjectWithDetails; can
 // ── Tab: Comments ──────────────────────────────────────────────────────────────
 function TabComments({ project }: { project: ProjectWithDetails }) {
   const { data: comments = [] } = useComments(project.id);
-  const addComment = useAddComment();
-  const [message, setMessage] = useState('');
+  const addComment    = useAddComment();
+  const uploadDocument = useUploadDocument();
+  const [message,     setMessage]     = useState('');
   const [attachments, setAttachments] = useState<File[]>([]);
+  const [isDragging,  setIsDragging]  = useState(false);
+  const [isSending,   setIsSending]   = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
-  useWindowSize(); // re-render on resize
+  useWindowSize();
+
+  const canSend = !isSending && (message.trim().length > 0 || attachments.length > 0);
+
+  const addFiles = (files: FileList | File[]) => {
+    const arr = Array.from(files);
+    setAttachments(a => [...a, ...arr]);
+  };
 
   const handleSend = async () => {
-    if (!message.trim()) return;
-    await addComment.mutateAsync({ projectId: project.id, message: message.trim() });
-    setMessage('');
-    setAttachments([]);
+    if (!canSend) return;
+    setIsSending(true);
+    try {
+      // 1. Fazer upload de cada anexo como documento do projeto
+      const uploadedNames: string[] = [];
+      for (const file of attachments) {
+        await uploadDocument.mutateAsync({
+          projectId:    project.id,
+          companyId:    project.company_id!,
+          file,
+          documentType: 'other_photos', // tipo genérico para anexos de comentário
+        });
+        uploadedNames.push(file.name);
+      }
+
+      // 2. Montar mensagem final (texto + nomes dos arquivos)
+      let finalMessage = message.trim();
+      if (uploadedNames.length > 0) {
+        const fileLines = uploadedNames.map(n => `📎 ${n}`).join('\n');
+        finalMessage = finalMessage ? `${finalMessage}\n${fileLines}` : fileLines;
+      }
+
+      // 3. Enviar comentário
+      if (finalMessage) {
+        await addComment.mutateAsync({ projectId: project.id, message: finalMessage });
+      }
+
+      setMessage('');
+      setAttachments([]);
+    } catch {
+      // erros tratados pelos hooks (toast já exibido)
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  // Drag-and-drop handlers
+  const handleDragOver  = (e: React.DragEvent) => { e.preventDefault(); setIsDragging(true); };
+  const handleDragLeave = (e: React.DragEvent) => { e.preventDefault(); setIsDragging(false); };
+  const handleDrop      = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (e.dataTransfer.files.length > 0) addFiles(e.dataTransfer.files);
   };
 
   const avatar = (role: string | undefined) => {
@@ -822,7 +871,7 @@ function TabComments({ project }: { project: ProjectWithDetails }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
-      {/* List */}
+      {/* Lista de comentários */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '12px 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
         {comments.length === 0 && (
           <p style={{ textAlign: 'center', color: '#999', fontSize: 13, marginTop: 40 }}>Nenhum comentário ainda</p>
@@ -840,50 +889,105 @@ function TabComments({ project }: { project: ProjectWithDetails }) {
                     {formatDistanceToNow(new Date(c.created_at), { addSuffix: true, locale: ptBR })}
                   </span>
                 </div>
-                <p style={{ fontSize: 13, color: '#333', lineHeight: 1.5 }}>{c.message}</p>
+                <p style={{ fontSize: 13, color: '#333', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{c.message}</p>
               </div>
             </div>
           );
         })}
       </div>
 
-      {/* Input area */}
-      <div style={{ borderTop: '1px solid #F0F0F0', padding: '12px 16px', background: '#FAFAFA' }}>
+      {/* Área de input com drag-and-drop */}
+      <div
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+        style={{
+          borderTop: `1px solid ${isDragging ? '#F5A800' : '#F0F0F0'}`,
+          padding: '12px 16px',
+          background: isDragging ? '#FFFBF0' : '#FAFAFA',
+          transition: 'background 0.15s, border-color 0.15s',
+        }}
+      >
+        {/* Indicador de drag */}
+        {isDragging && (
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+            padding: '8px', marginBottom: 8, borderRadius: 7,
+            border: '2px dashed #F5A800', color: '#854F0B', fontSize: 12, fontWeight: 600,
+          }}>
+            <Paperclip size={13} /> Solte o arquivo para anexar
+          </div>
+        )}
+
+        {/* Preview dos anexos */}
         {attachments.length > 0 && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
             {attachments.map((f, i) => (
-              <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: '#F0F0F0', borderRadius: 20, padding: '3px 10px', fontSize: 11, color: '#555' }}>
-                {f.name}
-                <button onClick={() => setAttachments(a => a.filter((_, j) => j !== i))} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: '#999', display: 'flex' }}>
+              <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: '#FEF3D0', border: '1px solid #F5D580', borderRadius: 20, padding: '3px 10px', fontSize: 11, color: '#854F0B' }}>
+                📎 {f.name}
+                <button
+                  onClick={() => setAttachments(a => a.filter((_, j) => j !== i))}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: '#B87A00', display: 'flex' }}
+                >
                   <X size={10} />
                 </button>
               </span>
             ))}
           </div>
         )}
+
         <div style={{ display: 'flex', gap: 8 }}>
           <textarea
             value={message}
             onChange={e => setMessage(e.target.value)}
-            placeholder="Escreva um comentário..."
+            placeholder={isDragging ? 'Solte o arquivo aqui...' : 'Escreva um comentário ou arraste um arquivo...'}
             rows={2}
-            style={{ flex: 1, resize: 'none', padding: '8px 10px', borderRadius: 7, border: '1px solid #E0E0E0', fontSize: 13, color: '#1A1A1A', outline: 'none', fontFamily: 'inherit' }}
+            disabled={isSending}
+            style={{
+              flex: 1, resize: 'none', padding: '8px 10px', borderRadius: 7,
+              border: `1px solid ${isDragging ? '#F5A800' : '#E0E0E0'}`,
+              fontSize: 13, color: '#1A1A1A', outline: 'none', fontFamily: 'inherit',
+              background: isSending ? '#F8F8F8' : '#fff',
+              transition: 'border-color 0.15s',
+            }}
             onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
           />
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <input ref={fileRef} type="file" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) setAttachments(a => [...a, f]); e.target.value = ''; }} />
-            <button onClick={() => fileRef.current?.click()} title="Anexar" style={{ padding: '7px 9px', borderRadius: 7, border: '1px solid #E0E0E0', background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', color: '#888' }}>
+            <input
+              ref={fileRef}
+              type="file"
+              multiple
+              style={{ display: 'none' }}
+              onChange={e => { if (e.target.files) addFiles(e.target.files); e.target.value = ''; }}
+            />
+            <button
+              onClick={() => fileRef.current?.click()}
+              disabled={isSending}
+              title="Anexar arquivo"
+              style={{ padding: '7px 9px', borderRadius: 7, border: '1px solid #E0E0E0', background: '#fff', cursor: isSending ? 'default' : 'pointer', display: 'flex', alignItems: 'center', color: '#888' }}
+            >
               <Paperclip size={14} />
             </button>
             <button
               onClick={handleSend}
-              disabled={!message.trim() || addComment.isPending}
-              style={{ padding: '7px 12px', borderRadius: 7, border: 'none', background: message.trim() ? '#F5A800' : '#F0F0F0', color: message.trim() ? '#1A1A1A' : '#BBB', cursor: message.trim() ? 'pointer' : 'default', display: 'flex', alignItems: 'center', gap: 4, fontWeight: 700, fontSize: 12 }}
+              disabled={!canSend}
+              title="Enviar"
+              style={{
+                padding: '7px 12px', borderRadius: 7, border: 'none',
+                background: canSend ? '#F5A800' : '#F0F0F0',
+                color: canSend ? '#1A1A1A' : '#BBB',
+                cursor: canSend ? 'pointer' : 'default',
+                display: 'flex', alignItems: 'center', gap: 4, fontWeight: 700, fontSize: 12,
+              }}
             >
-              <Send size={13} />
+              {isSending ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
             </button>
           </div>
         </div>
+
+        <p style={{ fontSize: 10, color: '#bbb', margin: '6px 0 0', textAlign: 'right' }}>
+          Arraste arquivos ou clique em 📎 · Enter para enviar · Shift+Enter nova linha
+        </p>
       </div>
     </div>
   );
