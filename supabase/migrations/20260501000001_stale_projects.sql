@@ -58,7 +58,7 @@ SELECT
   EXTRACT(EPOCH FROM (NOW() - p.last_status_change)) / 86400.0 AS days_stale
 FROM projects p
 JOIN kanban_columns kc
-  ON kc.status_key = p.status
+  ON kc.status_key = p.status::text
 WHERE
   kc.stale_days IS NOT NULL
   AND (p.is_deleted IS NULL OR p.is_deleted = FALSE)

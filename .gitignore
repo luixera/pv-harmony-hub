@@ -39,3 +39,7 @@ Thumbs.db
 *.sw?
 .claude/worktrees/
 preview.html
+
+# Supabase CLI local state
+supabase/.branches/
+supabase/.temp/
