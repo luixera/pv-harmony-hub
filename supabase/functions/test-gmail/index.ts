@@ -11,6 +11,40 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders })
   }
 
+  // ── AUTH: require admin user ──────────────────────────────────────────────
+  const authHeader = req.headers.get('Authorization') || ''
+  const jwt = authHeader.replace(/^Bearer\s+/i, '').trim()
+  if (!jwt) {
+    return new Response(
+      JSON.stringify({ success: false, error: 'Não autorizado' }),
+      { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
+  }
+
+  const userSupa = createClient(
+    Deno.env.get('SUPABASE_URL')!,
+    Deno.env.get('SUPABASE_ANON_KEY')!,
+    { global: { headers: { Authorization: `Bearer ${jwt}` } } }
+  )
+  const { data: userData, error: userErr } = await userSupa.auth.getUser()
+  if (userErr || !userData?.user) {
+    return new Response(
+      JSON.stringify({ success: false, error: 'Sessão inválida' }),
+      { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
+  }
+  const { data: profile } = await userSupa
+    .from('profiles')
+    .select('role')
+    .eq('id', userData.user.id)
+    .maybeSingle()
+  if (profile?.role !== 'admin') {
+    return new Response(
+      JSON.stringify({ success: false, error: 'Acesso restrito a administradores' }),
+      { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
+  }
+
   const supabase = createClient(
     Deno.env.get('SUPABASE_URL')!,
     Deno.env.get('SUPA_SERVICE_ROLE_KEY')!

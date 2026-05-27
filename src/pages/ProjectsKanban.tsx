@@ -20,6 +20,7 @@ import { ProtocolDialog, ProtocolData } from '@/components/projects/ProtocolDial
 import { useRegisterProtocol } from '@/hooks/useProjectProtocol';
 import { useSearchParams } from 'react-router-dom';
 import { Search, Building2, Zap, MapPin, Loader2, ChevronRight, ArrowRight, AlertCircle, DollarSign, MoreVertical, Trash2, Users, FileOutput, ExternalLink, XCircle, Clock, Hash } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
 import { useProjectRevisions, useProjectRevisionSummary } from '@/hooks/useProjectRevisions';
 import { Database } from '@/integrations/supabase/types';
 import { ProjectModal } from '@/components/projects/ProjectModal';
@@ -531,8 +532,22 @@ export default function ProjectsKanban() {
   if (isLoading || isLoadingModel) {
     return (
       <MainLayout>
-        <div className="flex items-center justify-center h-96">
-          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <Skeleton className="h-8 w-56" />
+            <Skeleton className="h-9 w-32" />
+          </div>
+          <Skeleton className="h-12 w-full" />
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-6">
+            {[0, 1, 2, 3].map(col => (
+              <div key={col} className="space-y-3">
+                <Skeleton className="h-6 w-32" />
+                {[0, 1, 2].map(card => (
+                  <Skeleton key={card} className="h-28 w-full rounded-lg" />
+                ))}
+              </div>
+            ))}
+          </div>
         </div>
       </MainLayout>
     );

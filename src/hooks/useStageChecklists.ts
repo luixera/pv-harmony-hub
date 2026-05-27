@@ -1,5 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+// Re-export para preservar callers que importam de '@/hooks/useStageChecklists'
+export { documentTypeLabels } from '@/lib/statusMapping';
 
 export interface StageChecklist {
   id: string;
@@ -10,15 +12,6 @@ export interface StageChecklist {
   enabled: boolean;
   created_at: string;
 }
-
-export const documentTypeLabels: Record<string, string> = {
-  energy_bill_generator: 'Conta de energia - Geradora',
-  energy_bill_beneficiaries: 'Contas de energia - Beneficiárias',
-  holder_document: 'Documento do titular',
-  entrance_standard_photo: 'Foto do padrão de entrada',
-  breaker_photo: 'Foto do disjuntor',
-  other_photos: 'Outras fotos',
-};
 
 export function useStageChecklists() {
   return useQuery({

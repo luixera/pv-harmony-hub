@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { motion } from 'framer-motion';
-import { TrendingUp, FolderOpen, CheckCircle2, DollarSign, AlertCircle, ArrowUpRight, ArrowDownRight, Loader2, Map } from 'lucide-react';
+import { TrendingUp, FolderOpen, CheckCircle2, DollarSign, AlertCircle, ArrowUpRight, Loader2, Map } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
 import { formatCurrency } from '@/lib/utils';
 import { useProjects } from '@/hooks/useProjects';
 import { Badge } from '@/components/ui/badge';
@@ -10,15 +11,7 @@ import { useNavigate } from 'react-router-dom';
 import { DashboardMap } from '@/components/maps/DashboardMap';
 import { ProjectModal } from '@/components/projects/ProjectModal';
 import ProjectsMonthlyChart from '@/components/dashboard/ProjectsMonthlyChart';
-
-const statusLabels: Record<string, string> = {
-  pending: 'Aguardando',
-  analysis: 'Em Análise',
-  documentation: 'Documentação',
-  approval: 'Aprovação',
-  approved: 'Aprovado',
-  completed: 'Concluído',
-};
+import { projectStatusLabels as statusLabels } from '@/lib/statusMapping';
 
 export default function DashboardAdmin() {
   const navigate = useNavigate();
@@ -33,19 +26,38 @@ export default function DashboardAdmin() {
   const pendingValue = projects
     .filter(p => p.financials?.payment_status !== 'paid')
     .reduce((acc, p) => acc + ((p.financials?.project_value || 0) - (p.financials?.paid_value || 0)), 0);
+  const approvedProjects = projects.filter(p => ['approved', 'completed'].includes(p.status)).length;
+  const approvalRate = projects.length > 0 ? Math.round((approvedProjects / projects.length) * 100) : 0;
 
   const kpiCards = [
-    { title: 'Projetos Ativos', value: activeProjects, change: '+12%', trend: 'up', icon: FolderOpen },
-    { title: 'Concluídos', value: completedProjects, change: '+8%', trend: 'up', icon: CheckCircle2 },
-    { title: 'Valor em Aberto', value: formatCurrency(pendingValue), change: '-5%', trend: 'down', icon: DollarSign },
-    { title: 'Taxa de Aprovação', value: '98%', change: '+2%', trend: 'up', icon: TrendingUp },
+    { title: 'Projetos Ativos', value: activeProjects, icon: FolderOpen },
+    { title: 'Concluídos', value: completedProjects, icon: CheckCircle2 },
+    { title: 'Valor em Aberto', value: formatCurrency(pendingValue), icon: DollarSign },
+    { title: 'Taxa de Aprovação', value: `${approvalRate}%`, icon: TrendingUp },
   ];
 
   if (isLoading) {
     return (
       <MainLayout>
-        <div className="flex items-center justify-center h-96">
-          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+        <div className="space-y-8">
+          <div className="space-y-2">
+            <Skeleton className="h-8 w-48" />
+            <Skeleton className="h-4 w-72" />
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {[0, 1, 2, 3].map(i => (
+              <div key={i} className="kpi-card space-y-4">
+                <Skeleton className="h-12 w-12 rounded-xl" />
+                <Skeleton className="h-7 w-24" />
+                <Skeleton className="h-4 w-32" />
+              </div>
+            ))}
+          </div>
+          <Skeleton className="h-64 w-full rounded-xl" />
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <Skeleton className="h-72 w-full rounded-xl" />
+            <Skeleton className="h-72 w-full rounded-xl" />
+          </div>
         </div>
       </MainLayout>
     );
@@ -74,15 +86,6 @@ export default function DashboardAdmin() {
               <div className="flex items-start justify-between">
                 <div className="p-3 rounded-xl" style={{ background: '#FEF3D0' }}>
                   <card.icon className="w-6 h-6" style={{ color: '#F5A800' }} />
-                </div>
-                <div
-                  className="flex items-center gap-1 text-sm px-2 py-0.5 rounded-full"
-                  style={card.trend === 'up'
-                    ? { color: '#2D6A4F', background: '#E1F5EE' }
-                    : { color: '#993C1D', background: '#FFF0E6' }}
-                >
-                  {card.change}
-                  {card.trend === 'up' ? <ArrowUpRight className="w-4 h-4" /> : <ArrowDownRight className="w-4 h-4" />}
                 </div>
               </div>
               <div className="mt-4">

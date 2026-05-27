@@ -134,8 +134,13 @@ function GlobalSearch({ onOpenModal }: { onOpenModal: (id: string) => void }) {
           style={{ flex: 1, border: 'none', background: 'none', outline: 'none', fontSize: 13, color: '#1A1A1A', minWidth: 0 }}
         />
         {query && (
-          <button onClick={() => { setQuery(''); setResults([]); setOpen(false); }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', color: '#999' }}>
-            <X size={12} />
+          <button
+            type="button"
+            onClick={() => { setQuery(''); setResults([]); setOpen(false); }}
+            aria-label="Limpar busca"
+            style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', color: '#999' }}
+          >
+            <X size={12} aria-hidden="true" />
           </button>
         )}
       </div>
@@ -199,10 +204,14 @@ function NotificationBell({ onOpenModal }: { onOpenModal: (id: string) => void }
   return (
     <div ref={ref} style={{ position: 'relative' }}>
       <button
+        type="button"
         onClick={() => setOpen(v => !v)}
+        aria-label={unreadCount > 0 ? `Notificações (${unreadCount} não lidas)` : 'Notificações'}
+        aria-haspopup="menu"
+        aria-expanded={open}
         style={{ position: 'relative', width: 40, height: 40, borderRadius: 8, border: 'none', background: open ? '#F8F8F8' : 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#555' }}
       >
-        <Bell size={18} />
+        <Bell size={18} aria-hidden="true" />
         {unreadCount > 0 && (
           <span style={{
             position: 'absolute', top: 6, right: 6, minWidth: 16, height: 16, borderRadius: 8,

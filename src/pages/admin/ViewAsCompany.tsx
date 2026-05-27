@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useProjects } from '@/hooks/useProjects';
+import { projectStatusLabels as statusLabels } from '@/lib/statusMapping';
 
 interface ViewingCompany {
   id: string;
@@ -69,15 +70,6 @@ export default function ViewAsCompany() {
   const handleNewProject = () => {
     // Use the new project page instead of public form when admin is viewing as company
     navigate('/new-project');
-  };
-
-  const statusLabels: Record<string, string> = {
-    pending: 'Aguardando',
-    analysis: 'Em Análise',
-    documentation: 'Documentação',
-    approval: 'Aprovação',
-    approved: 'Aprovado',
-    completed: 'Concluído',
   };
 
   if (!company) {

@@ -392,11 +392,4 @@ export const brazilianStates = [
   'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO'
 ];
 
-export const documentTypeLabels: Record<string, string> = {
-  energy_bill_generator: 'Conta de energia (geradora)',
-  energy_bill_beneficiaries: 'Contas de energia (beneficiárias)',
-  holder_document: 'Documento com foto do titular',
-  entrance_standard_photo: 'Foto do padrão de entrada',
-  circuit_breaker_photo: 'Foto do disjuntor de entrada',
-  other_photos: 'Outras fotos',
-};
+// Removido: documentTypeLabels foi centralizado em src/lib/statusMapping.ts

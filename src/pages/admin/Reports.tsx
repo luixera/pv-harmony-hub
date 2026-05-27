@@ -1,4 +1,5 @@
 import { Loader2, BarChart2, CheckCircle2, Clock, Zap, Users, Building2, TrendingUp, DollarSign, Activity } from 'lucide-react'
+import { Skeleton } from '@/components/ui/skeleton'
 import { MainLayout } from '@/components/layout/MainLayout'
 import { useReports } from '@/hooks/useReports'
 import { useReportFilters } from '@/hooks/useReportFilters'
@@ -119,8 +120,13 @@ export default function Reports() {
   if (isLoading) {
     return (
       <MainLayout>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 384 }}>
-          <Loader2 size={32} style={{ animation: 'spin 1s linear infinite' }} color="#F5A800" />
+        <div className="space-y-6">
+          <Skeleton className="h-8 w-48" />
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {[0, 1, 2, 3].map(i => <Skeleton key={i} className="h-28 w-full rounded-xl" />)}
+          </div>
+          <Skeleton className="h-72 w-full rounded-xl" />
+          <Skeleton className="h-72 w-full rounded-xl" />
         </div>
       </MainLayout>
     )

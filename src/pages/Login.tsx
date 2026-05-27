@@ -96,20 +96,6 @@ export default function Login() {
             Simplifique a homologação dos seus projetos solares com uma plataforma completa e intuitiva.
           </p>
 
-          <div className="flex gap-8 pt-4">
-            <div>
-              <p className="text-3xl font-bold" style={{ color: '#F5A800' }}>500+</p>
-              <p className="text-sm" style={{ color: 'rgba(255,255,255,0.5)' }}>Projetos gerenciados</p>
-            </div>
-            <div>
-              <p className="text-3xl font-bold" style={{ color: '#F5A800' }}>50+</p>
-              <p className="text-sm" style={{ color: 'rgba(255,255,255,0.5)' }}>Empresas ativas</p>
-            </div>
-            <div>
-              <p className="text-3xl font-bold" style={{ color: '#F5A800' }}>98%</p>
-              <p className="text-sm" style={{ color: 'rgba(255,255,255,0.5)' }}>Taxa de aprovação</p>
-            </div>
-          </div>
         </div>
 
         <div className="relative z-10 text-sm" style={{ color: 'rgba(255,255,255,0.3)' }}>

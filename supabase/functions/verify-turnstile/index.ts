@@ -45,65 +45,78 @@ Deno.serve(async (req) => {
     // ── 1. Validar token com Cloudflare ──────────────────────────────────────
     const secretKey = Deno.env.get('TURNSTILE_SECRET_KEY')
     if (!secretKey) {
-      console.error('TURNSTILE_SECRET_KEY não configurada')
-      // Em modo desenvolvimento sem secret key configurada, permitir (não bloquear prod)
-      console.warn('Turnstile secret key ausente — pulando verificação (modo dev)')
-    } else {
-      // IP do usuário (disponível via CF-Connecting-IP no Cloudflare, ou X-Forwarded-For)
-      const ip =
-        req.headers.get('CF-Connecting-IP') ||
-        req.headers.get('X-Forwarded-For')?.split(',')[0]?.trim() ||
-        'unknown'
-
-      const formData = new FormData()
-      formData.append('secret', secretKey)
-      formData.append('response', token)
-      formData.append('remoteip', ip)
-
-      const cfResp = await fetch(
-        'https://challenges.cloudflare.com/turnstile/v0/siteverify',
-        { method: 'POST', body: formData }
+      console.error('TURNSTILE_SECRET_KEY não configurada — bloqueando requisição')
+      return new Response(
+        JSON.stringify({ error: 'Verificação de segurança indisponível. Contate o suporte.' }),
+        { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
-      const cfData = await cfResp.json()
+    }
 
-      if (!cfData.success) {
-        console.warn('Turnstile falhou:', cfData['error-codes'])
-        return new Response(
-          JSON.stringify({ error: 'Verificação de segurança falhou. Tente novamente.' }),
-          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        )
-      }
+    // IP do usuário (disponível via CF-Connecting-IP no Cloudflare, ou X-Forwarded-For)
+    const ip =
+      req.headers.get('CF-Connecting-IP') ||
+      req.headers.get('X-Forwarded-For')?.split(',')[0]?.trim() ||
+      'unknown'
 
-      // ── 2. Rate-limit por IP ───────────────────────────────────────────────
-      // Conta projetos criados via public_form pelo mesmo IP na última hora.
-      // Usa service_role para query sem RLS.
-      const supabase = createClient(
-        Deno.env.get('SUPABASE_URL')!,
-        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
-        { auth: { autoRefreshToken: false, persistSession: false } }
+    const formData = new FormData()
+    formData.append('secret', secretKey)
+    formData.append('response', token)
+    formData.append('remoteip', ip)
+
+    const cfResp = await fetch(
+      'https://challenges.cloudflare.com/turnstile/v0/siteverify',
+      { method: 'POST', body: formData }
+    )
+    const cfData = await cfResp.json()
+
+    if (!cfData.success) {
+      console.warn('Turnstile falhou:', cfData['error-codes'])
+      return new Response(
+        JSON.stringify({ error: 'Verificação de segurança falhou. Tente novamente.' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
+    }
 
-      const windowStart = new Date(Date.now() - WINDOW_HOURS * 60 * 60 * 1000).toISOString()
+    // ── 2. Rate-limit por IP ───────────────────────────────────────────────
+    // Conta projetos criados via public_form pelo mesmo IP na última hora.
+    // Usa service_role para query sem RLS.
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+      { auth: { autoRefreshToken: false, persistSession: false } }
+    )
 
-      const { count, error: countError } = await supabase
-        .from('projects')
-        .select('id', { count: 'exact', head: true })
-        .eq('source', 'public_form')
-        .eq('company_id', companyId ?? '')
-        .gte('created_at', windowStart)
+    const windowStart = new Date(Date.now() - WINDOW_HOURS * 60 * 60 * 1000).toISOString()
 
-      if (countError) {
-        console.error('Erro ao verificar rate-limit:', countError)
-        // Em caso de erro na query, não bloquear — deixar passar
-      } else if ((count ?? 0) >= RATE_LIMIT) {
-        return new Response(
-          JSON.stringify({
-            error: `Limite de ${RATE_LIMIT} envios por hora atingido. Tente novamente mais tarde.`,
-            rateLimited: true,
-          }),
-          { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        )
-      }
+    if (!companyId) {
+      return new Response(
+        JSON.stringify({ error: 'company_id ausente.' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    const { count, error: countError } = await supabase
+      .from('projects')
+      .select('id', { count: 'exact', head: true })
+      .eq('source', 'public_form')
+      .eq('company_id', companyId)
+      .gte('created_at', windowStart)
+
+    if (countError) {
+      console.error('Erro ao verificar rate-limit:', countError)
+      return new Response(
+        JSON.stringify({ error: 'Erro ao validar limite de envio. Tente novamente.' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+    if ((count ?? 0) >= RATE_LIMIT) {
+      return new Response(
+        JSON.stringify({
+          error: `Limite de ${RATE_LIMIT} envios por hora atingido. Tente novamente mais tarde.`,
+          rateLimited: true,
+        }),
+        { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
     }
 
     return new Response(

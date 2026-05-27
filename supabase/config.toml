@@ -1,4 +1,9 @@
 project_id = "yqsqrdndvsnhbsoaoilf"
 
+# Disabled locally: vector container fails on Colima docker.sock mount.
+# Remote project (linked via project_id) still has analytics enabled.
+[analytics]
+enabled = false
+
 [functions.create-user]
 verify_jwt = false

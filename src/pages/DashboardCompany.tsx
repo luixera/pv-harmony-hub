@@ -7,15 +7,7 @@ import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { DashboardMap } from '@/components/maps/DashboardMap';
-
-const statusLabels: Record<string, string> = {
-  pending: 'Aguardando',
-  analysis: 'Em Análise',
-  documentation: 'Documentação',
-  approval: 'Aprovação',
-  approved: 'Aprovado',
-  completed: 'Concluído',
-};
+import { projectStatusLabels as statusLabels } from '@/lib/statusMapping';
 
 export default function DashboardCompany() {
   const navigate = useNavigate();

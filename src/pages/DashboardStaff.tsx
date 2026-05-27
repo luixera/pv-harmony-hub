@@ -9,15 +9,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useAuth } from '@/contexts/AuthContext';
 import { DashboardMap } from '@/components/maps/DashboardMap';
-
-const statusLabels: Record<string, string> = {
-  pending: 'Aguardando',
-  analysis: 'Em Análise',
-  documentation: 'Documentação',
-  approval: 'Aprovação',
-  approved: 'Aprovado',
-  completed: 'Concluído',
-};
+import { projectStatusLabels as statusLabels } from '@/lib/statusMapping';
 
 export default function DashboardStaff() {
   const navigate = useNavigate();

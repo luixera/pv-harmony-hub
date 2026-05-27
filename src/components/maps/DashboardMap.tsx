@@ -165,6 +165,16 @@ export function DashboardMap({ projects, isLoading, userId, userRole, companyMod
           </div>
         )}
 
+        {!apiKey && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 z-10" style={{ background: '#FAFAFA', border: '1px dashed #E0E0E0', borderRadius: 8 }}>
+            <MapPin className="w-8 h-8" style={{ color: '#CCC' }} />
+            <p style={{ fontSize: 13, color: '#999', textAlign: 'center', maxWidth: 320 }}>
+              Mapa indisponível: <code>VITE_GOOGLE_MAPS_API_KEY</code> não configurada.
+            </p>
+            <p style={{ fontSize: 11, color: '#BBB' }}>Defina a variável no <code>.env</code> e reinicie o dev server.</p>
+          </div>
+        )}
+        {apiKey && (
         <LoadScript
           googleMapsApiKey={apiKey}
           libraries={LIBRARIES}
@@ -260,8 +270,9 @@ export function DashboardMap({ projects, isLoading, userId, userRole, companyMod
             )}
           </GoogleMap>
         </LoadScript>
+        )}
 
-        {!isLoading && mappable.length === 0 && (
+        {!isLoading && apiKey && mappable.length === 0 && (
           <div className="absolute inset-0 flex flex-col items-center justify-center z-10" style={{ background: 'rgba(255,255,255,0.85)' }}>
             <MapPin className="w-8 h-8 mb-2" style={{ color: '#E0E0E0' }} />
             <p style={{ fontSize: 13, color: '#999', textAlign: 'center' }}>
