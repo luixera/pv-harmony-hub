@@ -116,10 +116,12 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                   </div>
                 </Link>
                 <button
+                  type="button"
                   onClick={onClose}
+                  aria-label="Fechar menu lateral"
                   className="p-2 rounded-lg hover:bg-sidebar-accent transition-colors text-muted-foreground"
                 >
-                  <X className="w-5 h-5" />
+                  <X className="w-5 h-5" aria-hidden="true" />
                 </button>
               </div>
 
@@ -198,10 +200,13 @@ export function Sidebar({ open, onClose }: SidebarProps) {
           )}
         </Link>
         <button
+          type="button"
           onClick={() => setCollapsed(!collapsed)}
+          aria-label={collapsed ? 'Expandir menu lateral' : 'Recolher menu lateral'}
+          aria-expanded={!collapsed}
           className="p-2 rounded-lg hover:bg-sidebar-accent transition-colors text-muted-foreground"
         >
-          {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+          {collapsed ? <ChevronRight className="w-4 h-4" aria-hidden="true" /> : <ChevronLeft className="w-4 h-4" aria-hidden="true" />}
         </button>
       </div>
 

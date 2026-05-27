@@ -9,24 +9,16 @@ import { DollarSign, TrendingUp, Clock, Calendar, Loader2 } from "lucide-react";
 import { motion } from "framer-motion";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import {
+  paymentStatusLabelsShort as statusLabels,
+  paymentStatusColors as statusColors,
+} from "@/lib/statusMapping";
 
 const formatCurrency = (value: number) => {
   return new Intl.NumberFormat('pt-BR', {
     style: 'currency',
     currency: 'BRL'
   }).format(value);
-};
-
-const statusLabels: Record<string, string> = {
-  pending: 'Pendente',
-  partial: 'Parcial',
-  paid: 'Pago'
-};
-
-const statusColors: Record<string, string> = {
-  pending: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
-  partial: 'bg-blue-500/10 text-blue-500 border-blue-500/20',
-  paid: 'bg-green-500/10 text-green-500 border-green-500/20'
 };
 
 export default function CompanyFinancial() {

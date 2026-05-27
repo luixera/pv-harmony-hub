@@ -23,7 +23,8 @@
     --secondary-foreground: 0 0% 10%;
 
     --muted: 0 0% 90%;
-    --muted-foreground: 0 0% 40%;
+    /* P1-U4: subido de 40% → 32% (de ~4.0:1 para ~6.5:1) — WCAG AA para texto normal */
+    --muted-foreground: 0 0% 32%;
 
     --accent: 41 100% 48%;
     --accent-foreground: 0 0% 10%;

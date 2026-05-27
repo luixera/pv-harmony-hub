@@ -1,43 +1,66 @@
+import { lazy, Suspense } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { Loader2 } from "lucide-react";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { ProtectedRoute } from "./components/auth/ProtectedRoute";
+
+// Eager: leves e usadas no caminho crítico (login + dashboards)
 import Login from "./pages/Login";
 import DashboardAdmin from "./pages/DashboardAdmin";
 import DashboardStaff from "./pages/DashboardStaff";
 import DashboardCompany from "./pages/DashboardCompany";
 import ProjectsKanban from "./pages/ProjectsKanban";
-import ProjectDetail from "./pages/ProjectDetail";
-import NewProject from "./pages/NewProject";
-import ProjectSuccess from "./pages/ProjectSuccess";
 import NotFound from "./pages/NotFound";
-import Companies from "./pages/admin/Companies";
-import Users from "./pages/admin/Users";
-import ViewAsCompany from "./pages/admin/ViewAsCompany";
-import PublicProjectForm from "./pages/PublicProjectForm";
-import PublicFormSuccess from "./pages/PublicFormSuccess";
-import Financial from "./pages/admin/Financial";
-import CompanyFinancial from "./pages/company/CompanyFinancial";
-import FormConfig from "./pages/admin/FormConfig";
-import KanbanConfig from "./pages/admin/KanbanConfig";
-import EnergyConcessionaires from "./pages/admin/EnergyConcessionaires";
-import ProjectsMap from "./pages/ProjectsMap";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
-import Profile from "./pages/Profile";
-import Reports from "./pages/admin/Reports";
-import Tasks from "./pages/Tasks";
-import EmailUpdates from "./pages/EmailUpdates";
+import PublicProjectForm from "./pages/PublicProjectForm";
+import PublicFormSuccess from "./pages/PublicFormSuccess";
 
-const queryClient = new QueryClient();
+// Lazy: pesadas (Google Maps, recharts, html2pdf, mammoth, docxtemplater)
+const ProjectDetail = lazy(() => import("./pages/ProjectDetail"));
+const NewProject = lazy(() => import("./pages/NewProject"));
+const ProjectSuccess = lazy(() => import("./pages/ProjectSuccess"));
+const Companies = lazy(() => import("./pages/admin/Companies"));
+const Users = lazy(() => import("./pages/admin/Users"));
+const ViewAsCompany = lazy(() => import("./pages/admin/ViewAsCompany"));
+const Financial = lazy(() => import("./pages/admin/Financial"));
+const CompanyFinancial = lazy(() => import("./pages/company/CompanyFinancial"));
+const FormConfig = lazy(() => import("./pages/admin/FormConfig"));
+const KanbanConfig = lazy(() => import("./pages/admin/KanbanConfig"));
+const EnergyConcessionaires = lazy(() => import("./pages/admin/EnergyConcessionaires"));
+const ProjectsMap = lazy(() => import("./pages/ProjectsMap"));
+const Profile = lazy(() => import("./pages/Profile"));
+const Reports = lazy(() => import("./pages/admin/Reports"));
+const Tasks = lazy(() => import("./pages/Tasks"));
+const EmailUpdates = lazy(() => import("./pages/EmailUpdates"));
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      refetchOnWindowFocus: false,
+      staleTime: 60_000,
+      retry: 1,
+    },
+  },
+});
+
+function RouteFallback() {
+  return (
+    <div className="flex items-center justify-center h-screen w-full">
+      <Loader2 className="w-6 h-6 animate-spin text-primary" />
+    </div>
+  );
+}
 
 function AppRoutes() {
   const { isAuthenticated, user } = useAuth();
   
   return (
+    <Suspense fallback={<RouteFallback />}>
     <Routes>
       <Route path="/login" element={isAuthenticated ? <Navigate to={user?.role === 'admin' ? '/dashboard-admin' : user?.role === 'staff' ? '/dashboard-staff' : '/dashboard-company'} /> : <Login />} />
       <Route path="/" element={<Navigate to="/login" replace />} />
@@ -68,6 +91,7 @@ function AppRoutes() {
       <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
       <Route path="*" element={<NotFound />} />
     </Routes>
+    </Suspense>
   );
 }
 

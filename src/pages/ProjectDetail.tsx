@@ -36,23 +36,10 @@ type DocumentType = Database['public']['Enums']['document_type'];
 type PaymentStatus = Database['public']['Enums']['payment_status'];
 type ProjectStatus = Database['public']['Enums']['project_status'];
 
-const documentTypeLabels: Record<string, string> = {
-  energy_bill_generator: 'Conta de energia - Geradora',
-  energy_bill_beneficiaries: 'Contas de energia - Beneficiárias',
-  holder_document: 'Documento do titular',
-  entrance_standard_photo: 'Foto do padrão de entrada',
-  breaker_photo: 'Foto do disjuntor',
-  other_photos: 'Outras fotos'
-};
-
-const statusLabels: Record<string, string> = {
-  pending: 'Aguardando',
-  analysis: 'Em Análise',
-  documentation: 'Documentação',
-  approval: 'Aprovação',
-  approved: 'Aprovado',
-  completed: 'Concluído'
-};
+import {
+  projectStatusLabels as statusLabels,
+  documentTypeLabels,
+} from '@/lib/statusMapping';
 
 const statusSteps: ProjectStatus[] = ['pending', 'analysis', 'documentation', 'approval', 'approved', 'completed'];
 
