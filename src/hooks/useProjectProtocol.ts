@@ -20,7 +20,7 @@ export function useProjectProtocols(projectId: string | undefined) {
     queryFn: async (): Promise<ProjectProtocol[]> => {
       if (!projectId) return [];
       const { data, error } = await supabase
-        .from('project_protocols' as any)
+        .from('project_protocols')
         .select(`
           *,
           registrar:profiles!registered_by(name)
@@ -28,7 +28,7 @@ export function useProjectProtocols(projectId: string | undefined) {
         .eq('project_id', projectId)
         .order('registered_at', { ascending: false });
       if (error) throw error;
-      return (data || []) as ProjectProtocol[];
+      return (data || []) as unknown as ProjectProtocol[];
     },
     enabled: !!projectId,
   });
@@ -69,7 +69,7 @@ export function useRegisterProtocol() {
 
       // 2. Inserir no histórico
       const { error: histError } = await supabase
-        .from('project_protocols' as any)
+        .from('project_protocols')
         .insert({
           project_id: projectId,
           revision_number: revisionNumber,

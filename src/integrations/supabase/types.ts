@@ -1,3 +1,4 @@
+Connecting to db 5432
 export type Json =
   | string
   | number
@@ -7,13 +8,90 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
-  __InternalSupabase: {
-    PostgrestVersion: "14.1"
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
   }
   public: {
     Tables: {
+      agent_config: {
+        Row: {
+          config_key: string
+          configured_at: string | null
+          configured_by: string | null
+          created_at: string | null
+          gmail_client_id: string | null
+          gmail_client_secret: string | null
+          gmail_email: string | null
+          gmail_refresh_token: string | null
+          id: string
+          is_active: boolean | null
+          is_configured: boolean | null
+          last_test_error: string | null
+          last_test_success: boolean | null
+          last_tested_at: string | null
+          scan_times: string[] | null
+          updated_at: string | null
+        }
+        Insert: {
+          config_key: string
+          configured_at?: string | null
+          configured_by?: string | null
+          created_at?: string | null
+          gmail_client_id?: string | null
+          gmail_client_secret?: string | null
+          gmail_email?: string | null
+          gmail_refresh_token?: string | null
+          id?: string
+          is_active?: boolean | null
+          is_configured?: boolean | null
+          last_test_error?: string | null
+          last_test_success?: boolean | null
+          last_tested_at?: string | null
+          scan_times?: string[] | null
+          updated_at?: string | null
+        }
+        Update: {
+          config_key?: string
+          configured_at?: string | null
+          configured_by?: string | null
+          created_at?: string | null
+          gmail_client_id?: string | null
+          gmail_client_secret?: string | null
+          gmail_email?: string | null
+          gmail_refresh_token?: string | null
+          id?: string
+          is_active?: boolean | null
+          is_configured?: boolean | null
+          last_test_error?: string | null
+          last_test_success?: boolean | null
+          last_tested_at?: string | null
+          scan_times?: string[] | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       comments: {
         Row: {
           created_at: string
@@ -179,53 +257,6 @@ export type Database = {
           },
         ]
       }
-      concessionaire_templates: {
-        Row: {
-          concessionaire_id: string
-          created_at: string | null
-          file_name: string
-          file_path: string
-          file_type: string
-          id: string
-          name: string
-          tag_mapping: Json
-          updated_at: string | null
-          uploaded_by: string | null
-        }
-        Insert: {
-          concessionaire_id: string
-          created_at?: string | null
-          file_name: string
-          file_path: string
-          file_type: string
-          id?: string
-          name: string
-          tag_mapping?: Json
-          updated_at?: string | null
-          uploaded_by?: string | null
-        }
-        Update: {
-          concessionaire_id?: string
-          created_at?: string | null
-          file_name?: string
-          file_path?: string
-          file_type?: string
-          id?: string
-          name?: string
-          tag_mapping?: Json
-          updated_at?: string | null
-          uploaded_by?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "concessionaire_templates_concessionaire_id_fkey"
-            columns: ["concessionaire_id"]
-            isOneToOne: false
-            referencedRelation: "energy_concessionaires"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       documents: {
         Row: {
           created_at: string
@@ -270,6 +301,204 @@ export type Database = {
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "stale_projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      email_attachments: {
+        Row: {
+          ai_classification: string | null
+          ai_confidence: number | null
+          ai_summary: string | null
+          created_at: string | null
+          email_update_id: string
+          extracted_text: string | null
+          filename: string
+          gmail_attachment_id: string | null
+          id: string
+          mime_type: string
+          processing_error: string | null
+          processing_status: string | null
+          size_bytes: number | null
+        }
+        Insert: {
+          ai_classification?: string | null
+          ai_confidence?: number | null
+          ai_summary?: string | null
+          created_at?: string | null
+          email_update_id: string
+          extracted_text?: string | null
+          filename: string
+          gmail_attachment_id?: string | null
+          id?: string
+          mime_type: string
+          processing_error?: string | null
+          processing_status?: string | null
+          size_bytes?: number | null
+        }
+        Update: {
+          ai_classification?: string | null
+          ai_confidence?: number | null
+          ai_summary?: string | null
+          created_at?: string | null
+          email_update_id?: string
+          extracted_text?: string | null
+          filename?: string
+          gmail_attachment_id?: string | null
+          id?: string
+          mime_type?: string
+          processing_error?: string | null
+          processing_status?: string | null
+          size_bytes?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_attachments_email_update_id_fkey"
+            columns: ["email_update_id"]
+            isOneToOne: false
+            referencedRelation: "email_updates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      email_scan_runs: {
+        Row: {
+          approved_count: number | null
+          attachments_processed: number | null
+          emails_analyzed: number | null
+          error_message: string | null
+          finished_at: string | null
+          id: string
+          inspection_count: number | null
+          pending_count: number | null
+          projects_found: number | null
+          rejected_count: number | null
+          started_at: string | null
+          status: string | null
+        }
+        Insert: {
+          approved_count?: number | null
+          attachments_processed?: number | null
+          emails_analyzed?: number | null
+          error_message?: string | null
+          finished_at?: string | null
+          id?: string
+          inspection_count?: number | null
+          pending_count?: number | null
+          projects_found?: number | null
+          rejected_count?: number | null
+          started_at?: string | null
+          status?: string | null
+        }
+        Update: {
+          approved_count?: number | null
+          attachments_processed?: number | null
+          emails_analyzed?: number | null
+          error_message?: string | null
+          finished_at?: string | null
+          id?: string
+          inspection_count?: number | null
+          pending_count?: number | null
+          projects_found?: number | null
+          rejected_count?: number | null
+          started_at?: string | null
+          status?: string | null
+        }
+        Relationships: []
+      }
+      email_updates: {
+        Row: {
+          ai_classification: string | null
+          ai_confidence: number | null
+          ai_reasoning: string | null
+          ai_suggested_status: string | null
+          ai_summary: string | null
+          applied_at: string | null
+          applied_by: string | null
+          attachment_classification: string | null
+          attachments_count: number | null
+          attachments_processed: number | null
+          attachments_summary: string | null
+          created_at: string | null
+          email_body: string | null
+          gmail_message_id: string
+          id: string
+          project_id: string | null
+          protocol_number: string | null
+          received_at: string
+          scan_run_id: string | null
+          sender: string
+          status: string
+          subject: string
+        }
+        Insert: {
+          ai_classification?: string | null
+          ai_confidence?: number | null
+          ai_reasoning?: string | null
+          ai_suggested_status?: string | null
+          ai_summary?: string | null
+          applied_at?: string | null
+          applied_by?: string | null
+          attachment_classification?: string | null
+          attachments_count?: number | null
+          attachments_processed?: number | null
+          attachments_summary?: string | null
+          created_at?: string | null
+          email_body?: string | null
+          gmail_message_id: string
+          id?: string
+          project_id?: string | null
+          protocol_number?: string | null
+          received_at: string
+          scan_run_id?: string | null
+          sender: string
+          status?: string
+          subject: string
+        }
+        Update: {
+          ai_classification?: string | null
+          ai_confidence?: number | null
+          ai_reasoning?: string | null
+          ai_suggested_status?: string | null
+          ai_summary?: string | null
+          applied_at?: string | null
+          applied_by?: string | null
+          attachment_classification?: string | null
+          attachments_count?: number | null
+          attachments_processed?: number | null
+          attachments_summary?: string | null
+          created_at?: string | null
+          email_body?: string | null
+          gmail_message_id?: string
+          id?: string
+          project_id?: string | null
+          protocol_number?: string | null
+          received_at?: string
+          scan_run_id?: string | null
+          sender?: string
+          status?: string
+          subject?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_updates_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "email_updates_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "stale_projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "email_updates_scan_run_id_fkey"
+            columns: ["scan_run_id"]
+            isOneToOne: false
+            referencedRelation: "email_scan_runs"
             referencedColumns: ["id"]
           },
         ]
@@ -533,14 +762,14 @@ export type Database = {
           id: string
           is_final: boolean
           is_initial: boolean
-          is_rejection_stage: boolean | null
+          is_rejection_stage: boolean
           kanban_model_id: string
           order_index: number
           requires_protocol: boolean
           stale_days: number | null
           status_key: string
           status_label: string
-          triggers_revision: boolean | null
+          triggers_revision: boolean
         }
         Insert: {
           color?: string
@@ -548,14 +777,14 @@ export type Database = {
           id?: string
           is_final?: boolean
           is_initial?: boolean
-          is_rejection_stage?: boolean | null
+          is_rejection_stage?: boolean
           kanban_model_id: string
           order_index?: number
           requires_protocol?: boolean
           stale_days?: number | null
           status_key: string
           status_label: string
-          triggers_revision?: boolean | null
+          triggers_revision?: boolean
         }
         Update: {
           color?: string
@@ -563,14 +792,14 @@ export type Database = {
           id?: string
           is_final?: boolean
           is_initial?: boolean
-          is_rejection_stage?: boolean | null
+          is_rejection_stage?: boolean
           kanban_model_id?: string
           order_index?: number
           requires_protocol?: boolean
           stale_days?: number | null
           status_key?: string
           status_label?: string
-          triggers_revision?: boolean | null
+          triggers_revision?: boolean
         }
         Relationships: [
           {
@@ -620,99 +849,6 @@ export type Database = {
           },
         ]
       }
-      notifications: {
-        Row: {
-          created_at: string | null
-          id: string
-          message: string
-          project_id: string | null
-          read: boolean | null
-          title: string
-          type: string | null
-          user_id: string | null
-        }
-        Insert: {
-          created_at?: string | null
-          id?: string
-          message: string
-          project_id?: string | null
-          read?: boolean | null
-          title: string
-          type?: string | null
-          user_id?: string | null
-        }
-        Update: {
-          created_at?: string | null
-          id?: string
-          message?: string
-          project_id?: string | null
-          read?: boolean | null
-          title?: string
-          type?: string | null
-          user_id?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "notifications_project_id_fkey"
-            columns: ["project_id"]
-            isOneToOne: false
-            referencedRelation: "projects"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "notifications_project_id_fkey"
-            columns: ["project_id"]
-            isOneToOne: false
-            referencedRelation: "stale_projects"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      payment_history: {
-        Row: {
-          amount: number
-          created_at: string | null
-          id: string
-          notes: string | null
-          payment_date: string
-          project_id: string
-          registered_by: string | null
-        }
-        Insert: {
-          amount: number
-          created_at?: string | null
-          id?: string
-          notes?: string | null
-          payment_date: string
-          project_id: string
-          registered_by?: string | null
-        }
-        Update: {
-          amount?: number
-          created_at?: string | null
-          id?: string
-          notes?: string | null
-          payment_date?: string
-          project_id?: string
-          registered_by?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "payment_history_project_id_fkey"
-            columns: ["project_id"]
-            isOneToOne: false
-            referencedRelation: "projects"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "payment_history_project_id_fkey"
-            columns: ["project_id"]
-            isOneToOne: false
-            referencedRelation: "stale_projects"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       profiles: {
         Row: {
           active: boolean
@@ -722,7 +858,9 @@ export type Database = {
           email: string
           hide_company_name: boolean | null
           id: string
+          last_sign_in_at: string | null
           name: string
+          phone: string | null
           role: Database["public"]["Enums"]["user_role"]
           staff_access_mode:
             | Database["public"]["Enums"]["staff_access_mode"]
@@ -737,7 +875,9 @@ export type Database = {
           email: string
           hide_company_name?: boolean | null
           id: string
+          last_sign_in_at?: string | null
           name: string
+          phone?: string | null
           role?: Database["public"]["Enums"]["user_role"]
           staff_access_mode?:
             | Database["public"]["Enums"]["staff_access_mode"]
@@ -752,7 +892,9 @@ export type Database = {
           email?: string
           hide_company_name?: boolean | null
           id?: string
+          last_sign_in_at?: string | null
           name?: string
+          phone?: string | null
           role?: Database["public"]["Enums"]["user_role"]
           staff_access_mode?:
             | Database["public"]["Enums"]["staff_access_mode"]
@@ -884,7 +1026,6 @@ export type Database = {
       }
       project_financials: {
         Row: {
-          company_id: string | null
           created_at: string
           due_date: string | null
           id: string
@@ -895,7 +1036,6 @@ export type Database = {
           updated_at: string
         }
         Insert: {
-          company_id?: string | null
           created_at?: string
           due_date?: string | null
           id?: string
@@ -906,7 +1046,6 @@ export type Database = {
           updated_at?: string
         }
         Update: {
-          company_id?: string | null
           created_at?: string
           due_date?: string | null
           id?: string
@@ -917,13 +1056,6 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
-          {
-            foreignKeyName: "project_financials_company_id_fkey"
-            columns: ["company_id"]
-            isOneToOne: false
-            referencedRelation: "companies"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "project_financials_project_id_fkey"
             columns: ["project_id"]
@@ -1388,35 +1520,89 @@ export type Database = {
           },
         ]
       }
-      stage_checklists: {
+      tasks: {
         Row: {
+          assigned_to: string | null
+          completed_at: string | null
+          completed_by: string | null
           created_at: string | null
-          custom_items: string[] | null
-          enabled: boolean | null
-          from_status: string
+          created_by: string
+          description: string | null
+          due_date: string | null
           id: string
-          required_documents: string[] | null
-          to_status: string
+          priority: string
+          project_id: string | null
+          status: string
+          title: string
+          updated_at: string | null
         }
         Insert: {
+          assigned_to?: string | null
+          completed_at?: string | null
+          completed_by?: string | null
           created_at?: string | null
-          custom_items?: string[] | null
-          enabled?: boolean | null
-          from_status: string
+          created_by: string
+          description?: string | null
+          due_date?: string | null
           id?: string
-          required_documents?: string[] | null
-          to_status: string
+          priority?: string
+          project_id?: string | null
+          status?: string
+          title: string
+          updated_at?: string | null
         }
         Update: {
+          assigned_to?: string | null
+          completed_at?: string | null
+          completed_by?: string | null
           created_at?: string | null
-          custom_items?: string[] | null
-          enabled?: boolean | null
-          from_status?: string
+          created_by?: string
+          description?: string | null
+          due_date?: string | null
           id?: string
-          required_documents?: string[] | null
-          to_status?: string
+          priority?: string
+          project_id?: string | null
+          status?: string
+          title?: string
+          updated_at?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "tasks_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tasks_completed_by_fkey"
+            columns: ["completed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tasks_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tasks_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tasks_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "stale_projects"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       user_roles: {
         Row: {
@@ -1438,6 +1624,54 @@ export type Database = {
       }
     }
     Views: {
+      agent_config_safe: {
+        Row: {
+          config_key: string | null
+          configured_at: string | null
+          configured_by: string | null
+          gmail_email: string | null
+          has_client_id: boolean | null
+          has_refresh_token: boolean | null
+          id: string | null
+          is_active: boolean | null
+          is_configured: boolean | null
+          last_test_error: string | null
+          last_test_success: boolean | null
+          last_tested_at: string | null
+          scan_times: string[] | null
+        }
+        Insert: {
+          config_key?: string | null
+          configured_at?: string | null
+          configured_by?: string | null
+          gmail_email?: string | null
+          has_client_id?: never
+          has_refresh_token?: never
+          id?: string | null
+          is_active?: boolean | null
+          is_configured?: boolean | null
+          last_test_error?: string | null
+          last_test_success?: boolean | null
+          last_tested_at?: string | null
+          scan_times?: string[] | null
+        }
+        Update: {
+          config_key?: string | null
+          configured_at?: string | null
+          configured_by?: string | null
+          gmail_email?: string | null
+          has_client_id?: never
+          has_refresh_token?: never
+          id?: string | null
+          is_active?: boolean | null
+          is_configured?: boolean | null
+          last_test_error?: string | null
+          last_test_success?: boolean | null
+          last_tested_at?: string | null
+          scan_times?: string[] | null
+        }
+        Relationships: []
+      }
       stale_projects: {
         Row: {
           code: string | null
@@ -1447,7 +1681,7 @@ export type Database = {
           id: string | null
           last_status_change: string | null
           stale_days: number | null
-          status: string | null
+          status: Database["public"]["Enums"]["project_status"] | null
           status_label: string | null
         }
         Relationships: [
@@ -1548,9 +1782,8 @@ export type Database = {
         | "documentation"
         | "approval"
         | "approved"
+        | "rejected"
         | "completed"
-        | "pendencia"
-        | "vistoria_solicitada"
       staff_access_mode: "global" | "assigned_only"
       user_role: "admin" | "staff" | "company"
     }
@@ -1678,6 +1911,9 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {
       condition_operator: [
@@ -1721,12 +1957,12 @@ export const Constants = {
         "documentation",
         "approval",
         "approved",
+        "rejected",
         "completed",
-        "pendencia",
-        "vistoria_solicitada",
       ],
       staff_access_mode: ["global", "assigned_only"],
       user_role: ["admin", "staff", "company"],
     },
   },
 } as const
+

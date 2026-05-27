@@ -506,10 +506,10 @@ export function useStaleProjects() {
     queryKey: ['stale-projects'],
     queryFn: async (): Promise<StaleProject[]> => {
       const { data, error } = await supabase
-        .from('stale_projects' as any)
+        .from('stale_projects')
         .select('*');
       if (error) throw error;
-      return (data ?? []) as StaleProject[];
+      return (data ?? []) as unknown as StaleProject[];
     },
     // Refresh every 10 minutes — stale detection doesn't need real-time precision
     staleTime: 10 * 60 * 1000,

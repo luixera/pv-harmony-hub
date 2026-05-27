@@ -16,9 +16,48 @@ interface EmailAnalysis {
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders })
 
+  // ── AUTH: admin/staff user OR service-role (for pg_cron) ──────────────────
+  const authHeader = req.headers.get('Authorization') || ''
+  const jwt = authHeader.replace(/^Bearer\s+/i, '').trim()
+  const SERVICE_KEY = Deno.env.get('SUPA_SERVICE_ROLE_KEY')!
+
+  if (!jwt) {
+    return new Response(
+      JSON.stringify({ error: 'Não autorizado' }),
+      { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
+  }
+
+  const isCron = jwt === SERVICE_KEY
+  if (!isCron) {
+    const userSupa = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_ANON_KEY')!,
+      { global: { headers: { Authorization: `Bearer ${jwt}` } } }
+    )
+    const { data: userData, error: userErr } = await userSupa.auth.getUser()
+    if (userErr || !userData?.user) {
+      return new Response(
+        JSON.stringify({ error: 'Sessão inválida' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+    const { data: profile } = await userSupa
+      .from('profiles')
+      .select('role')
+      .eq('id', userData.user.id)
+      .maybeSingle()
+    if (!profile || !['admin', 'staff'].includes(profile.role)) {
+      return new Response(
+        JSON.stringify({ error: 'Acesso restrito a admin ou staff' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+  }
+
   const supabase = createClient(
     Deno.env.get('SUPABASE_URL')!,
-    Deno.env.get('SUPA_SERVICE_ROLE_KEY')!
+    SERVICE_KEY
   )
 
   try {
