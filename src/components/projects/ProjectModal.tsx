@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { useWindowSize } from '@/hooks/useWindowSize';
 import { formatCurrency } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
+import { useCompanyDisplay } from '@/hooks/useCompanyDisplay';
 import { useProject, useUpdateProjectStatus, useUpdateProjectData } from '@/hooks/useProjects';
 import { useComments, useAddComment } from '@/hooks/useComments';
 import { useDocuments, useUploadDocument, useDocumentUrl } from '@/hooks/useDocuments';
@@ -1391,6 +1392,7 @@ function TabTarefas({ projectId, canEdit }: { projectId: string; canEdit: boolea
 export function ProjectModal({ projectId, onClose, initialTab = 'geral' }: ProjectModalProps) {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { getCompanyDisplayName } = useCompanyDisplay();
   const { isMobile, isTablet } = useWindowSize();
   const isAdmin = user?.role === 'admin';
   const isStaff = user?.role === 'staff';
@@ -1549,7 +1551,7 @@ export function ProjectModal({ projectId, onClose, initialTab = 'geral' }: Proje
                       {/* company badge */}
                       {project.companyName && (
                         <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 20, background: 'rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.6)' }}>
-                          {project.companyName}
+                          {getCompanyDisplayName(project.companyName)}
                         </span>
                       )}
                       {/* revision badge */}

@@ -2,6 +2,7 @@ import { useState, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { GoogleMap, Marker, InfoWindow, LoadScript } from '@react-google-maps/api';
 import { MapPin, Loader2, Maximize2, Minimize2 } from 'lucide-react';
+import { useCompanyDisplay } from '@/hooks/useCompanyDisplay';
 import { useCompanies } from '@/hooks/useCompanies';
 import { useUsers } from '@/hooks/useUsers';
 import { useEnergyConcessionaires } from '@/hooks/useEnergyConcessionaires';
@@ -61,6 +62,7 @@ interface DashboardMapProps {
 
 export function DashboardMap({ projects, isLoading, userId, userRole, companyMode = false }: DashboardMapProps) {
   const navigate = useNavigate();
+  const { getCompanyDisplayName } = useCompanyDisplay();
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string;
 
   const [filters, setFilters] = useState<MapFilterState>({
@@ -231,7 +233,7 @@ export function DashboardMap({ projects, isLoading, userId, userRole, companyMod
                   </p>
                   {selectedProject.companyName && (
                     <p style={{ fontSize: 10, color: '#888', marginBottom: 2 }}>
-                      🏢 {selectedProject.companyName}
+                      🏢 {getCompanyDisplayName(selectedProject.companyName)}
                     </p>
                   )}
                   {selectedProject.concessionaireName && (
@@ -297,7 +299,7 @@ export function DashboardMap({ projects, isLoading, userId, userRole, companyMod
                 <p style={{ fontSize: 11, fontWeight: 600, color: '#1A1A1A', marginBottom: 4, lineHeight: 1.3 }}>
                   {p.generalData?.holder_name || p.title}
                 </p>
-                <p style={{ fontSize: 10, color: '#888', marginBottom: 4 }}>{p.companyName}</p>
+                <p style={{ fontSize: 10, color: '#888', marginBottom: 4 }}>{getCompanyDisplayName(p.companyName)}</p>
                 <Badge
                   variant={(STATUS_CONFIG[p.status]?.badgeVariant || 'pending') as any}
                   className="text-[10px] py-0"

@@ -31,8 +31,35 @@ export function useProjects() {
   return useQuery({
     queryKey: ['projects'],
     queryFn: async (): Promise<ProjectWithDetails[]> => {
-      // Fetch projects with company name and concessionaire name
-      const { data: projects, error } = await supabase
+      // ── Verificar se o usuário é staff com acesso restrito ──────────────
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+
+      let assignedProjectIds: string[] | null = null;
+
+      if (authUser) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('role, staff_access_mode')
+          .eq('id', authUser.id)
+          .single();
+
+        if (profile?.role === 'staff' && profile?.staff_access_mode === 'assigned_only') {
+          const { data: assignments } = await supabase
+            .from('project_assignments')
+            .select('project_id')
+            .eq('staff_user_id', authUser.id);
+
+          assignedProjectIds = (assignments || []).map(a => a.project_id);
+        }
+      }
+
+      // Staff com assigned_only e sem projetos atribuídos → retorna vazio
+      if (assignedProjectIds !== null && assignedProjectIds.length === 0) {
+        return [];
+      }
+
+      // ── Fetch projects with company name and concessionaire name ────────
+      let queryBuilder = supabase
         .from('projects')
         .select(`
           *,
@@ -41,6 +68,13 @@ export function useProjects() {
         `)
         .eq('is_deleted', false)
         .order('created_at', { ascending: false });
+
+      // Filtrar apenas projetos atribuídos ao staff
+      if (assignedProjectIds !== null && assignedProjectIds.length > 0) {
+        queryBuilder = queryBuilder.in('id', assignedProjectIds);
+      }
+
+      const { data: projects, error } = await queryBuilder;
 
       if (error) throw error;
 

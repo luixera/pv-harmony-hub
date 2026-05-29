@@ -9,6 +9,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { GoogleMap, Marker, InfoWindow, LoadScript } from '@react-google-maps/api';
 import { Loader2, MapPin, Building2, ArrowRight, X } from 'lucide-react';
+import { useCompanyDisplay } from '@/hooks/useCompanyDisplay';
 import { motion } from 'framer-motion';
 
 const LIBRARIES: ('places')[] = ['places'];
@@ -62,6 +63,7 @@ function markerIcon(color: string): google.maps.Symbol {
 export default function ProjectsMap() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { getCompanyDisplayName } = useCompanyDisplay();
   const { data: projects = [], isLoading } = useProjects();
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string;
 
@@ -203,7 +205,7 @@ export default function ProjectsMap() {
                       {selectedProject.generalData?.holder_name || selectedProject.title}
                     </p>
                     <p style={{ fontSize: '12px', color: '#a0a0b0', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      <span>🏢</span> {selectedProject.companyName}
+                      <span>🏢</span> {getCompanyDisplayName(selectedProject.companyName)}
                     </p>
                     {selectedProject.generalData?.city && (
                       <p style={{ fontSize: '12px', color: '#a0a0b0', marginBottom: '8px' }}>

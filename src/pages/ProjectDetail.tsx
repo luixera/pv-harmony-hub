@@ -1176,7 +1176,7 @@ export default function ProjectDetail() {
                   <h3 className="font-semibold text-card-foreground">Empresa Responsável</h3>
                 </div>
                 <div className="space-y-4">
-                  <div><label className="text-xs text-muted-foreground">Nome</label><p className="text-sm text-card-foreground mt-1">{project.companyName}</p></div>
+                  <div><label className="text-xs text-muted-foreground">Nome</label><p className="text-sm text-card-foreground mt-1">{getCompanyDisplayName(project.companyName)}</p></div>
                   <div>
                     <label className="text-xs text-muted-foreground">Data de Criação</label>
                     <p className="text-sm text-card-foreground mt-1">{format(new Date(project.created_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}</p>
