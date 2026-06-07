@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Input } from '@/components/ui/input';
@@ -8,7 +8,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { motion } from 'framer-motion';
-import { ArrowLeft, ArrowRight, Check, User, Zap, Upload, Loader2, Building2 } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, User, Zap, Upload, Loader2, Building2, MapPin } from 'lucide-react';
 import { MapPicker } from '@/components/maps/MapPicker';
 import { toast } from 'sonner';
 import { brazilianStates } from '@/data/mockData';
@@ -127,6 +127,8 @@ export default function NewProject() {
   const [hasBeneficiaries, setHasBeneficiaries] = useState(false);
   const [noCircuitBreakerPhoto, setNoCircuitBreakerPhoto] = useState(false);
   const [circuitBreakerCurrent, setCircuitBreakerCurrent] = useState('');
+  const [isGeocoding, setIsGeocoding] = useState(false);
+  const [showMapPreview, setShowMapPreview] = useState(false);
   const [documents, setDocuments] = useState<FormDocuments>({
     energyBillGenerator: [],
     energyBillBeneficiaries: [],
@@ -149,10 +151,60 @@ export default function NewProject() {
     setDocuments(prev => ({ ...prev, [key]: files }));
   };
 
-  const formatCPF = (value: string) => {
-    const numbers = value.replace(/\D/g, '').slice(0, 11);
-    return numbers.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+  /** Formata CPF (11 dígitos) ou CNPJ (14 dígitos) automaticamente */
+  const formatCpfCnpj = (value: string) => {
+    const n = value.replace(/\D/g, '').slice(0, 14);
+    if (n.length <= 11) {
+      return n
+        .replace(/(\d{3})(\d)/, '$1.$2')
+        .replace(/(\d{3})(\d)/, '$1.$2')
+        .replace(/(\d{3})(\d{1,2})$/, '$1-$2');
+    }
+    return n
+      .replace(/(\d{2})(\d)/, '$1.$2')
+      .replace(/(\d{3})(\d)/, '$1.$2')
+      .replace(/(\d{3})(\d)/, '$1/$2')
+      .replace(/(\d{4})(\d{1,2})$/, '$1-$2');
   };
+
+  /** Geocodifica o endereço preenchido e preenche as coordenadas */
+  const geocodeAddress = useCallback(async () => {
+    const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string;
+    if (!apiKey) { toast.error('Chave do Google Maps não configurada'); return; }
+    const query = [
+      formData.address,
+      formData.addressNumber && `nº ${formData.addressNumber}`,
+      formData.neighborhood,
+      formData.city,
+      formData.state,
+      'Brasil',
+    ].filter(Boolean).join(', ');
+    if (!formData.address || !formData.city || !formData.state) {
+      toast.error('Preencha pelo menos o endereço, cidade e estado');
+      return;
+    }
+    setIsGeocoding(true);
+    try {
+      const resp = await fetch(
+        `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(query)}&key=${apiKey}`
+      );
+      const geo = await resp.json();
+      if (geo.status === 'OK' && geo.results[0]) {
+        const loc = geo.results[0].geometry.location;
+        const coords = `${loc.lat.toFixed(6)}, ${loc.lng.toFixed(6)}`;
+        updateField('coordinates', coords);
+        setShowMapPreview(true);
+        toast.success('Localização encontrada! Verifique no mapa e corrija se necessário.');
+      } else {
+        toast.error('Endereço não encontrado. Tente ser mais específico ou marque no mapa.');
+        setShowMapPreview(true); // abre o mapa assim mesmo para marcar manualmente
+      }
+    } catch {
+      toast.error('Erro ao buscar localização');
+    } finally {
+      setIsGeocoding(false);
+    }
+  }, [formData.address, formData.addressNumber, formData.neighborhood, formData.city, formData.state]);
 
   const formatCEP = (value: string) => {
     const numbers = value.replace(/\D/g, '').slice(0, 8);
@@ -260,7 +312,7 @@ export default function NewProject() {
         city: formData.city,
         state: formData.state,
         is_rural: formData.isRural,
-        coordinates: formData.isRural ? formData.coordinates || null : null,
+        coordinates: formData.coordinates || null,
         utility_company: 'A definir',
         uc_number: formData.consumerUnitNumber,
         phase_type: formData.phaseType,
@@ -328,8 +380,8 @@ export default function NewProject() {
         console.warn('Non-critical: Some documents failed to upload:', uploadErr);
       }
 
-      // Auto-geocode address (non-critical, silently updates coordinates)
-      if (!formData.isRural) {
+      // Auto-geocode address se o usuário ainda não definiu coordenadas manualmente
+      if (!formData.coordinates) {
         try {
           const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string;
           if (apiKey) {
@@ -479,8 +531,12 @@ export default function NewProject() {
                     <FieldGroup label="Nome do Titular *">
                       <Input value={formData.holderName} onChange={e => updateField('holderName', e.target.value)} placeholder="Nome completo" />
                     </FieldGroup>
-                    <FieldGroup label="CPF *">
-                      <Input value={formData.holderCpfCnpj} onChange={e => updateField('holderCpfCnpj', formatCPF(e.target.value))} placeholder="000.000.000-00" />
+                    <FieldGroup label="CPF / CNPJ *">
+                      <Input
+                        value={formData.holderCpfCnpj}
+                        onChange={e => updateField('holderCpfCnpj', formatCpfCnpj(e.target.value))}
+                        placeholder="000.000.000-00 ou 00.000.000/0001-00"
+                      />
                     </FieldGroup>
                     <FieldGroup label="Email do Titular *">
                       <Input
@@ -533,6 +589,60 @@ export default function NewProject() {
                         </SelectContent>
                       </Select>
                     </FieldGroup>
+                  </div>
+
+                  {/* Localização no mapa */}
+                  <div style={{ marginTop: 16 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: '#6B7280' }}>
+                        LOCALIZAÇÃO NO MAPA
+                      </span>
+                      <button
+                        type="button"
+                        onClick={geocodeAddress}
+                        disabled={isGeocoding || !formData.address || !formData.city || !formData.state}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 6,
+                          padding: '6px 14px', borderRadius: 8, fontSize: 12,
+                          fontWeight: 600, cursor: 'pointer', border: 'none',
+                          background: (!formData.address || !formData.city || !formData.state)
+                            ? '#E5E7EB' : '#F5A800',
+                          color: (!formData.address || !formData.city || !formData.state)
+                            ? '#9CA3AF' : '#fff',
+                          transition: 'all 0.2s',
+                        }}
+                      >
+                        {isGeocoding
+                          ? <><Loader2 style={{ width: 13, height: 13 }} className="animate-spin" /> Buscando...</>
+                          : <><MapPin style={{ width: 13, height: 13 }} /> Buscar no mapa</>}
+                      </button>
+                    </div>
+
+                    {(showMapPreview || formData.coordinates) ? (
+                      <div className="space-y-2">
+                        <MapPicker
+                          label=""
+                          value={formData.coordinates}
+                          onChange={coords => updateField('coordinates', coords)}
+                          showAutocomplete={false}
+                          height={260}
+                          draggable={true}
+                        />
+                        <p style={{ fontSize: 11, color: '#6B7280' }}>
+                          📌 Arraste o marcador ou edite as coordenadas abaixo se a localização estiver incorreta.
+                        </p>
+                        <Input
+                          value={formData.coordinates}
+                          onChange={e => updateField('coordinates', e.target.value)}
+                          placeholder="Ex: -23.550520, -46.633308"
+                          style={{ fontSize: 12, fontFamily: 'monospace' }}
+                        />
+                      </div>
+                    ) : (
+                      <p style={{ fontSize: 12, color: '#9CA3AF', padding: '10px 0' }}>
+                        Preencha o endereço, cidade e estado e clique em "Buscar no mapa" para confirmar a localização.
+                      </p>
+                    )}
                   </div>
                 </div>
 
@@ -737,7 +847,7 @@ export default function NewProject() {
                   <h4 style={{ fontWeight: 700, color: '#1A1A1A', marginBottom: 12 }}>Resumo do Projeto</h4>
                   <div className="grid grid-cols-2 gap-2">
                     <p><span style={{ color: '#6B7280' }}>Titular:</span> {formData.holderName}</p>
-                    <p><span style={{ color: '#6B7280' }}>CPF:</span> {formData.holderCpfCnpj}</p>
+                    <p><span style={{ color: '#6B7280' }}>CPF/CNPJ:</span> {formData.holderCpfCnpj}</p>
                     <p><span style={{ color: '#6B7280' }}>Local:</span> {formData.city}/{formData.state}</p>
                     <p><span style={{ color: '#6B7280' }}>UC:</span> {formData.consumerUnitNumber}</p>
                     <p><span style={{ color: '#6B7280' }}>Potência:</span> {calculatedPower} kWp</p>

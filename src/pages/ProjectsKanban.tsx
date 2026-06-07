@@ -210,9 +210,31 @@ const KanbanCardContent = memo(function KanbanCardContent({
         <span className="text-xs text-muted-foreground">
           {project.equipment?.total_installed_power || 0} kWp
         </span>
-        <span className="text-xs text-muted-foreground">
-          {project.equipment?.module_quantity || 0} módulos
-        </span>
+        <div className="flex items-center gap-1.5">
+          {project.generalData?.phase_type && (
+            <span style={{
+              fontSize: 9, fontWeight: 700,
+              padding: '2px 6px', borderRadius: 20,
+              background: project.generalData.phase_type === 'trifasico'
+                ? 'rgba(59,130,246,0.1)' : project.generalData.phase_type === 'bifasico'
+                ? 'rgba(168,85,247,0.1)' : 'rgba(245,168,0,0.1)',
+              color: project.generalData.phase_type === 'trifasico'
+                ? '#1D4ED8' : project.generalData.phase_type === 'bifasico'
+                ? '#7C3AED' : '#B45309',
+              border: `0.5px solid ${project.generalData.phase_type === 'trifasico'
+                ? 'rgba(59,130,246,0.3)' : project.generalData.phase_type === 'bifasico'
+                ? 'rgba(168,85,247,0.3)' : 'rgba(245,168,0,0.3)'}`,
+              whiteSpace: 'nowrap',
+            }}>
+              {project.generalData.phase_type === 'monofasico' ? 'Mono'
+                : project.generalData.phase_type === 'bifasico' ? 'Bi'
+                : 'Tri'}
+            </span>
+          )}
+          <span className="text-xs text-muted-foreground">
+            {project.equipment?.module_quantity || 0} módulos
+          </span>
+        </div>
       </div>
       {project.protocol_number && (() => {
         const noProto = project.protocol_number.toLowerCase().includes('sem protocolo');
