@@ -1,5 +1,3 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -139,8 +137,7 @@ Retorne APENAS JSON válido sem markdown:
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function buildContentBlock(doc: DocumentInput, index: number) {
-  const label = doc.hint ? `Documento ${index + 1} (${doc.hint})` : `Documento ${index + 1}`
-
+  // PDFs são enviados como documento nativo; imagens como image block
   if (doc.mimeType === 'application/pdf') {
     return {
       type: 'document',
@@ -149,15 +146,18 @@ function buildContentBlock(doc: DocumentInput, index: number) {
         media_type: 'application/pdf',
         data: doc.base64,
       },
-      title: label,
     }
   }
+
+  // Para imagens, garantir mime type válido
+  const validImageTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
+  const mediaType = validImageTypes.includes(doc.mimeType) ? doc.mimeType : 'image/jpeg'
 
   return {
     type: 'image',
     source: {
       type: 'base64',
-      media_type: doc.mimeType,
+      media_type: mediaType,
       data: doc.base64,
     },
   }
@@ -192,20 +192,21 @@ Deno.serve(async (req) => {
     const promptText = mode === 'analyze' ? buildAnalyzePrompt() : buildComparePrompt()
     contentBlocks.push({ type: 'text', text: promptText })
 
-    const model = mode === 'analyze'
-      ? 'claude-sonnet-4-5-20251101'   // Análise completa: melhor qualidade
-      : 'claude-haiku-4-5-20251001'    // Comparativo leve: custo mínimo
+    const model = 'claude-haiku-4-5-20251001' // confirmado funcionando neste projeto
 
-    const maxTokens = mode === 'analyze' ? 1500 : 400
+    const maxTokens = mode === 'analyze' ? 2000 : 400
+
+    const hasPdf = documents.some(d => d.mimeType === 'application/pdf')
+    const claudeHeaders: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+    }
+    if (hasPdf) claudeHeaders['anthropic-beta'] = 'pdfs-2024-09-25'
 
     const claudeResp = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-beta': 'pdfs-2024-09-25',
-      },
+      headers: claudeHeaders,
       body: JSON.stringify({
         model,
         max_tokens: maxTokens,
