@@ -259,13 +259,14 @@ export default function ProjectsMap() {
           )}
 
           {/* Legend */}
-          <div className="absolute bottom-4 left-4 bg-sidebar/95 backdrop-blur border border-sidebar-border rounded-xl p-3 shadow-xl z-10">
-            <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">Legenda</p>
+          <div className="absolute bottom-4 left-4 rounded-xl p-3 shadow-xl z-10"
+            style={{ background: 'rgba(255,255,255,0.97)', border: '1px solid rgba(0,0,0,0.10)' }}>
+            <p className="text-xs font-semibold mb-2 uppercase tracking-wide" style={{ color: '#555' }}>Legenda</p>
             <div className="space-y-1.5">
               {Object.entries(STATUS_CONFIG).map(([status, cfg]) => (
                 <div key={status} className="flex items-center gap-2">
                   <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: cfg.pinColor }} />
-                  <span className="text-xs text-foreground">{cfg.label}</span>
+                  <span className="text-xs font-medium" style={{ color: '#1a1a1a' }}>{cfg.label}</span>
                 </div>
               ))}
             </div>
