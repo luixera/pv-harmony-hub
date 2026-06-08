@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { motion } from 'framer-motion';
-import { TrendingUp, FolderOpen, CheckCircle2, DollarSign, AlertCircle, ArrowUpRight, ArrowDownRight, Loader2, Map } from 'lucide-react';
+import { TrendingUp, FolderOpen, CheckCircle2, DollarSign, AlertCircle, ArrowUpRight, ArrowDownRight, Loader2, Map, Eye, EyeOff } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
 import { useProjects } from '@/hooks/useProjects';
 import { Badge } from '@/components/ui/badge';
@@ -24,6 +24,7 @@ export default function DashboardAdmin() {
   const navigate = useNavigate();
   const { data: projects = [], isLoading } = useProjects();
   const [modalProjectId, setModalProjectId] = useState<string | null>(null);
+  const [hideOpenValue, setHideOpenValue] = useState(false);
   
   const activeProjects = projects.filter(p => !['completed'].includes(p.status)).length;
   const completedProjects = projects.filter(p => p.status === 'completed').length;
@@ -37,7 +38,7 @@ export default function DashboardAdmin() {
   const kpiCards = [
     { title: 'Projetos Ativos', value: activeProjects, change: '+12%', trend: 'up', icon: FolderOpen },
     { title: 'Concluídos', value: completedProjects, change: '+8%', trend: 'up', icon: CheckCircle2 },
-    { title: 'Valor em Aberto', value: formatCurrency(pendingValue), change: '-5%', trend: 'down', icon: DollarSign },
+    { title: 'Valor em Aberto', value: hideOpenValue ? '••••••' : formatCurrency(pendingValue), change: '-5%', trend: 'down', icon: DollarSign, hideable: true },
     { title: 'Taxa de Aprovação', value: '98%', change: '+2%', trend: 'up', icon: TrendingUp },
   ];
 
@@ -75,14 +76,27 @@ export default function DashboardAdmin() {
                 <div className="p-3 rounded-xl" style={{ background: '#FEF3D0' }}>
                   <card.icon className="w-6 h-6" style={{ color: '#F5A800' }} />
                 </div>
-                <div
-                  className="flex items-center gap-1 text-sm px-2 py-0.5 rounded-full"
-                  style={card.trend === 'up'
-                    ? { color: '#2D6A4F', background: '#E1F5EE' }
-                    : { color: '#993C1D', background: '#FFF0E6' }}
-                >
-                  {card.change}
-                  {card.trend === 'up' ? <ArrowUpRight className="w-4 h-4" /> : <ArrowDownRight className="w-4 h-4" />}
+                <div className="flex items-center gap-2">
+                  {(card as any).hideable && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setHideOpenValue(v => !v); }}
+                      title={hideOpenValue ? 'Mostrar valor' : 'Ocultar valor'}
+                      className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+                    >
+                      {hideOpenValue
+                        ? <EyeOff className="w-4 h-4" />
+                        : <Eye className="w-4 h-4" />}
+                    </button>
+                  )}
+                  <div
+                    className="flex items-center gap-1 text-sm px-2 py-0.5 rounded-full"
+                    style={card.trend === 'up'
+                      ? { color: '#2D6A4F', background: '#E1F5EE' }
+                      : { color: '#993C1D', background: '#FFF0E6' }}
+                  >
+                    {card.change}
+                    {card.trend === 'up' ? <ArrowUpRight className="w-4 h-4" /> : <ArrowDownRight className="w-4 h-4" />}
+                  </div>
                 </div>
               </div>
               <div className="mt-4">
