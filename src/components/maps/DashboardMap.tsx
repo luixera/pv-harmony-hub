@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { GoogleMap, Marker, InfoWindow, LoadScript } from '@react-google-maps/api';
+import { GoogleMap, Marker, InfoWindow, useJsApiLoader } from '@react-google-maps/api';
 import { MapPin, Loader2, Maximize2, Minimize2 } from 'lucide-react';
 import { useCompanyDisplay } from '@/hooks/useCompanyDisplay';
 import { useCompanies } from '@/hooks/useCompanies';
@@ -24,12 +24,14 @@ const MAP_STYLES = [
 ];
 
 const STATUS_CONFIG: Record<string, { label: string; pinColor: string; badgeVariant: string }> = {
-  pending:       { label: 'Aguardando',   pinColor: '#9CA3AF', badgeVariant: 'pending' },
-  analysis:      { label: 'Em Análise',   pinColor: '#3B82F6', badgeVariant: 'analysis' },
-  documentation: { label: 'Documentação', pinColor: '#F5A800', badgeVariant: 'progress' },
-  approval:      { label: 'Aprovação',    pinColor: '#F97316', badgeVariant: 'progress' },
-  approved:      { label: 'Aprovado',     pinColor: '#22C55E', badgeVariant: 'approved' },
-  completed:     { label: 'Concluído',    pinColor: '#1A1A1A', badgeVariant: 'completed' },
+  pending:             { label: 'Aguardando',         pinColor: '#9CA3AF', badgeVariant: 'pending' },
+  pendencia:           { label: 'Pendência',           pinColor: '#EF4444', badgeVariant: 'pending' },
+  analysis:            { label: 'Em Análise',          pinColor: '#3B82F6', badgeVariant: 'analysis' },
+  documentation:       { label: 'Documentação',        pinColor: '#F5A800', badgeVariant: 'progress' },
+  approval:            { label: 'Aprovação',           pinColor: '#F97316', badgeVariant: 'progress' },
+  vistoria_solicitada: { label: 'Vistoria Solicitada', pinColor: '#8B5CF6', badgeVariant: 'progress' },
+  approved:            { label: 'Aprovado',            pinColor: '#22C55E', badgeVariant: 'approved' },
+  completed:           { label: 'Concluído',           pinColor: '#1A1A1A', badgeVariant: 'completed' },
 };
 
 function parseCoords(coords: string | null | undefined): google.maps.LatLngLiteral | null {
@@ -64,6 +66,12 @@ export function DashboardMap({ projects, isLoading, userId, userRole, companyMod
   const navigate = useNavigate();
   const { getCompanyDisplayName } = useCompanyDisplay();
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string;
+
+  const { isLoaded } = useJsApiLoader({
+    id: 'google-map-script',
+    googleMapsApiKey: apiKey || '',
+    libraries: LIBRARIES,
+  });
 
   const [filters, setFilters] = useState<MapFilterState>({
     companyId: null, staffId: null, concessionaireId: null, status: null,
@@ -161,22 +169,14 @@ export function DashboardMap({ projects, isLoading, userId, userRole, companyMod
 
       {/* Map */}
       <div style={{ height: mapHeight, position: 'relative', transition: 'height 0.3s ease' }}>
-        {(isLoading) && (
-          <div className="absolute inset-0 flex items-center justify-center z-10" style={{ background: 'rgba(255,255,255,0.8)' }}>
+        {(isLoading || !isLoaded) && (
+          <div className="absolute inset-0 flex items-center justify-center z-10 gap-2" style={{ background: 'rgba(255,255,255,0.8)', color: '#999', fontSize: 12 }}>
             <Loader2 className="w-6 h-6 animate-spin" style={{ color: '#F5A800' }} />
+            Carregando mapa...
           </div>
         )}
 
-        <LoadScript
-          googleMapsApiKey={apiKey}
-          libraries={LIBRARIES}
-          loadingElement={
-            <div className="absolute inset-0 flex items-center justify-center z-10 gap-2" style={{ background: 'rgba(255,255,255,0.8)', color: '#999', fontSize: 12 }}>
-              <Loader2 className="w-5 h-5 animate-spin" style={{ color: '#F5A800' }} />
-              Carregando mapa...
-            </div>
-          }
-        >
+        {isLoaded && (
           <GoogleMap
             mapContainerStyle={{ width: '100%', height: '100%' }}
             center={selectedCoords ?? { lat: -15.7801, lng: -47.9292 }}
@@ -223,9 +223,9 @@ export function DashboardMap({ projects, isLoading, userId, userRole, companyMod
                       fontSize: 10,
                       fontWeight: 600,
                       background: STATUS_CONFIG[selectedProject.status]?.pinColor ?? '#ccc',
-                      color: ['completed', 'pending'].includes(selectedProject.status) ? '#fff' : '#fff',
+                      color: '#fff',
                     }}>
-                      {STATUS_CONFIG[selectedProject.status]?.label}
+                      {STATUS_CONFIG[selectedProject.status]?.label ?? selectedProject.status}
                     </span>
                   </div>
                   <p style={{ fontSize: 12, fontWeight: 600, color: '#1A1A1A', marginBottom: 4 }}>
@@ -261,7 +261,7 @@ export function DashboardMap({ projects, isLoading, userId, userRole, companyMod
               </InfoWindow>
             )}
           </GoogleMap>
-        </LoadScript>
+        )}
 
         {!isLoading && mappable.length === 0 && (
           <div className="absolute inset-0 flex flex-col items-center justify-center z-10" style={{ background: 'rgba(255,255,255,0.85)' }}>

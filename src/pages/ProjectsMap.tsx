@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
-import { GoogleMap, Marker, InfoWindow, LoadScript } from '@react-google-maps/api';
+import { GoogleMap, Marker, InfoWindow, useJsApiLoader } from '@react-google-maps/api';
 import { Loader2, MapPin, Building2, ArrowRight, X } from 'lucide-react';
 import { useCompanyDisplay } from '@/hooks/useCompanyDisplay';
 import { motion } from 'framer-motion';
@@ -27,12 +27,14 @@ const MAP_STYLES = [
 ];
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; pinColor: string }> = {
-  pending:       { label: 'Aguardando',    color: 'bg-muted',             pinColor: '#6b7280' },
-  analysis:      { label: 'Em Análise',    color: 'bg-kanban-analysis',   pinColor: '#0ea5e9' },
-  documentation: { label: 'Documentação',  color: 'bg-kanban-progress',   pinColor: '#f59e0b' },
-  approval:      { label: 'Aprovação',     color: 'bg-kanban-progress',   pinColor: '#f97316' },
-  approved:      { label: 'Aprovado',      color: 'bg-kanban-approved',   pinColor: '#22c55e' },
-  completed:     { label: 'Concluído',     color: 'bg-kanban-completed',  pinColor: '#16a34a' },
+  pending:             { label: 'Aguardando',         color: 'bg-muted',            pinColor: '#6b7280' },
+  pendencia:           { label: 'Pendência',           color: 'bg-destructive/20',   pinColor: '#ef4444' },
+  analysis:            { label: 'Em Análise',          color: 'bg-kanban-analysis',  pinColor: '#0ea5e9' },
+  documentation:       { label: 'Documentação',        color: 'bg-kanban-progress',  pinColor: '#f59e0b' },
+  approval:            { label: 'Aprovação',           color: 'bg-kanban-progress',  pinColor: '#f97316' },
+  vistoria_solicitada: { label: 'Vistoria Solicitada', color: 'bg-purple-100',       pinColor: '#8b5cf6' },
+  approved:            { label: 'Aprovado',            color: 'bg-kanban-approved',  pinColor: '#22c55e' },
+  completed:           { label: 'Concluído',           color: 'bg-kanban-completed', pinColor: '#16a34a' },
 };
 
 const STATUS_BADGE_VARIANT: Record<string, string> = {
@@ -66,6 +68,12 @@ export default function ProjectsMap() {
   const { getCompanyDisplayName } = useCompanyDisplay();
   const { data: projects = [], isLoading } = useProjects();
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string;
+
+  const { isLoaded } = useJsApiLoader({
+    id: 'google-map-script',
+    googleMapsApiKey: apiKey || '',
+    libraries: LIBRARIES,
+  });
 
   const [activeStatuses, setActiveStatuses] = useState<Record<string, boolean>>(
     Object.fromEntries(Object.keys(STATUS_CONFIG).map(k => [k, true]))
@@ -149,22 +157,14 @@ export default function ProjectsMap() {
         <div className="relative rounded-xl overflow-hidden border border-white/10 shadow-xl"
           style={{ height: 'calc(100vh - 280px)', minHeight: '400px' }}>
 
-          {isLoading && (
-            <div className="absolute inset-0 flex items-center justify-center bg-background/80 z-10">
+          {(isLoading || !isLoaded) && (
+            <div className="absolute inset-0 flex items-center justify-center bg-background/80 z-10 gap-2 text-muted-foreground">
               <Loader2 className="w-8 h-8 animate-spin text-primary" />
+              Carregando mapa...
             </div>
           )}
 
-          <LoadScript
-            googleMapsApiKey={apiKey}
-            libraries={LIBRARIES}
-            loadingElement={
-              <div className="absolute inset-0 flex items-center justify-center bg-background/80 z-10 gap-2 text-muted-foreground">
-                <Loader2 className="w-6 h-6 animate-spin" />
-                Carregando mapa...
-              </div>
-            }
-          >
+          {isLoaded && (
             <GoogleMap
               mapContainerStyle={{ width: '100%', height: '100%' }}
               center={selectedCoords ?? defaultCenter}
@@ -245,7 +245,7 @@ export default function ProjectsMap() {
                 </InfoWindow>
               )}
             </GoogleMap>
-          </LoadScript>
+          )}
 
           {/* Empty state overlay */}
           {!isLoading && mappableProjects.length === 0 && (
