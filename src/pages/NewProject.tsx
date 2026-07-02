@@ -18,6 +18,7 @@ import { DocumentUploadField } from '@/components/forms/DocumentUploadField';
 import { Database } from '@/integrations/supabase/types';
 import { useEnergyConcessionaires } from '@/hooks/useEnergyConcessionaires';
 import { validateFile, sanitizeFileName } from '@/lib/utils';
+import { upperizeStrings } from '@/lib/textCase';
 import { useQuery } from '@tanstack/react-query';
 
 type DocumentType = Database['public']['Enums']['document_type'];
@@ -584,7 +585,7 @@ export default function NewProject() {
         .from('projects')
         .insert({
           company_id: effectiveCompanyId,
-          title: formData.holderName,
+          title: formData.holderName.toUpperCase(),
           source: projectSource as 'company_login' | 'admin',
           status: 'pending' as const,
           created_by: user?.id,
@@ -600,7 +601,7 @@ export default function NewProject() {
       const titleMatch = tc ? tc.match : null;
       const titleTransfer = tc && !tc.match && transferConfirmed ? true : null;
 
-      const { error: generalError } = await supabase.from('project_general_data').insert({
+      const { error: generalError } = await supabase.from('project_general_data').insert(upperizeStrings({
         project_id: project.id,
         holder_name: formData.holderName,
         holder_cpf_cnpj: formData.holderCpfCnpj.replace(/\D/g, ''),
@@ -622,11 +623,11 @@ export default function NewProject() {
         title_transfer: titleTransfer,
         claudinho_ran: entryMode === 'auto',
         claudinho_data: claudinhoResult ? JSON.stringify(claudinhoResult) : null,
-      });
+      }));
       if (generalError) throw generalError;
 
       const totalPower = parseFloat(formData.modulePower) * parseInt(formData.moduleQuantity) / 1000;
-      const { error: equipmentError } = await supabase.from('project_equipment').insert({
+      const { error: equipmentError } = await supabase.from('project_equipment').insert(upperizeStrings({
         project_id: project.id,
         inverter_brand: formData.inverterBrand,
         inverter_model: formData.inverterModel,
@@ -637,7 +638,7 @@ export default function NewProject() {
         module_power: parseFloat(formData.modulePower),
         module_quantity: parseInt(formData.moduleQuantity),
         total_installed_power: totalPower,
-      });
+      }));
       if (equipmentError) throw equipmentError;
 
       try {
@@ -953,7 +954,7 @@ export default function NewProject() {
   return (
     <>
     <MainLayout>
-      <div style={{ background: '#F0F0F0', minHeight: '100%', padding: '24px 16px', boxSizing: 'border-box', margin: '-16px' }}>
+      <div className="uppercase-fields" style={{ background: '#F0F0F0', minHeight: '100%', padding: '24px 16px', boxSizing: 'border-box', margin: '-16px' }}>
         <div style={{ maxWidth: 680, margin: '0 auto' }}>
 
           {/* Back + Title */}

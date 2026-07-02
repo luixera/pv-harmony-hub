@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Database } from '@/integrations/supabase/types';
 import { toast } from 'sonner';
 import { toProjectStatus } from '@/lib/statusMapping';
+import { upperizeStrings } from '@/lib/textCase';
 
 type Project = Database['public']['Tables']['projects']['Row'];
 type ProjectGeneralData = Database['public']['Tables']['project_general_data']['Row'];
@@ -275,7 +276,7 @@ export function useUpdateProjectData() {
         updates.push(
           supabase
             .from('project_general_data')
-            .update(generalData)
+            .update(upperizeStrings(generalData))
             .eq('project_id', projectId)
             .then(({ error }) => { if (error) throw error; })
         );
@@ -285,7 +286,7 @@ export function useUpdateProjectData() {
         updates.push(
           supabase
             .from('project_equipment')
-            .update(equipment)
+            .update(upperizeStrings(equipment))
             .eq('project_id', projectId)
             .then(({ error }) => { if (error) throw error; })
         );
@@ -365,7 +366,7 @@ export function useCreateProject() {
         .from('projects')
         .insert({
           company_id: data.companyId,
-          title: data.title,
+          title: data.title.toUpperCase(),
           source: data.source,
           status: 'pending',
         })
@@ -377,7 +378,7 @@ export function useCreateProject() {
       // Create general data
       const { error: generalError } = await supabase
         .from('project_general_data')
-        .insert({
+        .insert(upperizeStrings({
           project_id: project.id,
           holder_name: data.generalData.holderName,
           holder_cpf_cnpj: data.generalData.holderCpfCnpj,
@@ -392,14 +393,14 @@ export function useCreateProject() {
           uc_number: data.generalData.ucNumber,
           has_beneficiaries: data.generalData.hasBeneficiaries,
           circuit_breaker_current: data.generalData.circuitBreakerCurrent,
-        });
+        }));
 
       if (generalError) throw generalError;
 
       // Create equipment
       const { error: equipmentError } = await supabase
         .from('project_equipment')
-        .insert({
+        .insert(upperizeStrings({
           project_id: project.id,
           total_installed_power: data.equipment.totalInstalledPower,
           module_quantity: data.equipment.moduleQuantity,
@@ -410,7 +411,7 @@ export function useCreateProject() {
           module_power: data.equipment.modulePower,
           inverter_power: data.equipment.inverterPower,
           inverter_quantity: data.equipment.inverterQuantity,
-        });
+        }));
 
       if (equipmentError) throw equipmentError;
 

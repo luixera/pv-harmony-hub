@@ -290,3 +290,16 @@
     display: block !important;
   }
 }
+
+/* ── Caixa alta nos formulários de projeto ─────────────────────────────────
+   Campos de texto dentro de .uppercase-fields exibem e aceitam apenas
+   MAIÚSCULAS. E-mails e senhas ficam de fora (padrão técnico). O valor
+   gravado no banco é normalizado por upperizeStrings (src/lib/textCase.ts). */
+.uppercase-fields input:not([type='email']):not([type='password']):not([type='number']),
+.uppercase-fields textarea {
+  text-transform: uppercase;
+}
+.uppercase-fields input::placeholder,
+.uppercase-fields textarea::placeholder {
+  text-transform: none;
+}

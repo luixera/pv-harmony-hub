@@ -16,6 +16,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Database } from '@/integrations/supabase/types';
 import { useEnergyConcessionaires } from '@/hooks/useEnergyConcessionaires';
 import { validateFile, sanitizeFileName } from '@/lib/utils';
+import { upperizeStrings } from '@/lib/textCase';
 
 const TURNSTILE_SITE_KEY = import.meta.env.VITE_TURNSTILE_SITE_KEY as string | undefined;
 
@@ -247,7 +248,7 @@ export default function PublicProjectForm() {
         .from('projects')
         .insert({
           company_id: company.id,
-          title: formData.holderName,
+          title: formData.holderName.toUpperCase(),
           source: 'public_form' as const,
           status: 'pending' as const,
           concessionaire_id: formData.concessionaireId || null,
@@ -256,7 +257,7 @@ export default function PublicProjectForm() {
         .single();
       if (projectError) throw projectError;
 
-      const { error: generalError } = await supabase.from('project_general_data').insert({
+      const { error: generalError } = await supabase.from('project_general_data').insert(upperizeStrings({
         project_id: project.id,
         holder_name: formData.holderName,
         holder_cpf_cnpj: formData.holderCpfCnpj.replace(/\D/g, ''),
@@ -273,11 +274,11 @@ export default function PublicProjectForm() {
         has_beneficiaries: hasBeneficiaries,
         circuit_breaker_current: noCircuitBreakerPhoto ? circuitBreakerCurrent : null,
         observations: formData.observations?.trim() || null,
-      });
+      }));
       if (generalError) throw generalError;
 
       const totalPower = (parseFloat(formData.modulePower) * parseInt(formData.moduleQuantity)) / 1000;
-      const { error: equipmentError } = await supabase.from('project_equipment').insert({
+      const { error: equipmentError } = await supabase.from('project_equipment').insert(upperizeStrings({
         project_id: project.id,
         inverter_brand: formData.inverterBrand,
         inverter_model: formData.inverterModel,
@@ -288,7 +289,7 @@ export default function PublicProjectForm() {
         module_power: parseFloat(formData.modulePower),
         module_quantity: parseInt(formData.moduleQuantity),
         total_installed_power: totalPower,
-      });
+      }));
       if (equipmentError) throw equipmentError;
 
       const { error: financialsError } = await supabase.from('project_financials').insert({
@@ -377,7 +378,7 @@ export default function PublicProjectForm() {
   // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
-    <div style={{ minHeight: '100vh', background: '#F0F0F0' }}>
+    <div className="uppercase-fields" style={{ minHeight: '100vh', background: '#F0F0F0' }}>
 
       {/* Header */}
       <header style={{
