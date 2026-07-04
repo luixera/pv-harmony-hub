@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { useWindowSize } from '@/hooks/useWindowSize';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, sanitizeFileName } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCompanyDisplay } from '@/hooks/useCompanyDisplay';
 import { useProject, useUpdateProjectStatus, useUpdateProjectData } from '@/hooks/useProjects';
@@ -799,14 +799,26 @@ function TabDocuments({ project, canUpload }: { project: ProjectWithDetails; can
 // ── Tab: Comments ──────────────────────────────────────────────────────────────
 function TabComments({ project }: { project: ProjectWithDetails }) {
   const { data: comments = [] } = useComments(project.id);
+  const { data: documents = [] } = useDocuments(project.id);
   const addComment    = useAddComment();
   const uploadDocument = useUploadDocument();
   const [message,     setMessage]     = useState('');
   const [attachments, setAttachments] = useState<File[]>([]);
   const [isDragging,  setIsDragging]  = useState(false);
   const [isSending,   setIsSending]   = useState(false);
+  const [previewDoc,  setPreviewDoc]  = useState<{ file_url: string; file_name: string } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   useWindowSize();
+
+  // Resolve o documento correspondente a um nome exibido em "📎 nome" no comentário.
+  // O comentário guarda o nome original; o documento guarda o nome sanitizado.
+  const resolveDoc = (displayName: string) => {
+    const target = sanitizeFileName(displayName.trim());
+    return documents.find(d => d.file_name === target)
+        || documents.find(d => sanitizeFileName(d.file_name) === target)
+        || documents.find(d => d.file_name.endsWith(target))
+        || null;
+  };
 
   const canSend = !isSending && (message.trim().length > 0 || attachments.length > 0);
 
@@ -890,7 +902,34 @@ function TabComments({ project }: { project: ProjectWithDetails }) {
                     {formatDistanceToNow(new Date(c.created_at), { addSuffix: true, locale: ptBR })}
                   </span>
                 </div>
-                <p style={{ fontSize: 13, color: '#333', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{c.message}</p>
+                <div style={{ fontSize: 13, color: '#333', lineHeight: 1.5 }}>
+                  {c.message.split('\n').map((line, idx) => {
+                    const att = line.match(/^\s*📎\s*(.+?)\s*$/);
+                    if (att) {
+                      const name = att[1];
+                      const doc = resolveDoc(name);
+                      return (
+                        <button
+                          key={idx}
+                          onClick={() => doc && setPreviewDoc(doc)}
+                          disabled={!doc}
+                          title={doc ? 'Abrir arquivo' : 'Arquivo não encontrado'}
+                          style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 5,
+                            background: 'none', border: 'none', padding: '2px 0',
+                            font: 'inherit', textAlign: 'left',
+                            color: doc ? '#185FA5' : '#999',
+                            textDecoration: doc ? 'underline' : 'none',
+                            cursor: doc ? 'pointer' : 'default',
+                          }}
+                        >
+                          <Paperclip size={12} style={{ flexShrink: 0 }} /> {name}
+                        </button>
+                      );
+                    }
+                    return <div key={idx} style={{ whiteSpace: 'pre-wrap' }}>{line}</div>;
+                  })}
+                </div>
               </div>
             </div>
           );
@@ -990,6 +1029,38 @@ function TabComments({ project }: { project: ProjectWithDetails }) {
           Arraste arquivos ou clique em 📎 · Enter para enviar · Shift+Enter nova linha
         </p>
       </div>
+
+      {/* Visualizador inline de anexo (abre na própria página) */}
+      {previewDoc && (
+        <div
+          onClick={() => setPreviewDoc(null)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 100,
+            background: 'rgba(0,0,0,0.6)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24,
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: '#fff', borderRadius: 12, overflow: 'hidden',
+              width: 'min(900px, 92vw)', height: '85vh',
+              display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.35)',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'flex-end', padding: 6, borderBottom: '1px solid #F0F0F0' }}>
+              <button
+                onClick={() => setPreviewDoc(null)}
+                title="Fechar"
+                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 6, color: '#666', display: 'flex' }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <DocPreview filePath={previewDoc.file_url} fileName={previewDoc.file_name} />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
