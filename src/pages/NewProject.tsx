@@ -1245,7 +1245,7 @@ export default function NewProject() {
 
                 <div style={{ paddingTop: 16, borderTop: '1px solid #F3F4F6' }}>
                   <FieldGroup label="Observações do projeto (opcional)">
-                    <Textarea placeholder="Informe particularidades do projeto ou recados para o projetista..." value={formData.observations} onChange={e => updateField('observations', e.target.value)} rows={4} />
+                    <Textarea className="keep-case" placeholder="Informe particularidades do projeto ou recados para o projetista..." value={formData.observations} onChange={e => updateField('observations', e.target.value)} rows={4} />
                   </FieldGroup>
                 </div>
 

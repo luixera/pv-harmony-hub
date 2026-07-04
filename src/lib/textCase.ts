@@ -14,6 +14,7 @@ const SKIP_KEYS = new Set([
   'status',
   'payment_status',
   'claudinho_data', // JSON serializado — não alterar
+  'observations',   // texto livre — preserva a caixa digitada pelo usuário
 ]);
 
 const isEmailKey = (key: string) => /email/i.test(key);

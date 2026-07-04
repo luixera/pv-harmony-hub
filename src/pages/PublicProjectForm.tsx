@@ -739,6 +739,7 @@ export default function PublicProjectForm() {
               <div style={{ paddingTop: 16, borderTop: '1px solid #F3F4F6' }}>
                 <FieldGroup label="Observações do projeto (opcional)">
                   <Textarea
+                    className="keep-case"
                     placeholder="Informe particularidades do projeto ou recados para o projetista..."
                     value={formData.observations}
                     onChange={e => updateField('observations', e.target.value)}

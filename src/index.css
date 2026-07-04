@@ -303,3 +303,9 @@
 .uppercase-fields textarea::placeholder {
   text-transform: none;
 }
+/* Exceção: campos de texto livre (ex.: observações) preservam a caixa digitada. */
+.uppercase-fields .keep-case,
+.uppercase-fields .keep-case input,
+.uppercase-fields .keep-case textarea {
+  text-transform: none;
+}
