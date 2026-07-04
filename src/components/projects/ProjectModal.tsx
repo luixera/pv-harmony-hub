@@ -73,8 +73,35 @@ interface ProjectModalProps {
 // ── Document Preview ───────────────────────────────────────────────────────────
 function DocPreview({ filePath, fileName }: { filePath: string; fileName: string }) {
   const { data: url, isLoading } = useDocumentUrl(filePath);
+  const [isDownloading, setIsDownloading] = useState(false);
   const isImage = /\.(png|jpe?g|gif|webp)$/i.test(fileName);
   const isPdf = /\.pdf$/i.test(fileName);
+
+  // Baixa o arquivo como blob e dispara o download (o navegador pergunta onde
+  // salvar) sem sair da página. O atributo `download` de um <a> é ignorado em
+  // URLs de outro domínio (as URLs assinadas do Supabase), por isso o download
+  // direto do blob.
+  const handleDownload = async () => {
+    if (isDownloading) return;
+    setIsDownloading(true);
+    try {
+      const { data, error } = await supabase.storage.from('project-documents').download(filePath);
+      if (error || !data) throw error ?? new Error('download vazio');
+      const objectUrl = URL.createObjectURL(data);
+      const a = document.createElement('a');
+      a.href = objectUrl;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(objectUrl);
+    } catch (e) {
+      console.error('Erro ao baixar documento:', e);
+      toast.error('Não foi possível baixar o arquivo');
+    } finally {
+      setIsDownloading(false);
+    }
+  };
 
   if (isLoading) return (
     <div className="flex-1 flex items-center justify-center">
@@ -87,16 +114,18 @@ function DocPreview({ filePath, fileName }: { filePath: string; fileName: string
     <div className="flex flex-col flex-1 min-h-0">
       <div style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <span style={{ fontSize: 12, fontWeight: 600, color: '#1A1A1A', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 200 }}>{fileName}</span>
-        <a href={url} download={fileName} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#F5A800', fontWeight: 600, textDecoration: 'none' }}>
-          <Download size={12} /> Baixar
-        </a>
+        <button onClick={handleDownload} disabled={isDownloading} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#F5A800', fontWeight: 600, background: 'none', border: 'none', cursor: isDownloading ? 'default' : 'pointer', padding: 0 }}>
+          {isDownloading ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />} Baixar
+        </button>
       </div>
       {isPdf && <iframe src={url} title={fileName} style={{ flex: 1, border: 'none', minHeight: 0 }} />}
       {isImage && <img src={url} alt={fileName} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', margin: 'auto', padding: 12 }} />}
       {!isPdf && !isImage && (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
           <FileText size={40} style={{ color: '#E0E0E0' }} />
-          <a href={url} download={fileName} style={{ color: '#F5A800', fontWeight: 600, fontSize: 13 }}>Baixar arquivo</a>
+          <button onClick={handleDownload} disabled={isDownloading} style={{ color: '#F5A800', fontWeight: 600, fontSize: 13, background: 'none', border: 'none', cursor: isDownloading ? 'default' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            {isDownloading ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />} Baixar arquivo
+          </button>
         </div>
       )}
     </div>
