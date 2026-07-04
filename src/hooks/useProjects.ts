@@ -201,8 +201,11 @@ export function useUpdateProjectStatus() {
     },
 
     onSuccess: () => {
-      // Sync with server in the background (card already in correct position)
-      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      // O update otimista já deixou o card na posição correta. Apenas marcamos
+      // os dados como desatualizados (refetchType: 'none') para que sincronizem
+      // na próxima oportunidade natural (navegação/foco), sem forçar um refetch
+      // pesado de todos os projetos agora — o que travava o quadro a cada drop.
+      queryClient.invalidateQueries({ queryKey: ['projects'], refetchType: 'none' });
       toast.success('Status atualizado');
     },
 
