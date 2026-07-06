@@ -32,6 +32,8 @@ import Reports from "./pages/admin/Reports";
 import Tasks from "./pages/Tasks";
 import EmailUpdates from "./pages/EmailUpdates";
 import MasterPanel from "./pages/master/MasterPanel";
+import Landing from "./pages/Landing";
+import Signup from "./pages/Signup";
 import { TenantGate } from "./components/layout/TenantGate";
 
 const queryClient = new QueryClient();
@@ -50,7 +52,8 @@ function AppRoutes() {
     <TenantGate>
     <Routes>
       <Route path="/login" element={isAuthenticated ? <Navigate to={user?.role === 'admin' ? '/dashboard-admin' : user?.role === 'staff' ? '/dashboard-staff' : '/dashboard-company'} /> : <Login />} />
-      <Route path="/" element={<Navigate to="/login" replace />} />
+      <Route path="/" element={<Landing />} />
+      <Route path="/cadastro" element={<Signup />} />
       <Route path="/dashboard-admin" element={<ProtectedRoute allowedRoles={['admin']}><DashboardAdmin /></ProtectedRoute>} />
       <Route path="/dashboard-staff" element={<ProtectedRoute allowedRoles={['staff']}><DashboardStaff /></ProtectedRoute>} />
       <Route path="/dashboard-company" element={<ProtectedRoute allowedRoles={['company']}><DashboardCompany /></ProtectedRoute>} />
