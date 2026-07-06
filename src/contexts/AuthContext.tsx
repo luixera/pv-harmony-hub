@@ -11,6 +11,8 @@ interface UserProfile {
   companyId?: string;
   avatar?: string;
   isActive?: boolean;
+  isMaster?: boolean;
+  tenantId?: string;
 }
 
 interface AuthContextType {
@@ -57,6 +59,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         companyId: profile.company_id || undefined,
         avatar: profile.avatar_url || undefined,
         isActive: profile.active,
+        isMaster: (profile as { is_master?: boolean }).is_master || false,
+        tenantId: (profile as { tenant_id?: string }).tenant_id || undefined,
       };
 
       return userProfile;

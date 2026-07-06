@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -72,6 +73,16 @@ export default function PublicProjectForm() {
   const { data: companyFull } = useCompany(companyBasic?.id);
   const company = companyFull || companyBasic;
   const { data: concessionaires = [] } = useEnergyConcessionaires();
+  // Logo do tenant (assinante da plataforma) dono desta empresa
+  const { data: tenantLogo } = useQuery({
+    queryKey: ['tenant-logo', token],
+    queryFn: async () => {
+      const { data } = await supabase.rpc('get_company_tenant_logo' as never, { _token: token } as never);
+      return (data as string | null) ?? null;
+    },
+    enabled: !!token,
+    staleTime: Infinity,
+  });
   const [currentStep, setCurrentStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -391,10 +402,10 @@ export default function PublicProjectForm() {
           padding: '14px 20px',
           display: 'flex', alignItems: 'center', gap: 14,
         }}>
-          {/* Logo */}
+          {/* Logo do tenant (assinante), com fallback para a marca padrão */}
           <img
-            src="/logo.png"
-            alt="GD Manager"
+            src={tenantLogo || '/logo.png'}
+            alt="Logo"
             style={{ width: 42, height: 42, objectFit: 'contain', flexShrink: 0 }}
           />
           <div>

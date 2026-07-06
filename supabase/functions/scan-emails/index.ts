@@ -42,6 +42,15 @@ Deno.serve(async (req) => {
       )
     }
 
+    // Tenant dono desta varredura (multi-tenant): vem da config do agente.
+    // Fallback: tenant mais antigo (GD Manager) para config legada sem tenant.
+    let tenantId: string | null = config?.tenant_id ?? null
+    if (!tenantId) {
+      const { data: t } = await supabase.from('tenants')
+        .select('id').order('created_at', { ascending: true }).limit(1).single()
+      tenantId = t?.id ?? null
+    }
+
     // 2. Limpar varreduras travadas >2 min
     const twoMinAgo = new Date(Date.now() - 2 * 60 * 1000).toISOString()
     await supabase.from('email_scan_runs')
@@ -50,7 +59,7 @@ Deno.serve(async (req) => {
 
     // 3. Criar scan run
     const { data: scanRun } = await supabase
-      .from('email_scan_runs').insert({ status: 'running' }).select().single()
+      .from('email_scan_runs').insert({ status: 'running', tenant_id: tenantId }).select().single()
     if (!scanRun) throw new Error('Falha ao criar scan run')
 
     const SCAN_START     = Date.now()
@@ -84,7 +93,7 @@ Deno.serve(async (req) => {
 
     // ════════════════════════════════════════════════════════════════════
     // ETAPA 2 — Coleta IMAP: salva emails novos (metadados + corpo)
-    // Emails novos serão matched na PRÓXIMA varredura via ETAPA 1
+    // Após a coleta, ETAPA 3 faz matching imediato dos recém-salvos
     // ════════════════════════════════════════════════════════════════════
 
     const { data: rawConc } = await supabase
@@ -152,6 +161,7 @@ Deno.serve(async (req) => {
               ai_confidence:       0,
               status:              'pending',
               scan_run_id:         scanRun.id,
+              tenant_id:           tenantId,
             })
             collected++
           }
@@ -163,6 +173,30 @@ Deno.serve(async (req) => {
     }
 
     console.log(`Coleta IMAP: ${collected} emails novos`)
+
+    // ════════════════════════════════════════════════════════════════════
+    // ETAPA 3 — 2ª passada de matching: correlaciona emails recém-salvos
+    // Garante que "Varrer agora" relaciona os novos emails no mesmo ciclo
+    // ════════════════════════════════════════════════════════════════════
+
+    if (collected > 0 && !isOverBudget()) {
+      const { data: newMatchedRows, error: matchErr2 } = await supabase.rpc('match_emails_to_protocols')
+      if (matchErr2) console.error('Erro no matching pós-coleta:', matchErr2.message)
+
+      for (const row of (newMatchedRows || [])) {
+        if (isOverBudget()) { console.log('Budget atingido na IA pós-coleta'); break }
+        const ai = await analyzeEmailBody(row.email_body || '', row.protocol_number, row.subject || '')
+        await supabase.from('email_updates').update({
+          ai_summary: ai.summary, ai_classification: ai.classification,
+          ai_suggested_status: ai.suggestedStatus, ai_confidence: ai.confidence, ai_reasoning: ai.reasoning,
+        }).eq('id', row.email_update_id)
+        matched++
+        const cl = ai.classification as keyof typeof counts
+        if (cl in counts) counts[cl]++
+      }
+
+      console.log(`Correlação pós-coleta: ${newMatchedRows?.length ?? 0} novos vínculos`)
+    }
 
     // 4. Finalizar
     const scanStatus = isOverBudget() ? 'timeout' : 'completed'
@@ -179,13 +213,16 @@ Deno.serve(async (req) => {
 
     // 5. Notificações
     if (matched > 0) {
-      const { data: staff } = await supabase.from('profiles').select('id').in('role', ['admin', 'staff'])
+      // Notifica apenas admin/staff do tenant dono da varredura
+      const { data: staff } = await supabase.from('profiles').select('id')
+        .in('role', ['admin', 'staff']).eq('tenant_id', tenantId)
       for (const member of staff || []) {
         await supabase.from('notifications').insert({
           user_id: member.id,
           title:   '📧 Claudinho dos Emails — varredura concluída',
           message: `${matched} protocolo(s) vinculado(s): ${counts.approved} aprovação(ões), ${counts.rejected} reprovação(ões), ${counts.pending} pendência(s).`,
           type: 'email_scan', project_id: null, read: false,
+          tenant_id: tenantId,
         })
       }
     }

@@ -12,6 +12,7 @@ interface CreateUserRequest {
   role: 'admin' | 'staff' | 'company'
   companyId?: string
   active?: boolean
+  tenantId?: string // apenas master pode especificar; admin cria no próprio tenant
 }
 
 Deno.serve(async (req) => {
@@ -51,14 +52,15 @@ Deno.serve(async (req) => {
       )
     }
 
-    // Check if the requesting user is an admin
+    // Check if the requesting user is an admin (ou master da plataforma)
     const { data: profile, error: profileError } = await userClient
       .from('profiles')
-      .select('role')
+      .select('role, is_master, tenant_id')
       .eq('id', requestingUser.id)
       .single()
 
-    if (profileError || !profile || profile.role !== 'admin') {
+    const isMaster = !!profile?.is_master
+    if (profileError || !profile || (profile.role !== 'admin' && !isMaster)) {
       console.error('User is not admin:', profileError)
       return new Response(
         JSON.stringify({ error: 'Apenas administradores podem criar usuários' }),
@@ -67,7 +69,16 @@ Deno.serve(async (req) => {
     }
 
     // Parse the request body
-    const { email, password, name, role, companyId, active = true }: CreateUserRequest = await req.json()
+    const { email, password, name, role, companyId, active = true, tenantId }: CreateUserRequest = await req.json()
+
+    // Tenant do novo usuário: master pode escolher; admin cria no próprio tenant
+    const targetTenantId = isMaster && tenantId ? tenantId : profile.tenant_id
+    if (tenantId && !isMaster && tenantId !== profile.tenant_id) {
+      return new Response(
+        JSON.stringify({ error: 'Sem permissão para criar usuários em outro tenant' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
 
     // Validate required fields
     if (!email || !password || !name || !role) {
@@ -122,6 +133,7 @@ Deno.serve(async (req) => {
         name,
         role,
         company_id: companyId || null, // Pass company_id to trigger
+        tenant_id: targetTenantId || null, // handle_new_user usa para o perfil
       }
     })
 

@@ -13,6 +13,7 @@ import { MapPicker } from '@/components/maps/MapPicker';
 import { toast } from 'sonner';
 import { brazilianStates } from '@/data/mockData';
 import { useAuth } from '@/contexts/AuthContext';
+import { useTenantFeatures } from '@/hooks/useTenant';
 import { supabase } from '@/integrations/supabase/client';
 import { DocumentUploadField } from '@/components/forms/DocumentUploadField';
 import { Database } from '@/integrations/supabase/types';
@@ -186,6 +187,7 @@ export default function NewProject() {
   // ── Modo de entrada ──────────────────────────────────────────────────────────
   // null = escolha ainda não feita, 'auto' = Claudinho, 'manual' = formulário direto
   const [entryMode, setEntryMode] = useState<null | 'auto' | 'manual'>(null);
+  const tenantFeatures = useTenantFeatures();
 
   const [currentStep, setCurrentStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -761,7 +763,8 @@ export default function NewProject() {
             </div>
 
             <div style={{ display: 'grid', gap: 16 }}>
-              {/* Opção automática */}
+              {/* Opção automática — apenas se o plano do tenant inclui o Claudinho */}
+              {tenantFeatures.claudinho !== false && (
               <motion.button
                 whileHover={{ scale: 1.01 }}
                 whileTap={{ scale: 0.99 }}
@@ -795,6 +798,7 @@ export default function NewProject() {
                   </div>
                 </div>
               </motion.button>
+              )}
 
               {/* Opção manual */}
               <motion.button

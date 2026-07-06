@@ -1,3 +1,5 @@
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -182,6 +184,37 @@ Deno.serve(async (req) => {
     if (!documents || documents.length === 0) {
       return new Response(JSON.stringify({ ok: false, error: 'Nenhum documento enviado' }), {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
+    // ── Cota de IA por tenant ────────────────────────────────────────────────
+    // consume_ai_quota valida o plano do tenant do usuário logado e registra
+    // o consumo. Sem usuário logado → sem cota → recusa.
+    const authHeader = req.headers.get('Authorization')
+    if (!authHeader) {
+      return new Response(JSON.stringify({ ok: false, error: 'Login necessário para usar o Claudinho' }), {
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+    const userClient = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_ANON_KEY')!,
+      { global: { headers: { Authorization: authHeader } } },
+    )
+    const { data: quota, error: quotaError } = await userClient
+      .rpc('consume_ai_quota', { _kind: mode === 'analyze' ? 'claudinho_analyze' : 'claudinho_compare' })
+    if (quotaError) {
+      console.error('Erro ao verificar cota:', quotaError)
+      return new Response(JSON.stringify({ ok: false, error: 'Não foi possível verificar a cota de IA' }), {
+        status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+    if (!quota?.allowed) {
+      const msg = quota?.reason === 'quota_exceeded'
+        ? `Cota de análises de IA do seu plano atingida (${quota.used}/${quota.quota} neste mês).`
+        : 'Seu plano não inclui análises de IA ou a assinatura está suspensa.'
+      return new Response(JSON.stringify({ ok: false, error: msg, quota }), {
+        status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
 

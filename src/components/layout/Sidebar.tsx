@@ -22,8 +22,10 @@ import {
   CheckSquare,
   Mail,
 } from 'lucide-react';
+import { Crown } from 'lucide-react';
 import { useMyPendingTasks } from '@/hooks/useTasks';
 import { useEmailUpdates } from '@/hooks/useEmailUpdates';
+import { useTenant, useTenantFeatures } from '@/hooks/useTenant';
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -72,10 +74,27 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   const pendingCount = pendingTasks.length;
   const { data: emailUpdates = [] } = useEmailUpdates({ status: 'pending' });
   const emailBadge = emailUpdates.filter(u => u.ai_suggested_status !== null).length;
+  const { data: tenant } = useTenant();
+  const features = useTenantFeatures();
+
+  // Rotas ocultadas conforme os recursos do plano do tenant
+  const featureGate: Record<string, boolean> = {
+    '/email-updates': features.email_agent !== false,
+    '/projects-map': features.map !== false,
+    '/reports': features.reports !== false,
+  };
 
   const filteredItems = sidebarItems.filter(item =>
-    user && item.roles.includes(user.role)
+    user && item.roles.includes(user.role) && featureGate[item.path] !== false
   );
+  // Painel Master: só para quem tem a flag is_master
+  if (user?.isMaster) {
+    filteredItems.unshift({ icon: Crown, label: 'Painel Master', path: '/master', roles: ['admin'] });
+  }
+
+  // Marca exibida: logo/nome do tenant, com fallback para a marca padrão
+  const brandLogo = tenant?.logo_url || '/logo.png';
+  const brandName = tenant?.name || 'GD Manager';
 
   const handleNavClick = (path: string) => {
     navigate(path);
@@ -109,10 +128,10 @@ export function Sidebar({ open, onClose }: SidebarProps) {
               {/* Header */}
               <div className="h-16 flex items-center justify-between px-4 border-b border-sidebar-border">
                 <Link to="/" className="flex items-center gap-3" onClick={onClose}>
-                  <img src="/logo.png" alt="All Energy" style={{ width: 36, height: 36, objectFit: 'contain' }} />
+                  <img src={brandLogo} alt={brandName} style={{ width: 36, height: 36, objectFit: 'contain' }} />
                   <div className="flex flex-col leading-tight">
-                    <span className="font-bold text-lg text-white">GD Manager</span>
-                    <span className="text-[11px] font-medium" style={{ color: '#F5A800' }}>All Energy</span>
+                    <span className="font-bold text-lg text-white">{brandName}</span>
+                    <span className="text-[11px] font-medium" style={{ color: '#F5A800' }}>GD Manager</span>
                   </div>
                 </Link>
                 <button
@@ -185,15 +204,15 @@ export function Sidebar({ open, onClose }: SidebarProps) {
       {/* Logo */}
       <div className="h-16 flex items-center justify-between px-4 border-b border-sidebar-border">
         <Link to="/" className="flex items-center gap-3">
-          <img src="/logo.png" alt="All Energy" style={{ width: 36, height: 36, objectFit: 'contain' }} />
+          <img src={brandLogo} alt={brandName} style={{ width: 36, height: 36, objectFit: 'contain' }} />
           {!collapsed && (
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               className="flex flex-col leading-tight"
             >
-              <span className="font-bold text-lg text-white">GD Manager</span>
-              <span className="text-[11px] font-medium" style={{ color: '#F5A800' }}>All Energy</span>
+              <span className="font-bold text-lg text-white">{brandName}</span>
+              <span className="text-[11px] font-medium" style={{ color: '#F5A800' }}>GD Manager</span>
             </motion.div>
           )}
         </Link>

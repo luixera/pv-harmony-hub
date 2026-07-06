@@ -31,13 +31,23 @@ import Profile from "./pages/Profile";
 import Reports from "./pages/admin/Reports";
 import Tasks from "./pages/Tasks";
 import EmailUpdates from "./pages/EmailUpdates";
+import MasterPanel from "./pages/master/MasterPanel";
+import { TenantGate } from "./components/layout/TenantGate";
 
 const queryClient = new QueryClient();
 
+function MasterRoute({ children }: { children: React.ReactNode }) {
+  const { user, isLoading } = useAuth();
+  if (isLoading) return null;
+  if (!user?.isMaster) return <Navigate to="/login" replace />;
+  return <>{children}</>;
+}
+
 function AppRoutes() {
   const { isAuthenticated, user } = useAuth();
-  
+
   return (
+    <TenantGate>
     <Routes>
       <Route path="/login" element={isAuthenticated ? <Navigate to={user?.role === 'admin' ? '/dashboard-admin' : user?.role === 'staff' ? '/dashboard-staff' : '/dashboard-company'} /> : <Login />} />
       <Route path="/" element={<Navigate to="/login" replace />} />
@@ -66,8 +76,10 @@ function AppRoutes() {
       <Route path="/tasks" element={<ProtectedRoute allowedRoles={['admin', 'staff']}><Tasks /></ProtectedRoute>} />
       <Route path="/email-updates" element={<ProtectedRoute allowedRoles={['admin', 'staff']}><EmailUpdates /></ProtectedRoute>} />
       <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
+      <Route path="/master" element={<MasterRoute><MasterPanel /></MasterRoute>} />
       <Route path="*" element={<NotFound />} />
     </Routes>
+    </TenantGate>
   );
 }
 
