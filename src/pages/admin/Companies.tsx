@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Database } from '@/integrations/supabase/types';
+import { CompanyPricingFields, PricingState, emptyPricing, pricingToPayload, pricingFromCompany } from '@/components/admin/CompanyPricingFields';
 type Company = Database['public']['Tables']['companies']['Row'];
 export default function Companies() {
   const navigate = useNavigate();
@@ -38,6 +39,7 @@ export default function Companies() {
     phone: '',
     isActive: true
   });
+  const [pricing, setPricing] = useState<PricingState>({ ...emptyPricing });
   const filteredCompanies = companies.filter(company => company.name.toLowerCase().includes(search.toLowerCase()) || company.contact_name.toLowerCase().includes(search.toLowerCase()) || company.contact_email.toLowerCase().includes(search.toLowerCase()));
   const getProjectCount = (companyId: string) => projects.filter(p => p.company_id === companyId).length;
   const getPublicLink = (token: string) => `${window.location.origin}/public-form/${token}`;
@@ -57,6 +59,7 @@ export default function Companies() {
       phone: '',
       isActive: true
     });
+    setPricing({ ...emptyPricing });
     setIsDialogOpen(true);
   };
   const handleEdit = (company: Company) => {
@@ -69,6 +72,7 @@ export default function Companies() {
       phone: company.contact_phone || '',
       isActive: company.active
     });
+    setPricing(pricingFromCompany(company as unknown as Record<string, unknown>));
     setIsDialogOpen(true);
   };
   const handleSave = async () => {
@@ -85,8 +89,9 @@ export default function Companies() {
           contact_name: formData.contactName,
           contact_email: formData.email,
           contact_phone: formData.phone || null,
-          active: formData.isActive
-        });
+          active: formData.isActive,
+          ...pricingToPayload(pricing),
+        } as never);
       } else {
         await createCompany.mutateAsync({
           name: formData.name,
@@ -94,8 +99,9 @@ export default function Companies() {
           contact_name: formData.contactName,
           contact_email: formData.email,
           contact_phone: formData.phone || null,
-          active: formData.isActive
-        });
+          active: formData.isActive,
+          ...pricingToPayload(pricing),
+        } as never);
       }
       setIsDialogOpen(false);
     } catch (error) {
@@ -231,6 +237,8 @@ export default function Companies() {
               })} />
               </div>
             </div>
+
+            <CompanyPricingFields value={pricing} onChange={setPricing} />
 
             {editingCompany && <div className="pt-2 border-t border-border">
                 <Label className="text-muted-foreground text-xs">Link público de envio</Label>
