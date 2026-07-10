@@ -540,7 +540,7 @@ function TabGeneral({ project, isEditing, onSave, onCancel, onEdit }: {
                 const labels: Record<string, string> = { inverter_brand: 'Marca', inverter_model: 'Modelo', inverter_power: 'Potência (kW)', inverter_quantity: 'Quantidade' };
                 return (
                   <div key={k} style={{ display: 'flex', flexDirection: isEditing ? 'column' : 'row', justifyContent: 'space-between', alignItems: isEditing ? 'flex-start' : 'center', gap: isEditing ? 3 : 0 }}>
-                    <span style={{ fontSize: 11, color: '#aaa', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>{labels[k]}</span>
+                    <span style={{ fontSize: 11, color: '#aaa', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap', flexShrink: 0 }}>{labels[k]}</span>
                     {isEditing ? (
                       <input
                         value={form[k as keyof typeof form]}
@@ -549,7 +549,7 @@ function TabGeneral({ project, isEditing, onSave, onCancel, onEdit }: {
                       />
                     ) : (
                       form[k as keyof typeof form]
-                        ? <span style={{ fontSize: 13, fontWeight: 500, color: '#1A1A1A' }}>{form[k as keyof typeof form]}</span>
+                        ? <span style={{ fontSize: 13, fontWeight: 500, color: '#1A1A1A', textAlign: 'right', overflowWrap: 'anywhere', wordBreak: 'break-word', minWidth: 0, paddingLeft: 8 }}>{form[k as keyof typeof form]}</span>
                         : <em style={{ color: '#ccc', fontSize: 12 }}>—</em>
                     )}
                   </div>
@@ -567,7 +567,7 @@ function TabGeneral({ project, isEditing, onSave, onCancel, onEdit }: {
                 const labels: Record<string, string> = { module_brand: 'Marca', module_model: 'Modelo', module_power: 'Potência (Wp)', module_quantity: 'Quantidade' };
                 return (
                   <div key={k} style={{ display: 'flex', flexDirection: isEditing ? 'column' : 'row', justifyContent: 'space-between', alignItems: isEditing ? 'flex-start' : 'center', gap: isEditing ? 3 : 0 }}>
-                    <span style={{ fontSize: 11, color: '#aaa', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>{labels[k]}</span>
+                    <span style={{ fontSize: 11, color: '#aaa', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap', flexShrink: 0 }}>{labels[k]}</span>
                     {isEditing ? (
                       <input
                         value={form[k as keyof typeof form]}
@@ -576,7 +576,7 @@ function TabGeneral({ project, isEditing, onSave, onCancel, onEdit }: {
                       />
                     ) : (
                       form[k as keyof typeof form]
-                        ? <span style={{ fontSize: 13, fontWeight: 500, color: '#1A1A1A' }}>{form[k as keyof typeof form]}</span>
+                        ? <span style={{ fontSize: 13, fontWeight: 500, color: '#1A1A1A', textAlign: 'right', overflowWrap: 'anywhere', wordBreak: 'break-word', minWidth: 0, paddingLeft: 8 }}>{form[k as keyof typeof form]}</span>
                         : <em style={{ color: '#ccc', fontSize: 12 }}>—</em>
                     )}
                   </div>
