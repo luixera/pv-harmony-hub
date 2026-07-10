@@ -124,7 +124,7 @@
   }
 
   .kanban-column {
-    @apply bg-muted/50 rounded-xl p-4 min-h-[calc(100vh-200px)];
+    @apply bg-muted/50 rounded-xl p-4;
   }
 
   .kanban-card {

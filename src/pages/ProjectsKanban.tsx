@@ -724,17 +724,21 @@ export default function ProjectsKanban() {
         ) : (
           /* DESKTOP: Kanban board */
           <DragDropContext onDragEnd={handleDragEnd}>
-            <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-thin">
+            <div
+              className="flex gap-4 overflow-x-auto overflow-y-hidden scrollbar-thin"
+              style={{ height: 'calc(100vh - 230px)', minHeight: 360 }}
+            >
               {kanbanColumns.map((column, columnIndex) => (
                 <motion.div
                   key={column.id}
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: columnIndex * 0.1 }}
-                  className="flex-shrink-0 w-80"
+                  className="flex-shrink-0 w-80 flex flex-col h-full min-h-0"
                 >
                   {column.isRejectionStage ? (
                     <div
+                      className="flex-shrink-0"
                       style={{
                         display: 'flex',
                         alignItems: 'center',
@@ -764,7 +768,7 @@ export default function ProjectsKanban() {
                       </span>
                     </div>
                   ) : (
-                    <div className="flex items-center gap-3 mb-4">
+                    <div className="flex items-center gap-3 mb-4 flex-shrink-0">
                       <div className={`w-3 h-3 rounded-full ${column.color}`} />
                       <h3 className="font-semibold text-foreground">{column.title}</h3>
                       <Badge variant="secondary" className="ml-auto">
@@ -778,7 +782,7 @@ export default function ProjectsKanban() {
                       <div
                         ref={provided.innerRef}
                         {...provided.droppableProps}
-                        className={`kanban-column transition-colors ${
+                        className={`kanban-column transition-colors flex-1 min-h-0 overflow-y-auto scrollbar-thin ${
                           snapshot.isDraggingOver ? 'bg-primary/10 ring-2 ring-primary/20' : ''
                         }`}
                       >
