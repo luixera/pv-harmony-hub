@@ -333,17 +333,17 @@ function TabGeneral({ project, isEditing, onSave, onCancel, onEdit }: {
   const totalPower = (parseFloat(form.module_power || '0') * parseInt(form.module_quantity || '0', 10)) / 1000;
 
   const field = (label: string, key: keyof typeof form) => (
-    <div key={key}>
+    <div key={key} style={{ minWidth: 0 }}>
       <p style={{ fontSize: 11, color: '#aaa', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>{label}</p>
       {isEditing ? (
         <input
           value={form[key]}
           onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
-          style={{ width: '100%', padding: '6px 8px', borderRadius: 6, border: '1px solid #E0E0E0', fontSize: 13, color: '#1A1A1A', outline: 'none' }}
+          style={{ width: '100%', padding: '6px 8px', borderRadius: 6, border: '1px solid #E0E0E0', fontSize: 13, color: '#1A1A1A', outline: 'none', boxSizing: 'border-box' }}
         />
       ) : (
         form[key]
-          ? <p style={{ fontSize: 14, fontWeight: 500, color: '#1A1A1A' }}>{form[key]}</p>
+          ? <p style={{ fontSize: 14, fontWeight: 500, color: '#1A1A1A', overflowWrap: 'anywhere', wordBreak: 'break-word' }}>{form[key]}</p>
           : <em style={{ color: '#ccc', fontSize: 13 }}>Não informado</em>
       )}
     </div>
