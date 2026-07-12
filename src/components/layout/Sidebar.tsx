@@ -22,7 +22,7 @@ import {
   CheckSquare,
   Mail,
 } from 'lucide-react';
-import { Crown } from 'lucide-react';
+import { Crown, Cpu } from 'lucide-react';
 import { useMyPendingTasks } from '@/hooks/useTasks';
 import { useEmailUpdates } from '@/hooks/useEmailUpdates';
 import { useTenant, useTenantFeatures } from '@/hooks/useTenant';
@@ -52,6 +52,7 @@ const sidebarItems: SidebarItem[] = [
   { icon: Building2, label: 'Empresas', path: '/admin/companies', roles: ['admin'] },
   { icon: Users, label: 'Usuários', path: '/admin/users', roles: ['admin'] },
   { icon: Sun, label: 'Concessionárias', path: '/admin/energy-concessionaires', roles: ['admin', 'staff'] },
+  { icon: Cpu, label: 'Equipamentos', path: '/admin/equipment', roles: ['admin', 'staff'] },
   { icon: FormInput, label: 'Formulários', path: '/admin/form-config', roles: ['admin'] },
   { icon: Map, label: 'Mapa de Projetos', path: '/projects-map', roles: ['admin', 'staff'] },
   { icon: Kanban, label: 'Config. Kanban', path: '/admin/kanban-config', roles: ['admin'] },

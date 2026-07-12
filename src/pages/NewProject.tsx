@@ -14,6 +14,7 @@ import { toast } from 'sonner';
 import { brazilianStates } from '@/data/mockData';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTenantFeatures } from '@/hooks/useTenant';
+import { EquipmentModelCombobox } from '@/components/equipment/EquipmentModelCombobox';
 import { supabase } from '@/integrations/supabase/client';
 import { DocumentUploadField } from '@/components/forms/DocumentUploadField';
 import { Database } from '@/integrations/supabase/types';
@@ -188,6 +189,9 @@ export default function NewProject() {
   // null = escolha ainda não feita, 'auto' = Claudinho, 'manual' = formulário direto
   const [entryMode, setEntryMode] = useState<null | 'auto' | 'manual'>(null);
   const tenantFeatures = useTenantFeatures();
+  // Equipamentos: por padrão usam o catálogo (combobox); check ativa preenchimento manual livre
+  const [invManual, setInvManual] = useState(false);
+  const [modManual, setModManual] = useState(false);
 
   const [currentStep, setCurrentStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -1176,13 +1180,33 @@ export default function NewProject() {
 
                 {/* Inversor */}
                 <div style={{ background: '#F9FAFB', border: '1px solid #F3F4F6', borderRadius: 12, padding: '16px 20px' }}>
-                  <h4 style={{ fontWeight: 600, fontSize: 14, color: '#374151', marginBottom: 14 }}>Inversor</h4>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, flexWrap: 'wrap', gap: 8 }}>
+                    <h4 style={{ fontWeight: 600, fontSize: 14, color: '#374151', margin: 0 }}>Inversor</h4>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#6B7280', cursor: 'pointer' }}>
+                      <Checkbox checked={invManual} onCheckedChange={v => setInvManual(!!v)} />
+                      Preencher manualmente
+                    </label>
+                  </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <AIField label="Marca *" confidence={fc('inverterBrand')?.confidence} source={fc('inverterBrand')?.source}>
                       <Input value={formData.inverterBrand} onChange={e => updateField('inverterBrand', e.target.value)} placeholder="Ex: Growatt, Sungrow" />
                     </AIField>
                     <AIField label="Modelo *" confidence={fc('inverterModel')?.confidence} source={fc('inverterModel')?.source}>
-                      <Input value={formData.inverterModel} onChange={e => updateField('inverterModel', e.target.value)} placeholder="Ex: MIN 6000TL-X" />
+                      {invManual ? (
+                        <Input value={formData.inverterModel} onChange={e => updateField('inverterModel', e.target.value)} placeholder="Ex: MIN 6000TL-X" />
+                      ) : (
+                        <EquipmentModelCombobox
+                          type="inverter"
+                          value={formData.inverterModel}
+                          onType={v => updateField('inverterModel', v)}
+                          onSelect={sel => {
+                            updateField('inverterBrand', sel.brand);
+                            updateField('inverterModel', sel.model);
+                            if (sel.power != null) updateField('inverterPower', String(sel.power));
+                          }}
+                          placeholder="Buscar no catálogo ou digitar…"
+                        />
+                      )}
                     </AIField>
                     <AIField label="Potência (kW) *" confidence={fc('inverterPower')?.confidence} source={fc('inverterPower')?.source}>
                       <Input type="number" value={formData.inverterPower} onChange={e => updateField('inverterPower', e.target.value)} placeholder="Ex: 6" />
@@ -1195,13 +1219,33 @@ export default function NewProject() {
 
                 {/* Módulos */}
                 <div style={{ background: '#F9FAFB', border: '1px solid #F3F4F6', borderRadius: 12, padding: '16px 20px' }}>
-                  <h4 style={{ fontWeight: 600, fontSize: 14, color: '#374151', marginBottom: 14 }}>Módulos Fotovoltaicos</h4>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, flexWrap: 'wrap', gap: 8 }}>
+                    <h4 style={{ fontWeight: 600, fontSize: 14, color: '#374151', margin: 0 }}>Módulos Fotovoltaicos</h4>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#6B7280', cursor: 'pointer' }}>
+                      <Checkbox checked={modManual} onCheckedChange={v => setModManual(!!v)} />
+                      Preencher manualmente
+                    </label>
+                  </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <AIField label="Marca *" confidence={fc('moduleBrand')?.confidence} source={fc('moduleBrand')?.source}>
                       <Input value={formData.moduleBrand} onChange={e => updateField('moduleBrand', e.target.value)} placeholder="Ex: Canadian Solar" />
                     </AIField>
                     <AIField label="Modelo *" confidence={fc('moduleModel')?.confidence} source={fc('moduleModel')?.source}>
-                      <Input value={formData.moduleModel} onChange={e => updateField('moduleModel', e.target.value)} placeholder="Ex: CS6W-545MS" />
+                      {modManual ? (
+                        <Input value={formData.moduleModel} onChange={e => updateField('moduleModel', e.target.value)} placeholder="Ex: CS6W-545MS" />
+                      ) : (
+                        <EquipmentModelCombobox
+                          type="module"
+                          value={formData.moduleModel}
+                          onType={v => updateField('moduleModel', v)}
+                          onSelect={sel => {
+                            updateField('moduleBrand', sel.brand);
+                            updateField('moduleModel', sel.model);
+                            if (sel.power != null) updateField('modulePower', String(sel.power));
+                          }}
+                          placeholder="Buscar no catálogo ou digitar…"
+                        />
+                      )}
                     </AIField>
                     <AIField label="Potência do módulo (Wp) *" confidence={fc('modulePower')?.confidence} source={fc('modulePower')?.source}>
                       <Input type="number" value={formData.modulePower} onChange={e => updateField('modulePower', e.target.value)} placeholder="Ex: 545" />

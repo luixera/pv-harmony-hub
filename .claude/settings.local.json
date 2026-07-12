@@ -124,7 +124,8 @@
       "Bash(cp C:/Users/luiza/.claude/projects/C--Users-luiza-Desktop-DADOS-DESENVOLVIMENTO---GD-MANAGER-ENERGY-pv-harmony-hub-main-pv-harmony-hub-main/c6037dea-bb2d-4fc9-b604-c0b2169c5d1d/tool-results/mcp-supabase-execute_sql-1783189803485.txt 'C:/Users/luiza/Desktop/DADOS/DESENVOLVIMENTO - GD MANAGER ENERGY/backup-pre-saas-2026-07-04/backup-business-tables.json')",
       "Bash(node -e 'const d=require\\('\\\\''fs'\\\\''\\).readFileSync\\(process.argv[1],'\\\\''utf8'\\\\''\\); const m=d.match\\(/<untrusted-data[^>]*>\\([\\\\s\\\\S]*\\)<\\\\/untrusted-data/\\); if\\(!m\\){console.log\\('\\\\''formato inesperado'\\\\''\\);process.exit\\(1\\)} const j=JSON.parse\\(m[1]\\)[0].backup; Object.entries\\(j\\).forEach\\(\\([k,v]\\)=>console.log\\(k+'\\\\'': '\\\\''+\\(v?v.length:0\\)+'\\\\'' registros'\\\\''\\)\\)' 'C:/Users/luiza/Desktop/DADOS/DESENVOLVIMENTO - GD MANAGER ENERGY/backup-pre-saas-2026-07-04/backup-business-tables.json')",
       "mcp__visualize__read_me",
-      "mcp__visualize__show_widget"
+      "mcp__visualize__show_widget",
+      "mcp__claude-in-chrome__form_input"
     ]
   }
 }

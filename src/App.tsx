@@ -24,6 +24,7 @@ import CompanyFinancial from "./pages/company/CompanyFinancial";
 import FormConfig from "./pages/admin/FormConfig";
 import KanbanConfig from "./pages/admin/KanbanConfig";
 import EnergyConcessionaires from "./pages/admin/EnergyConcessionaires";
+import EquipmentCatalog from "./pages/admin/EquipmentCatalog";
 import ProjectsMap from "./pages/ProjectsMap";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
@@ -69,6 +70,7 @@ function AppRoutes() {
       <Route path="/admin/form-config" element={<ProtectedRoute allowedRoles={['admin']}><FormConfig /></ProtectedRoute>} />
       <Route path="/admin/kanban-config" element={<ProtectedRoute allowedRoles={['admin']}><KanbanConfig /></ProtectedRoute>} />
       <Route path="/admin/energy-concessionaires" element={<ProtectedRoute allowedRoles={['admin', 'staff']}><EnergyConcessionaires /></ProtectedRoute>} />
+      <Route path="/admin/equipment" element={<ProtectedRoute allowedRoles={['admin', 'staff']}><EquipmentCatalog /></ProtectedRoute>} />
       <Route path="/company/financial" element={<ProtectedRoute allowedRoles={['company']}><CompanyFinancial /></ProtectedRoute>} />
       <Route path="/projects-map" element={<ProtectedRoute allowedRoles={['admin', 'staff', 'company']}><ProjectsMap /></ProtectedRoute>} />
       <Route path="/public-form/:token" element={<PublicProjectForm />} />
