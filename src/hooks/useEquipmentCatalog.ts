@@ -69,6 +69,21 @@ async function uploadDoc(
   return path;
 }
 
+/** Renomeia o arquivo existente para o padrão atual (TIPO MARCA MODELO) se marca/modelo mudaram. */
+async function renameDocIfNeeded(
+  currentPath: string,
+  equipmentKey: string,
+  kind: 'datasheet' | 'inmetro',
+  brand: string,
+  model: string,
+): Promise<string> {
+  const desired = buildEquipmentDocPath(equipmentKey, kind, brand, model);
+  if (currentPath === desired) return currentPath;
+  const { error } = await supabase.storage.from(BUCKET).move(currentPath, desired);
+  if (error) { console.error('Erro ao renomear documento:', error); return currentPath; }
+  return desired;
+}
+
 interface SaveEquipmentInput {
   id?: string;
   type: EquipmentType;
@@ -89,8 +104,18 @@ export function useSaveEquipment() {
       let datasheet_url = input.datasheet_url ?? null;
       let inmetro_url = input.inmetro_url ?? null;
 
-      if (input.datasheetFile) datasheet_url = await uploadDoc(key, 'datasheet', input.datasheetFile, input.brand, input.model);
-      if (input.inmetroFile) inmetro_url = await uploadDoc(key, 'inmetro', input.inmetroFile, input.brand, input.model);
+      // Arquivo novo → sobe (já com nome padronizado). Sem arquivo novo mas com
+      // documento existente → renomeia se marca/modelo mudaram.
+      if (input.datasheetFile) {
+        datasheet_url = await uploadDoc(key, 'datasheet', input.datasheetFile, input.brand, input.model);
+      } else if (datasheet_url) {
+        datasheet_url = await renameDocIfNeeded(datasheet_url, key, 'datasheet', input.brand, input.model);
+      }
+      if (input.inmetroFile) {
+        inmetro_url = await uploadDoc(key, 'inmetro', input.inmetroFile, input.brand, input.model);
+      } else if (inmetro_url) {
+        inmetro_url = await renameDocIfNeeded(inmetro_url, key, 'inmetro', input.brand, input.model);
+      }
 
       const row = {
         type: input.type,
