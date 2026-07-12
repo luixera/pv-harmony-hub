@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { sanitizeFileName } from '@/lib/utils';
+import { buildEquipmentDocName, buildEquipmentDocPath, ensurePdf } from '@/lib/equipmentDocs';
 
 export type EquipmentType = 'inverter' | 'module';
 
@@ -52,9 +52,19 @@ export async function downloadEquipmentDoc(path: string, fileName: string) {
   URL.revokeObjectURL(url);
 }
 
-async function uploadDoc(equipmentKey: string, kind: 'datasheet' | 'inmetro', file: File): Promise<string> {
-  const path = `${equipmentKey}/${kind}/${Date.now()}_${sanitizeFileName(file.name)}`;
-  const { error } = await supabase.storage.from(BUCKET).upload(path, file, { upsert: true });
+async function uploadDoc(
+  equipmentKey: string,
+  kind: 'datasheet' | 'inmetro',
+  file: File,
+  brand: string,
+  model: string,
+): Promise<string> {
+  // Converte imagem (JPG/PNG) em PDF e usa nome padronizado (DATASHEET/INMETRO MARCA MODELO.pdf)
+  const pdfBlob = await ensurePdf(file);
+  const path = buildEquipmentDocPath(equipmentKey, kind, brand, model);
+  const { error } = await supabase.storage.from(BUCKET).upload(path, pdfBlob, {
+    upsert: true, contentType: 'application/pdf',
+  });
   if (error) throw error;
   return path;
 }
@@ -79,8 +89,8 @@ export function useSaveEquipment() {
       let datasheet_url = input.datasheet_url ?? null;
       let inmetro_url = input.inmetro_url ?? null;
 
-      if (input.datasheetFile) datasheet_url = await uploadDoc(key, 'datasheet', input.datasheetFile);
-      if (input.inmetroFile) inmetro_url = await uploadDoc(key, 'inmetro', input.inmetroFile);
+      if (input.datasheetFile) datasheet_url = await uploadDoc(key, 'datasheet', input.datasheetFile, input.brand, input.model);
+      if (input.inmetroFile) inmetro_url = await uploadDoc(key, 'inmetro', input.inmetroFile, input.brand, input.model);
 
       const row = {
         type: input.type,

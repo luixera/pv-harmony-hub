@@ -7,6 +7,7 @@ import {
   downloadEquipmentDoc, EquipmentType, EquipmentCatalogItem,
 } from '@/hooks/useEquipmentCatalog';
 import { EquipmentFormDialog } from '@/components/equipment/EquipmentFormDialog';
+import { buildEquipmentDocName } from '@/lib/equipmentDocs';
 import { Cpu, PanelTop, Plus, Pencil, Trash2, FileText, FileCheck, Loader2, Search, Download } from 'lucide-react';
 
 const TYPE_META: Record<EquipmentType, { label: string; icon: React.ElementType; unit: string }> = {
@@ -84,8 +85,8 @@ export default function EquipmentCatalog() {
                     <td className="py-3 px-4 text-sm text-muted-foreground">{item.power != null ? `${item.power} ${TYPE_META[type].unit}` : '—'}</td>
                     <td className="py-3 px-4">
                       <div className="flex items-center gap-2">
-                        <DocChip label="Datasheet" path={item.datasheet_url} fileName={`${item.brand}_${item.model}_datasheet.pdf`} icon={FileText} />
-                        <DocChip label="INMETRO" path={item.inmetro_url} fileName={`${item.brand}_${item.model}_inmetro.pdf`} icon={FileCheck} />
+                        <DocChip label="Datasheet" path={item.datasheet_url} fileName={buildEquipmentDocName('datasheet', item.brand, item.model)} icon={FileText} />
+                        <DocChip label="INMETRO" path={item.inmetro_url} fileName={buildEquipmentDocName('inmetro', item.brand, item.model)} icon={FileCheck} />
                       </div>
                     </td>
                     <td className="py-3 px-4">

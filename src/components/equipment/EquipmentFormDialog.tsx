@@ -54,8 +54,11 @@ export function EquipmentFormDialog({ type, editing, initialBrand, initialModel,
           </div>
           <div className="space-y-2"><Label>Modelo *</Label><Input value={model} onChange={e => setModel(e.target.value)} placeholder="Ex: MIN 5000TL-X" /></div>
 
-          <FileRow label="Datasheet (PDF)" file={datasheetFile} existing={editing?.datasheet_url} inputRef={dsRef} onPick={setDatasheetFile} />
-          <FileRow label="Certificado INMETRO (PDF)" file={inmetroFile} existing={editing?.inmetro_url} inputRef={inRef} onPick={setInmetroFile} />
+          <FileRow label="Datasheet (PDF ou imagem)" file={datasheetFile} existing={editing?.datasheet_url} inputRef={dsRef} onPick={setDatasheetFile} />
+          <FileRow label="Certificado INMETRO (PDF ou imagem)" file={inmetroFile} existing={editing?.inmetro_url} inputRef={inRef} onPick={setInmetroFile} />
+          <p className="text-[11px] text-muted-foreground">
+            Aceita PDF, JPG ou PNG. Imagens são convertidas em PDF automaticamente, e o arquivo é renomeado no padrão <strong>TIPO MARCA MODELO</strong>.
+          </p>
         </div>
         <div className="flex justify-end gap-3">
           <Button variant="outline" onClick={onClose}>Cancelar</Button>
@@ -76,7 +79,7 @@ function FileRow({ label, file, existing, inputRef, onPick }: {
   return (
     <div className="space-y-1">
       <Label className="text-xs">{label}</Label>
-      <input ref={inputRef} type="file" accept=".pdf" className="hidden" onChange={e => onPick(e.target.files?.[0] ?? null)} />
+      <input ref={inputRef} type="file" accept=".pdf,.jpg,.jpeg,.png,image/jpeg,image/png,application/pdf" className="hidden" onChange={e => onPick(e.target.files?.[0] ?? null)} />
       <button type="button" onClick={() => inputRef.current?.click()}
         className="w-full flex items-center gap-2 px-3 py-2 rounded-lg border border-dashed border-border bg-muted/30 text-sm text-muted-foreground hover:bg-muted/50">
         <Upload className="w-4 h-4" />
