@@ -4,7 +4,7 @@ import { useEquipmentCatalog, EquipmentType, EquipmentCatalogItem } from '@/hook
 import { EquipmentFormDialog } from './EquipmentFormDialog';
 import { Plus, Check, FileText, FileCheck } from 'lucide-react';
 
-interface Selection { brand: string; model: string; power: number | null }
+interface Selection { brand: string; model: string; power: number | null; catalogId?: string | null }
 
 interface Props {
   type: EquipmentType;
@@ -41,7 +41,7 @@ export function EquipmentModelCombobox({ type, value, onType, onSelect, placehol
   const exact = items.some(i => i.model.toLowerCase() === q && q !== '');
 
   const pick = (item: EquipmentCatalogItem) => {
-    onSelect({ brand: item.brand, model: item.model, power: item.power });
+    onSelect({ brand: item.brand, model: item.model, power: item.power, catalogId: item.id });
     setOpen(false);
   };
 
@@ -113,7 +113,7 @@ export function EquipmentModelCombobox({ type, value, onType, onSelect, placehol
           type={type}
           initialModel={value.trim()}
           onClose={() => setAddOpen(false)}
-          onSaved={(item) => onSelect({ brand: item.brand, model: item.model, power: item.power })}
+          onSaved={(item) => onSelect({ brand: item.brand, model: item.model, power: item.power, catalogId: item.id })}
         />
       )}
     </div>

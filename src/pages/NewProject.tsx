@@ -192,6 +192,9 @@ export default function NewProject() {
   // Equipamentos: por padrão usam o catálogo (combobox); check ativa preenchimento manual livre
   const [invManual, setInvManual] = useState(false);
   const [modManual, setModManual] = useState(false);
+  // Vínculo do equipamento escolhido no catálogo (para o Pacote do Projetista achar INMETRO/datasheet)
+  const [invCatalogId, setInvCatalogId] = useState<string | null>(null);
+  const [modCatalogId, setModCatalogId] = useState<string | null>(null);
 
   const [currentStep, setCurrentStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -644,6 +647,8 @@ export default function NewProject() {
         module_power: parseFloat(formData.modulePower),
         module_quantity: parseInt(formData.moduleQuantity),
         total_installed_power: totalPower,
+        inverter_catalog_id: invCatalogId,
+        module_catalog_id: modCatalogId,
       }));
       if (equipmentError) throw equipmentError;
 
@@ -1198,11 +1203,12 @@ export default function NewProject() {
                         <EquipmentModelCombobox
                           type="inverter"
                           value={formData.inverterModel}
-                          onType={v => updateField('inverterModel', v)}
+                          onType={v => { updateField('inverterModel', v); setInvCatalogId(null); }}
                           onSelect={sel => {
                             updateField('inverterBrand', sel.brand);
                             updateField('inverterModel', sel.model);
                             if (sel.power != null) updateField('inverterPower', String(sel.power));
+                            setInvCatalogId(sel.catalogId ?? null);
                           }}
                           placeholder="Buscar no catálogo ou digitar…"
                         />
@@ -1237,11 +1243,12 @@ export default function NewProject() {
                         <EquipmentModelCombobox
                           type="module"
                           value={formData.moduleModel}
-                          onType={v => updateField('moduleModel', v)}
+                          onType={v => { updateField('moduleModel', v); setModCatalogId(null); }}
                           onSelect={sel => {
                             updateField('moduleBrand', sel.brand);
                             updateField('moduleModel', sel.model);
                             if (sel.power != null) updateField('modulePower', String(sel.power));
+                            setModCatalogId(sel.catalogId ?? null);
                           }}
                           placeholder="Buscar no catálogo ou digitar…"
                         />

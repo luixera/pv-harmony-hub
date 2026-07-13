@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { motion } from 'framer-motion';
-import { Zap, Plus, Search, Edit2, FileText, Loader2, LayoutTemplate } from 'lucide-react';
+import { Zap, Plus, Search, Edit2, FileText, Loader2, LayoutTemplate, Package } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useAuth } from '@/contexts/AuthContext';
@@ -15,14 +15,14 @@ import {
   useToggleConcessionaireStatus,
   EnergyConcessionaire 
 } from '@/hooks/useEnergyConcessionaires';
-import { useConcessionaireDocuments } from '@/hooks/useConcessionaireDocuments';
+import { useInstallerPackage } from '@/hooks/useInstallerPackage';
+import { PacoteProjetistaDialog } from '@/components/concessionaires/PacoteProjetistaDialog';
 import { ConcessionaireFormDialog } from '@/components/concessionaires/ConcessionaireFormDialog';
-import { ConcessionaireDocumentsDialog } from '@/components/concessionaires/ConcessionaireDocumentsDialog';
 import { ConcessionaireTemplatesDialog } from '@/components/concessionaires/ConcessionaireTemplatesDialog';
 
-function DocumentCount({ concessionaireId }: { concessionaireId: string }) {
-  const { data: documents = [] } = useConcessionaireDocuments(concessionaireId);
-  return <Badge variant="secondary">{documents.length}</Badge>;
+function PackageItemCount({ concessionaireId }: { concessionaireId: string }) {
+  const { data: items = [] } = useInstallerPackage(concessionaireId);
+  return <span className="text-sm text-muted-foreground">{items.length} {items.length === 1 ? 'item' : 'itens'}</span>;
 }
 
 export default function EnergyConcessionaires() {
@@ -32,7 +32,7 @@ export default function EnergyConcessionaires() {
   const [searchTerm, setSearchTerm] = useState('');
   const [showInactive, setShowInactive] = useState(false);
   const [formDialogOpen, setFormDialogOpen] = useState(false);
-  const [documentsDialogOpen, setDocumentsDialogOpen] = useState(false);
+  const [packageDialogOpen, setPackageDialogOpen] = useState(false);
   const [templatesDialogOpen, setTemplatesDialogOpen] = useState(false);
   const [selectedConcessionaire, setSelectedConcessionaire] = useState<EnergyConcessionaire | null>(null);
   
@@ -49,9 +49,9 @@ export default function EnergyConcessionaires() {
     setFormDialogOpen(true);
   };
   
-  const handleViewDocuments = (concessionaire: EnergyConcessionaire) => {
+  const handleViewPackage = (concessionaire: EnergyConcessionaire) => {
     setSelectedConcessionaire(concessionaire);
-    setDocumentsDialogOpen(true);
+    setPackageDialogOpen(true);
   };
 
   const handleViewTemplates = (concessionaire: EnergyConcessionaire) => {
@@ -148,7 +148,7 @@ export default function EnergyConcessionaires() {
                 <TableRow>
                   <TableHead>Nome</TableHead>
                   <TableHead className="text-center">Status</TableHead>
-                  <TableHead className="text-center">Documentos</TableHead>
+                  <TableHead className="text-center">Pacote Projetista</TableHead>
                   <TableHead>Data de Cadastro</TableHead>
                   <TableHead className="text-right">Ações</TableHead>
                 </TableRow>
@@ -171,7 +171,7 @@ export default function EnergyConcessionaires() {
                       )}
                     </TableCell>
                     <TableCell className="text-center">
-                      <DocumentCount concessionaireId={concessionaire.id} />
+                      <PackageItemCount concessionaireId={concessionaire.id} />
                     </TableCell>
                     <TableCell>
                       {format(new Date(concessionaire.created_at), 'dd/MM/yyyy', { locale: ptBR })}
@@ -181,11 +181,11 @@ export default function EnergyConcessionaires() {
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => handleViewDocuments(concessionaire)}
+                          onClick={() => handleViewPackage(concessionaire)}
                           className="gap-1"
                         >
-                          <FileText className="w-4 h-4" />
-                          Documentos
+                          <Package className="w-4 h-4" />
+                          Pacote Projetista
                         </Button>
 
                         <Button
@@ -224,9 +224,9 @@ export default function EnergyConcessionaires() {
         concessionaire={selectedConcessionaire}
       />
       
-      <ConcessionaireDocumentsDialog
-        open={documentsDialogOpen}
-        onOpenChange={setDocumentsDialogOpen}
+      <PacoteProjetistaDialog
+        open={packageDialogOpen}
+        onOpenChange={setPackageDialogOpen}
         concessionaire={selectedConcessionaire}
       />
 
