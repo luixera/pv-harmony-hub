@@ -18,6 +18,7 @@ import { ProjectWithDetails } from '@/hooks/useProjects';
 import { RevisionGeneralData, RevisionEquipment } from '@/hooks/useProjectRevisions';
 import { useDocumentPreview } from '@/hooks/useDocumentPreview';
 import { detectTemplateTags, generateDocxFromTemplate } from '@/utils/docxGenerator';
+import { logEvent } from '@/lib/tracking';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -244,6 +245,7 @@ export function GenerateDocumentDialog({
   const handleGenerate = async () => {
     if (!selectedTemplate) return;
     setIsGenerating(true);
+    logEvent('doc_generated', { project_id: project.id, code: project.code, template: selectedTemplate.name });
 
     try {
       const buffer = await downloadTemplateBuffer(selectedTemplate.path);

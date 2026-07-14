@@ -5,6 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { toast } from 'sonner';
 import { ProjectWithDetails } from '@/hooks/useProjects';
 import { sanitizeFileName } from '@/lib/utils';
+import { logEvent } from '@/lib/tracking';
 import { useInstallerPackage } from '@/hooks/useInstallerPackage';
 import {
   resolveInstallerPackage, buildInstallerZipAsync, loadCandidateBlob,
@@ -71,6 +72,7 @@ export function InstallerPackageDialog({ open, onClose, project }: Props) {
       document.body.appendChild(a); a.click(); a.remove();
       URL.revokeObjectURL(url);
 
+      logEvent('package_download', { project_id: project.id, code: project.code, items: withFile.length });
       const missing = finalEntries.filter(e => !e.blob);
       if (missing.length > 0) {
         toast.warning(`Pacote baixado. Faltaram: ${missing.map(m => m.label).join(', ')}`);

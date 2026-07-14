@@ -71,7 +71,7 @@ const fmtDate = (d: string | null) => d ? new Date(d + (d.length === 10 ? 'T12:0
 
 // ── Página ─────────────────────────────────────────────────────────────────────
 
-export default function MasterPanel() {
+export default function MasterPanel({ embedded = false }: { embedded?: boolean } = {}) {
   const navigate = useNavigate();
   const { user, session } = useAuth();
   const queryClient = useQueryClient();
@@ -110,11 +110,12 @@ export default function MasterPanel() {
   if (!user?.isMaster) return null;
 
   return (
-    <div style={{ minHeight: '100vh', background: '#111118', padding: '24px 20px' }}>
+    <div style={embedded ? { padding: 0 } : { minHeight: '100vh', background: '#111118', padding: '24px 20px' }}>
       <div style={{ maxWidth: 1080, margin: '0 auto' }}>
 
         {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 24 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: embedded ? 'flex-end' : 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 24 }}>
+          {!embedded && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <button onClick={() => navigate('/dashboard-admin')} title="Voltar ao sistema"
               style={{ background: 'rgba(255,255,255,0.08)', border: 'none', borderRadius: 8, padding: 8, cursor: 'pointer', color: '#ccc', display: 'flex' }}>
@@ -128,6 +129,7 @@ export default function MasterPanel() {
               <p style={{ fontSize: 12, color: '#888', margin: 0 }}>Gestão de assinantes da plataforma</p>
             </div>
           </div>
+          )}
           <div style={{ display: 'flex', gap: 8 }}>
             <button onClick={() => setShowPlans(true)}
               style={{ padding: '9px 14px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.15)', background: 'transparent', color: '#ddd', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>

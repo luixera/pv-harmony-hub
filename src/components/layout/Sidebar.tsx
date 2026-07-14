@@ -22,7 +22,7 @@ import {
   CheckSquare,
   Mail,
 } from 'lucide-react';
-import { Crown, Cpu } from 'lucide-react';
+import { Cpu } from 'lucide-react';
 import { useMyPendingTasks } from '@/hooks/useTasks';
 import { useEmailUpdates } from '@/hooks/useEmailUpdates';
 import { useTenant, useTenantFeatures } from '@/hooks/useTenant';
@@ -88,10 +88,6 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   const filteredItems = sidebarItems.filter(item =>
     user && item.roles.includes(user.role) && featureGate[item.path] !== false
   );
-  // Painel Master: só para quem tem a flag is_master
-  if (user?.isMaster) {
-    filteredItems.unshift({ icon: Crown, label: 'Painel Master', path: '/master', roles: ['admin'] });
-  }
 
   // Marca exibida: logo/nome do tenant, com fallback para a marca padrão
   const brandLogo = tenant?.logo_url || '/logo.png';

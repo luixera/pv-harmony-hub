@@ -2,8 +2,10 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
+import { useEffect } from "react";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
+import { setTrackingIdentity, startSession, clearSession, logPageView } from "./lib/tracking";
 import { ProtectedRoute } from "./components/auth/ProtectedRoute";
 import Login from "./pages/Login";
 import DashboardAdmin from "./pages/DashboardAdmin";
@@ -32,18 +34,30 @@ import Profile from "./pages/Profile";
 import Reports from "./pages/admin/Reports";
 import Tasks from "./pages/Tasks";
 import EmailUpdates from "./pages/EmailUpdates";
-import MasterPanel from "./pages/master/MasterPanel";
 import Landing from "./pages/Landing";
 import Signup from "./pages/Signup";
+import PainelConsole from "./pages/painel/PainelConsole";
 import { TenantGate } from "./components/layout/TenantGate";
 
 const queryClient = new QueryClient();
 
-function MasterRoute({ children }: { children: React.ReactNode }) {
-  const { user, isLoading } = useAuth();
-  if (isLoading) return null;
-  if (!user?.isMaster) return <Navigate to="/login" replace />;
-  return <>{children}</>;
+/** Coleta de acessos: sessão no login + page views por navegação. */
+function AccessTracker() {
+  const { user, isAuthenticated } = useAuth();
+  const location = useLocation();
+  useEffect(() => {
+    if (isAuthenticated && user) {
+      setTrackingIdentity(user.id, user.tenantId ?? null);
+      startSession();
+    } else {
+      setTrackingIdentity(null, null);
+      clearSession();
+    }
+  }, [isAuthenticated, user]);
+  useEffect(() => {
+    if (isAuthenticated && user) logPageView(location.pathname);
+  }, [location.pathname, isAuthenticated, user]);
+  return null;
 }
 
 function AppRoutes() {
@@ -81,7 +95,9 @@ function AppRoutes() {
       <Route path="/tasks" element={<ProtectedRoute allowedRoles={['admin', 'staff']}><Tasks /></ProtectedRoute>} />
       <Route path="/email-updates" element={<ProtectedRoute allowedRoles={['admin', 'staff']}><EmailUpdates /></ProtectedRoute>} />
       <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
-      <Route path="/master" element={<MasterRoute><MasterPanel /></MasterRoute>} />
+      {/* Console da plataforma (login próprio, só master) */}
+      <Route path="/painel" element={<PainelConsole />} />
+      <Route path="/master" element={<Navigate to="/painel" replace />} />
       <Route path="*" element={<NotFound />} />
     </Routes>
     </TenantGate>
@@ -95,6 +111,7 @@ const App = () => (
         <Toaster />
         <Sonner />
         <BrowserRouter>
+          <AccessTracker />
           <AppRoutes />
         </BrowserRouter>
       </TooltipProvider>
