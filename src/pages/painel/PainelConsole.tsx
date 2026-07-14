@@ -1,22 +1,23 @@
 import { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import MasterPanel from '@/pages/master/MasterPanel';
+import { OverviewSection, AccessSection, UsageSection, FinanceSection } from './ConsoleSections';
 import { Crown, LogOut, Loader2, Building2, LayoutGrid, Activity, BarChart3, DollarSign, Lock, Sun } from 'lucide-react';
 import { toast } from 'sonner';
 
 type Section = 'tenants' | 'overview' | 'access' | 'usage' | 'finance';
 
-const NAV: { key: Section; label: string; icon: React.ElementType; soon?: boolean }[] = [
-  { key: 'overview', label: 'Visão geral', icon: LayoutGrid, soon: true },
+const NAV: { key: Section; label: string; icon: React.ElementType }[] = [
+  { key: 'overview', label: 'Visão geral', icon: LayoutGrid },
   { key: 'tenants', label: 'Tenants', icon: Building2 },
-  { key: 'access', label: 'Acessos', icon: Activity, soon: true },
-  { key: 'usage', label: 'Uso da plataforma', icon: BarChart3, soon: true },
-  { key: 'finance', label: 'Financeiro', icon: DollarSign, soon: true },
+  { key: 'access', label: 'Acessos', icon: Activity },
+  { key: 'usage', label: 'Uso da plataforma', icon: BarChart3 },
+  { key: 'finance', label: 'Financeiro', icon: DollarSign },
 ];
 
 export default function PainelConsole() {
   const { user, isLoading, isAuthenticated, login, logout } = useAuth();
-  const [section, setSection] = useState<Section>('tenants');
+  const [section, setSection] = useState<Section>('overview');
 
   if (isLoading) {
     return <div style={centerScreen}><Loader2 size={28} className="animate-spin" style={{ color: '#F5A800' }} /></div>;
@@ -58,15 +59,14 @@ export default function PainelConsole() {
           {NAV.map(n => {
             const active = section === n.key;
             return (
-              <button key={n.key} onClick={() => !n.soon && setSection(n.key)}
+              <button key={n.key} onClick={() => setSection(n.key)}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 10, padding: '9px 10px', borderRadius: 8,
-                  border: 'none', cursor: n.soon ? 'default' : 'pointer', textAlign: 'left', fontSize: 13,
+                  border: 'none', cursor: 'pointer', textAlign: 'left', fontSize: 13,
                   background: active ? 'rgba(245,168,0,0.12)' : 'transparent',
-                  color: active ? '#F5A800' : n.soon ? '#555' : '#bbb',
+                  color: active ? '#F5A800' : '#bbb',
                 }}>
                 <n.icon size={16} /> <span style={{ flex: 1 }}>{n.label}</span>
-                {n.soon && <span style={{ fontSize: 9, color: '#666', border: '1px solid #333', borderRadius: 10, padding: '1px 6px' }}>em breve</span>}
               </button>
             );
           })}
@@ -81,16 +81,11 @@ export default function PainelConsole() {
 
       {/* Conteúdo */}
       <main style={{ flex: 1, padding: '24px 24px', overflowY: 'auto', maxHeight: '100vh' }}>
+        {section === 'overview' && <OverviewSection />}
         {section === 'tenants' && <MasterPanel embedded />}
-        {section !== 'tenants' && (
-          <div style={{ maxWidth: 1080, margin: '0 auto', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', gap: 12, color: '#888' }}>
-            <BarChart3 size={40} style={{ color: '#333' }} />
-            <h2 style={{ fontSize: 18, fontWeight: 700, color: '#ccc', margin: 0 }}>{NAV.find(n => n.key === section)?.label}</h2>
-            <p style={{ fontSize: 13, textAlign: 'center', maxWidth: 380 }}>
-              Os painéis de analytics chegam na próxima etapa. A coleta de acessos já começou — os dados estão sendo registrados a partir de agora.
-            </p>
-          </div>
-        )}
+        {section === 'access' && <AccessSection />}
+        {section === 'usage' && <UsageSection />}
+        {section === 'finance' && <FinanceSection />}
       </main>
     </div>
   );
