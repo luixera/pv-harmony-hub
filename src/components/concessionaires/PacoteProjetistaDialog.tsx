@@ -119,7 +119,7 @@ export function PacoteProjetistaDialog({ open, onOpenChange, concessionaire }: P
                     </div>
                     {/* Seletor da origem específica */}
                     {item.source_type === 'project_document' && (
-                      <Select value={item.ref ?? ''} onValueChange={v => patch(i, { ref: v })}>
+                      <Select value={item.ref ?? ''} onValueChange={v => patch(i, { ref: v, label: PROJECT_DOCUMENT_TYPES.find(d => d.value === v)?.label ?? item.label })}>
                         <SelectTrigger className="h-8"><SelectValue /></SelectTrigger>
                         <SelectContent>
                           {PROJECT_DOCUMENT_TYPES.map(d => <SelectItem key={d.value} value={d.value}>{d.label}</SelectItem>)}
@@ -136,7 +136,10 @@ export function PacoteProjetistaDialog({ open, onOpenChange, concessionaire }: P
                       </Select>
                     )}
                     {(item.source_type === 'equipment_inmetro' || item.source_type === 'equipment_datasheet') && (
-                      <Select value={item.ref ?? 'inverter'} onValueChange={v => patch(i, { ref: v })}>
+                      <Select value={item.ref ?? 'inverter'} onValueChange={v => {
+                        const kind = item.source_type === 'equipment_inmetro' ? 'INMETRO' : 'Datasheet';
+                        patch(i, { ref: v, label: `${kind} ${v === 'module' ? 'módulo' : 'inversor'}` });
+                      }}>
                         <SelectTrigger className="h-8"><SelectValue /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="inverter">Do inversor</SelectItem>

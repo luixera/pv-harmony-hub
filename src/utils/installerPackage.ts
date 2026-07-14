@@ -1,8 +1,9 @@
 import PizZip from 'pizzip';
 import { supabase } from '@/integrations/supabase/client';
 import { ProjectWithDetails } from '@/hooks/useProjects';
-import { PackageItem, REUSABLE_PHOTO_TYPES } from '@/hooks/useInstallerPackage';
+import { PackageItem, REUSABLE_PHOTO_TYPES, PROJECT_DOCUMENT_TYPES } from '@/hooks/useInstallerPackage';
 import { sanitizeFileName } from '@/lib/utils';
+import { imageToPdfBlob } from '@/lib/equipmentDocs';
 import { buildProjectValues } from '@/utils/projectValues';
 import { generateResumoPdf } from '@/utils/resumoPdf';
 import { generateDocxFromTemplate } from '@/utils/docxGenerator';
@@ -18,6 +19,7 @@ export interface PhotoCandidate {
 export interface ResolvedEntry {
   index: number;
   label: string;
+  fileLabel: string;         // nome padronizado do arquivo (derivado da origem)
   ext: string;
   required: boolean;
   status: 'ok' | 'missing' | 'reusable_missing';
@@ -30,6 +32,18 @@ const extFromName = (name: string, fallback = 'pdf') => {
   const m = name.toLowerCase().match(/\.([a-z0-9]+)$/);
   return m ? m[1] : fallback;
 };
+
+/** Converte para PDF quando é imagem; mantém PDF; demais formatos ficam como estão. */
+export async function toPdfBlob(blob: Blob, fileName: string): Promise<{ blob: Blob; ext: string }> {
+  const isImg = blob.type.startsWith('image/') || /\.(jpe?g|png|gif|webp)$/i.test(fileName);
+  const isPdf = blob.type === 'application/pdf' || /\.pdf$/i.test(fileName);
+  if (isImg) {
+    const f = new File([blob], fileName || 'imagem', { type: blob.type || 'image/jpeg' });
+    return { blob: await imageToPdfBlob(f), ext: 'pdf' };
+  }
+  if (isPdf) return { blob, ext: 'pdf' };
+  return { blob, ext: extFromName(fileName) };
+}
 
 async function downloadFromBucket(bucket: string, path: string): Promise<Blob | null> {
   const { data, error } = await supabase.storage.from(bucket).download(path);
@@ -123,19 +137,22 @@ export async function resolveInstallerPackage(project: ProjectWithDetails, items
 
   for (let i = 0; i < items.length; i++) {
     const item = items[i];
-    const base: ResolvedEntry = { index: i, label: item.label, ext: 'pdf', required: item.required, status: 'missing' };
+    const base: ResolvedEntry = { index: i, label: item.label, fileLabel: item.label, ext: 'pdf', required: item.required, status: 'missing' };
 
     try {
       if (item.source_type === 'summary') {
+        base.fileLabel = 'RESUMO';
         base.blob = await generateResumoPdf(project);
         base.ext = 'pdf'; base.status = 'ok';
 
       } else if (item.source_type === 'project_document') {
         const docType = item.ref ?? '';
+        // nome padronizado a partir do tipo real do documento (corrige rótulos errados)
+        base.fileLabel = PROJECT_DOCUMENT_TYPES.find(d => d.value === docType)?.label ?? item.label;
         const doc = await latestProjectDoc(project.id, docType);
         if (doc) {
-          const blob = await downloadFromBucket('project-documents', doc.file_url);
-          if (blob) { base.blob = blob; base.ext = extFromName(doc.file_name); base.status = 'ok'; }
+          const raw = await downloadFromBucket('project-documents', doc.file_url);
+          if (raw) { const r = await toPdfBlob(raw, doc.file_name); base.blob = r.blob; base.ext = r.ext; base.status = 'ok'; }
         }
         if (base.status !== 'ok' && REUSABLE_PHOTO_TYPES.includes(docType)) {
           base.docType = docType;
@@ -144,6 +161,7 @@ export async function resolveInstallerPackage(project: ProjectWithDetails, items
         }
 
       } else if (item.source_type === 'concessionaire_template') {
+        base.fileLabel = item.label;
         if (item.ref) {
           const buffer = await downloadTemplateBuffer(item.ref);
           base.blob = await generateDocxFromTemplate(buffer, values);
@@ -153,6 +171,7 @@ export async function resolveInstallerPackage(project: ProjectWithDetails, items
       } else if (item.source_type === 'equipment_inmetro' || item.source_type === 'equipment_datasheet') {
         const which = (item.ref === 'module' ? 'module' : 'inverter') as 'inverter' | 'module';
         const kind = item.source_type === 'equipment_inmetro' ? 'inmetro' : 'datasheet';
+        base.fileLabel = `${kind === 'inmetro' ? 'INMETRO' : 'DATASHEET'} ${which === 'inverter' ? 'INVERSOR' : 'MODULO'}`;
         const blob = await resolveEquipmentDoc(project, which, kind);
         if (blob) { base.blob = blob; base.ext = 'pdf'; base.status = 'ok'; }
       }
@@ -165,9 +184,11 @@ export async function resolveInstallerPackage(project: ProjectWithDetails, items
   return out;
 }
 
-/** Baixa uma foto candidata (do bucket project-documents) para preencher um item. */
-export async function loadCandidateBlob(path: string): Promise<Blob | null> {
-  return downloadFromBucket('project-documents', path);
+/** Baixa uma foto candidata (do bucket project-documents) já convertida em PDF. */
+export async function loadCandidateBlob(path: string): Promise<{ blob: Blob; ext: string } | null> {
+  const raw = await downloadFromBucket('project-documents', path);
+  if (!raw) return null;
+  return toPdfBlob(raw, path);
 }
 
 /** Lê os blobs das entradas resolvidas e gera o ZIP numerado. */
@@ -176,7 +197,7 @@ export async function buildInstallerZipAsync(project: ProjectWithDetails, entrie
   for (const e of entries) {
     if (!e.blob) continue;
     const buf = await e.blob.arrayBuffer();
-    const name = `${e.index}_${sanitizeFileName(e.label.toUpperCase())}.${e.ext}`;
+    const name = `${e.index}_${sanitizeFileName((e.fileLabel || e.label).toUpperCase())}.${e.ext}`;
     zip.file(name, buf);
   }
   const content = zip.generate({ type: 'blob', mimeType: 'application/zip' });

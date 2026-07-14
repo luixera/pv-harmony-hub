@@ -126,7 +126,9 @@
       "mcp__visualize__read_me",
       "mcp__visualize__show_widget",
       "mcp__claude-in-chrome__form_input",
-      "mcp__claude-in-chrome__javascript_tool"
+      "mcp__claude-in-chrome__javascript_tool",
+      "Bash(timeout 8 bash -c \"echo > /dev/tcp/143.95.221.114/22022\")",
+      "Bash(ssh -i __TRACKED_VAR__/vps-keys/deploy_key -p 22022 -o StrictHostKeyChecking=no -o ConnectTimeout=12 -o BatchMode=yes root@143.95.221.114 'echo OK-SSH; df -h / | tail -1')"
     ]
   }
 }

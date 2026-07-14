@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { ProjectWithDetails } from '@/hooks/useProjects';
+import { sanitizeFileName } from '@/lib/utils';
 import { useInstallerPackage } from '@/hooks/useInstallerPackage';
 import {
   resolveInstallerPackage, buildInstallerZipAsync, loadCandidateBlob,
@@ -43,14 +44,13 @@ export function InstallerPackageDialog({ open, onClose, project }: Props) {
   const handleDownload = async () => {
     setBuilding(true);
     try {
-      // aplica as fotos reaproveitadas escolhidas
+      // aplica as fotos reaproveitadas escolhidas (já convertidas em PDF)
       const finalEntries: ResolvedEntry[] = [];
       for (const e of entries) {
         if (e.status === 'reusable_missing' && chosen[e.index]) {
-          const blob = await loadCandidateBlob(chosen[e.index]);
-          if (blob) {
-            const ext = chosen[e.index].toLowerCase().match(/\.([a-z0-9]+)$/)?.[1] ?? 'jpg';
-            finalEntries.push({ ...e, blob, ext, status: 'ok' });
+          const res = await loadCandidateBlob(chosen[e.index]);
+          if (res) {
+            finalEntries.push({ ...e, blob: res.blob, ext: res.ext, status: 'ok' });
             continue;
           }
         }
@@ -62,8 +62,12 @@ export function InstallerPackageDialog({ open, onClose, project }: Props) {
 
       const zip = await buildInstallerZipAsync(project, withFile);
       const url = URL.createObjectURL(zip);
+      // Nome do ZIP: PACOTE + código + cliente + empresa
+      const holder = project.generalData?.holder_name ?? '';
+      const company = project.companyName ?? '';
+      const zipName = sanitizeFileName(`PACOTE ${project.code} ${holder} ${company}`.toUpperCase()) + '.zip';
       const a = document.createElement('a');
-      a.href = url; a.download = `PACOTE_${project.code}.zip`;
+      a.href = url; a.download = zipName;
       document.body.appendChild(a); a.click(); a.remove();
       URL.revokeObjectURL(url);
 
