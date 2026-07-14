@@ -19,6 +19,8 @@ import { RevisionSelector } from '@/components/revisions/RevisionSelector';
 import { RevisionTimeline } from '@/components/revisions/RevisionTimeline';
 import { NewRevisionDialog } from '@/components/revisions/NewRevisionDialog';
 import { GenerateDocumentDialog } from './GenerateDocumentDialog';
+import { InstallerPackageDialog } from './InstallerPackageDialog';
+import { Package as PackageIcon } from 'lucide-react';
 import { StaffAssignmentDialog } from './StaffAssignmentDialog';
 import { DeleteProjectDialog } from './DeleteProjectDialog';
 import { Badge } from '@/components/ui/badge';
@@ -1507,6 +1509,7 @@ export function ProjectModal({ projectId, onClose, initialTab = 'geral' }: Proje
   const [activeTab, setActiveTab] = useState(initialTab);
   const [isEditing, setIsEditing] = useState(false);
   const [showGenDoc, setShowGenDoc] = useState(false);
+  const [showInstaller, setShowInstaller] = useState(false);
   const [showStaffDialog, setShowStaffDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
@@ -1674,6 +1677,13 @@ export function ProjectModal({ projectId, onClose, initialTab = 'geral' }: Proje
                       </button>
                     )}
                     <button
+                      onClick={() => setShowInstaller(true)}
+                      title="Baixar pacote instalador"
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '7px 14px', borderRadius: 8, border: 'none', background: 'rgba(255,255,255,0.10)', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+                    >
+                      <PackageIcon size={13} /> {!isMobile && 'Pacote'}
+                    </button>
+                    <button
                       onClick={() => setShowGenDoc(true)}
                       style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '7px 14px', borderRadius: 8, border: 'none', background: '#F5A800', color: '#1A1A1A', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
                     >
@@ -1834,6 +1844,13 @@ export function ProjectModal({ projectId, onClose, initialTab = 'geral' }: Proje
       </div>
 
       {/* Sub-dialogs */}
+      {project && showInstaller && (
+        <InstallerPackageDialog
+          open={showInstaller}
+          onClose={() => setShowInstaller(false)}
+          project={project}
+        />
+      )}
       {project && showGenDoc && (
         <GenerateDocumentDialog
           open={showGenDoc}
