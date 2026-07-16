@@ -8,6 +8,7 @@ import { buildProjectValues } from '@/utils/projectValues';
 import { generateResumoPdf } from '@/utils/resumoPdf';
 import { generateDocxFromTemplate } from '@/utils/docxGenerator';
 import { downloadTemplateBuffer } from '@/hooks/useConcessionaireTemplates';
+import { fetchEntryRules, matchEntryRule, entryRuleValues } from '@/hooks/useEntryRules';
 
 export interface PhotoCandidate {
   projectCode: string;
@@ -133,6 +134,12 @@ async function resolveEquipmentDoc(project: ProjectWithDetails, which: 'inverter
 /** Resolve todos os itens do pacote para blobs (ou marca faltantes). */
 export async function resolveInstallerPackage(project: ProjectWithDetails, items: PackageItem[]): Promise<ResolvedEntry[]> {
   const values = buildProjectValues(project);
+  // Variáveis do padrão de entrada da concessionária (categoria por fase + disjuntor)
+  if (project.concessionaire_id) {
+    const rules = await fetchEntryRules(project.concessionaire_id);
+    const rule = matchEntryRule(rules, project.generalData?.phase_type, project.generalData?.circuit_breaker_current);
+    Object.assign(values, entryRuleValues(rule));
+  }
   const out: ResolvedEntry[] = [];
 
   for (let i = 0; i < items.length; i++) {

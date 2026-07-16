@@ -48,6 +48,13 @@ export const TEMPLATE_VARIABLES: TemplateVariable[] = [
   { key: 'qtd_modulos',       desc: 'Quantidade de módulos',             category: 'Equipamentos', example: '10' },
   { key: 'potencia_total',    desc: 'Potência total instalada',          category: 'Equipamentos', example: '6 kWp' },
   { key: 'kwp',               desc: 'Potência total (só o número)',      category: 'Equipamentos', example: '6' },
+  // Padrão de entrada (regras da concessionária, resolvidas por fase + disjuntor)
+  { key: 'categoria_padrao',  desc: 'Categoria do padrão de entrada',    category: 'Padrão de entrada', example: 'B1' },
+  { key: 'num_fases_padrao',  desc: 'Nº de fases do padrão',             category: 'Padrão de entrada', example: '2' },
+  { key: 'bitola_cabo',       desc: 'Bitola dos cabos de entrada',       category: 'Padrão de entrada', example: '16 mm²' },
+  { key: 'disjuntor_padrao',  desc: 'Disjuntor de entrada do padrão',    category: 'Padrão de entrada', example: '63A' },
+  { key: 'classe_padrao',     desc: 'Classe do padrão de entrada',       category: 'Padrão de entrada', example: 'BIFÁSICO' },
+  { key: 'caixa_medicao',     desc: 'Caixa de medição',                  category: 'Padrão de entrada', example: 'TIPO II' },
   // Datas
   { key: 'data',              desc: 'Data de hoje',                      category: 'Datas',        example: '15/07/2026' },
   { key: 'data_emissao',      desc: 'Data de emissão (hoje)',            category: 'Datas',        example: '15/07/2026' },

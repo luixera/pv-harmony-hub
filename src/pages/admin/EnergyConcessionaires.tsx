@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { motion } from 'framer-motion';
-import { Zap, Plus, Search, Edit2, FileText, Loader2, LayoutTemplate, Package } from 'lucide-react';
+import { Zap, Plus, Search, Edit2, FileText, Loader2, LayoutTemplate, Package, PlugZap } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useAuth } from '@/contexts/AuthContext';
@@ -19,6 +19,7 @@ import { useInstallerPackage } from '@/hooks/useInstallerPackage';
 import { PacoteProjetistaDialog } from '@/components/concessionaires/PacoteProjetistaDialog';
 import { ConcessionaireFormDialog } from '@/components/concessionaires/ConcessionaireFormDialog';
 import { ConcessionaireTemplatesDialog } from '@/components/concessionaires/ConcessionaireTemplatesDialog';
+import { EntryRulesDialog } from '@/components/concessionaires/EntryRulesDialog';
 
 function PackageItemCount({ concessionaireId }: { concessionaireId: string }) {
   const { data: items = [] } = useInstallerPackage(concessionaireId);
@@ -34,6 +35,7 @@ export default function EnergyConcessionaires() {
   const [formDialogOpen, setFormDialogOpen] = useState(false);
   const [packageDialogOpen, setPackageDialogOpen] = useState(false);
   const [templatesDialogOpen, setTemplatesDialogOpen] = useState(false);
+  const [entryRulesDialogOpen, setEntryRulesDialogOpen] = useState(false);
   const [selectedConcessionaire, setSelectedConcessionaire] = useState<EnergyConcessionaire | null>(null);
   
   const { data: concessionaires = [], isLoading } = useEnergyConcessionaires(showInactive);
@@ -57,6 +59,11 @@ export default function EnergyConcessionaires() {
   const handleViewTemplates = (concessionaire: EnergyConcessionaire) => {
     setSelectedConcessionaire(concessionaire);
     setTemplatesDialogOpen(true);
+  };
+
+  const handleViewEntryRules = (concessionaire: EnergyConcessionaire) => {
+    setSelectedConcessionaire(concessionaire);
+    setEntryRulesDialogOpen(true);
   };
   
   const handleNewConcessionaire = () => {
@@ -198,6 +205,16 @@ export default function EnergyConcessionaires() {
                           Templates
                         </Button>
 
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleViewEntryRules(concessionaire)}
+                          className="gap-1"
+                        >
+                          <PlugZap className="w-4 h-4" />
+                          Padrão de entrada
+                        </Button>
+
                         {isAdmin && (
                           <Button
                             size="sm"
@@ -233,6 +250,12 @@ export default function EnergyConcessionaires() {
       <ConcessionaireTemplatesDialog
         open={templatesDialogOpen}
         onOpenChange={setTemplatesDialogOpen}
+        concessionaire={selectedConcessionaire}
+      />
+
+      <EntryRulesDialog
+        open={entryRulesDialogOpen}
+        onOpenChange={setEntryRulesDialogOpen}
         concessionaire={selectedConcessionaire}
       />
     </MainLayout>

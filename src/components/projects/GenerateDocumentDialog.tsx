@@ -18,6 +18,7 @@ import { ProjectWithDetails } from '@/hooks/useProjects';
 import { RevisionGeneralData, RevisionEquipment } from '@/hooks/useProjectRevisions';
 import { useDocumentPreview } from '@/hooks/useDocumentPreview';
 import { detectTemplateTags, generateDocxFromTemplate } from '@/utils/docxGenerator';
+import { useEntryRules, matchEntryRule, entryRuleValues } from '@/hooks/useEntryRules';
 import { logEvent } from '@/lib/tracking';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -152,6 +153,7 @@ export function GenerateDocumentDialog({
   const { data: templates = [], isLoading } = useConcessionaireTemplates(
     project.concessionaire_id ?? undefined,
   );
+  const { data: entryRules = [] } = useEntryRules(project.concessionaire_id ?? undefined);
 
   const preview    = useDocumentPreview();
   const previewRef = useRef<HTMLDivElement>(null);
@@ -178,7 +180,11 @@ export function GenerateDocumentDialog({
       g.cep ? `CEP: ${g.cep}` : '',
     ].filter(Boolean).join(', ');
 
+    // Padrão de entrada da concessionária (categoria resolvida por fase + disjuntor)
+    const entryRule = matchEntryRule(entryRules, g.phase_type, g.circuit_breaker_current);
+
     return {
+      ...entryRuleValues(entryRule),
       codigo_projeto:    project.code              ?? '',
       empresa:           project.companyName       ?? '',
       concessionaria:    project.concessionaireName ?? g.utility_company ?? '',
