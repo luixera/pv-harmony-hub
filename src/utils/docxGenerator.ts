@@ -114,6 +114,42 @@ function processXml(xml: string, mapper: ((tag: string) => string) | null, found
   return outParts.join('</w:p>');
 }
 
+// ── Aparência de "placeholder" (texto cinza dos campos do Word) ───────────────
+//
+// Campos de formulário usam o estilo "PlaceholderText" / "Texto de Espaço
+// Reservado", que pinta o texto de cinza. Ao digitar no campo, o Word remove
+// esse estilo — como escrevemos a tag no XML, precisamos fazer o mesmo, senão
+// o valor sai cinza no documento gerado.
+
+const PLACEHOLDER_STYLE = /placeholder|espa[çc]?oreservado|espaoreservado/i;
+
+/** Cinza neutro (ex.: 808080)? Preto e cores de verdade são preservados. */
+function isGrayColor(colorTag: string): boolean {
+  const m = /w:val="([0-9A-Fa-f]{6})"/.exec(colorTag);
+  if (!m) return false;
+  const v = m[1].toUpperCase();
+  const [r, g, b] = [v.slice(0, 2), v.slice(2, 4), v.slice(4, 6)];
+  return r === g && g === b && parseInt(r, 16) > 0x40;
+}
+
+/** Tira o visual de placeholder de um parágrafo (estilo cinza + marca). */
+function stripPlaceholderLook(chunk: string): string {
+  let out = chunk.replace(/<w:showingPlcHdr\s*\/>/g, '');
+  out = out.replace(/<w:rStyle\s[^>]*w:val="([^"]*)"[^>]*\/>/gi, (m, val: string) =>
+    PLACEHOLDER_STYLE.test(val) ? '' : m);
+  // sem cor explícita, o texto herda o padrão do documento (preto)
+  out = out.replace(/<w:color\s[^>]*\/>/gi, m => (isGrayColor(m) ? '' : m));
+  return out;
+}
+
+/** Limpa o visual de placeholder apenas dos parágrafos que contêm tags. */
+function cleanPlaceholderStyling(xml: string): string {
+  return xml.split('</w:p>').map(chunk => {
+    TAG_RE.lastIndex = 0;
+    return TAG_RE.test(chunkText(chunk)) ? stripPlaceholderLook(chunk) : chunk;
+  }).join('</w:p>');
+}
+
 /**
  * Detect whether a .docx template contains single-brace tags ( {field} ).
  * Junta os runs fragmentados do Word e analisa corpo + cabeçalhos + rodapés.
@@ -284,8 +320,8 @@ export function detectTemplateFields(buffer: ArrayBuffer): TemplateField[] {
 
 /** Coloca `{tag}` como único conteúdo de um parágrafo (campo do formulário). */
 function setParagraphTag(pChunk: string, tag: string): string {
-  // remove a marca de "exibindo placeholder" para o campo virar conteúdo real
-  const chunk = pChunk.replace(/<w:showingPlcHdr\s*\/>/g, '');
+  // o campo vira conteúdo real: sai a marca e o estilo cinza de placeholder
+  const chunk = stripPlaceholderLook(pChunk);
   const nodes = parseWtNodes(chunk);
   const R = `{${tag}}`;
 
@@ -371,7 +407,8 @@ export function insertTagAtOccurrence(
         const edit = mode === 'replace'
           ? { s: idx, e: end, r: `{${tag}}` }
           : { s: end, e: end, r: ` {${tag}}` };
-        parts[i] = applyEditsToChunk(parts[i], [edit]);
+        // se o trecho era um placeholder do Word, tira o visual cinza junto
+        parts[i] = stripPlaceholderLook(applyEditsToChunk(parts[i], [edit]));
         done = true;
         break;
       }
@@ -400,6 +437,15 @@ export async function generateDocxFromTemplate(
   console.log('[docxGenerator] Gerando docx com valores:', values);
 
   const zip = new PizZip(templateBuffer);
+
+  // Tags em campos de formulário herdam o cinza do placeholder do Word —
+  // limpa antes de preencher para o valor sair na cor normal do documento.
+  for (const name of docxPartNames(zip)) {
+    const xml = zip.files[name].asText();
+    const cleaned = cleanPlaceholderStyling(xml);
+    if (cleaned !== xml) zip.file(name, cleaned);
+  }
+
   const doc = new Docxtemplater(zip, {
     paragraphLoop: true,
     linebreaks: true,
