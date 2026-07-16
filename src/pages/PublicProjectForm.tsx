@@ -18,6 +18,7 @@ import { Database } from '@/integrations/supabase/types';
 import { useEnergyConcessionaires } from '@/hooks/useEnergyConcessionaires';
 import { validateFile, sanitizeFileName } from '@/lib/utils';
 import { upperizeStrings } from '@/lib/textCase';
+import { dispatchNotification } from '@/lib/notify';
 
 const TURNSTILE_SITE_KEY = import.meta.env.VITE_TURNSTILE_SITE_KEY as string | undefined;
 
@@ -352,6 +353,7 @@ export default function PublicProjectForm() {
         }
       }
 
+      dispatchNotification(project.id, 'project_created');
       toast.success('Projeto enviado com sucesso!');
       navigate('/public-form/success', { state: { token } });
     } catch (error) {

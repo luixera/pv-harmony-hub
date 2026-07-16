@@ -4,6 +4,7 @@ import { Database } from '@/integrations/supabase/types';
 import { toast } from 'sonner';
 import { toProjectStatus } from '@/lib/statusMapping';
 import { upperizeStrings } from '@/lib/textCase';
+import { dispatchNotification } from '@/lib/notify';
 
 type Project = Database['public']['Tables']['projects']['Row'];
 type ProjectGeneralData = Database['public']['Tables']['project_general_data']['Row'];
@@ -436,6 +437,9 @@ export function useCreateProject() {
         action: 'Projeto criado',
         description: `Projeto ${project.code} criado via ${data.source}`,
       });
+
+      // Automações: projeto recebido
+      dispatchNotification(project.id, 'project_created');
 
       return project;
     },

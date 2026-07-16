@@ -21,6 +21,7 @@ import {
   BarChart2,
   CheckSquare,
   Mail,
+  Zap,
 } from 'lucide-react';
 import { Cpu } from 'lucide-react';
 import { useMyPendingTasks } from '@/hooks/useTasks';
@@ -53,6 +54,7 @@ const sidebarItems: SidebarItem[] = [
   { icon: Users, label: 'Usuários', path: '/admin/users', roles: ['admin'] },
   { icon: Sun, label: 'Concessionárias', path: '/admin/energy-concessionaires', roles: ['admin', 'staff'] },
   { icon: Cpu, label: 'Equipamentos', path: '/admin/equipment', roles: ['admin', 'staff'] },
+  { icon: Zap, label: 'Automações', path: '/admin/automations', roles: ['admin'] },
   { icon: FormInput, label: 'Formulários', path: '/admin/form-config', roles: ['admin'] },
   { icon: Map, label: 'Mapa de Projetos', path: '/projects-map', roles: ['admin', 'staff'] },
   { icon: Kanban, label: 'Config. Kanban', path: '/admin/kanban-config', roles: ['admin'] },
@@ -83,6 +85,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
     '/email-updates': features.email_agent !== false,
     '/projects-map': features.map !== false,
     '/reports': features.reports !== false,
+    '/admin/automations': features.automations !== false,
   };
 
   const filteredItems = sidebarItems.filter(item =>

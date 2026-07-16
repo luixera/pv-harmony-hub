@@ -15,6 +15,7 @@ import { brazilianStates } from '@/data/mockData';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTenantFeatures } from '@/hooks/useTenant';
 import { EquipmentModelCombobox } from '@/components/equipment/EquipmentModelCombobox';
+import { dispatchNotification } from '@/lib/notify';
 import { supabase } from '@/integrations/supabase/client';
 import { DocumentUploadField } from '@/components/forms/DocumentUploadField';
 import { Database } from '@/integrations/supabase/types';
@@ -714,6 +715,7 @@ export default function NewProject() {
         } catch { /* non-critical */ }
       }
 
+      dispatchNotification(project.id, 'project_created');
       toast.success('Projeto enviado com sucesso!');
       navigate('/project-success');
     } catch (error) {
