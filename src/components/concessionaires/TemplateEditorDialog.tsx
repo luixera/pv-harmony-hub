@@ -2,10 +2,11 @@ import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   Loader2, Save, Undo2, Wand2, Eye, Code2, CheckCircle2, AlertTriangle, FileText,
-  RotateCcw, MousePointerClick, FormInput,
+  RotateCcw, MousePointerClick, FormInput, Search,
 } from 'lucide-react';
 import {
   ConcessionaireTemplate, downloadTemplateBuffer, overwriteTemplate,
@@ -106,6 +107,7 @@ export function TemplateEditorDialog({ open, onOpenChange, template, concessiona
   const [panel, setPanel] = useState<'tags' | 'fields'>('tags');
   const [selection, setSelection] = useState<SelectionInfo | null>(null);
   const [selVar, setSelVar] = useState<string>('');
+  const [fieldSearch, setFieldSearch] = useState('');
   const [saving, setSaving] = useState(false);
   const [restoring, setRestoring] = useState(false);
   const [backupExists, setBackupExists] = useState(false);
@@ -113,6 +115,9 @@ export function TemplateEditorDialog({ open, onOpenChange, template, concessiona
   const displayName = template ? template.name.replace(/^\d+_/, '') : '';
   const dirty = history.length > 0;
   const unknownWithSuggestion = tags.filter(t => !t.known && t.suggestion).length;
+  const visibleFields = fieldSearch.trim()
+    ? fields.filter(f => f.label.toLowerCase().includes(fieldSearch.toLowerCase()))
+    : fields;
 
   // ── Carrega o template ao abrir ─────────────────────────────────────────────
   useEffect(() => {
@@ -121,7 +126,7 @@ export function TemplateEditorDialog({ open, onOpenChange, template, concessiona
     (async () => {
       setLoading(true);
       setMode('tags'); setPanel('tags');
-      setHistory([]); setSelection(null); setSelVar('');
+      setHistory([]); setSelection(null); setSelVar(''); setFieldSearch('');
       try {
         const raw = await downloadTemplateBuffer(template.path);
         const consolidated = renameTagsInDocx(raw, {}); // junta fragmentos do Word
@@ -242,7 +247,8 @@ export function TemplateEditorDialog({ open, onOpenChange, template, concessiona
       toast.success('Template salvo');
     } catch (err) {
       console.error('[TemplateEditor] erro ao salvar', err);
-      toast.error('Erro ao salvar o template');
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(`Erro ao salvar o template: ${msg}`, { duration: 8000 });
     } finally {
       setSaving(false);
     }
@@ -261,7 +267,8 @@ export function TemplateEditorDialog({ open, onOpenChange, template, concessiona
       toast.success('Original restaurado');
     } catch (err) {
       console.error('[TemplateEditor] erro ao restaurar', err);
-      toast.error('Erro ao restaurar o original');
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(`Erro ao restaurar o original: ${msg}`, { duration: 8000 });
     } finally {
       setRestoring(false);
     }
@@ -410,12 +417,28 @@ export function TemplateEditorDialog({ open, onOpenChange, template, concessiona
                     <p className="text-[11px] text-muted-foreground">
                       Campos em branco do formulário. Escolha a variável que entra em cada um.
                     </p>
+                    {fields.length > 8 && (
+                      <div className="relative">
+                        <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                        <Input
+                          value={fieldSearch}
+                          onChange={e => setFieldSearch(e.target.value)}
+                          placeholder="Buscar campo pelo rótulo…"
+                          className="h-7 pl-8 text-[11px]"
+                        />
+                      </div>
+                    )}
                     {fields.length === 0 && (
                       <p className="text-xs text-muted-foreground py-4 text-center">
                         Nenhum campo em branco encontrado neste documento.
                       </p>
                     )}
-                    {fields.map(f => (
+                    {fields.length > 0 && visibleFields.length === 0 && (
+                      <p className="text-xs text-muted-foreground py-4 text-center">
+                        Nenhum campo encontrado para "{fieldSearch}"
+                      </p>
+                    )}
+                    {visibleFields.map(f => (
                       <div key={f.id} className="rounded-md border p-2 space-y-1.5">
                         <p className="text-[11px] font-medium leading-snug">{f.label}</p>
                         <p className="text-[10px] text-muted-foreground italic truncate">

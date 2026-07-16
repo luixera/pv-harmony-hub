@@ -136,7 +136,8 @@
       "Bash(git commit -q -m 'feat\\(financeiro\\): quitacao rapida em lote, botao quitar total e estorno de quitacao *)",
       "Bash(node --input-type=module -e ' *)",
       "Bash(git commit -q -m 'feat\\(templates\\): editor de template no sistema + detector de tags robusto *)",
-      "Bash(git commit -q -m 'feat\\(templates\\): inserir variaveis nos campos do documento pelo editor *)"
+      "Bash(git commit -q -m 'feat\\(templates\\): inserir variaveis nos campos do documento pelo editor *)",
+      "Bash(git commit -q -m 'fix\\(templates\\): permitir salvar template editado + busca de campos *)"
     ]
   }
 }
