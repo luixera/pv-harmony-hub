@@ -4,8 +4,9 @@ import { useFinancialDashboard } from '@/hooks/useFinancialDashboard';
 import { useCompanies } from '@/hooks/useCompanies';
 import { ProjectModal } from '@/components/projects/ProjectModal';
 import { FinancialReportModal } from '@/components/financial/FinancialReportModal';
+import { BatchSettleDialog } from '@/components/financial/BatchSettleDialog';
 import { BarChart, Bar, Tooltip, ResponsiveContainer, Cell, XAxis } from 'recharts';
-import { Loader2, FileText, TrendingUp, Wallet, AlertCircle, DollarSign } from 'lucide-react';
+import { Loader2, FileText, TrendingUp, Wallet, AlertCircle, DollarSign, CheckCircle2, RotateCcw } from 'lucide-react';
 import { useWindowSize } from '@/hooks/useWindowSize';
 import { formatCurrency } from '@/lib/utils';
 
@@ -61,6 +62,8 @@ export default function Financial() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [modalProjectId, setModalProjectId] = useState<string | null>(null);
   const [showReport, setShowReport] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [batchMode, setBatchMode] = useState<'settle' | 'reverse' | null>(null);
 
   const projetos = data?.projetos || [];
   const kpis = data?.kpis;
@@ -72,6 +75,26 @@ export default function Financial() {
     if (statusFilter !== 'all' && p.paymentStatus !== statusFilter) return false;
     return true;
   }), [projetos, companyFilter, statusFilter]);
+
+  // ── Seleção em lote ──────────────────────────────────────────────────────────
+  const selectedRows = filteredProjetos.filter(p => selected.has(p.id));
+  const selectedSettle = selectedRows.filter(p => p.balance > 0);          // podem ser quitados
+  const selectedReverse = selectedRows.filter(p => p.paidValue > 0);       // podem ser estornados
+  const selectedTotal = selectedSettle.reduce((s, p) => s + p.balance, 0);
+
+  const toggleOne = (id: string) => {
+    setSelected(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+  const clearSelection = () => setSelected(new Set());
+  const allSelectableIds = filteredProjetos.filter(p => p.balance > 0 || p.paidValue > 0).map(p => p.id);
+  const allSelected = allSelectableIds.length > 0 && allSelectableIds.every(id => selected.has(id));
+  const toggleAll = () => {
+    setSelected(allSelected ? new Set() : new Set(allSelectableIds));
+  };
 
   const totalAberto = filteredProjetos.reduce((s, p) => s + p.balance, 0);
   const recebidoPct = kpis?.totalFaturado ? (kpis.totalRecebido / kpis.totalFaturado) * 100 : 0;
@@ -233,14 +256,58 @@ export default function Financial() {
 
             {/* Header */}
             <div style={{ padding: '16px 20px', background: '#FAFAFA', borderBottom: '1px solid #F0F0F0', display: 'flex', alignItems: 'center', gap: 10 }}>
+              {allSelectableIds.length > 0 && (
+                <input
+                  type="checkbox"
+                  checked={allSelected}
+                  onChange={toggleAll}
+                  title="Selecionar todos"
+                  style={{ width: 15, height: 15, cursor: 'pointer', accentColor: '#F5A800' }}
+                />
+              )}
               <div style={{ flex: 1 }}>
                 <p style={{ fontSize: 14, fontWeight: 700, color: '#1A1A1A', margin: 0 }}>Projetos em Aberto</p>
-                <p style={{ fontSize: 11, color: '#999', margin: '2px 0 0' }}>Clique para ver detalhes</p>
+                <p style={{ fontSize: 11, color: '#999', margin: '2px 0 0' }}>Selecione para quitar/estornar · clique para ver detalhes</p>
               </div>
               <span style={{ fontSize: 12, fontWeight: 700, padding: '4px 12px', borderRadius: 20, background: '#FEF3D0', color: '#854F0B' }}>
                 {filteredProjetos.filter(p => p.paymentStatus !== 'paid').length} pendentes
               </span>
             </div>
+
+            {/* Barra de ação em lote */}
+            {selectedRows.length > 0 && (
+              <div style={{ padding: '10px 16px', background: '#1A1A1A', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: '#fff' }}>
+                  {selectedRows.length} selecionado(s)
+                </span>
+                {selectedTotal > 0 && (
+                  <span style={{ fontSize: 11, color: '#F5A800' }}>· {fmt(selectedTotal)} a quitar</span>
+                )}
+                <div style={{ flex: 1 }} />
+                <button
+                  onClick={clearSelection}
+                  style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)', background: 'none', border: 'none', cursor: 'pointer', padding: '6px 8px' }}
+                >
+                  Limpar
+                </button>
+                {selectedReverse.length > 0 && (
+                  <button
+                    onClick={() => setBatchMode('reverse')}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 700, color: '#fff', background: 'rgba(226,75,74,0.9)', border: 'none', borderRadius: 7, padding: '7px 12px', cursor: 'pointer' }}
+                  >
+                    <RotateCcw size={13} /> Estornar ({selectedReverse.length})
+                  </button>
+                )}
+                {selectedSettle.length > 0 && (
+                  <button
+                    onClick={() => setBatchMode('settle')}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 700, color: '#1A1A1A', background: '#4CAF7D', border: 'none', borderRadius: 7, padding: '7px 12px', cursor: 'pointer' }}
+                  >
+                    <CheckCircle2 size={13} /> Quitar ({selectedSettle.length})
+                  </button>
+                )}
+              </div>
+            )}
 
             {/* Filters */}
             <div style={{ padding: '12px 16px', background: '#F8F8F8', borderBottom: '1px solid #F0F0F0', display: 'flex', gap: 10 }}>
@@ -275,42 +342,58 @@ export default function Financial() {
                   const ps = PAY_STATUS_LABELS[p.paymentStatus] || PAY_STATUS_LABELS.pending;
                   const today = new Date().toISOString().split('T')[0];
                   const isOverdue = p.paymentStatus !== 'paid' && p.dueDate && p.dueDate < today;
+                  const selectable = p.balance > 0 || p.paidValue > 0;
+                  const isSel = selected.has(p.id);
                   return (
-                    <button
+                    <div
                       key={p.id}
-                      onClick={() => setModalProjectId(p.id)}
-                      style={{ display: 'flex', alignItems: 'center', width: '100%', padding: '13px 20px', border: 'none', background: 'none', borderBottom: '1px solid #F8F8F8', cursor: 'pointer', textAlign: 'left', gap: 14 }}
-                      onMouseEnter={e => (e.currentTarget.style.background = '#FAFAFA')}
-                      onMouseLeave={e => (e.currentTarget.style.background = 'none')}
+                      style={{ display: 'flex', alignItems: 'center', width: '100%', borderBottom: '1px solid #F8F8F8', background: isSel ? '#FFFBF0' : 'none' }}
                     >
-                      {/* Color dot */}
-                      <div style={{ width: 10, height: 10, borderRadius: '50%', background: ps.color, flexShrink: 0, opacity: 0.8 }} />
+                      {/* Checkbox de seleção */}
+                      <div style={{ paddingLeft: 16, display: 'flex', alignItems: 'center' }}>
+                        <input
+                          type="checkbox"
+                          checked={isSel}
+                          disabled={!selectable}
+                          onChange={() => toggleOne(p.id)}
+                          style={{ width: 15, height: 15, cursor: selectable ? 'pointer' : 'not-allowed', accentColor: '#F5A800' }}
+                        />
+                      </div>
+                      <button
+                        onClick={() => setModalProjectId(p.id)}
+                        style={{ display: 'flex', alignItems: 'center', flex: 1, minWidth: 0, padding: '13px 20px 13px 12px', border: 'none', background: 'none', cursor: 'pointer', textAlign: 'left', gap: 14 }}
+                        onMouseEnter={e => { if (!isSel) e.currentTarget.parentElement!.style.background = '#FAFAFA'; }}
+                        onMouseLeave={e => { if (!isSel) e.currentTarget.parentElement!.style.background = 'none'; }}
+                      >
+                        {/* Color dot */}
+                        <div style={{ width: 10, height: 10, borderRadius: '50%', background: ps.color, flexShrink: 0, opacity: 0.8 }} />
 
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
-                          <p style={{ fontSize: 13, fontWeight: 700, color: '#1A1A1A', margin: 0, fontFamily: 'monospace' }}>{p.code}</p>
-                          {isOverdue && (
-                            <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 20, background: '#FEE2E2', color: '#E24B4A' }}>VENCIDO</span>
-                          )}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+                            <p style={{ fontSize: 13, fontWeight: 700, color: '#1A1A1A', margin: 0, fontFamily: 'monospace' }}>{p.code}</p>
+                            {isOverdue && (
+                              <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 20, background: '#FEE2E2', color: '#E24B4A' }}>VENCIDO</span>
+                            )}
+                          </div>
+                          <p style={{ fontSize: 12, color: '#555', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.holderName}</p>
+                          <p style={{ fontSize: 11, color: '#aaa', margin: '2px 0 0' }}>{p.companyName}</p>
                         </div>
-                        <p style={{ fontSize: 12, color: '#555', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.holderName}</p>
-                        <p style={{ fontSize: 11, color: '#aaa', margin: '2px 0 0' }}>{p.companyName}</p>
-                      </div>
 
-                      <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                        <p style={{ fontSize: 14, fontWeight: 700, color: p.paymentStatus === 'paid' ? '#2D6A4F' : '#D85A30', margin: 0 }}>
-                          {p.paymentStatus === 'paid' ? 'Quitado' : fmt(p.balance)}
-                        </p>
-                        {p.dueDate && (
-                          <p style={{ fontSize: 10, color: isOverdue ? '#E24B4A' : '#aaa', margin: '2px 0 4px' }}>
-                            Venc. {new Date(p.dueDate + 'T12:00:00').toLocaleDateString('pt-BR')}
+                        <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                          <p style={{ fontSize: 14, fontWeight: 700, color: p.paymentStatus === 'paid' ? '#2D6A4F' : '#D85A30', margin: 0 }}>
+                            {p.paymentStatus === 'paid' ? 'Quitado' : fmt(p.balance)}
                           </p>
-                        )}
-                        <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: ps.bg, color: ps.color }}>
-                          {ps.label}
-                        </span>
-                      </div>
-                    </button>
+                          {p.dueDate && (
+                            <p style={{ fontSize: 10, color: isOverdue ? '#E24B4A' : '#aaa', margin: '2px 0 4px' }}>
+                              Venc. {new Date(p.dueDate + 'T12:00:00').toLocaleDateString('pt-BR')}
+                            </p>
+                          )}
+                          <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: ps.bg, color: ps.color }}>
+                            {ps.label}
+                          </span>
+                        </div>
+                      </button>
+                    </div>
                   );
                 })
               )}
@@ -336,6 +419,16 @@ export default function Financial() {
       {/* Report Modal */}
       {showReport && (
         <FinancialReportModal onClose={() => setShowReport(false)} />
+      )}
+
+      {/* Batch settle / reverse */}
+      {batchMode && (
+        <BatchSettleDialog
+          mode={batchMode}
+          projects={batchMode === 'settle' ? selectedSettle : selectedReverse}
+          onClose={() => setBatchMode(null)}
+          onDone={() => { setBatchMode(null); clearSelection(); }}
+        />
       )}
     </MainLayout>
   );

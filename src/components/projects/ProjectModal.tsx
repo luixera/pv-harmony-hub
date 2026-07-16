@@ -10,7 +10,7 @@ import { useComments, useAddComment } from '@/hooks/useComments';
 import { useDocuments, useUploadDocument, useDocumentUrl } from '@/hooks/useDocuments';
 import { useProjectHistory } from '@/hooks/useHistory';
 import { useStageChecklists } from '@/hooks/useStageChecklists';
-import { usePaymentHistory, useAddPaymentHistory, useUpdateProjectValue } from '@/hooks/usePaymentHistory';
+import { usePaymentHistory, useAddPaymentHistory, useUpdateProjectValue, useReverseSinglePayment, PaymentHistoryEntry } from '@/hooks/usePaymentHistory';
 import { useProjectRevisions } from '@/hooks/useProjectRevisions';
 import { useRejectionColumn } from '@/hooks/useKanbanConfig';
 import { useProjectProtocols, useRegisterProtocol } from '@/hooks/useProjectProtocol';
@@ -28,7 +28,7 @@ import {
   X, ExternalLink, Pencil, FileOutput, MoreVertical, Users, Trash2,
   Check, ChevronRight, Upload, Download, Send, Paperclip, FileText,
   Image, Loader2, AlertTriangle, Save, Lock, DollarSign, Clock, MapPin, Hash,
-  CheckSquare, Plus, Circle, CheckCircle2, Calendar, User as UserIcon,
+  CheckSquare, Plus, Circle, CheckCircle2, Calendar, User as UserIcon, RotateCcw,
 } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -1108,6 +1108,18 @@ function TabFinanceiro({ project, isAdmin }: { project: ProjectWithDetails; isAd
   const { data: history = [] } = usePaymentHistory(project.id);
   const addPayment = useAddPaymentHistory();
   const updateValue = useUpdateProjectValue();
+  const reversePayment = useReverseSinglePayment();
+
+  // Pagamentos já estornados (não permitem novo estorno)
+  const reversedIds = new Set(
+    history.filter(h => h.entry_type === 'reversal' && h.reverses_payment_id)
+           .map(h => h.reverses_payment_id as string)
+  );
+
+  const handleReverse = async (payment: PaymentHistoryEntry) => {
+    if (!confirm(`Estornar o pagamento de ${fmt(payment.amount)}? O saldo em aberto voltará a subir.`)) return;
+    await reversePayment.mutateAsync({ payment });
+  };
 
   const [editingValue, setEditingValue] = useState(false);
   const [newValue, setNewValue] = useState(projectValue.toString());
@@ -1223,7 +1235,18 @@ function TabFinanceiro({ project, isAdmin }: { project: ProjectWithDetails; isAd
         <div style={{ padding: '14px' }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 12px', marginBottom: 10 }}>
             <div>
-              <p style={{ fontSize: 10, color: '#999', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Valor recebido (R$)</p>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                <p style={{ fontSize: 10, color: '#999', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>Valor recebido (R$)</p>
+                {balance > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setPayAmt(balance.toFixed(2))}
+                    style={{ fontSize: 10, fontWeight: 700, color: '#0F6E56', background: '#E1F5EE', border: 'none', borderRadius: 5, padding: '2px 7px', cursor: 'pointer' }}
+                  >
+                    Quitar total · {fmt(balance)}
+                  </button>
+                )}
+              </div>
               <input
                 type="number"
                 value={payAmt}
@@ -1289,21 +1312,40 @@ function TabFinanceiro({ project, isAdmin }: { project: ProjectWithDetails; isAd
               <p style={{ fontSize: 12, color: '#aaa' }}>Nenhum pagamento registrado ainda</p>
             </div>
           )}
-          {history.map(h => (
-            <div key={h.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '10px 14px', borderBottom: '1px solid #F8F8F8' }}>
-              <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#2D6A4F', flexShrink: 0, marginTop: 4 }} />
-              <div style={{ flex: 1 }}>
-                <p style={{ fontSize: 12, fontWeight: 600, color: '#1A1A1A' }}>Pagamento registrado</p>
-                <p style={{ fontSize: 10, color: '#999', marginTop: 2 }}>
-                  {new Date(h.payment_date + 'T12:00:00').toLocaleDateString('pt-BR')}
+          {history.map(h => {
+            const isReversal = h.entry_type === 'reversal';
+            const alreadyReversed = reversedIds.has(h.id);
+            const dotColor = isReversal ? '#E24B4A' : '#2D6A4F';
+            return (
+              <div key={h.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '10px 14px', borderBottom: '1px solid #F8F8F8' }}>
+                <div style={{ width: 8, height: 8, borderRadius: '50%', background: dotColor, flexShrink: 0, marginTop: 4 }} />
+                <div style={{ flex: 1 }}>
+                  <p style={{ fontSize: 12, fontWeight: 600, color: isReversal ? '#E24B4A' : '#1A1A1A' }}>
+                    {isReversal ? 'Estorno' : 'Pagamento registrado'}
+                  </p>
+                  <p style={{ fontSize: 10, color: '#999', marginTop: 2 }}>
+                    {new Date(h.payment_date + 'T12:00:00').toLocaleDateString('pt-BR')}
+                  </p>
+                  {h.notes && <p style={{ fontSize: 11, color: '#888', marginTop: 2 }}>{h.notes}</p>}
+                  {!isReversal && !alreadyReversed && (
+                    <button
+                      onClick={() => handleReverse(h)}
+                      disabled={reversePayment.isPending}
+                      style={{ marginTop: 5, display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10, fontWeight: 600, color: '#E24B4A', background: 'none', border: '0.5px solid #F3C9C9', borderRadius: 5, padding: '2px 8px', cursor: 'pointer' }}
+                    >
+                      <RotateCcw size={9} /> Estornar
+                    </button>
+                  )}
+                  {!isReversal && alreadyReversed && (
+                    <span style={{ marginTop: 5, display: 'inline-block', fontSize: 10, color: '#aaa', fontStyle: 'italic' }}>Estornado</span>
+                  )}
+                </div>
+                <p style={{ fontSize: 13, fontWeight: 700, color: dotColor, flexShrink: 0 }}>
+                  {isReversal ? '− ' : '+ '}{fmt(Math.abs(h.amount))}
                 </p>
-                {h.notes && <p style={{ fontSize: 11, color: '#888', marginTop: 2 }}>{h.notes}</p>}
               </div>
-              <p style={{ fontSize: 13, fontWeight: 700, color: '#2D6A4F', flexShrink: 0 }}>
-                + {fmt(h.amount)}
-              </p>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>
