@@ -130,7 +130,8 @@
       "Bash(timeout 8 bash -c \"echo > /dev/tcp/143.95.221.114/22022\")",
       "Bash(ssh -i __TRACKED_VAR__/vps-keys/deploy_key -p 22022 -o StrictHostKeyChecking=no -o ConnectTimeout=12 -o BatchMode=yes root@143.95.221.114 'echo OK-SSH; df -h / | tail -1')",
       "Bash(timeout 15 curl -s -o /dev/null -w \"site HTTP %{http_code} em %{time_total}s\\\\n\" https://homologamanager.com.br/)",
-      "Bash(git commit -q -m 'feat\\(automacoes\\): motor de avisos por e-mail por tenant \\(evento projeto recebido\\) *)"
+      "Bash(git commit -q -m 'feat\\(automacoes\\): motor de avisos por e-mail por tenant \\(evento projeto recebido\\) *)",
+      "Bash(git commit -q -m 'feat\\(templates\\): raio-X de tags, download, teste com dados de exemplo e variaveis pesquisaveis *)"
     ]
   }
 }

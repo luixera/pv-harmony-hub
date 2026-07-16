@@ -2,6 +2,97 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { ProjectWithDetails } from '@/hooks/useProjects';
 
+/** Catálogo ÚNICO das variáveis suportadas nos templates .docx.
+ *  Mantenha alinhado com as chaves retornadas por buildProjectValues. */
+export interface TemplateVariable {
+  key: string;
+  desc: string;
+  category: string;
+  example: string;
+}
+
+export const TEMPLATE_VARIABLES: TemplateVariable[] = [
+  // Projeto
+  { key: 'codigo_projeto',    desc: 'Código do projeto',                 category: 'Projeto',      example: 'GD-2026-0042' },
+  { key: 'empresa',           desc: 'Nome da empresa integradora',       category: 'Projeto',      example: 'SOLAR TECH LTDA' },
+  { key: 'concessionaria',    desc: 'Nome da concessionária',            category: 'Projeto',      example: 'CPFL PAULISTA' },
+  { key: 'data_criacao',      desc: 'Data de criação do projeto',        category: 'Projeto',      example: '10/07/2026' },
+  // Titular
+  { key: 'nome_titular',      desc: 'Nome do titular da UC',             category: 'Titular',      example: 'JOÃO DA SILVA' },
+  { key: 'cpf_cnpj',          desc: 'CPF/CNPJ do titular',               category: 'Titular',      example: '123.456.789-00' },
+  { key: 'email_titular',     desc: 'E-mail do titular',                 category: 'Titular',      example: 'joao@email.com' },
+  { key: 'telefone_titular',  desc: 'Telefone do titular',               category: 'Titular',      example: '(19) 99999-8888' },
+  // Endereço & UC
+  { key: 'endereco',          desc: 'Endereço (rua e número)',           category: 'Endereço e UC', example: 'RUA DAS FLORES, 123' },
+  { key: 'cidade',            desc: 'Cidade',                            category: 'Endereço e UC', example: 'CAMPINAS' },
+  { key: 'estado',            desc: 'Estado (UF)',                       category: 'Endereço e UC', example: 'SP' },
+  { key: 'uf',                desc: 'Estado (UF) — alias de {estado}',   category: 'Endereço e UC', example: 'SP' },
+  { key: 'cep',               desc: 'CEP',                               category: 'Endereço e UC', example: '13000-000' },
+  { key: 'endereco_completo', desc: 'Endereço completo (rua, cidade/UF, CEP)', category: 'Endereço e UC', example: 'RUA DAS FLORES, 123, CAMPINAS, SP, CEP: 13000-000' },
+  { key: 'coordenadas',       desc: 'Coordenadas geográficas',           category: 'Endereço e UC', example: '-22.9099, -47.0626' },
+  { key: 'rural',             desc: 'Área rural? (Sim/Não)',             category: 'Endereço e UC', example: 'Não' },
+  { key: 'uc',                desc: 'Número da UC',                      category: 'Endereço e UC', example: '4001234567' },
+  { key: 'numero_uc',         desc: 'Número da UC — alias de {uc}',      category: 'Endereço e UC', example: '4001234567' },
+  // Instalação
+  { key: 'disjuntor',         desc: 'Corrente do disjuntor',             category: 'Instalação',   example: '63A' },
+  { key: 'fase',              desc: 'Tipo de fase',                      category: 'Instalação',   example: 'Bifásico' },
+  { key: 'tipo_fase',         desc: 'Tipo de fase — alias de {fase}',    category: 'Instalação',   example: 'Bifásico' },
+  // Equipamentos
+  { key: 'marca_inversor',    desc: 'Marca do inversor',                 category: 'Equipamentos', example: 'GROWATT' },
+  { key: 'modelo_inversor',   desc: 'Modelo do inversor',                category: 'Equipamentos', example: 'MIN 5000TL-X' },
+  { key: 'potencia_inversor', desc: 'Potência do inversor',              category: 'Equipamentos', example: '5 kW' },
+  { key: 'qtd_inversores',    desc: 'Quantidade de inversores',          category: 'Equipamentos', example: '1' },
+  { key: 'marca_modulo',      desc: 'Marca dos módulos',                 category: 'Equipamentos', example: 'CANADIAN SOLAR' },
+  { key: 'modelo_modulo',     desc: 'Modelo dos módulos',                category: 'Equipamentos', example: 'CS7L-600MS' },
+  { key: 'potencia_modulo',   desc: 'Potência dos módulos',              category: 'Equipamentos', example: '600 Wp' },
+  { key: 'qtd_modulos',       desc: 'Quantidade de módulos',             category: 'Equipamentos', example: '10' },
+  { key: 'potencia_total',    desc: 'Potência total instalada',          category: 'Equipamentos', example: '6 kWp' },
+  { key: 'kwp',               desc: 'Potência total (só o número)',      category: 'Equipamentos', example: '6' },
+  // Datas
+  { key: 'data',              desc: 'Data de hoje',                      category: 'Datas',        example: '15/07/2026' },
+  { key: 'data_emissao',      desc: 'Data de emissão (hoje)',            category: 'Datas',        example: '15/07/2026' },
+  { key: 'data_atual',        desc: 'Data atual — alias de {data}',      category: 'Datas',        example: '15/07/2026' },
+];
+
+export const KNOWN_TEMPLATE_KEYS = new Set(TEMPLATE_VARIABLES.map(v => v.key));
+
+/** Valores fictícios para o "Testar preenchimento" (sem precisar de projeto real). */
+export function buildSampleValues(): Record<string, string> {
+  const today = format(new Date(), 'dd/MM/yyyy', { locale: ptBR });
+  const values: Record<string, string> = {};
+  for (const v of TEMPLATE_VARIABLES) values[v.key] = v.example;
+  values.data = today;
+  values.data_emissao = today;
+  values.data_atual = today;
+  return values;
+}
+
+/** Distância de Levenshtein simples (para sugerir a tag correta). */
+function levenshtein(a: string, b: string): number {
+  const m = a.length, n = b.length;
+  const dp = Array.from({ length: m + 1 }, (_, i) => [i, ...Array(n).fill(0)]);
+  for (let j = 1; j <= n; j++) dp[0][j] = j;
+  for (let i = 1; i <= m; i++)
+    for (let j = 1; j <= n; j++)
+      dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+  return dp[m][n];
+}
+
+/** Sugere a variável conhecida mais parecida com uma tag desconhecida (ou null). */
+export function suggestTemplateKey(unknown: string): string | null {
+  const u = unknown.toLowerCase();
+  let best: string | null = null;
+  let bestScore = Infinity;
+  for (const v of TEMPLATE_VARIABLES) {
+    const k = v.key.toLowerCase();
+    // substring direta conta como forte candidata
+    const dist = k.includes(u) || u.includes(k) ? 1 : levenshtein(u, k);
+    if (dist < bestScore) { bestScore = dist; best = v.key; }
+  }
+  // só sugere se for razoavelmente próximo
+  return best && bestScore <= Math.max(2, Math.floor(unknown.length * 0.4)) ? best : null;
+}
+
 /** Mapa de tags → valores do projeto, usado para preencher templates .docx. */
 export function buildProjectValues(project: ProjectWithDetails): Record<string, string> {
   const g = project.generalData ?? ({} as NonNullable<ProjectWithDetails['generalData']>);
