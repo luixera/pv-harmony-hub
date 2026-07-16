@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
   Upload, Trash2, FileText, Loader2, Info, Download, FlaskConical,
-  CheckCircle2, AlertTriangle, Search, Copy,
+  CheckCircle2, AlertTriangle, Search, Copy, Pencil, HelpCircle, ChevronDown,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -17,6 +17,7 @@ import {
 } from '@/hooks/useConcessionaireTemplates';
 import { EnergyConcessionaire } from '@/hooks/useEnergyConcessionaires';
 import { useAuth } from '@/contexts/AuthContext';
+import { TemplateEditorDialog } from '@/components/concessionaires/TemplateEditorDialog';
 import { detectTemplateTags, generateDocxFromTemplate } from '@/utils/docxGenerator';
 import {
   TEMPLATE_VARIABLES, KNOWN_TEMPLATE_KEYS, buildSampleValues, suggestTemplateKey,
@@ -65,6 +66,8 @@ export function ConcessionaireTemplatesDialog({
   const [analyses, setAnalyses] = useState<Record<string, TagAnalysis>>({});
   const [busyPath, setBusyPath] = useState<string | null>(null); // download/teste em andamento
   const [varSearch, setVarSearch] = useState('');
+  const [editing, setEditing] = useState<ConcessionaireTemplate | null>(null);
+  const [showGuide, setShowGuide] = useState(false);
 
   // Analisa automaticamente os templates listados (com cache por path)
   useEffect(() => {
@@ -99,9 +102,34 @@ export function ConcessionaireTemplatesDialog({
     const files = e.target.files;
     if (!files || !concessionaire) return;
     for (let i = 0; i < files.length; i++) {
-      await uploadMutation.mutateAsync({ concessionaireId: concessionaire.id, file: files[i] });
+      const file = files[i];
+      await uploadMutation.mutateAsync({ concessionaireId: concessionaire.id, file });
+      // análise imediata: avisa se o arquivo tem tags não reconhecidas
+      try {
+        const { tags } = await detectTemplateTags(await file.arrayBuffer());
+        const unknown = tags.filter(t => !KNOWN_TEMPLATE_KEYS.has(t));
+        if (tags.length === 0) {
+          toast.info(`${file.name}: sem tags — será tratado como formulário`);
+        } else if (unknown.length > 0) {
+          toast.warning(
+            `${file.name}: ${unknown.length} tag(s) não reconhecida(s) — use o botão ✏️ para corrigir`,
+            { duration: 7000 },
+          );
+        } else {
+          toast.success(`${file.name}: ${tags.length} tag(s) reconhecida(s) ✓`);
+        }
+      } catch { /* análise é opcional */ }
     }
     if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  /** Reanalisa um template (após edição no editor, por exemplo). */
+  const invalidateAnalysis = (path: string) => {
+    setAnalyses(prev => {
+      const next = { ...prev };
+      delete next[path];
+      return next;
+    });
   };
 
   const handleDelete = async (template: ConcessionaireTemplate) => {
@@ -250,6 +278,16 @@ export function ConcessionaireTemplatesDialog({
                       ) : null}
 
                       <div className="flex items-center">
+                        {isAdmin && (
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            title="Abrir no Editor de Template (corrigir tags)"
+                            onClick={() => setEditing(template)}
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </Button>
+                        )}
                         <Button
                           size="icon"
                           variant="ghost"
@@ -283,21 +321,23 @@ export function ConcessionaireTemplatesDialog({
                       </div>
                     </div>
 
-                    {/* Chips de tags detectadas */}
+                    {/* Chips de tags detectadas (clique = copiar) */}
                     {a && !a.loading && a.tags.length > 0 && (
                       <div className="flex flex-wrap gap-1 pl-7">
                         {a.tags.map(t => (
-                          <span
+                          <button
                             key={t.name}
+                            type="button"
+                            onClick={() => copyVar(t.name)}
                             title={
-                              t.known
+                              (t.known
                                 ? 'Tag reconhecida — será preenchida automaticamente'
                                 : t.suggestion
                                   ? `Tag desconhecida — você quis dizer {${t.suggestion}}?`
-                                  : 'Tag desconhecida — NÃO será preenchida'
+                                  : 'Tag desconhecida — NÃO será preenchida') + ' · clique para copiar'
                             }
                             className={
-                              'text-[10px] font-mono px-1.5 py-0.5 rounded border ' +
+                              'text-[10px] font-mono px-1.5 py-0.5 rounded border cursor-pointer hover:opacity-75 ' +
                               (t.known
                                 ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600'
                                 : 'bg-amber-500/10 border-amber-500/40 text-amber-600')
@@ -307,7 +347,7 @@ export function ConcessionaireTemplatesDialog({
                             {!t.known && t.suggestion && (
                               <span className="ml-1 opacity-80">→ {`{${t.suggestion}}`}?</span>
                             )}
-                          </span>
+                          </button>
                         ))}
                       </div>
                     )}
@@ -364,7 +404,40 @@ export function ConcessionaireTemplatesDialog({
               ))}
             </div>
           </div>
+
+          {/* Guia rápido de criação no Word */}
+          <div className="rounded-lg border">
+            <button
+              type="button"
+              onClick={() => setShowGuide(s => !s)}
+              className="w-full flex items-center gap-2 px-4 py-2.5 text-left"
+            >
+              <HelpCircle className="w-4 h-4 text-primary" />
+              <span className="text-sm font-medium flex-1">Como criar um template no Word</span>
+              <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform ${showGuide ? 'rotate-180' : ''}`} />
+            </button>
+            {showGuide && (
+              <div className="px-4 pb-4 space-y-2 text-xs text-muted-foreground">
+                <p><b className="text-foreground">1.</b> Monte o documento normalmente no Word (logos, tabelas, formatação — tudo é preservado).</p>
+                <p><b className="text-foreground">2.</b> Onde entrar um dado do projeto, cole uma variável desta lista, ex.: <code className="bg-muted px-1 rounded">{'{nome_titular}'}</code>. Dica: <b>copie daqui e cole no Word</b> em vez de digitar — evita erros.</p>
+                <p><b className="text-foreground">3.</b> Digite a tag de uma vez só, sem espaços dentro das chaves: <code className="bg-muted px-1 rounded">{'{cidade}'}</code> ✓ &nbsp;·&nbsp; <code className="bg-muted px-1 rounded">{'{ cidade }'}</code> ✗</p>
+                <p><b className="text-foreground">4.</b> Salve como <b>.docx</b> e envie aqui. O sistema analisa as tags na hora e avisa se alguma não for reconhecida.</p>
+                <p><b className="text-foreground">5.</b> Tag errada? Use o <Pencil className="w-3 h-3 inline" /> <b>Editor de Template</b> para corrigir sem voltar ao Word, e o <FlaskConical className="w-3 h-3 inline" /> para testar com dados de exemplo.</p>
+              </div>
+            )}
+          </div>
         </div>
+
+        {/* Editor de Template */}
+        <TemplateEditorDialog
+          open={!!editing}
+          onOpenChange={(o) => {
+            if (!o && editing) invalidateAnalysis(editing.path); // reanalisa após edição
+            if (!o) setEditing(null);
+          }}
+          template={editing}
+          concessionaireId={concessionaire?.id ?? ''}
+        />
       </DialogContent>
     </Dialog>
   );

@@ -133,7 +133,9 @@
       "Bash(git commit -q -m 'feat\\(automacoes\\): motor de avisos por e-mail por tenant \\(evento projeto recebido\\) *)",
       "Bash(git commit -q -m 'feat\\(templates\\): raio-X de tags, download, teste com dados de exemplo e variaveis pesquisaveis *)",
       "Bash(git commit -q -m 'feat\\(concessionarias\\): regras padrao de entrada + variaveis dinamicas nos documentos *)",
-      "Bash(git commit -q -m 'feat\\(financeiro\\): quitacao rapida em lote, botao quitar total e estorno de quitacao *)"
+      "Bash(git commit -q -m 'feat\\(financeiro\\): quitacao rapida em lote, botao quitar total e estorno de quitacao *)",
+      "Bash(node --input-type=module -e ' *)",
+      "Bash(git commit -q -m 'feat\\(templates\\): editor de template no sistema + detector de tags robusto *)"
     ]
   }
 }

@@ -27,7 +27,8 @@ export function useConcessionaireTemplates(concessionaireId: string | undefined)
       if (error) throw error;
 
       return (data || [])
-        .filter(f => f.name !== '.emptyFolderPlaceholder')
+        // filtra placeholder e "pastas" (ex.: .backups — itens sem id)
+        .filter(f => f.name !== '.emptyFolderPlaceholder' && !f.name.startsWith('.') && f.id !== null)
         .map(f => ({ ...f, path: `${concessionaireId}/${f.name}` }));
     },
     enabled: !!concessionaireId,
@@ -76,7 +77,10 @@ export function useDeleteConcessionaireTemplate() {
       concessionaireId: string;
       path: string;
     }) => {
-      const { error } = await supabase.storage.from(BUCKET).remove([path]);
+      const idx = path.lastIndexOf('/');
+      const backupPath = `${path.slice(0, idx)}/.backups/${path.slice(idx + 1)}`;
+      // remove o template e o backup pristine (se existir)
+      const { error } = await supabase.storage.from(BUCKET).remove([path, backupPath]);
       if (error) throw error;
     },
     onSuccess: (_, { concessionaireId }) => {
@@ -93,4 +97,51 @@ export async function downloadTemplateBuffer(path: string): Promise<ArrayBuffer>
   const { data, error } = await supabase.storage.from(BUCKET).download(path);
   if (error) throw error;
   return data.arrayBuffer();
+}
+
+// ── Edição de templates: sobrescrever + backup do original ────────────────────
+
+const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+
+/** Caminho do backup pristine de um template: <dir>/.backups/<arquivo>. */
+function backupPathFor(path: string): string {
+  const idx = path.lastIndexOf('/');
+  return `${path.slice(0, idx)}/.backups/${path.slice(idx + 1)}`;
+}
+
+/** Sobrescreve o template no storage com o buffer corrigido. */
+export async function overwriteTemplate(path: string, buffer: ArrayBuffer): Promise<void> {
+  const { error } = await supabase.storage
+    .from(BUCKET)
+    .upload(path, new Blob([buffer], { type: DOCX_MIME }), { upsert: true, contentType: DOCX_MIME });
+  if (error) throw error;
+}
+
+/** Verifica se existe backup do original. */
+export async function hasTemplateBackup(path: string): Promise<boolean> {
+  const bp = backupPathFor(path);
+  const dir = bp.slice(0, bp.lastIndexOf('/'));
+  const name = bp.slice(bp.lastIndexOf('/') + 1);
+  const { data } = await supabase.storage.from(BUCKET).list(dir, { search: name });
+  return (data ?? []).some(f => f.name === name);
+}
+
+/**
+ * Garante o backup pristine do template ANTES da primeira edição.
+ * Se o backup já existe (edições anteriores), não sobrescreve — assim o
+ * "restaurar original" sempre volta ao arquivo originalmente enviado.
+ */
+export async function backupTemplateOnce(path: string): Promise<void> {
+  if (await hasTemplateBackup(path)) return;
+  const buffer = await downloadTemplateBuffer(path);
+  const { error } = await supabase.storage
+    .from(BUCKET)
+    .upload(backupPathFor(path), new Blob([buffer], { type: DOCX_MIME }), { upsert: false, contentType: DOCX_MIME });
+  if (error && !`${error.message}`.toLowerCase().includes('exists')) throw error;
+}
+
+/** Restaura o template ao original enviado (mantém o backup para o futuro). */
+export async function restoreTemplateBackup(path: string): Promise<void> {
+  const buffer = await downloadTemplateBuffer(backupPathFor(path));
+  await overwriteTemplate(path, buffer);
 }
