@@ -45,11 +45,12 @@ Deno.serve(async (req) => {
 
     const { data: requesterProfile } = await userClient
       .from('profiles')
-      .select('role')
+      .select('role, is_master, tenant_id')
       .eq('id', requestingUser.id)
       .single()
 
-    if (!requesterProfile || requesterProfile.role !== 'admin') {
+    const isMaster = !!requesterProfile?.is_master
+    if (!requesterProfile || (requesterProfile.role !== 'admin' && !isMaster)) {
       return new Response(
         JSON.stringify({ error: 'Apenas administradores podem excluir usuários' }),
         { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -87,6 +88,29 @@ Deno.serve(async (req) => {
     const adminClient = createClient(supabaseUrl, supabaseServiceKey, {
       auth: { autoRefreshToken: false, persistSession: false },
     })
+
+    // ── Isolamento entre tenants ─────────────────────────────────────────────
+    // O adminClient ignora RLS, então o tenant do ALVO precisa ser checado aqui.
+    // Sem isso, um admin do tenant A poderia excluir um usuário do tenant B.
+    const { data: targetProfile } = await adminClient
+      .from('profiles')
+      .select('tenant_id')
+      .eq('id', userId)
+      .maybeSingle()
+
+    if (!targetProfile) {
+      return new Response(
+        JSON.stringify({ error: 'Usuário não encontrado' }),
+        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+    if (!isMaster && targetProfile.tenant_id !== requesterProfile.tenant_id) {
+      console.error('Cross-tenant delete blocked:', requestingUser.id, '->', userId)
+      return new Response(
+        JSON.stringify({ error: 'Sem permissão para excluir usuários de outra empresa' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
 
     // Delete profile explicitly first (avoids FK constraint issues)
     await adminClient.from('profiles').delete().eq('id', userId)

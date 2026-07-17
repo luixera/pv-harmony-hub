@@ -53,14 +53,15 @@ Deno.serve(async (req) => {
       )
     }
 
-    // Verificar se o solicitante é admin
+    // Verificar se o solicitante é admin (ou master da plataforma)
     const { data: requesterProfile, error: profileError } = await userClient
       .from('profiles')
-      .select('role')
+      .select('role, is_master, tenant_id')
       .eq('id', requestingUser.id)
       .single()
 
-    if (profileError || !requesterProfile || requesterProfile.role !== 'admin') {
+    const isMaster = !!requesterProfile?.is_master
+    if (profileError || !requesterProfile || (requesterProfile.role !== 'admin' && !isMaster)) {
       console.error('Unauthorized update-user attempt by:', requestingUser.id, 'role:', requesterProfile?.role)
       return new Response(
         JSON.stringify({ error: 'Apenas administradores podem atualizar usuários' }),
@@ -128,6 +129,44 @@ Deno.serve(async (req) => {
     const adminClient = createClient(supabaseUrl, supabaseServiceKey, {
       auth: { autoRefreshToken: false, persistSession: false },
     })
+
+    // ── Isolamento entre tenants ─────────────────────────────────────────────
+    // O adminClient ignora RLS, então o tenant do ALVO precisa ser checado aqui.
+    // Sem isso, um admin do tenant A poderia editar um usuário do tenant B.
+    const { data: targetProfile } = await adminClient
+      .from('profiles')
+      .select('tenant_id')
+      .eq('id', userId)
+      .maybeSingle()
+
+    if (!targetProfile) {
+      return new Response(
+        JSON.stringify({ error: 'Usuário não encontrado' }),
+        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+    if (!isMaster && targetProfile.tenant_id !== requesterProfile.tenant_id) {
+      console.error('Cross-tenant update blocked:', requestingUser.id, '->', userId)
+      return new Response(
+        JSON.stringify({ error: 'Sem permissão para atualizar usuários de outra empresa' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // A empresa vinculada precisa ser do mesmo tenant do usuário
+    if (safeUpdates.company_id) {
+      const { data: company } = await adminClient
+        .from('companies')
+        .select('tenant_id')
+        .eq('id', safeUpdates.company_id as string)
+        .maybeSingle()
+      if (!company || company.tenant_id !== targetProfile.tenant_id) {
+        return new Response(
+          JSON.stringify({ error: 'Empresa inválida para este usuário' }),
+          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+    }
 
     // Aplicar updates
     const { data: updatedProfile, error: updateError } = await adminClient

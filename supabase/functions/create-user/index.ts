@@ -123,6 +123,22 @@ Deno.serve(async (req) => {
       }
     })
 
+    // A empresa vinculada precisa pertencer ao tenant do novo usuário
+    // (o adminClient ignora RLS, então a checagem é feita aqui)
+    if (companyId) {
+      const { data: company } = await adminClient
+        .from('companies')
+        .select('tenant_id')
+        .eq('id', companyId)
+        .maybeSingle()
+      if (!company || company.tenant_id !== targetTenantId) {
+        return new Response(
+          JSON.stringify({ error: 'Empresa inválida para este tenant' }),
+          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+    }
+
     // 1. Create user in Supabase Auth
     // Note: The handle_new_user trigger will automatically create profile and user_role.
     // role/tenant_id vão em APP_metadata: é o canal que o trigger confia
