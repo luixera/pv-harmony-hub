@@ -139,7 +139,12 @@
       "Bash(git commit -q -m 'feat\\(templates\\): inserir variaveis nos campos do documento pelo editor *)",
       "Bash(git commit -q -m 'fix\\(templates\\): permitir salvar template editado + busca de campos *)",
       "Bash(git commit -q -m 'fix\\(templates\\): variavel em campo de formulario sai preta, nao cinza *)",
-      "Bash(git commit -q -m 'feat\\(equipamentos\\): certificado AFCI como 3o documento do inversor *)"
+      "Bash(git commit -q -m 'feat\\(equipamentos\\): certificado AFCI como 3o documento do inversor *)",
+      "Bash(git commit -q -m 'fix\\(tenants\\): fundador do tenant nascia como company em vez de admin *)",
+      "Bash(node \"C:/Users/luiza/AppData/Local/Temp/claude/C--Users-luiza-Desktop-DADOS-DESENVOLVIMENTO---GD-MANAGER-ENERGY-pv-harmony-hub-main-pv-harmony-hub-main/c6037dea-bb2d-4fc9-b604-c0b2169c5d1d/scratchpad/tenant-isolation.test.mjs\")",
+      "Bash(git commit -q -m 'fix\\(seguranca\\): fecha brecha cross-tenant em update-user e delete-user *)",
+      "Bash(node \"C:/Users/luiza/AppData/Local/Temp/claude/C--Users-luiza-Desktop-DADOS-DESENVOLVIMENTO---GD-MANAGER-ENERGY-pv-harmony-hub-main-pv-harmony-hub-main/c6037dea-bb2d-4fc9-b604-c0b2169c5d1d/scratchpad/sync-library.test.mjs\")",
+      "Bash(git commit -q -m 'feat\\(tenants\\): biblioteca de concessionarias da GD Manager para os tenants *)"
     ]
   }
 }

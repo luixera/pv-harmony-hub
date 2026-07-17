@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { motion } from 'framer-motion';
-import { Zap, Plus, Search, Edit2, FileText, Loader2, LayoutTemplate, Package, PlugZap } from 'lucide-react';
+import { Zap, Plus, Search, Edit2, FileText, Loader2, LayoutTemplate, Package, PlugZap, Library, RefreshCw } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useAuth } from '@/contexts/AuthContext';
@@ -20,6 +20,8 @@ import { PacoteProjetistaDialog } from '@/components/concessionaires/PacoteProje
 import { ConcessionaireFormDialog } from '@/components/concessionaires/ConcessionaireFormDialog';
 import { ConcessionaireTemplatesDialog } from '@/components/concessionaires/ConcessionaireTemplatesDialog';
 import { EntryRulesDialog } from '@/components/concessionaires/EntryRulesDialog';
+import { LibraryImportDialog } from '@/components/concessionaires/LibraryImportDialog';
+import { useConcessionaireLibrary } from '@/hooks/useConcessionaireLibrary';
 
 function PackageItemCount({ concessionaireId }: { concessionaireId: string }) {
   const { data: items = [] } = useInstallerPackage(concessionaireId);
@@ -36,10 +38,17 @@ export default function EnergyConcessionaires() {
   const [packageDialogOpen, setPackageDialogOpen] = useState(false);
   const [templatesDialogOpen, setTemplatesDialogOpen] = useState(false);
   const [entryRulesDialogOpen, setEntryRulesDialogOpen] = useState(false);
+  const [libraryDialogOpen, setLibraryDialogOpen] = useState(false);
   const [selectedConcessionaire, setSelectedConcessionaire] = useState<EnergyConcessionaire | null>(null);
   
   const { data: concessionaires = [], isLoading } = useEnergyConcessionaires(showInactive);
   const toggleStatusMutation = useToggleConcessionaireStatus();
+
+  // Biblioteca da GD Manager (vazia para o próprio tenant-biblioteca)
+  const { data: library = [] } = useConcessionaireLibrary();
+  const hasLibrary = library.length > 0;
+  const updatesAvailable = library.filter(i => i.has_update).length;
+  const notImported = library.filter(i => !i.imported).length;
   
   // Filter by search term
   const filteredConcessionaires = concessionaires.filter(c => 
@@ -98,13 +107,47 @@ export default function EnergyConcessionaires() {
           </div>
           
           {isAdmin && (
-            <Button onClick={handleNewConcessionaire} className="gap-2">
-              <Plus className="w-4 h-4" />
-              Nova Concessionária
-            </Button>
+            <div className="flex items-center gap-2">
+              {hasLibrary && (
+                <Button variant="outline" onClick={() => setLibraryDialogOpen(true)} className="gap-2 relative">
+                  <Library className="w-4 h-4" />
+                  Biblioteca
+                  {(updatesAvailable > 0 || notImported > 0) && (
+                    <span className="ml-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-primary text-primary-foreground">
+                      {updatesAvailable + notImported}
+                    </span>
+                  )}
+                </Button>
+              )}
+              <Button onClick={handleNewConcessionaire} className="gap-2">
+                <Plus className="w-4 h-4" />
+                Nova Concessionária
+              </Button>
+            </div>
           )}
         </div>
-        
+
+        {/* Avisos da biblioteca */}
+        {isAdmin && hasLibrary && notImported > 0 && (
+          <div className="flex items-center gap-3 p-3 rounded-lg border border-primary/30 bg-primary/5">
+            <Library className="w-4 h-4 text-primary flex-shrink-0" />
+            <p className="text-sm flex-1">
+              <b>{notImported} concessionária(s)</b> prontas na biblioteca da GD Manager — com templates,
+              regras de padrão de entrada e pacote do projetista já configurados.
+            </p>
+            <Button size="sm" onClick={() => setLibraryDialogOpen(true)}>Importar</Button>
+          </div>
+        )}
+        {isAdmin && updatesAvailable > 0 && (
+          <div className="flex items-center gap-3 p-3 rounded-lg border border-amber-500/40 bg-amber-500/5">
+            <RefreshCw className="w-4 h-4 text-amber-600 flex-shrink-0" />
+            <p className="text-sm flex-1">
+              <b>{updatesAvailable} concessionária(s)</b> foram atualizadas na biblioteca. Você decide se quer trazer as novidades.
+            </p>
+            <Button size="sm" variant="outline" onClick={() => setLibraryDialogOpen(true)}>Ver atualizações</Button>
+          </div>
+        )}
+
         {/* Filters */}
         <div className="flex flex-col sm:flex-row gap-4">
           <div className="relative flex-1">
@@ -257,6 +300,11 @@ export default function EnergyConcessionaires() {
         open={entryRulesDialogOpen}
         onOpenChange={setEntryRulesDialogOpen}
         concessionaire={selectedConcessionaire}
+      />
+
+      <LibraryImportDialog
+        open={libraryDialogOpen}
+        onOpenChange={setLibraryDialogOpen}
       />
     </MainLayout>
   );

@@ -138,6 +138,26 @@ Deno.serve(async (req) => {
       return json({ error: msg }, 400)
     }
 
+    // ── 5. Semeia a biblioteca (concessionárias + templates + regras + pacote) ──
+    // O tenant já começa com a base da GD Manager em vez de uma tela vazia.
+    // Falhar aqui NÃO derruba o cadastro: o admin pode importar depois pela tela.
+    try {
+      const seed = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/sync-library`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          apikey: Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+        },
+        body: JSON.stringify({
+          tenantId: tenant.id,
+          internalKey: Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'),
+        }),
+      })
+      console.log('seed da biblioteca:', tenant.id, seed.status, await seed.text())
+    } catch (seedErr) {
+      console.error('Falha ao semear a biblioteca (cadastro segue):', seedErr)
+    }
+
     return json({
       success: true,
       tenantId: tenant.id,
