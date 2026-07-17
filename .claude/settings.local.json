@@ -138,7 +138,8 @@
       "Bash(git commit -q -m 'feat\\(templates\\): editor de template no sistema + detector de tags robusto *)",
       "Bash(git commit -q -m 'feat\\(templates\\): inserir variaveis nos campos do documento pelo editor *)",
       "Bash(git commit -q -m 'fix\\(templates\\): permitir salvar template editado + busca de campos *)",
-      "Bash(git commit -q -m 'fix\\(templates\\): variavel em campo de formulario sai preta, nao cinza *)"
+      "Bash(git commit -q -m 'fix\\(templates\\): variavel em campo de formulario sai preta, nao cinza *)",
+      "Bash(git commit -q -m 'feat\\(equipamentos\\): certificado AFCI como 3o documento do inversor *)"
     ]
   }
 }

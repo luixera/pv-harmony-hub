@@ -14,7 +14,7 @@ import {
 } from '@/hooks/useInstallerPackage';
 import {
   FileText, Image, FileCheck, Cpu, ClipboardList, Plus, Trash2,
-  ArrowUp, ArrowDown, Loader2, Download, Save, Crown,
+  ArrowUp, ArrowDown, Loader2, Download, Save, Crown, ShieldCheck,
 } from 'lucide-react';
 
 interface Props {
@@ -29,6 +29,7 @@ const SOURCE_META: Record<PackageSourceType, { label: string; icon: React.Elemen
   concessionaire_template: { label: 'Template da concessionária', icon: FileText },
   equipment_inmetro: { label: 'INMETRO do equipamento', icon: FileCheck },
   equipment_datasheet: { label: 'Datasheet do equipamento', icon: Cpu },
+  equipment_afci: { label: 'Certificado AFCI (inversor)', icon: ShieldCheck },
 };
 
 const uid = () => Math.random().toString(36).slice(2, 10);
@@ -66,6 +67,7 @@ export function PacoteProjetistaDialog({ open, onOpenChange, concessionaire }: P
       concessionaire_template: { label: 'Anexo', ref: templates[0]?.path ?? null },
       equipment_inmetro: { label: 'INMETRO inversor', ref: 'inverter' },
       equipment_datasheet: { label: 'Datasheet inversor', ref: 'inverter' },
+      equipment_afci: { label: 'Certificado AFCI inversor', ref: 'inverter' },
     };
     setItems([...items, { id: uid(), required: true, source_type, ...defaults[source_type] } as PackageItem]);
   };

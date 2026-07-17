@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { buildEquipmentDocName, buildEquipmentDocPath, ensurePdf } from '@/lib/equipmentDocs';
+import { buildEquipmentDocName, buildEquipmentDocPath, ensurePdf, DocKind } from '@/lib/equipmentDocs';
 
 export type EquipmentType = 'inverter' | 'module';
 
@@ -13,6 +13,8 @@ export interface EquipmentCatalogItem {
   power: number | null;
   datasheet_url: string | null;
   inmetro_url: string | null;
+  /** Certificado AFCI — somente inversores. */
+  afci_url: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -54,7 +56,7 @@ export async function downloadEquipmentDoc(path: string, fileName: string) {
 
 async function uploadDoc(
   equipmentKey: string,
-  kind: 'datasheet' | 'inmetro',
+  kind: DocKind,
   file: File,
   brand: string,
   model: string,
@@ -73,7 +75,7 @@ async function uploadDoc(
 async function renameDocIfNeeded(
   currentPath: string,
   equipmentKey: string,
-  kind: 'datasheet' | 'inmetro',
+  kind: DocKind,
   brand: string,
   model: string,
 ): Promise<string> {
@@ -92,8 +94,10 @@ interface SaveEquipmentInput {
   power: number | null;
   datasheetFile?: File | null;
   inmetroFile?: File | null;
+  afciFile?: File | null;
   datasheet_url?: string | null;
   inmetro_url?: string | null;
+  afci_url?: string | null;
 }
 
 export function useSaveEquipment() {
@@ -101,21 +105,21 @@ export function useSaveEquipment() {
   return useMutation({
     mutationFn: async (input: SaveEquipmentInput) => {
       const key = input.id ?? crypto.randomUUID();
-      let datasheet_url = input.datasheet_url ?? null;
-      let inmetro_url = input.inmetro_url ?? null;
 
       // Arquivo novo → sobe (já com nome padronizado). Sem arquivo novo mas com
       // documento existente → renomeia se marca/modelo mudaram.
-      if (input.datasheetFile) {
-        datasheet_url = await uploadDoc(key, 'datasheet', input.datasheetFile, input.brand, input.model);
-      } else if (datasheet_url) {
-        datasheet_url = await renameDocIfNeeded(datasheet_url, key, 'datasheet', input.brand, input.model);
-      }
-      if (input.inmetroFile) {
-        inmetro_url = await uploadDoc(key, 'inmetro', input.inmetroFile, input.brand, input.model);
-      } else if (inmetro_url) {
-        inmetro_url = await renameDocIfNeeded(inmetro_url, key, 'inmetro', input.brand, input.model);
-      }
+      const resolveDoc = async (kind: DocKind, file: File | null | undefined, current: string | null) => {
+        if (file) return uploadDoc(key, kind, file, input.brand, input.model);
+        if (current) return renameDocIfNeeded(current, key, kind, input.brand, input.model);
+        return null;
+      };
+
+      const datasheet_url = await resolveDoc('datasheet', input.datasheetFile, input.datasheet_url ?? null);
+      const inmetro_url = await resolveDoc('inmetro', input.inmetroFile, input.inmetro_url ?? null);
+      // AFCI só existe para inversores
+      const afci_url = input.type === 'inverter'
+        ? await resolveDoc('afci', input.afciFile, input.afci_url ?? null)
+        : null;
 
       const row = {
         type: input.type,
@@ -124,6 +128,7 @@ export function useSaveEquipment() {
         power: input.power,
         datasheet_url,
         inmetro_url,
+        afci_url,
       };
 
       if (input.id) {

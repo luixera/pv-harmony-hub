@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Input } from '@/components/ui/input';
 import { useEquipmentCatalog, EquipmentType, EquipmentCatalogItem } from '@/hooks/useEquipmentCatalog';
 import { EquipmentFormDialog } from './EquipmentFormDialog';
-import { Plus, Check, FileText, FileCheck } from 'lucide-react';
+import { Plus, Check, FileText, FileCheck, ShieldCheck } from 'lucide-react';
 
 interface Selection { brand: string; model: string; power: number | null; catalogId?: string | null }
 
@@ -83,6 +83,9 @@ export function EquipmentModelCombobox({ type, value, onType, onSelect, placehol
               {/* indicadores de documentos */}
               <span title={item.datasheet_url ? 'Datasheet anexado' : 'Sem datasheet'} style={{ color: item.datasheet_url ? '#2D6A4F' : '#D1D5DB' }}><FileText size={13} /></span>
               <span title={item.inmetro_url ? 'INMETRO anexado' : 'Sem INMETRO'} style={{ color: item.inmetro_url ? '#2D6A4F' : '#D1D5DB' }}><FileCheck size={13} /></span>
+              {type === 'inverter' && (
+                <span title={item.afci_url ? 'Certificado AFCI anexado' : 'Sem certificado AFCI'} style={{ color: item.afci_url ? '#2D6A4F' : '#D1D5DB' }}><ShieldCheck size={13} /></span>
+              )}
               {value.toLowerCase() === item.model.toLowerCase() && <Check size={14} color="#F5A800" />}
             </button>
           ))}

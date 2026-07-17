@@ -1,10 +1,11 @@
 import { sanitizeFileName } from '@/lib/utils';
 
-export type DocKind = 'datasheet' | 'inmetro';
+export type DocKind = 'datasheet' | 'inmetro' | 'afci';
 
 const KIND_LABEL: Record<DocKind, string> = {
   datasheet: 'DATASHEET',
   inmetro: 'INMETRO',
+  afci: 'AFCI',
 };
 
 /**

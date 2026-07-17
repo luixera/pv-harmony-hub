@@ -101,22 +101,27 @@ export async function fetchPhotoCandidates(project: ProjectWithDetails, docType:
   }));
 }
 
-/** Resolve o item de equipamento (INMETRO/datasheet) do inversor ou módulo. */
-async function resolveEquipmentDoc(project: ProjectWithDetails, which: 'inverter' | 'module', kind: 'inmetro' | 'datasheet') {
+/** Resolve o item de equipamento (INMETRO/datasheet/AFCI) do inversor ou módulo. */
+async function resolveEquipmentDoc(
+  project: ProjectWithDetails,
+  which: 'inverter' | 'module',
+  kind: 'inmetro' | 'datasheet' | 'afci',
+) {
   const eq = project.equipment as (NonNullable<ProjectWithDetails['equipment']> & { inverter_catalog_id?: string; module_catalog_id?: string }) | undefined;
   if (!eq) return null;
   const catalogId = which === 'inverter' ? eq.inverter_catalog_id : eq.module_catalog_id;
   const brand = which === 'inverter' ? eq.inverter_brand : eq.module_brand;
   const model = which === 'inverter' ? eq.inverter_model : eq.module_model;
 
-  let row: { datasheet_url: string | null; inmetro_url: string | null } | null = null;
+  const COLS = 'datasheet_url, inmetro_url, afci_url';
+  let row: { datasheet_url: string | null; inmetro_url: string | null; afci_url: string | null } | null = null;
   if (catalogId) {
-    const { data } = await supabase.from('equipment_catalog' as never).select('datasheet_url, inmetro_url').eq('id', catalogId).maybeSingle();
+    const { data } = await supabase.from('equipment_catalog' as never).select(COLS).eq('id', catalogId).maybeSingle();
     row = data as never;
   }
   if (!row && brand && model) {
     const { data } = await supabase.from('equipment_catalog' as never)
-      .select('datasheet_url, inmetro_url')
+      .select(COLS)
       .eq('type', which)
       .ilike('brand', brand)
       .ilike('model', model)
@@ -125,7 +130,7 @@ async function resolveEquipmentDoc(project: ProjectWithDetails, which: 'inverter
     row = data as never;
   }
   if (!row) return null;
-  const path = kind === 'inmetro' ? row.inmetro_url : row.datasheet_url;
+  const path = kind === 'inmetro' ? row.inmetro_url : kind === 'afci' ? row.afci_url : row.datasheet_url;
   if (!path) return null;
   const blob = await downloadFromBucket('equipment-documents', path);
   return blob;
@@ -175,10 +180,14 @@ export async function resolveInstallerPackage(project: ProjectWithDetails, items
           base.ext = 'docx'; base.status = 'ok';
         }
 
-      } else if (item.source_type === 'equipment_inmetro' || item.source_type === 'equipment_datasheet') {
-        const which = (item.ref === 'module' ? 'module' : 'inverter') as 'inverter' | 'module';
-        const kind = item.source_type === 'equipment_inmetro' ? 'inmetro' : 'datasheet';
-        base.fileLabel = `${kind === 'inmetro' ? 'INMETRO' : 'DATASHEET'} ${which === 'inverter' ? 'INVERSOR' : 'MODULO'}`;
+      } else if (item.source_type === 'equipment_inmetro' || item.source_type === 'equipment_datasheet' || item.source_type === 'equipment_afci') {
+        // AFCI é exclusivo de inversor
+        const which: 'inverter' | 'module' =
+          item.source_type === 'equipment_afci' ? 'inverter' : (item.ref === 'module' ? 'module' : 'inverter');
+        const kind = item.source_type === 'equipment_inmetro' ? 'inmetro'
+          : item.source_type === 'equipment_afci' ? 'afci' : 'datasheet';
+        const kindLabel = kind === 'inmetro' ? 'INMETRO' : kind === 'afci' ? 'AFCI' : 'DATASHEET';
+        base.fileLabel = `${kindLabel} ${which === 'inverter' ? 'INVERSOR' : 'MODULO'}`;
         const blob = await resolveEquipmentDoc(project, which, kind);
         if (blob) { base.blob = blob; base.ext = 'pdf'; base.status = 'ok'; }
       }

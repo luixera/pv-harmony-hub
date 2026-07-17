@@ -7,7 +7,8 @@ export type PackageSourceType =
   | 'project_document'       // documento enviado no projeto (ref = document_type)
   | 'concessionaire_template'// template .docx da concessionária (ref = path)
   | 'equipment_inmetro'      // INMETRO do catálogo (ref = 'inverter' | 'module')
-  | 'equipment_datasheet';   // datasheet do catálogo (ref = 'inverter' | 'module')
+  | 'equipment_datasheet'    // datasheet do catálogo (ref = 'inverter' | 'module')
+  | 'equipment_afci';        // certificado AFCI do catálogo (ref = 'inverter')
 
 export interface PackageItem {
   id: string;

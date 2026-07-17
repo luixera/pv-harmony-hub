@@ -8,7 +8,7 @@ import {
 } from '@/hooks/useEquipmentCatalog';
 import { EquipmentFormDialog } from '@/components/equipment/EquipmentFormDialog';
 import { buildEquipmentDocName } from '@/lib/equipmentDocs';
-import { Cpu, PanelTop, Plus, Pencil, Trash2, FileText, FileCheck, Loader2, Search, Download } from 'lucide-react';
+import { Cpu, PanelTop, Plus, Pencil, Trash2, FileText, FileCheck, ShieldCheck, Loader2, Search, Download } from 'lucide-react';
 
 const TYPE_META: Record<EquipmentType, { label: string; icon: React.ElementType; unit: string }> = {
   inverter: { label: 'Inversores', icon: Cpu, unit: 'kW' },
@@ -36,7 +36,7 @@ export default function EquipmentCatalog() {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold text-foreground">Equipamentos</h1>
-            <p className="text-muted-foreground">Biblioteca de inversores e módulos com datasheet e INMETRO</p>
+            <p className="text-muted-foreground">Biblioteca de inversores e módulos com datasheet, INMETRO e AFCI</p>
           </div>
           <Button variant="cta" onClick={openNew}><Plus className="w-4 h-4" /> Novo equipamento</Button>
         </div>
@@ -87,6 +87,9 @@ export default function EquipmentCatalog() {
                       <div className="flex items-center gap-2">
                         <DocChip label="Datasheet" path={item.datasheet_url} fileName={buildEquipmentDocName('datasheet', item.brand, item.model)} icon={FileText} />
                         <DocChip label="INMETRO" path={item.inmetro_url} fileName={buildEquipmentDocName('inmetro', item.brand, item.model)} icon={FileCheck} />
+                        {type === 'inverter' && (
+                          <DocChip label="AFCI" path={item.afci_url} fileName={buildEquipmentDocName('afci', item.brand, item.model)} icon={ShieldCheck} />
+                        )}
                       </div>
                     </td>
                     <td className="py-3 px-4">

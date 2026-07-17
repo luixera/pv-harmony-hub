@@ -24,17 +24,22 @@ export function EquipmentFormDialog({ type, editing, initialBrand, initialModel,
   const [power, setPower] = useState(editing?.power != null ? String(editing.power) : '');
   const [datasheetFile, setDatasheetFile] = useState<File | null>(null);
   const [inmetroFile, setInmetroFile] = useState<File | null>(null);
+  const [afciFile, setAfciFile] = useState<File | null>(null);
   const dsRef = useRef<HTMLInputElement>(null);
   const inRef = useRef<HTMLInputElement>(null);
+  const afciRef = useRef<HTMLInputElement>(null);
+
+  const isInverter = type === 'inverter';
 
   const handleSave = async () => {
     if (!brand.trim() || !model.trim()) return;
     const powerNum = power.trim() === '' ? null : Number(power.replace(',', '.'));
     const id = await save.mutateAsync({
       id: editing?.id, type, brand, model, power: powerNum,
-      datasheetFile, inmetroFile,
+      datasheetFile, inmetroFile, afciFile,
       datasheet_url: editing?.datasheet_url ?? null,
       inmetro_url: editing?.inmetro_url ?? null,
+      afci_url: editing?.afci_url ?? null,
     });
     onSaved?.({ id, brand: brand.trim(), model: model.trim(), power: powerNum });
     onClose();
@@ -44,8 +49,12 @@ export function EquipmentFormDialog({ type, editing, initialBrand, initialModel,
     <Dialog open onOpenChange={onClose}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>{editing ? 'Editar equipamento' : `Novo ${type === 'inverter' ? 'inversor' : 'módulo'}`}</DialogTitle>
-          <DialogDescription>Cadastre o modelo e anexe datasheet e INMETRO</DialogDescription>
+          <DialogTitle>{editing ? 'Editar equipamento' : `Novo ${isInverter ? 'inversor' : 'módulo'}`}</DialogTitle>
+          <DialogDescription>
+            {isInverter
+              ? 'Cadastre o modelo e anexe datasheet, INMETRO e certificado AFCI'
+              : 'Cadastre o modelo e anexe datasheet e INMETRO'}
+          </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-2">
           <div className="grid grid-cols-2 gap-3">
@@ -56,6 +65,9 @@ export function EquipmentFormDialog({ type, editing, initialBrand, initialModel,
 
           <FileRow label="Datasheet (PDF ou imagem)" file={datasheetFile} existing={editing?.datasheet_url} inputRef={dsRef} onPick={setDatasheetFile} />
           <FileRow label="Certificado INMETRO (PDF ou imagem)" file={inmetroFile} existing={editing?.inmetro_url} inputRef={inRef} onPick={setInmetroFile} />
+          {isInverter && (
+            <FileRow label="Certificado AFCI (PDF ou imagem)" file={afciFile} existing={editing?.afci_url} inputRef={afciRef} onPick={setAfciFile} />
+          )}
           <p className="text-[11px] text-muted-foreground">
             Aceita PDF, JPG ou PNG. Imagens são convertidas em PDF automaticamente, e o arquivo é renomeado no padrão <strong>TIPO MARCA MODELO</strong>.
           </p>
