@@ -151,7 +151,10 @@
       "Bash(npx esbuild *)",
       "Bash(git commit -q -m 'fix\\(seguranca\\): Claudinho vazava config entre tenants e nao funcionava multi-tenant *)",
       "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" --max-time 25 https://homologamanager.com.br)",
-      "Bash(git commit -q -m 'fix\\(tenants\\): painel normal do master mostrava dados de todos os tenants *)"
+      "Bash(git commit -q -m 'fix\\(tenants\\): painel normal do master mostrava dados de todos os tenants *)",
+      "Bash(grep -vE \"//|^\\\\s*\\\\*\")",
+      "Bash(grep -vE \"^\\\\s*//|^\\\\s*\\\\*\")",
+      "Bash(git commit -q -m 'fix\\(seguranca\\): isola o master ao proprio tenant no painel normal + form publico *)"
     ]
   }
 }

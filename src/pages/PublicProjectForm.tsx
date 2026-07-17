@@ -15,7 +15,7 @@ import { DocumentUploadField } from '@/components/forms/DocumentUploadField';
 import { useCompanyByToken, useCompany } from '@/hooks/useCompanies';
 import { supabase } from '@/integrations/supabase/client';
 import { Database } from '@/integrations/supabase/types';
-import { useEnergyConcessionaires } from '@/hooks/useEnergyConcessionaires';
+import { usePublicConcessionaires } from '@/hooks/useEnergyConcessionaires';
 import { validateFile, sanitizeFileName } from '@/lib/utils';
 import { upperizeStrings } from '@/lib/textCase';
 import { dispatchNotification } from '@/lib/notify';
@@ -73,7 +73,8 @@ export default function PublicProjectForm() {
   const { data: companyBasic, isLoading, error } = useCompanyByToken(token);
   const { data: companyFull } = useCompany(companyBasic?.id);
   const company = companyFull || companyBasic;
-  const { data: concessionaires = [] } = useEnergyConcessionaires();
+  // Apenas as concessionárias do tenant dono deste link (não vaza outros tenants)
+  const { data: concessionaires = [] } = usePublicConcessionaires(token);
   // Logo do tenant (assinante da plataforma) dono desta empresa
   const { data: tenantLogo } = useQuery({
     queryKey: ['tenant-logo', token],

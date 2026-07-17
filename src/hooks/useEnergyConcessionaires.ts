@@ -45,6 +45,24 @@ export function useEnergyConcessionaires(includeInactive = false) {
   });
 }
 
+/**
+ * Concessionárias para o formulário PÚBLICO (anônimo), escopadas ao tenant dono
+ * do link (via token da empresa). Usa um RPC SECURITY DEFINER para não expor as
+ * concessionárias de outros tenants no dropdown público.
+ */
+export function usePublicConcessionaires(token: string | undefined) {
+  return useQuery({
+    queryKey: ['public-concessionaires', token],
+    queryFn: async (): Promise<{ id: string; name: string }[]> => {
+      if (!token) return [];
+      const { data, error } = await supabase.rpc('get_concessionaires_for_token', { _token: token } as never);
+      if (error) throw error;
+      return (data ?? []) as { id: string; name: string }[];
+    },
+    enabled: !!token,
+  });
+}
+
 export function useConcessionaire(id: string | undefined) {
   return useQuery({
     queryKey: ['energy-concessionaire', id],
