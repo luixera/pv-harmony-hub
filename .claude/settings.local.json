@@ -144,7 +144,12 @@
       "Bash(node \"C:/Users/luiza/AppData/Local/Temp/claude/C--Users-luiza-Desktop-DADOS-DESENVOLVIMENTO---GD-MANAGER-ENERGY-pv-harmony-hub-main-pv-harmony-hub-main/c6037dea-bb2d-4fc9-b604-c0b2169c5d1d/scratchpad/tenant-isolation.test.mjs\")",
       "Bash(git commit -q -m 'fix\\(seguranca\\): fecha brecha cross-tenant em update-user e delete-user *)",
       "Bash(node \"C:/Users/luiza/AppData/Local/Temp/claude/C--Users-luiza-Desktop-DADOS-DESENVOLVIMENTO---GD-MANAGER-ENERGY-pv-harmony-hub-main-pv-harmony-hub-main/c6037dea-bb2d-4fc9-b604-c0b2169c5d1d/scratchpad/sync-library.test.mjs\")",
-      "Bash(git commit -q -m 'feat\\(tenants\\): biblioteca de concessionarias da GD Manager para os tenants *)"
+      "Bash(git commit -q -m 'feat\\(tenants\\): biblioteca de concessionarias da GD Manager para os tenants *)",
+      "Bash(python -c \"import sys,json; r=json.load\\(sys.stdin\\)['workflow_runs'][0]; print\\('run', r['id'], r['status'], r['conclusion'], r['head_sha'][:7]\\)\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code} em %{time_total}s\\\\n\" --max-time 20 https://homologamanager.com.br)",
+      "Bash(timeout 12 bash -c 'cat < /dev/null > /dev/tcp/143.95.221.114/22022')",
+      "Bash(npx esbuild *)",
+      "Bash(git commit -q -m 'fix\\(seguranca\\): Claudinho vazava config entre tenants e nao funcionava multi-tenant *)"
     ]
   }
 }

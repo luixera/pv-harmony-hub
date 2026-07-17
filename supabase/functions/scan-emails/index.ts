@@ -21,57 +21,85 @@ Deno.serve(async (req) => {
     Deno.env.get('SUPA_SERVICE_ROLE_KEY')!
   )
 
+  // Cada tenant tem a PRÓPRIA caixa de e-mail e a própria config. A varredura
+  // roda uma vez por tenant configurado, sem misturar dados entre eles.
+  // Body opcional { tenantId } limita a varredura a um tenant (botão "Varrer agora").
+  let onlyTenantId: string | null = null
   try {
-    // 1. Verificar configuração
-    const { data: config } = await supabase
-      .from('agent_config').select('*').eq('config_key', 'email_agent').maybeSingle()
+    const body = await req.json()
+    onlyTenantId = body?.tenantId ?? null
+  } catch { /* sem body: varre todos */ }
 
-    const EMAIL        = config?.gmail_email        || Deno.env.get('GMAIL_USER_EMAIL')
-    const APP_PASSWORD = config?.gmail_app_password || Deno.env.get('GMAIL_APP_PASSWORD')
+  try {
+    let q = supabase.from('agent_config').select('*').eq('config_key', 'email_agent').eq('is_active', true)
+    if (onlyTenantId) q = q.eq('tenant_id', onlyTenantId)
+    const { data: configs, error: cfgErr } = await q
+    if (cfgErr) throw cfgErr
 
-    if (!EMAIL || !APP_PASSWORD) {
+    const ativos = (configs ?? []).filter(c => c.tenant_id && c.gmail_email && c.gmail_app_password)
+    if (ativos.length === 0) {
       return new Response(
-        JSON.stringify({ error: 'Email ou App Password não configurado.' }),
+        JSON.stringify({ error: 'Nenhum agente de e-mail ativo e configurado.' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
-    if (config && !config.is_active) {
-      return new Response(
-        JSON.stringify({ error: 'Agente inativo' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
 
-    // Tenant dono desta varredura (multi-tenant): vem da config do agente.
-    // Fallback: tenant mais antigo (GD Manager) para config legada sem tenant.
-    let tenantId: string | null = config?.tenant_id ?? null
-    if (!tenantId) {
-      const { data: t } = await supabase.from('tenants')
-        .select('id').order('created_at', { ascending: true }).limit(1).single()
-      tenantId = t?.id ?? null
-    }
-
-    // 2. Limpar varreduras travadas >2 min
+    // Limpa varreduras travadas >2 min (de qualquer tenant)
     const twoMinAgo = new Date(Date.now() - 2 * 60 * 1000).toISOString()
     await supabase.from('email_scan_runs')
       .update({ status: 'error', error_message: 'Timeout', finished_at: new Date().toISOString() })
       .eq('status', 'running').lt('started_at', twoMinAgo)
 
-    // 3. Criar scan run
-    const { data: scanRun } = await supabase
-      .from('email_scan_runs').insert({ status: 'running', tenant_id: tenantId }).select().single()
-    if (!scanRun) throw new Error('Falha ao criar scan run')
-
     const SCAN_START     = Date.now()
     const SCAN_BUDGET_MS = 85_000
     const isOverBudget   = () => Date.now() - SCAN_START > SCAN_BUDGET_MS
+
+    const resumo: { tenantId: string; collected: number; matched: number; error?: string }[] = []
+
+    for (const config of ativos) {
+      if (isOverBudget()) { console.log('Budget global atingido — tenants restantes ficam para a próxima'); break }
+      try {
+        const r = await scanTenant(supabase, config, isOverBudget)
+        resumo.push({ tenantId: config.tenant_id, ...r })
+      } catch (e) {
+        console.error('Falha na varredura do tenant', config.tenant_id, e)
+        resumo.push({ tenantId: config.tenant_id, collected: 0, matched: 0, error: String((e as Error)?.message ?? e) })
+      }
+    }
+
+    return new Response(
+      JSON.stringify({ ok: true, tenants: resumo.length, resumo }),
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
+  } catch (error: any) {
+    console.error('Scan error:', error)
+    return new Response(JSON.stringify({ error: error.message }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+  }
+})
+
+/** Varre a caixa de UM tenant. Tudo aqui é escopado ao tenant da config. */
+async function scanTenant(
+  supabase: any,
+  config: any,
+  isOverBudget: () => boolean,
+): Promise<{ collected: number; matched: number }> {
+  const tenantId     = config.tenant_id as string
+  const EMAIL        = config.gmail_email as string
+  const APP_PASSWORD = config.gmail_app_password as string
+
+  const { data: scanRun } = await supabase
+    .from('email_scan_runs').insert({ status: 'running', tenant_id: tenantId }).select().single()
+  if (!scanRun) throw new Error('Falha ao criar scan run')
+
+  try {
 
     // ════════════════════════════════════════════════════════════════════
     // ETAPA 1 — Matching SQL + IA (roda PRIMEIRO, antes do IMAP)
     // Garante correlação mesmo que o IMAP dê 546
     // ════════════════════════════════════════════════════════════════════
 
-    const { data: matchedRows, error: matchErr } = await supabase.rpc('match_emails_to_protocols')
+    const { data: matchedRows, error: matchErr } = await supabase
+      .rpc('match_emails_to_protocols', { _tenant_id: tenantId })
     if (matchErr) console.error('Erro no matching SQL:', matchErr.message)
 
     let matched = 0
@@ -96,9 +124,11 @@ Deno.serve(async (req) => {
     // Após a coleta, ETAPA 3 faz matching imediato dos recém-salvos
     // ════════════════════════════════════════════════════════════════════
 
+    // Somente as concessionárias DESTE tenant (o service_role ignora o RLS)
     const { data: rawConc } = await supabase
-      .from('energy_concessionaires').select('id, name').eq('is_active', true)
-    const concessionaires: ConcessionaireItem[] = (rawConc || []).map(c => ({ id: c.id, name: c.name }))
+      .from('energy_concessionaires').select('id, name')
+      .eq('is_active', true).eq('tenant_id', tenantId)
+    const concessionaires: ConcessionaireItem[] = (rawConc || []).map((c: any) => ({ id: c.id, name: c.name }))
 
     let collected = 0
 
@@ -129,8 +159,11 @@ Deno.serve(async (req) => {
           const needsSource: Array<{ uid: number; messageId: string }> = []
           for await (const msg of client.fetch(uids, { uid: true, envelope: true }, { uid: true })) {
             const messageId = (msg.envelope?.messageId || `imap-uid-${msg.uid}`).trim()
+            // Deduplica DENTRO do tenant: o mesmo e-mail da concessionária pode
+            // chegar para vários tenants e cada um precisa do seu registro.
             const { data: existing } = await supabase
-              .from('email_updates').select('id').eq('gmail_message_id', messageId).maybeSingle()
+              .from('email_updates').select('id')
+              .eq('gmail_message_id', messageId).eq('tenant_id', tenantId).maybeSingle()
             if (existing) continue
             needsSource.push({ uid: msg.uid, messageId })
           }
@@ -180,7 +213,8 @@ Deno.serve(async (req) => {
     // ════════════════════════════════════════════════════════════════════
 
     if (collected > 0 && !isOverBudget()) {
-      const { data: newMatchedRows, error: matchErr2 } = await supabase.rpc('match_emails_to_protocols')
+      const { data: newMatchedRows, error: matchErr2 } = await supabase
+        .rpc('match_emails_to_protocols', { _tenant_id: tenantId })
       if (matchErr2) console.error('Erro no matching pós-coleta:', matchErr2.message)
 
       for (const row of (newMatchedRows || [])) {
@@ -227,22 +261,17 @@ Deno.serve(async (req) => {
       }
     }
 
-    return new Response(
-      JSON.stringify({ ok: true, collected, matched }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    )
+    return { collected, matched }
 
   } catch (error: any) {
-    console.error('Scan error:', error)
-    try {
-      const s2 = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPA_SERVICE_ROLE_KEY')!)
-      await s2.from('email_scan_runs')
-        .update({ status: 'error', error_message: error.message, finished_at: new Date().toISOString() })
-        .eq('status', 'running')
-    } catch (_) {}
-    return new Response(JSON.stringify({ error: error.message }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    console.error('Scan error (tenant ' + tenantId + '):', error)
+    // Marca como erro APENAS a varredura deste tenant
+    await supabase.from('email_scan_runs')
+      .update({ status: 'error', error_message: error.message, finished_at: new Date().toISOString() })
+      .eq('id', scanRun.id)
+    throw error
   }
-})
+}
 
 // ── HELPERS ───────────────────────────────────────────────────────────────────
 

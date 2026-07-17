@@ -23,6 +23,8 @@ export interface AgentConfigSafe {
 }
 
 // ── useAgentConfig (usa view segura — sem credenciais) ────────────────────────
+// A view respeita o RLS de quem lê (security_invoker), então cada tenant só
+// enxerga a PRÓPRIA configuração. Tenant sem config → null.
 
 export function useAgentConfig() {
   return useQuery({
@@ -53,25 +55,37 @@ export function useSaveAgentConfig() {
       scan_times: string[];
       is_active: boolean;
     }) => {
+      if (!user?.tenantId) throw new Error('Tenant não identificado');
+
+      // upsert por (tenant_id, config_key): o primeiro save do tenant CRIA a
+      // linha dele; os seguintes atualizam. Um UPDATE simples não gravaria nada
+      // para quem ainda não tem config.
       const { error } = await supabase
         .from('agent_config')
-        .update({
-          ...payload,
-          is_configured:     true,
-          configured_by:     user?.id,
-          configured_at:     new Date().toISOString(),
-          updated_at:        new Date().toISOString(),
-          last_test_success: null,
-          last_test_error:   null,
-        })
-        .eq('config_key', 'email_agent');
+        .upsert(
+          {
+            tenant_id:         user.tenantId,
+            config_key:        'email_agent',
+            ...payload,
+            is_configured:     true,
+            configured_by:     user.id,
+            configured_at:     new Date().toISOString(),
+            updated_at:        new Date().toISOString(),
+            last_test_success: null,
+            last_test_error:   null,
+          },
+          { onConflict: 'tenant_id,config_key' },
+        );
       if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['agent-config'] });
       toast.success('Configuração salva com sucesso!');
     },
-    onError: () => toast.error('Erro ao salvar configuração'),
+    onError: (e: unknown) => {
+      console.error(e);
+      toast.error(e instanceof Error ? `Erro ao salvar: ${e.message}` : 'Erro ao salvar configuração');
+    },
   });
 }
 
