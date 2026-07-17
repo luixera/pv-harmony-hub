@@ -8,6 +8,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
 import { LayoutGrid, Kanban, PlusCircle, FolderOpen, Bell } from 'lucide-react';
 import { useTaskAlerts } from '@/hooks/useTaskAlerts';
+import { OnboardingController } from '@/components/onboarding/OnboardingController';
 
 interface MainLayoutProps {
   children: React.ReactNode;
@@ -91,6 +92,9 @@ export function MainLayout({ children }: MainLayoutProps) {
 
       {/* Bottom navigation — mobile only */}
       {isMobile && <BottomNav />}
+
+      {/* Tour de boas-vindas (1º acesso + reabertura manual) */}
+      <OnboardingController />
     </div>
   );
 }

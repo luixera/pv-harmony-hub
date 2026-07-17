@@ -22,8 +22,10 @@ import {
   CheckSquare,
   Mail,
   Zap,
+  HelpCircle,
 } from 'lucide-react';
 import { Cpu } from 'lucide-react';
+import { openWelcomeTour } from '@/components/onboarding/OnboardingController';
 import { useMyPendingTasks } from '@/hooks/useTasks';
 import { useEmailUpdates } from '@/hooks/useEmailUpdates';
 import { useTenant, useTenantFeatures } from '@/hooks/useTenant';
@@ -262,7 +264,15 @@ export function Sidebar({ open, onClose }: SidebarProps) {
 
       {/* User Role Indicator */}
       {!collapsed && user && (
-        <div className="p-4 border-t border-sidebar-border">
+        <div className="p-4 border-t border-sidebar-border space-y-2">
+          <button
+            onClick={() => openWelcomeTour()}
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-muted-foreground hover:bg-sidebar-accent/60 transition-colors"
+            style={{ border: 'none', cursor: 'pointer' }}
+          >
+            <HelpCircle className="w-4 h-4 text-primary" />
+            Rever tour de boas-vindas
+          </button>
           <button
             onClick={() => navigate('/profile')}
             className="w-full text-left px-4 py-3 rounded-lg bg-sidebar-accent hover:bg-sidebar-accent/80 transition-colors group"
