@@ -1,23 +1,33 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Database } from '@/integrations/supabase/types';
+import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 
 type Company = Database['public']['Tables']['companies']['Row'];
 type CompanyInsert = Database['public']['Tables']['companies']['Insert'];
 
 export function useCompanies() {
+  const { user } = useAuth();
+  const tenantId = user?.tenantId ?? null;
+
   return useQuery({
-    queryKey: ['companies'],
+    queryKey: ['companies', tenantId],
     queryFn: async (): Promise<Company[]> => {
-      const { data, error } = await supabase
+      let query = supabase
         .from('companies')
         .select('*')
         .order('name');
 
+      // Painel normal = apenas o próprio tenant (o master veria todos via RLS).
+      if (tenantId) query = query.eq('tenant_id', tenantId);
+
+      const { data, error } = await query;
+
       if (error) throw error;
       return data;
     },
+    enabled: !!tenantId,
   });
 }
 

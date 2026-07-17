@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 
 export interface EnergyConcessionaire {
@@ -12,23 +13,35 @@ export interface EnergyConcessionaire {
 }
 
 export function useEnergyConcessionaires(includeInactive = false) {
+  const { user } = useAuth();
+  const tenantId = user?.tenantId ?? null;
+
   return useQuery({
-    queryKey: ['energy-concessionaires', includeInactive],
+    queryKey: ['energy-concessionaires', includeInactive, tenantId],
     queryFn: async (): Promise<EnergyConcessionaire[]> => {
       let query = supabase
         .from('energy_concessionaires')
         .select('*')
         .order('name', { ascending: true });
-      
+
+      // O painel normal mostra APENAS o próprio tenant. Sem este filtro, o
+      // master (is_master) veria as concessionárias de todos os tenants pelo
+      // RLS — o que aparecia como "duplicatas" (as cópias de cada tenant).
+      // A visão cross-tenant é exclusiva do console /painel.
+      if (tenantId) query = query.eq('tenant_id', tenantId);
+
       if (!includeInactive) {
         query = query.eq('is_active', true);
       }
-      
+
       const { data, error } = await query;
-      
+
       if (error) throw error;
       return data || [];
     },
+    // NÃO desabilitar sem tenant: o formulário público (anônimo) também usa este
+    // hook e depende do RLS. O filtro por tenant acima só se aplica a quem está
+    // logado — é isso que corrige as "duplicatas" para o master no painel.
   });
 }
 

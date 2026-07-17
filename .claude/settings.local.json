@@ -149,7 +149,9 @@
       "Bash(curl -s -o /dev/null -w \"%{http_code} em %{time_total}s\\\\n\" --max-time 20 https://homologamanager.com.br)",
       "Bash(timeout 12 bash -c 'cat < /dev/null > /dev/tcp/143.95.221.114/22022')",
       "Bash(npx esbuild *)",
-      "Bash(git commit -q -m 'fix\\(seguranca\\): Claudinho vazava config entre tenants e nao funcionava multi-tenant *)"
+      "Bash(git commit -q -m 'fix\\(seguranca\\): Claudinho vazava config entre tenants e nao funcionava multi-tenant *)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" --max-time 25 https://homologamanager.com.br)",
+      "Bash(git commit -q -m 'fix\\(tenants\\): painel normal do master mostrava dados de todos os tenants *)"
     ]
   }
 }

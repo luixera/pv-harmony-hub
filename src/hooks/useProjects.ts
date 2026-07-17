@@ -37,13 +37,16 @@ export function useProjects() {
       const { data: { user: authUser } } = await supabase.auth.getUser();
 
       let assignedProjectIds: string[] | null = null;
+      let myTenantId: string | null = null;
 
       if (authUser) {
         const { data: profile } = await supabase
           .from('profiles')
-          .select('role, staff_access_mode')
+          .select('role, staff_access_mode, tenant_id')
           .eq('id', authUser.id)
           .single();
+
+        myTenantId = profile?.tenant_id ?? null;
 
         if (profile?.role === 'staff' && profile?.staff_access_mode === 'assigned_only') {
           const { data: assignments } = await supabase
@@ -70,6 +73,11 @@ export function useProjects() {
         `)
         .eq('is_deleted', false)
         .order('created_at', { ascending: false });
+
+      // O painel normal é sempre do PRÓPRIO tenant. Sem isto, o master veria os
+      // projetos de todos os tenants (o RLS libera cross-tenant para is_master);
+      // a visão global é exclusiva do console /painel.
+      if (myTenantId) queryBuilder = queryBuilder.eq('tenant_id', myTenantId);
 
       // Filtrar apenas projetos atribuídos ao staff
       if (assignedProjectIds !== null && assignedProjectIds.length > 0) {
