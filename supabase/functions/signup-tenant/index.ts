@@ -113,12 +113,16 @@ Deno.serve(async (req) => {
     }
 
     // ── 4. Admin do tenant (não confirmado → confirmação por e-mail) ──────────
+    // role/tenant_id vão em APP_metadata: é o canal que o trigger handle_new_user
+    // confia (só a API admin escreve nele; o signUp público não consegue).
     const { data: authData, error: authErr } = await admin.auth.admin.createUser({
       email,
       password: adminPassword,
       email_confirm: false,
       user_metadata: {
         name: adminName.trim(),
+      },
+      app_metadata: {
         role: 'admin',
         tenant_id: tenant.id,
       },

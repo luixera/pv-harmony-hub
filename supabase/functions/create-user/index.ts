@@ -124,16 +124,19 @@ Deno.serve(async (req) => {
     })
 
     // 1. Create user in Supabase Auth
-    // Note: The handle_new_user trigger will automatically create profile and user_role
+    // Note: The handle_new_user trigger will automatically create profile and user_role.
+    // role/tenant_id vão em APP_metadata: é o canal que o trigger confia
+    // (só a API admin escreve nele; o signUp público não consegue).
     const { data: authData, error: authError } = await adminClient.auth.admin.createUser({
       email,
       password,
       email_confirm: true, // Auto-confirm email
       user_metadata: {
         name,
+      },
+      app_metadata: {
         role,
-        company_id: companyId || null, // Pass company_id to trigger
-        tenant_id: targetTenantId || null, // handle_new_user usa para o perfil
+        tenant_id: targetTenantId || null,
       }
     })
 
