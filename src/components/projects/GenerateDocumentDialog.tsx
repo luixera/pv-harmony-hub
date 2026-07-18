@@ -19,6 +19,7 @@ import { RevisionGeneralData, RevisionEquipment } from '@/hooks/useProjectRevisi
 import { useDocumentPreview } from '@/hooks/useDocumentPreview';
 import { detectTemplateTags, generateDocxFromTemplate } from '@/utils/docxGenerator';
 import { useEntryRules, matchEntryRule, entryRuleValues } from '@/hooks/useEntryRules';
+import { coordinateValues, inverterTotalPower, datePlusDays } from '@/utils/projectValues';
 import { logEvent } from '@/lib/tracking';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -205,10 +206,12 @@ export function GenerateDocumentDialog({
       tipo_fase:         g.phase_type              ?? '',
       rural:             g.is_rural ? 'Sim' : 'Não',
       coordenadas:       g.coordinates             ?? '',
+      ...coordinateValues(g.coordinates),
       marca_inversor:    e.inverter_brand          ?? '',
       modelo_inversor:   e.inverter_model          ?? '',
       potencia_inversor: e.inverter_power   != null ? `${e.inverter_power} kW`   : '',
       qtd_inversores:    String(e.inverter_quantity ?? ''),
+      potencia_inversores: inverterTotalPower(e.inverter_power, e.inverter_quantity),
       marca_modulo:      e.module_brand            ?? '',
       modelo_modulo:     e.module_model            ?? '',
       potencia_modulo:   e.module_power    != null ? `${e.module_power} Wp`      : '',
@@ -219,6 +222,7 @@ export function GenerateDocumentDialog({
       data:              today,
       data_emissao:      today,
       data_atual:        today,
+      data_mais_30:      datePlusDays(30),
       data_criacao:      format(new Date(project.created_at), 'dd/MM/yyyy', { locale: ptBR }),
     };
   };

@@ -3,9 +3,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { PlugZap, Plus, Trash2, Loader2, Info, Wand2 } from 'lucide-react';
+import { PlugZap, Plus, Trash2, Loader2, Info, Wand2, Columns3, X } from 'lucide-react';
 import { EnergyConcessionaire } from '@/hooks/useEnergyConcessionaires';
-import { useEntryRules, useSaveEntryRules, EntryRuleDraft } from '@/hooks/useEntryRules';
+import { useEntryRules, useSaveEntryRules, EntryRuleDraft, slugifyColumn } from '@/hooks/useEntryRules';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 
@@ -24,20 +24,22 @@ interface DraftRow {
   disjuntor: string;
   classe: string;
   caixa_medicao: string;
+  /** Valores das colunas customizadas: { "Rótulo": "valor" }. */
+  extra: Record<string, string>;
 }
 
-const EMPTY_ROW: DraftRow = { categoria: '', num_fases: '', bitola: '', disjuntor: '', classe: '', caixa_medicao: '' };
+const EMPTY_ROW: DraftRow = { categoria: '', num_fases: '', bitola: '', disjuntor: '', classe: '', caixa_medicao: '', extra: {} };
 
 /** Exemplo real da CPFL — ponto de partida editável. */
 const CPFL_PRESET: DraftRow[] = [
-  { categoria: 'B1', num_fases: '2', bitola: '16', disjuntor: '63',  classe: 'BIFÁSICO',  caixa_medicao: 'TIPO II' },
-  { categoria: 'B2', num_fases: '2', bitola: '25', disjuntor: '80',  classe: 'BIFÁSICO',  caixa_medicao: 'TIPO II' },
-  { categoria: 'C1', num_fases: '3', bitola: '16', disjuntor: '63',  classe: 'TRIFÁSICO', caixa_medicao: 'TIPO II' },
-  { categoria: 'C2', num_fases: '3', bitola: '25', disjuntor: '80',  classe: 'TRIFÁSICO', caixa_medicao: 'TIPO II' },
-  { categoria: 'C3', num_fases: '3', bitola: '35', disjuntor: '100', classe: 'TRIFÁSICO', caixa_medicao: 'TIPO II' },
-  { categoria: 'C4', num_fases: '3', bitola: '50', disjuntor: '125', classe: 'TRIFÁSICO', caixa_medicao: 'TIPO III' },
-  { categoria: 'C5', num_fases: '3', bitola: '75', disjuntor: '150', classe: 'TRIFÁSICO', caixa_medicao: 'TIPO III' },
-  { categoria: 'C6', num_fases: '3', bitola: '95', disjuntor: '200', classe: 'TRIFÁSICO', caixa_medicao: 'CAIXA H' },
+  { categoria: 'B1', num_fases: '2', bitola: '16', disjuntor: '63',  classe: 'BIFÁSICO',  caixa_medicao: 'TIPO II', extra: {} },
+  { categoria: 'B2', num_fases: '2', bitola: '25', disjuntor: '80',  classe: 'BIFÁSICO',  caixa_medicao: 'TIPO II', extra: {} },
+  { categoria: 'C1', num_fases: '3', bitola: '16', disjuntor: '63',  classe: 'TRIFÁSICO', caixa_medicao: 'TIPO II', extra: {} },
+  { categoria: 'C2', num_fases: '3', bitola: '25', disjuntor: '80',  classe: 'TRIFÁSICO', caixa_medicao: 'TIPO II', extra: {} },
+  { categoria: 'C3', num_fases: '3', bitola: '35', disjuntor: '100', classe: 'TRIFÁSICO', caixa_medicao: 'TIPO II', extra: {} },
+  { categoria: 'C4', num_fases: '3', bitola: '50', disjuntor: '125', classe: 'TRIFÁSICO', caixa_medicao: 'TIPO III', extra: {} },
+  { categoria: 'C5', num_fases: '3', bitola: '75', disjuntor: '150', classe: 'TRIFÁSICO', caixa_medicao: 'TIPO III', extra: {} },
+  { categoria: 'C6', num_fases: '3', bitola: '95', disjuntor: '200', classe: 'TRIFÁSICO', caixa_medicao: 'CAIXA H', extra: {} },
 ];
 
 export function EntryRulesDialog({ open, onOpenChange, concessionaire }: EntryRulesDialogProps) {
@@ -47,6 +49,7 @@ export function EntryRulesDialog({ open, onOpenChange, concessionaire }: EntryRu
   const saveRules = useSaveEntryRules();
 
   const [rows, setRows] = useState<DraftRow[]>([]);
+  const [customCols, setCustomCols] = useState<string[]>([]); // rótulos das colunas extras
   const [deletedIds, setDeletedIds] = useState<string[]>([]);
   const [dirty, setDirty] = useState(false);
 
@@ -61,17 +64,32 @@ export function EntryRulesDialog({ open, onOpenChange, concessionaire }: EntryRu
       disjuntor: String(r.disjuntor),
       classe: r.classe ?? '',
       caixa_medicao: r.caixa_medicao ?? '',
+      extra: { ...(r.extra ?? {}) },
     })));
+    // Colunas customizadas = união dos rótulos presentes nas linhas
+    const cols = new Set<string>();
+    for (const r of rules) for (const k of Object.keys(r.extra ?? {})) cols.add(k);
+    setCustomCols([...cols]);
     setDeletedIds([]);
     setDirty(false);
   }, [open, rules]);
 
-  const updateRow = (i: number, field: keyof DraftRow, value: string) => {
+  const updateRow = (i: number, field: 'categoria' | 'num_fases' | 'bitola' | 'disjuntor' | 'classe' | 'caixa_medicao', value: string) => {
     setRows(prev => prev.map((r, idx) => (idx === i ? { ...r, [field]: value } : r)));
     setDirty(true);
   };
 
-  const addRow = () => { setRows(prev => [...prev, { ...EMPTY_ROW }]); setDirty(true); };
+  const updateExtra = (i: number, col: string, value: string) => {
+    setRows(prev => prev.map((r, idx) => (idx === i ? { ...r, extra: { ...r.extra, [col]: value } } : r)));
+    setDirty(true);
+  };
+
+  const addRow = () => {
+    const extra: Record<string, string> = {};
+    for (const c of customCols) extra[c] = '';
+    setRows(prev => [...prev, { ...EMPTY_ROW, extra }]);
+    setDirty(true);
+  };
 
   const removeRow = (i: number) => {
     const row = rows[i];
@@ -80,10 +98,35 @@ export function EntryRulesDialog({ open, onOpenChange, concessionaire }: EntryRu
     setDirty(true);
   };
 
+  const addColumn = () => {
+    const label = window.prompt('Nome da nova coluna (ex.: Ramal de Entrada):')?.trim();
+    if (!label) return;
+    if (customCols.some(c => c.toLowerCase() === label.toLowerCase())) {
+      toast.error('Já existe uma coluna com esse nome'); return;
+    }
+    const slug = slugifyColumn(label);
+    if (!slug) { toast.error('Nome de coluna inválido'); return; }
+    setCustomCols(prev => [...prev, label]);
+    setRows(prev => prev.map(r => ({ ...r, extra: { ...r.extra, [label]: '' } })));
+    setDirty(true);
+    toast.success(`Coluna "${label}" adicionada → variável {${slug}}`);
+  };
+
+  const removeColumn = (label: string) => {
+    if (!window.confirm(`Remover a coluna "${label}" de todas as linhas?`)) return;
+    setCustomCols(prev => prev.filter(c => c !== label));
+    setRows(prev => prev.map(r => {
+      const { [label]: _, ...rest } = r.extra;
+      return { ...r, extra: rest };
+    }));
+    setDirty(true);
+  };
+
   const applyPreset = () => {
     // preserva ids das linhas atuais para exclusão
     setDeletedIds(prev => [...prev, ...rows.filter(r => r.id).map(r => r.id!)]);
-    setRows(CPFL_PRESET.map(r => ({ ...r })));
+    setRows(CPFL_PRESET.map(r => ({ ...r, extra: {} })));
+    setCustomCols([]);
     setDirty(true);
     toast.info('Modelo CPFL carregado — revise e salve');
   };
@@ -107,6 +150,8 @@ export function EntryRulesDialog({ open, onOpenChange, concessionaire }: EntryRu
       classe: r.classe || null,
       caixa_medicao: r.caixa_medicao || null,
       sort_order: i,
+      // guarda só as colunas customizadas ativas
+      extra: Object.fromEntries(customCols.map(c => [c, r.extra[c] ?? ''])),
     }));
     await saveRules.mutateAsync({ concessionaireId: concessionaire.id, rules: drafts, deletedIds });
     setDirty(false);
@@ -137,6 +182,9 @@ export function EntryRulesDialog({ open, onOpenChange, concessionaire }: EntryRu
                 <Button variant="outline" size="sm" onClick={addRow} className="gap-1">
                   <Plus className="w-4 h-4" /> Adicionar categoria
                 </Button>
+                <Button variant="outline" size="sm" onClick={addColumn} className="gap-1">
+                  <Columns3 className="w-4 h-4" /> Adicionar coluna
+                </Button>
                 {rows.length === 0 && (
                   <Button variant="outline" size="sm" onClick={applyPreset} className="gap-1">
                     <Wand2 className="w-4 h-4" /> Usar modelo (CPFL)
@@ -162,6 +210,19 @@ export function EntryRulesDialog({ open, onOpenChange, concessionaire }: EntryRu
                       <th className="px-2 py-2 font-medium text-xs">Disjuntor (A)</th>
                       <th className="px-2 py-2 font-medium text-xs">Classe</th>
                       <th className="px-2 py-2 font-medium text-xs">Caixa de medição</th>
+                      {customCols.map(col => (
+                        <th key={col} className="px-2 py-2 font-medium text-xs whitespace-nowrap">
+                          <span className="inline-flex items-center gap-1">
+                            {col}
+                            {isAdmin && (
+                              <button type="button" onClick={() => removeColumn(col)} title="Remover coluna"
+                                className="text-muted-foreground hover:text-destructive">
+                                <X className="w-3 h-3" />
+                              </button>
+                            )}
+                          </span>
+                        </th>
+                      ))}
                       {isAdmin && <th className="px-1 py-2 w-9" />}
                     </tr>
                   </thead>
@@ -204,6 +265,12 @@ export function EntryRulesDialog({ open, onOpenChange, concessionaire }: EntryRu
                           <Input value={row.caixa_medicao} onChange={e => updateRow(i, 'caixa_medicao', e.target.value)}
                             disabled={!isAdmin} placeholder="TIPO II" className="h-8 text-sm w-28" />
                         </td>
+                        {customCols.map(col => (
+                          <td key={col} className="px-1 py-1">
+                            <Input value={row.extra[col] ?? ''} onChange={e => updateExtra(i, col, e.target.value)}
+                              disabled={!isAdmin} className="h-8 text-sm w-28" />
+                          </td>
+                        ))}
                         {isAdmin && (
                           <td className="px-1 py-1">
                             <Button size="icon" variant="ghost" onClick={() => removeRow(i)}
@@ -227,9 +294,11 @@ export function EntryRulesDialog({ open, onOpenChange, concessionaire }: EntryRu
               </div>
               <p className="text-[11px] text-muted-foreground font-mono">
                 {'{categoria_padrao}'} · {'{num_fases_padrao}'} · {'{bitola_cabo}'} · {'{disjuntor_padrao}'} · {'{classe_padrao}'} · {'{caixa_medicao}'}
+                {customCols.map(col => <span key={col}> · {`{${slugifyColumn(col)}}`}</span>)}
               </p>
               <p className="text-[11px] text-muted-foreground">
                 Ex.: projeto bifásico com disjuntor 63A → categoria B1, bitola 16 mm², caixa TIPO II.
+                {customCols.length > 0 && ' As colunas que você adicionar viram variáveis pelo nome (sem acento/espaços).'}
               </p>
             </div>
 

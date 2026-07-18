@@ -4,9 +4,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { motion } from 'framer-motion';
-import { Zap, Plus, Search, Edit2, FileText, Loader2, LayoutTemplate, Package, PlugZap, Library, RefreshCw } from 'lucide-react';
+import { Zap, Plus, Search, Edit2, Loader2, LayoutTemplate, Package, PlugZap, Library, RefreshCw } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useAuth } from '@/contexts/AuthContext';
@@ -25,7 +24,39 @@ import { useConcessionaireLibrary } from '@/hooks/useConcessionaireLibrary';
 
 function PackageItemCount({ concessionaireId }: { concessionaireId: string }) {
   const { data: items = [] } = useInstallerPackage(concessionaireId);
-  return <span className="text-sm text-muted-foreground">{items.length} {items.length === 1 ? 'item' : 'itens'}</span>;
+  const n = items.length;
+  return (
+    <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${
+      n > 0 ? 'bg-emerald-500/10 text-emerald-600' : 'bg-muted text-muted-foreground'
+    }`}>
+      <Package className="w-3 h-3" /> {n} {n === 1 ? 'item' : 'itens'}
+    </span>
+  );
+}
+
+/** Iniciais da concessionária (ex.: "CPFL" → "CP", "ENEL" → "EN"). */
+function initials(name: string): string {
+  const clean = name.trim().replace(/\s+/g, ' ');
+  const parts = clean.split(' ');
+  if (parts.length > 1) return (parts[0][0] + parts[1][0]).toUpperCase();
+  return clean.slice(0, 2).toUpperCase();
+}
+
+/** Cor estável a partir do nome (mesmo nome → mesma cor). */
+function colorForName(name: string): string {
+  const palette = ['#378ADD', '#2D6A4F', '#D85A30', '#9B59B6', '#1ABC9C', '#E24B4A', '#F5A800', '#5B6EE1'];
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  return palette[h % palette.length];
+}
+
+/** Botão de ação em ícone com tooltip nativo. */
+function IconAction({ title, onClick, children }: { title: string; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <Button variant="ghost" size="icon" title={title} onClick={onClick} className="h-9 w-9 text-muted-foreground hover:text-foreground">
+      {children}
+    </Button>
+  );
 }
 
 export default function EnergyConcessionaires() {
@@ -193,86 +224,87 @@ export default function EnergyConcessionaires() {
               </p>
             </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Nome</TableHead>
-                  <TableHead className="text-center">Status</TableHead>
-                  <TableHead className="text-center">Pacote Projetista</TableHead>
-                  <TableHead>Data de Cadastro</TableHead>
-                  <TableHead className="text-right">Ações</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredConcessionaires.map((concessionaire) => (
-                  <TableRow key={concessionaire.id}>
-                    <TableCell className="font-medium">{concessionaire.name}</TableCell>
-                    <TableCell className="text-center">
-                      {isAdmin ? (
+            <div className="divide-y divide-border">
+              {/* Cabeçalho */}
+              <div className="hidden md:grid grid-cols-[1fr_120px_130px_120px_auto] items-center gap-4 px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                <span>Concessionária</span>
+                <span className="text-center">Status</span>
+                <span className="text-center">Pacote</span>
+                <span>Cadastro</span>
+                <span className="text-right pr-1">Ações</span>
+              </div>
+
+              {filteredConcessionaires.map((concessionaire) => (
+                <div
+                  key={concessionaire.id}
+                  className="grid grid-cols-1 md:grid-cols-[1fr_120px_130px_120px_auto] items-center gap-3 md:gap-4 px-4 py-3 hover:bg-muted/40 transition-colors"
+                >
+                  {/* Nome com avatar */}
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div
+                      className="w-9 h-9 rounded-lg flex items-center justify-center text-[11px] font-bold text-white flex-shrink-0"
+                      style={{ background: colorForName(concessionaire.name) }}
+                    >
+                      {initials(concessionaire.name)}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-semibold text-card-foreground truncate">{concessionaire.name}</p>
+                      {!concessionaire.is_active && (
+                        <span className="text-[10px] text-muted-foreground md:hidden">Inativa</span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Status */}
+                  <div className="flex items-center gap-2 md:justify-center">
+                    {isAdmin ? (
+                      <>
                         <Switch
                           checked={concessionaire.is_active}
                           onCheckedChange={() => handleToggleStatus(concessionaire)}
                           disabled={toggleStatusMutation.isPending}
                         />
-                      ) : (
-                        <Badge variant={concessionaire.is_active ? 'default' : 'secondary'}>
+                        <span className={`text-xs font-medium md:hidden ${concessionaire.is_active ? 'text-emerald-600' : 'text-muted-foreground'}`}>
                           {concessionaire.is_active ? 'Ativa' : 'Inativa'}
-                        </Badge>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <PackageItemCount concessionaireId={concessionaire.id} />
-                    </TableCell>
-                    <TableCell>
-                      {format(new Date(concessionaire.created_at), 'dd/MM/yyyy', { locale: ptBR })}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleViewPackage(concessionaire)}
-                          className="gap-1"
-                        >
-                          <Package className="w-4 h-4" />
-                          Pacote Projetista
-                        </Button>
+                        </span>
+                      </>
+                    ) : (
+                      <Badge variant={concessionaire.is_active ? 'default' : 'secondary'}>
+                        {concessionaire.is_active ? 'Ativa' : 'Inativa'}
+                      </Badge>
+                    )}
+                  </div>
 
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleViewTemplates(concessionaire)}
-                          className="gap-1"
-                        >
-                          <LayoutTemplate className="w-4 h-4" />
-                          Templates
-                        </Button>
+                  {/* Pacote */}
+                  <div className="md:text-center">
+                    <PackageItemCount concessionaireId={concessionaire.id} />
+                  </div>
 
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleViewEntryRules(concessionaire)}
-                          className="gap-1"
-                        >
-                          <PlugZap className="w-4 h-4" />
-                          Padrão de entrada
-                        </Button>
+                  {/* Data */}
+                  <div className="text-sm text-muted-foreground">
+                    {format(new Date(concessionaire.created_at), 'dd/MM/yyyy', { locale: ptBR })}
+                  </div>
 
-                        {isAdmin && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleEdit(concessionaire)}
-                          >
-                            <Edit2 className="w-4 h-4" />
-                          </Button>
-                        )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                  {/* Ações — ícones com tooltip */}
+                  <div className="flex items-center gap-1 md:justify-end">
+                    <IconAction title="Pacote do Projetista" onClick={() => handleViewPackage(concessionaire)}>
+                      <Package className="w-4 h-4" />
+                    </IconAction>
+                    <IconAction title="Templates de documento" onClick={() => handleViewTemplates(concessionaire)}>
+                      <LayoutTemplate className="w-4 h-4" />
+                    </IconAction>
+                    <IconAction title="Regras de padrão de entrada" onClick={() => handleViewEntryRules(concessionaire)}>
+                      <PlugZap className="w-4 h-4" />
+                    </IconAction>
+                    {isAdmin && (
+                      <IconAction title="Editar concessionária" onClick={() => handleEdit(concessionaire)}>
+                        <Edit2 className="w-4 h-4" />
+                      </IconAction>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
         </div>
       </motion.div>

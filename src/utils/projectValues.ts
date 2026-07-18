@@ -29,7 +29,11 @@ export const TEMPLATE_VARIABLES: TemplateVariable[] = [
   { key: 'uf',                desc: 'Estado (UF) — alias de {estado}',   category: 'Endereço e UC', example: 'SP' },
   { key: 'cep',               desc: 'CEP',                               category: 'Endereço e UC', example: '13000-000' },
   { key: 'endereco_completo', desc: 'Endereço completo (rua, cidade/UF, CEP)', category: 'Endereço e UC', example: 'RUA DAS FLORES, 123, CAMPINAS, SP, CEP: 13000-000' },
-  { key: 'coordenadas',       desc: 'Coordenadas geográficas',           category: 'Endereço e UC', example: '-22.9099, -47.0626' },
+  { key: 'coordenadas',       desc: 'Coordenadas geográficas (como digitadas)', category: 'Endereço e UC', example: '-22.9099, -47.0626' },
+  { key: 'latitude',          desc: 'Latitude (grau decimal)',           category: 'Endereço e UC', example: '-22.9099' },
+  { key: 'longitude',         desc: 'Longitude (grau decimal)',          category: 'Endereço e UC', example: '-47.0626' },
+  { key: 'latitude_gms',      desc: 'Latitude em SIRGAS 2000 (grau/min/seg)',  category: 'Endereço e UC', example: '22°54\'35.6"S' },
+  { key: 'longitude_gms',     desc: 'Longitude em SIRGAS 2000 (grau/min/seg)', category: 'Endereço e UC', example: '47°03\'45.4"O' },
   { key: 'rural',             desc: 'Área rural? (Sim/Não)',             category: 'Endereço e UC', example: 'Não' },
   { key: 'uc',                desc: 'Número da UC',                      category: 'Endereço e UC', example: '4001234567' },
   { key: 'numero_uc',         desc: 'Número da UC — alias de {uc}',      category: 'Endereço e UC', example: '4001234567' },
@@ -42,6 +46,7 @@ export const TEMPLATE_VARIABLES: TemplateVariable[] = [
   { key: 'modelo_inversor',   desc: 'Modelo do inversor',                category: 'Equipamentos', example: 'MIN 5000TL-X' },
   { key: 'potencia_inversor', desc: 'Potência do inversor',              category: 'Equipamentos', example: '5 kW' },
   { key: 'qtd_inversores',    desc: 'Quantidade de inversores',          category: 'Equipamentos', example: '1' },
+  { key: 'potencia_inversores', desc: 'Potência total dos inversores (potência × qtd)', category: 'Equipamentos', example: '10 kW' },
   { key: 'marca_modulo',      desc: 'Marca dos módulos',                 category: 'Equipamentos', example: 'CANADIAN SOLAR' },
   { key: 'modelo_modulo',     desc: 'Modelo dos módulos',                category: 'Equipamentos', example: 'CS7L-600MS' },
   { key: 'potencia_modulo',   desc: 'Potência dos módulos',              category: 'Equipamentos', example: '600 Wp' },
@@ -59,6 +64,7 @@ export const TEMPLATE_VARIABLES: TemplateVariable[] = [
   { key: 'data',              desc: 'Data de hoje',                      category: 'Datas',        example: '15/07/2026' },
   { key: 'data_emissao',      desc: 'Data de emissão (hoje)',            category: 'Datas',        example: '15/07/2026' },
   { key: 'data_atual',        desc: 'Data atual — alias de {data}',      category: 'Datas',        example: '15/07/2026' },
+  { key: 'data_mais_30',      desc: 'Data de hoje + 30 dias',            category: 'Datas',        example: '14/08/2026' },
 ];
 
 export const KNOWN_TEMPLATE_KEYS = new Set(TEMPLATE_VARIABLES.map(v => v.key));
@@ -100,6 +106,56 @@ export function suggestTemplateKey(unknown: string): string | null {
   return best && bestScore <= Math.max(2, Math.floor(unknown.length * 0.4)) ? best : null;
 }
 
+// ── Helpers de cálculo (compartilhados entre os dois montadores de valores) ───
+
+/** Data de hoje + N dias, no formato dd/MM/yyyy. */
+export function datePlusDays(days: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  return format(d, 'dd/MM/yyyy', { locale: ptBR });
+}
+
+/** Soma da potência dos inversores = potência × quantidade (ex.: "10 kW"). */
+export function inverterTotalPower(power: number | null | undefined, qty: number | null | undefined): string {
+  const p = Number(power), q = Number(qty);
+  if (!p || !q) return '';
+  const total = p * q;
+  return `${Number.isInteger(total) ? total : total.toFixed(2)} kW`;
+}
+
+/** Converte um grau decimal em Graus/Minutos/Segundos (SIRGAS 2000). */
+export function decimalToDMS(dec: number, kind: 'lat' | 'lon'): string {
+  if (!isFinite(dec)) return '';
+  const hemi = kind === 'lat' ? (dec >= 0 ? 'N' : 'S') : (dec >= 0 ? 'L' : 'O');
+  const abs = Math.abs(dec);
+  const d = Math.floor(abs);
+  const mFloat = (abs - d) * 60;
+  const m = Math.floor(mFloat);
+  const s = ((mFloat - m) * 60).toFixed(1);
+  return `${d}°${String(m).padStart(2, '0')}'${s.padStart(4, '0')}"${hemi}`;
+}
+
+/** Extrai latitude/longitude decimais de uma string livre ("-22.9, -47.06"). */
+export function parseCoordinates(raw: string | null | undefined): { lat: number | null; lon: number | null } {
+  if (!raw) return { lat: null, lon: null };
+  const nums = raw.match(/-?\d+(?:[.,]\d+)?/g);
+  if (!nums || nums.length < 2) return { lat: null, lon: null };
+  const lat = parseFloat(nums[0].replace(',', '.'));
+  const lon = parseFloat(nums[1].replace(',', '.'));
+  return { lat: isFinite(lat) ? lat : null, lon: isFinite(lon) ? lon : null };
+}
+
+/** Variáveis derivadas de coordenadas (decimais + SIRGAS/DMS). */
+export function coordinateValues(raw: string | null | undefined): Record<string, string> {
+  const { lat, lon } = parseCoordinates(raw);
+  return {
+    latitude:      lat != null ? String(lat) : '',
+    longitude:     lon != null ? String(lon) : '',
+    latitude_gms:  lat != null ? decimalToDMS(lat, 'lat') : '',
+    longitude_gms: lon != null ? decimalToDMS(lon, 'lon') : '',
+  };
+}
+
 /** Mapa de tags → valores do projeto, usado para preencher templates .docx. */
 export function buildProjectValues(project: ProjectWithDetails): Record<string, string> {
   const g = project.generalData ?? ({} as NonNullable<ProjectWithDetails['generalData']>);
@@ -131,10 +187,12 @@ export function buildProjectValues(project: ProjectWithDetails): Record<string, 
     tipo_fase:         g.phase_type ?? '',
     rural:             g.is_rural ? 'Sim' : 'Não',
     coordenadas:       g.coordinates ?? '',
+    ...coordinateValues(g.coordinates),
     marca_inversor:    e.inverter_brand ?? '',
     modelo_inversor:   e.inverter_model ?? '',
     potencia_inversor: e.inverter_power != null ? `${e.inverter_power} kW` : '',
     qtd_inversores:    String(e.inverter_quantity ?? ''),
+    potencia_inversores: inverterTotalPower(e.inverter_power, e.inverter_quantity),
     marca_modulo:      e.module_brand ?? '',
     modelo_modulo:     e.module_model ?? '',
     potencia_modulo:   e.module_power != null ? `${e.module_power} Wp` : '',
@@ -144,6 +202,7 @@ export function buildProjectValues(project: ProjectWithDetails): Record<string, 
     data:              today,
     data_emissao:      today,
     data_atual:        today,
+    data_mais_30:      datePlusDays(30),
     data_criacao:      project.created_at ? format(new Date(project.created_at), 'dd/MM/yyyy', { locale: ptBR }) : today,
   };
 }

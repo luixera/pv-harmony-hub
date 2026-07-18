@@ -14,9 +14,17 @@ export interface EntryRule {
   classe: string | null;
   caixa_medicao: string | null;
   sort_order: number;
+  /** Valores das colunas customizadas: { "Rótulo": "valor" }. */
+  extra: Record<string, string>;
 }
 
 export type EntryRuleDraft = Omit<EntryRule, 'id' | 'tenant_id'> & { id?: string };
+
+/** Transforma um rótulo de coluna em chave de variável: "Ramal de Entrada" → "ramal_de_entrada". */
+export function slugifyColumn(label: string): string {
+  return label.trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+}
 
 export function useEntryRules(concessionaireId: string | undefined) {
   return useQuery({
@@ -67,6 +75,7 @@ export function useSaveEntryRules() {
           classe: r.classe?.trim() || null,
           caixa_medicao: r.caixa_medicao?.trim() || null,
           sort_order: i,
+          extra: r.extra ?? {},
         };
         if (r.id) {
           const { error } = await supabase
@@ -156,7 +165,7 @@ export function matchEntryRule(
 
 /** Converte a regra encontrada nas variáveis de template do padrão de entrada. */
 export function entryRuleValues(rule: EntryRule | null): Record<string, string> {
-  return {
+  const values: Record<string, string> = {
     categoria_padrao:  rule?.categoria ?? '',
     num_fases_padrao:  rule?.num_fases != null ? String(rule.num_fases) : '',
     bitola_cabo:       rule?.bitola ? `${rule.bitola} mm²` : '',
@@ -164,4 +173,10 @@ export function entryRuleValues(rule: EntryRule | null): Record<string, string> 
     classe_padrao:     rule?.classe ?? '',
     caixa_medicao:     rule?.caixa_medicao ?? '',
   };
+  // Colunas customizadas viram variáveis pelo rótulo slugificado ({ramal} etc.)
+  for (const [label, val] of Object.entries(rule?.extra ?? {})) {
+    const key = slugifyColumn(label);
+    if (key) values[key] = val ?? '';
+  }
+  return values;
 }
