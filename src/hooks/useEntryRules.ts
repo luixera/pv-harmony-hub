@@ -26,6 +26,18 @@ export function slugifyColumn(label: string): string {
     .replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
 }
 
+/** Colunas customizadas de uma concessionária (união dos rótulos entre as regras). */
+export function entryRuleCustomColumns(rules: EntryRule[]): { label: string; key: string }[] {
+  const seen = new Map<string, string>(); // key → label
+  for (const r of rules) {
+    for (const label of Object.keys(r.extra ?? {})) {
+      const key = slugifyColumn(label);
+      if (key && !seen.has(key)) seen.set(key, label);
+    }
+  }
+  return [...seen].map(([key, label]) => ({ key, label }));
+}
+
 export function useEntryRules(concessionaireId: string | undefined) {
   return useQuery({
     queryKey: ['entry-rules', concessionaireId],

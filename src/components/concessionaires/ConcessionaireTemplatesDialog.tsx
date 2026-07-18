@@ -20,8 +20,9 @@ import { useAuth } from '@/contexts/AuthContext';
 import { TemplateEditorDialog } from '@/components/concessionaires/TemplateEditorDialog';
 import { detectTemplateTags, generateDocxFromTemplate } from '@/utils/docxGenerator';
 import {
-  TEMPLATE_VARIABLES, KNOWN_TEMPLATE_KEYS, buildSampleValues, suggestTemplateKey,
+  TEMPLATE_VARIABLES, KNOWN_TEMPLATE_KEYS, buildSampleValues, suggestTemplateKey, TemplateVariable,
 } from '@/utils/projectValues';
+import { useEntryRules, entryRuleCustomColumns } from '@/hooks/useEntryRules';
 import { toast } from 'sonner';
 
 interface ConcessionaireTemplatesDialogProps {
@@ -30,10 +31,10 @@ interface ConcessionaireTemplatesDialogProps {
   concessionaire: EnergyConcessionaire | null;
 }
 
-/** Resultado do raio-X de um template. */
+/** Resultado do raio-X de um template (só os nomes; known/suggestion no render). */
 interface TagAnalysis {
   loading: boolean;
-  tags: { name: string; known: boolean; suggestion: string | null }[];
+  tags: string[];
   isForm: boolean; // sem nenhuma tag → formulário puro
   error?: boolean;
 }
@@ -62,6 +63,16 @@ export function ConcessionaireTemplatesDialog({
   const uploadMutation = useUploadConcessionaireTemplate();
   const deleteMutation = useDeleteConcessionaireTemplate();
 
+  // Colunas customizadas das regras de padrão de entrada desta concessionária
+  // viram variáveis reconhecidas (ex.: coluna "Demanda" → {demanda}).
+  const { data: entryRules = [] } = useEntryRules(concessionaire?.id);
+  const customVars: TemplateVariable[] = entryRuleCustomColumns(entryRules).map(c => ({
+    key: c.key, desc: `${c.label} (coluna do padrão de entrada)`, category: 'Padrão de entrada', example: '',
+  }));
+  const allVars: TemplateVariable[] = [...TEMPLATE_VARIABLES, ...customVars];
+  const allKnown = new Set<string>([...KNOWN_TEMPLATE_KEYS, ...customVars.map(v => v.key)]);
+  const suggestFor = (name: string) => (allKnown.has(name) ? null : suggestTemplateKey(name));
+
   // Raio-X das tags por template (path → análise)
   const [analyses, setAnalyses] = useState<Record<string, TagAnalysis>>({});
   const [busyPath, setBusyPath] = useState<string | null>(null); // download/teste em andamento
@@ -80,15 +91,7 @@ export function ConcessionaireTemplatesDialog({
         const { tags } = await detectTemplateTags(buffer);
         setAnalyses(prev => ({
           ...prev,
-          [t.path]: {
-            loading: false,
-            isForm: tags.length === 0,
-            tags: tags.map(name => ({
-              name,
-              known: KNOWN_TEMPLATE_KEYS.has(name),
-              suggestion: KNOWN_TEMPLATE_KEYS.has(name) ? null : suggestTemplateKey(name),
-            })),
-          },
+          [t.path]: { loading: false, isForm: tags.length === 0, tags },
         }));
       } catch (err) {
         console.error('[Templates] Erro ao analisar', t.path, err);
@@ -107,7 +110,7 @@ export function ConcessionaireTemplatesDialog({
       // análise imediata: avisa se o arquivo tem tags não reconhecidas
       try {
         const { tags } = await detectTemplateTags(await file.arrayBuffer());
-        const unknown = tags.filter(t => !KNOWN_TEMPLATE_KEYS.has(t));
+        const unknown = tags.filter(t => !allKnown.has(t));
         if (tags.length === 0) {
           toast.info(`${file.name}: sem tags — será tratado como formulário`);
         } else if (unknown.length > 0) {
@@ -182,7 +185,7 @@ export function ConcessionaireTemplatesDialog({
   };
 
   // Variáveis filtradas pela busca, agrupadas por categoria
-  const filteredVars = TEMPLATE_VARIABLES.filter(v =>
+  const filteredVars = allVars.filter(v =>
     !varSearch.trim() ||
     v.key.toLowerCase().includes(varSearch.toLowerCase()) ||
     v.desc.toLowerCase().includes(varSearch.toLowerCase())
@@ -240,7 +243,7 @@ export function ConcessionaireTemplatesDialog({
             <div className="space-y-2 max-h-[320px] overflow-y-auto pr-1">
               {templates.map((template) => {
                 const a = analyses[template.path];
-                const unknownCount = a?.tags.filter(t => !t.known).length ?? 0;
+                const unknownCount = a?.tags.filter(name => !allKnown.has(name)).length ?? 0;
                 const busy = busyPath === template.path;
                 return (
                   <div
@@ -324,31 +327,35 @@ export function ConcessionaireTemplatesDialog({
                     {/* Chips de tags detectadas (clique = copiar) */}
                     {a && !a.loading && a.tags.length > 0 && (
                       <div className="flex flex-wrap gap-1 pl-7">
-                        {a.tags.map(t => (
+                        {a.tags.map(name => {
+                          const known = allKnown.has(name);
+                          const suggestion = suggestFor(name);
+                          return (
                           <button
-                            key={t.name}
+                            key={name}
                             type="button"
-                            onClick={() => copyVar(t.name)}
+                            onClick={() => copyVar(name)}
                             title={
-                              (t.known
+                              (known
                                 ? 'Tag reconhecida — será preenchida automaticamente'
-                                : t.suggestion
-                                  ? `Tag desconhecida — você quis dizer {${t.suggestion}}?`
+                                : suggestion
+                                  ? `Tag desconhecida — você quis dizer {${suggestion}}?`
                                   : 'Tag desconhecida — NÃO será preenchida') + ' · clique para copiar'
                             }
                             className={
                               'text-[10px] font-mono px-1.5 py-0.5 rounded border cursor-pointer hover:opacity-75 ' +
-                              (t.known
+                              (known
                                 ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600'
                                 : 'bg-amber-500/10 border-amber-500/40 text-amber-600')
                             }
                           >
-                            {`{${t.name}}`}
-                            {!t.known && t.suggestion && (
-                              <span className="ml-1 opacity-80">→ {`{${t.suggestion}}`}?</span>
+                            {`{${name}}`}
+                            {!known && suggestion && (
+                              <span className="ml-1 opacity-80">→ {`{${suggestion}}`}?</span>
                             )}
                           </button>
-                        ))}
+                          );
+                        })}
                       </div>
                     )}
                   </div>

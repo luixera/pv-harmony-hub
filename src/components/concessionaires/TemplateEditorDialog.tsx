@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -18,8 +18,9 @@ import {
   TemplateField,
 } from '@/utils/docxGenerator';
 import {
-  TEMPLATE_VARIABLES, KNOWN_TEMPLATE_KEYS, buildSampleValues, suggestTemplateKey,
+  TEMPLATE_VARIABLES, KNOWN_TEMPLATE_KEYS, buildSampleValues, suggestTemplateKey, TemplateVariable,
 } from '@/utils/projectValues';
+import { useEntryRules, entryRuleCustomColumns } from '@/hooks/useEntryRules';
 import { toast } from 'sonner';
 
 interface TemplateEditorDialogProps {
@@ -40,12 +41,6 @@ interface SelectionInfo {
   occurrence: number;
 }
 
-const toTagInfo = (name: string): TagInfo => ({
-  name,
-  known: KNOWN_TEMPLATE_KEYS.has(name),
-  suggestion: KNOWN_TEMPLATE_KEYS.has(name) ? null : suggestTemplateKey(name),
-});
-
 /** Converte um buffer .docx em HTML de prévia via mammoth. */
 async function docxToHtml(buffer: ArrayBuffer): Promise<string> {
   const mammoth = await import('mammoth');
@@ -63,10 +58,10 @@ async function docxToHtml(buffer: ArrayBuffer): Promise<string> {
 }
 
 /** Destaca as {tags} no HTML da prévia (verde = conhecida, âmbar = desconhecida). */
-function highlightTags(html: string): string {
+function highlightTags(html: string, known: Set<string>): string {
   return html.replace(/\{([a-zA-Z_][a-zA-Z0-9_]*)\}/g, (_, tag: string) => {
-    const known = KNOWN_TEMPLATE_KEYS.has(tag);
-    const style = known
+    const isKnown = known.has(tag);
+    const style = isKnown
       ? 'background:rgba(16,185,129,0.18);color:#047857;border:1px solid rgba(16,185,129,0.4);'
       : 'background:rgba(245,158,11,0.18);color:#B45309;border:1px solid rgba(245,158,11,0.5);';
     return `<mark style="${style}border-radius:4px;padding:0 3px;font-family:monospace;font-size:0.85em;">{${tag}}</mark>`;
@@ -99,7 +94,7 @@ export function TemplateEditorDialog({ open, onOpenChange, template, concessiona
   const [loading, setLoading] = useState(true);
   const [buffer, setBuffer] = useState<ArrayBuffer | null>(null);
   const [history, setHistory] = useState<ArrayBuffer[]>([]);
-  const [tags, setTags] = useState<TagInfo[]>([]);
+  const [tagNames, setTagNames] = useState<string[]>([]);
   const [fields, setFields] = useState<TemplateField[]>([]);
   const [html, setHtml] = useState('');
   const [sampleHtml, setSampleHtml] = useState('');
@@ -111,6 +106,21 @@ export function TemplateEditorDialog({ open, onOpenChange, template, concessiona
   const [saving, setSaving] = useState(false);
   const [restoring, setRestoring] = useState(false);
   const [backupExists, setBackupExists] = useState(false);
+
+  // Colunas customizadas do padrão de entrada desta concessionária viram
+  // variáveis reconhecidas (ex.: coluna "Demanda" → {demanda}).
+  const { data: entryRules = [] } = useEntryRules(concessionaireId || undefined);
+  const customVars: TemplateVariable[] = useMemo(() => entryRuleCustomColumns(entryRules).map(c => ({
+    key: c.key, desc: `${c.label} (coluna do padrão de entrada)`, category: 'Padrão de entrada', example: '',
+  })), [entryRules]);
+  const allVars: TemplateVariable[] = useMemo(() => [...TEMPLATE_VARIABLES, ...customVars], [customVars]);
+  const allKnown = useMemo(() => new Set<string>([...KNOWN_TEMPLATE_KEYS, ...customVars.map(v => v.key)]), [customVars]);
+
+  const tags: TagInfo[] = useMemo(() => tagNames.map(name => ({
+    name,
+    known: allKnown.has(name),
+    suggestion: allKnown.has(name) ? null : suggestTemplateKey(name),
+  })), [tagNames, allKnown]);
 
   const displayName = template ? template.name.replace(/^\d+_/, '') : '';
   const dirty = history.length > 0;
@@ -156,7 +166,7 @@ export function TemplateEditorDialog({ open, onOpenChange, template, concessiona
         const detectedFields = detectTemplateFields(buffer);
         const previewHtml = await docxToHtml(buffer);
         if (cancelled) return;
-        setTags(names.map(toTagInfo));
+        setTagNames(names);
         setFields(detectedFields);
         setHtml(previewHtml);
       } catch (err) {
@@ -274,7 +284,7 @@ export function TemplateEditorDialog({ open, onOpenChange, template, concessiona
     }
   };
 
-  const previewHtml = mode === 'tags' ? highlightTags(html) : sampleHtml;
+  const previewHtml = mode === 'tags' ? highlightTags(html, allKnown) : sampleHtml;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -327,7 +337,7 @@ export function TemplateEditorDialog({ open, onOpenChange, template, concessiona
                       <Select value={selVar || undefined} onValueChange={setSelVar}>
                         <SelectTrigger className="h-7 text-[11px] w-44"><SelectValue placeholder="Escolha a variável…" /></SelectTrigger>
                         <SelectContent className="max-h-60">
-                          {TEMPLATE_VARIABLES.map(v => (
+                          {allVars.map(v => (
                             <SelectItem key={v.key} value={v.key} className="text-xs font-mono">
                               {`{${v.key}}`} <span className="text-muted-foreground font-sans">— {v.desc}</span>
                             </SelectItem>
@@ -398,7 +408,7 @@ export function TemplateEditorDialog({ open, onOpenChange, template, concessiona
                               <SelectValue placeholder={t.suggestion ? `Sugestão: {${t.suggestion}}` : 'Trocar por…'} />
                             </SelectTrigger>
                             <SelectContent className="max-h-60">
-                              {TEMPLATE_VARIABLES.map(v => (
+                              {allVars.map(v => (
                                 <SelectItem key={v.key} value={v.key} className="text-xs font-mono">
                                   {`{${v.key}}`} <span className="text-muted-foreground font-sans">— {v.desc}</span>
                                 </SelectItem>
@@ -447,7 +457,7 @@ export function TemplateEditorDialog({ open, onOpenChange, template, concessiona
                         <Select value={undefined} onValueChange={v => assignField(f, v)}>
                           <SelectTrigger className="h-7 text-[11px]"><SelectValue placeholder="Inserir variável…" /></SelectTrigger>
                           <SelectContent className="max-h-60">
-                            {TEMPLATE_VARIABLES.map(v => (
+                            {allVars.map(v => (
                               <SelectItem key={v.key} value={v.key} className="text-xs font-mono">
                                 {`{${v.key}}`} <span className="text-muted-foreground font-sans">— {v.desc}</span>
                               </SelectItem>
