@@ -23,12 +23,22 @@ export const TEMPLATE_VARIABLES: TemplateVariable[] = [
   { key: 'email_titular',     desc: 'E-mail do titular',                 category: 'Titular',      example: 'joao@email.com' },
   { key: 'telefone_titular',  desc: 'Telefone do titular',               category: 'Titular',      example: '(19) 99999-8888' },
   // Endereço & UC
-  { key: 'endereco',          desc: 'Endereço (rua e número)',           category: 'Endereço e UC', example: 'RUA DAS FLORES, 123' },
-  { key: 'cidade',            desc: 'Cidade',                            category: 'Endereço e UC', example: 'CAMPINAS' },
-  { key: 'estado',            desc: 'Estado (UF)',                       category: 'Endereço e UC', example: 'SP' },
+  { key: 'endereco',            desc: 'Endereço completo (junção de todas as partes)', category: 'Endereço e UC', example: 'RUA DAS FLORES, Nº 123, APTO 52, CENTRO, CAMPINAS/SP, CEP: 13000-000' },
+  { key: 'endereco_rua',        desc: 'Logradouro (só a rua/avenida)',   category: 'Endereço e UC', example: 'RUA DAS FLORES' },
+  { key: 'endereco_numero',     desc: 'Número',                          category: 'Endereço e UC', example: '123' },
+  { key: 'endereco_complemento',desc: 'Complemento (apto, bloco, casa…)',category: 'Endereço e UC', example: 'APTO 52' },
+  { key: 'endereco_bairro',     desc: 'Bairro',                          category: 'Endereço e UC', example: 'CENTRO' },
+  { key: 'endereco_cep',        desc: 'CEP',                             category: 'Endereço e UC', example: '13000-000' },
+  { key: 'endereco_cidade',     desc: 'Cidade',                          category: 'Endereço e UC', example: 'CAMPINAS' },
+  { key: 'endereco_estado',     desc: 'Estado (UF)',                     category: 'Endereço e UC', example: 'SP' },
+  { key: 'cidade',            desc: 'Cidade — alias de {endereco_cidade}', category: 'Endereço e UC', example: 'CAMPINAS' },
+  { key: 'estado',            desc: 'Estado (UF) — alias de {endereco_estado}', category: 'Endereço e UC', example: 'SP' },
   { key: 'uf',                desc: 'Estado (UF) — alias de {estado}',   category: 'Endereço e UC', example: 'SP' },
-  { key: 'cep',               desc: 'CEP',                               category: 'Endereço e UC', example: '13000-000' },
-  { key: 'endereco_completo', desc: 'Endereço completo (rua, cidade/UF, CEP)', category: 'Endereço e UC', example: 'RUA DAS FLORES, 123, CAMPINAS, SP, CEP: 13000-000' },
+  { key: 'cep',               desc: 'CEP — alias de {endereco_cep}',     category: 'Endereço e UC', example: '13000-000' },
+  { key: 'bairro',            desc: 'Bairro — alias de {endereco_bairro}', category: 'Endereço e UC', example: 'CENTRO' },
+  { key: 'numero',            desc: 'Número — alias de {endereco_numero}', category: 'Endereço e UC', example: '123' },
+  { key: 'complemento',       desc: 'Complemento — alias de {endereco_complemento}', category: 'Endereço e UC', example: 'APTO 52' },
+  { key: 'endereco_completo', desc: 'Endereço completo — alias de {endereco}', category: 'Endereço e UC', example: 'RUA DAS FLORES, Nº 123, APTO 52, CENTRO, CAMPINAS/SP, CEP: 13000-000' },
   { key: 'coordenadas',       desc: 'Coordenadas geográficas (como digitadas)', category: 'Endereço e UC', example: '-22.9099, -47.0626' },
   { key: 'latitude',          desc: 'Latitude (grau decimal)',           category: 'Endereço e UC', example: '-22.9099' },
   { key: 'longitude',         desc: 'Longitude (grau decimal)',          category: 'Endereço e UC', example: '-47.0626' },
@@ -165,6 +175,33 @@ export function coordinateValues(raw: string | null | undefined): Record<string,
   };
 }
 
+/** Partes do endereço, como ficam guardadas em project_general_data. */
+export interface AddressParts {
+  address?: string | null;
+  address_number?: string | null;
+  address_complement?: string | null;
+  neighborhood?: string | null;
+  cep?: string | null;
+  city?: string | null;
+  state?: string | null;
+}
+
+/** Monta o endereço completo a partir das partes separadas.
+ *  Usado tanto na tag {endereco} quanto onde o endereço é exibido de uma vez
+ *  só (PDF resumo, e-mails), já que a coluna `address` agora guarda apenas o
+ *  logradouro. Partes vazias simplesmente não aparecem. */
+export function formatFullAddress(a: AddressParts): string {
+  const cidadeUf = [a.city, a.state].filter(Boolean).join('/');
+  return [
+    a.address,
+    a.address_number && `Nº ${a.address_number}`,
+    a.address_complement,
+    a.neighborhood,
+    cidadeUf,
+    a.cep && `CEP: ${a.cep}`,
+  ].filter(Boolean).join(', ');
+}
+
 /** Dados de uma revisão podem substituir os do projeto na geração do documento. */
 export interface ProjectValueOverrides {
   generalData?: Partial<NonNullable<ProjectWithDetails['generalData']>> | null;
@@ -178,13 +215,13 @@ export function buildProjectValues(
   project: ProjectWithDetails,
   overrides?: ProjectValueOverrides,
 ): Record<string, string> {
-  const g = (overrides?.generalData ?? project.generalData ?? {}) as NonNullable<ProjectWithDetails['generalData']>;
+  // As colunas do endereço são mais novas que os tipos gerados do Supabase,
+  // por isso o cruzamento com AddressParts.
+  const g = (overrides?.generalData ?? project.generalData ?? {}) as NonNullable<ProjectWithDetails['generalData']> & AddressParts;
   const e = (overrides?.equipment ?? project.equipment ?? {}) as NonNullable<ProjectWithDetails['equipment']>;
   const today = format(new Date(), 'dd/MM/yyyy', { locale: ptBR });
 
-  const endereco_completo = [
-    g.address, g.city, g.state, g.cep ? `CEP: ${g.cep}` : '',
-  ].filter(Boolean).join(', ');
+  const endereco = formatFullAddress(g as AddressParts);
 
   return {
     codigo_projeto:    project.code ?? '',
@@ -194,12 +231,23 @@ export function buildProjectValues(
     cpf_cnpj:          g.holder_cpf_cnpj ?? '',
     email_titular:     g.holder_email ?? '',
     telefone_titular:  g.holder_phone ?? '',
-    endereco:          g.address ?? '',
+    // Endereço: {endereco} é a junção; cada parte também tem sua própria tag.
+    endereco,
+    endereco_completo:      endereco,
+    endereco_rua:           g.address ?? '',
+    endereco_numero:        g.address_number ?? '',
+    endereco_complemento:   g.address_complement ?? '',
+    endereco_bairro:        g.neighborhood ?? '',
+    endereco_cep:           g.cep ?? '',
+    endereco_cidade:        g.city ?? '',
+    endereco_estado:        g.state ?? '',
+    numero:            g.address_number ?? '',
+    complemento:       g.address_complement ?? '',
+    bairro:            g.neighborhood ?? '',
     cidade:            g.city ?? '',
     estado:            g.state ?? '',
     uf:                g.state ?? '',
     cep:               g.cep ?? '',
-    endereco_completo,
     uc:                g.uc_number ?? '',
     numero_uc:         g.uc_number ?? '',
     disjuntor:         g.circuit_breaker_current ?? '',

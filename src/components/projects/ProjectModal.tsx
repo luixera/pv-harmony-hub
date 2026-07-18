@@ -318,6 +318,10 @@ function TabGeneral({ project, isEditing, onSave, onCancel, onEdit }: {
     holder_email: gd?.holder_email || '',
     circuit_breaker_current: gd?.circuit_breaker_current || '',
     address: gd?.address || '',
+    address_number: gd?.address_number || '',
+    address_complement: gd?.address_complement || '',
+    neighborhood: gd?.neighborhood || '',
+    cep: gd?.cep || '',
     city: gd?.city || '',
     state: gd?.state || '',
     inverter_brand: eq?.inverter_brand || '',
@@ -359,7 +363,8 @@ function TabGeneral({ project, isEditing, onSave, onCancel, onEdit }: {
     try {
       const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string;
       if (!apiKey) { toast.error('Chave da API do Google Maps não configurada'); return; }
-      const q = `${form.address}, ${form.city}, ${form.state}, Brasil`;
+      const q = [form.address, form.address_number, form.neighborhood, form.city, form.state, 'Brasil']
+        .filter(Boolean).join(', ');
       const resp = await fetch(
         `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(q)}&key=${apiKey}`
       );
@@ -404,10 +409,15 @@ function TabGeneral({ project, isEditing, onSave, onCancel, onEdit }: {
           {field('E-mail', 'holder_email')}
           {field('Disjuntor (A)', 'circuit_breaker_current')}
           {field('UF', 'state')}
-          {/* Row 3: Endereço(span3), Cidade */}
-          <div style={{ gridColumn: isMobile ? 'span 2' : 'span 3' }}>
+          {/* Row 3: Endereço(span2), Número, Complemento */}
+          <div style={{ gridColumn: 'span 2' }}>
             {field('Endereço', 'address')}
           </div>
+          {field('Número', 'address_number')}
+          {field('Complemento', 'address_complement')}
+          {/* Row 4: Bairro, CEP, Cidade */}
+          {field('Bairro', 'neighborhood')}
+          {field('CEP', 'cep')}
           {field('Cidade', 'city')}
         </div>
       </div>
@@ -684,6 +694,10 @@ function TabGeneral({ project, isEditing, onSave, onCancel, onEdit }: {
                 holder_email: form.holder_email,
                 circuit_breaker_current: form.circuit_breaker_current,
                 address: form.address,
+                address_number: form.address_number,
+                address_complement: form.address_complement,
+                neighborhood: form.neighborhood,
+                cep: form.cep,
                 city: form.city,
                 state: form.state,
                 coordinates: coordinates || null,

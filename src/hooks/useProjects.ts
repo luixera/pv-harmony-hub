@@ -367,6 +367,10 @@ interface CreateProjectData {
     holderEmail?: string;
     holderPhone?: string;
     address: string;
+    addressNumber?: string;
+    addressComplement?: string;
+    neighborhood?: string;
+    cep?: string;
     city: string;
     state: string;
     isRural: boolean;
@@ -418,6 +422,10 @@ export function useCreateProject() {
           holder_email: data.generalData.holderEmail,
           holder_phone: data.generalData.holderPhone,
           address: data.generalData.address,
+          address_number: data.generalData.addressNumber,
+          address_complement: data.generalData.addressComplement,
+          neighborhood: data.generalData.neighborhood,
+          cep: data.generalData.cep,
           city: data.generalData.city,
           state: data.generalData.state,
           is_rural: data.generalData.isRural,

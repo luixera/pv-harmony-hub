@@ -50,6 +50,7 @@ interface ClaudinhoResult {
   cpf_cnpj?: FieldResult;
   address?: FieldResult;
   address_number?: FieldResult;
+  address_complement?: FieldResult;
   neighborhood?: FieldResult;
   city?: FieldResult;
   state?: FieldResult;
@@ -223,6 +224,7 @@ export default function NewProject() {
     holderPhone: '',
     address: '',
     addressNumber: '',
+    addressComplement: '',
     neighborhood: '',
     cep: '',
     city: '',
@@ -419,6 +421,7 @@ export default function NewProject() {
         : undefined);
       applyField('address', result.address);
       applyField('addressNumber', result.address_number);
+      applyField('addressComplement', result.address_complement);
       applyField('neighborhood', result.neighborhood);
       applyField('city', result.city);
       applyField('state', result.state);
@@ -584,13 +587,6 @@ export default function NewProject() {
     const projectSource = isViewingAsCompany ? 'admin' : 'company_login';
 
     try {
-      const fullAddress = [
-        formData.address,
-        formData.addressNumber && `nº ${formData.addressNumber}`,
-        formData.neighborhood,
-        formData.cep && `CEP: ${formData.cep}`,
-      ].filter(Boolean).join(', ');
-
       const { data: project, error: projectError } = await supabase
         .from('projects')
         .insert({
@@ -617,7 +613,12 @@ export default function NewProject() {
         holder_cpf_cnpj: formData.holderCpfCnpj.replace(/\D/g, ''),
         holder_email: formData.holderEmail,
         holder_phone: formData.holderPhone.replace(/\D/g, ''),
-        address: fullAddress,
+        // Cada parte do endereço em sua própria coluna (vira uma tag de template).
+        address: formData.address,
+        address_number: formData.addressNumber,
+        address_complement: formData.addressComplement,
+        neighborhood: formData.neighborhood,
+        cep: formData.cep,
         city: formData.city,
         state: formData.state,
         is_rural: formData.isRural,
@@ -702,7 +703,10 @@ export default function NewProject() {
         try {
           const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string;
           if (apiKey) {
-            const query = `${fullAddress}, ${formData.city}, ${formData.state}, Brasil`;
+            const query = [
+              formData.address, formData.addressNumber, formData.neighborhood,
+              formData.city, formData.state, 'Brasil',
+            ].filter(Boolean).join(', ');
             const resp = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(query)}&key=${apiKey}`);
             const geo = await resp.json();
             if (geo.status === 'OK' && geo.results[0]) {
@@ -1089,6 +1093,9 @@ export default function NewProject() {
                     </AIField>
                     <AIField label="Número" confidence={fc('addressNumber')?.confidence} source={fc('addressNumber')?.source}>
                       <Input value={formData.addressNumber} onChange={e => updateField('addressNumber', e.target.value)} placeholder="Nº" />
+                    </AIField>
+                    <AIField label="Complemento" confidence={fc('addressComplement')?.confidence} source={fc('addressComplement')?.source}>
+                      <Input value={formData.addressComplement} onChange={e => updateField('addressComplement', e.target.value)} placeholder="Apto, bloco, casa…" />
                     </AIField>
                     <AIField label="Bairro" confidence={fc('neighborhood')?.confidence} source={fc('neighborhood')?.source}>
                       <Input value={formData.neighborhood} onChange={e => updateField('neighborhood', e.target.value)} placeholder="Bairro" />

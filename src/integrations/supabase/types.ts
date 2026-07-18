@@ -943,6 +943,10 @@ export type Database = {
       project_general_data: {
         Row: {
           address: string
+          address_complement?: string | null
+          address_number?: string | null
+          cep?: string | null
+          neighborhood?: string | null
           circuit_breaker_current: string | null
           city: string
           coordinates: string | null
@@ -963,6 +967,10 @@ export type Database = {
         }
         Insert: {
           address: string
+          address_complement?: string | null
+          address_number?: string | null
+          cep?: string | null
+          neighborhood?: string | null
           circuit_breaker_current?: string | null
           city: string
           coordinates?: string | null
@@ -983,6 +991,10 @@ export type Database = {
         }
         Update: {
           address?: string
+          address_complement?: string | null
+          address_number?: string | null
+          cep?: string | null
+          neighborhood?: string | null
           circuit_breaker_current?: string | null
           city?: string
           coordinates?: string | null
@@ -1323,6 +1335,9 @@ export type Database = {
       revision_general_data: {
         Row: {
           address: string | null
+          address_complement?: string | null
+          address_number?: string | null
+          neighborhood?: string | null
           cep: string | null
           circuit_breaker_current: string | null
           city: string | null
@@ -1342,6 +1357,9 @@ export type Database = {
         }
         Insert: {
           address?: string | null
+          address_complement?: string | null
+          address_number?: string | null
+          neighborhood?: string | null
           cep?: string | null
           circuit_breaker_current?: string | null
           city?: string | null
@@ -1361,6 +1379,9 @@ export type Database = {
         }
         Update: {
           address?: string | null
+          address_complement?: string | null
+          address_number?: string | null
+          neighborhood?: string | null
           cep?: string | null
           circuit_breaker_current?: string | null
           city?: string | null

@@ -56,7 +56,9 @@ export async function generateResumoPdf(project: ProjectWithDetails): Promise<Bl
 
   // Endereço
   y += 2; section('Endereço');
-  row('Endereço', g?.address ?? '');
+  row('Endereço', [g?.address, g?.address_number && `Nº ${g.address_number}`, g?.address_complement]
+    .filter(Boolean).join(', '));
+  row('Bairro', g?.neighborhood ?? '');
   row('Cidade / UF', [g?.city, g?.state].filter(Boolean).join(' / '));
   row('CEP', g?.cep ?? '');
   row('Área rural', g?.is_rural ? 'Sim' : 'Não');

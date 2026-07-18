@@ -95,6 +95,7 @@ export default function PublicProjectForm() {
     holderPhone: '',
     address: '',
     addressNumber: '',
+    addressComplement: '',
     neighborhood: '',
     cep: '',
     city: '',
@@ -250,13 +251,6 @@ export default function PublicProjectForm() {
 
     setIsSubmitting(true);
     try {
-      const fullAddress = [
-        formData.address,
-        formData.addressNumber && `nº ${formData.addressNumber}`,
-        formData.neighborhood,
-        formData.cep && `CEP: ${formData.cep}`,
-      ].filter(Boolean).join(', ');
-
       const { data: project, error: projectError } = await supabase
         .from('projects')
         .insert({
@@ -276,7 +270,12 @@ export default function PublicProjectForm() {
         holder_cpf_cnpj: formData.holderCpfCnpj.replace(/\D/g, ''),
         holder_email: formData.holderEmail,
         holder_phone: formData.holderPhone.replace(/\D/g, ''),
-        address: fullAddress,
+        // Cada parte do endereço em sua própria coluna (vira uma tag de template).
+        address: formData.address,
+        address_number: formData.addressNumber,
+        address_complement: formData.addressComplement,
+        neighborhood: formData.neighborhood,
+        cep: formData.cep,
         city: formData.city,
         state: formData.state,
         is_rural: formData.isRural,
@@ -338,7 +337,10 @@ export default function PublicProjectForm() {
         try {
           const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string;
           if (apiKey) {
-            const query = `${fullAddress}, ${formData.city}, ${formData.state}, Brasil`;
+            const query = [
+              formData.address, formData.addressNumber, formData.neighborhood,
+              formData.city, formData.state, 'Brasil',
+            ].filter(Boolean).join(', ');
             const resp = await fetch(
               `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(query)}&key=${apiKey}`
             );
@@ -550,6 +552,9 @@ export default function PublicProjectForm() {
                   </FieldGroup>
                   <FieldGroup label="Número">
                     <Input value={formData.addressNumber} onChange={e => updateField('addressNumber', e.target.value)} placeholder="Nº" />
+                  </FieldGroup>
+                  <FieldGroup label="Complemento">
+                    <Input value={formData.addressComplement} onChange={e => updateField('addressComplement', e.target.value)} placeholder="Apto, bloco, casa…" />
                   </FieldGroup>
                   <FieldGroup label="Bairro">
                     <Input value={formData.neighborhood} onChange={e => updateField('neighborhood', e.target.value)} placeholder="Bairro" />

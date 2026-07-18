@@ -11,6 +11,9 @@ export interface RevisionGeneralData {
   holder_phone: string | null;
   holder_email: string | null;
   address: string | null;
+  address_number: string | null;
+  address_complement: string | null;
+  neighborhood: string | null;
   city: string | null;
   state: string | null;
   cep: string | null;
