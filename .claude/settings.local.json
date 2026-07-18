@@ -158,7 +158,8 @@
       "Bash(curl -s -o /dev/null -w \"site: %{http_code}\\\\n\" --max-time 25 https://homologamanager.com.br)",
       "Bash(git commit -q -m 'feat\\(onboarding\\): Product Tour de boas-vindas por tipo de usuario *)",
       "Bash(node -e \"const d=new Date\\(2026,6,17\\); d.setDate\\(d.getDate\\(\\)+30\\); console.log\\('17/07 local +30 =', d.toLocaleDateString\\('pt-BR'\\), '\\(esperado 16/08\\)'\\)\")",
-      "Bash(git commit -q -m 'feat: redesign concessionarias + novas variaveis de template + colunas nas regras *)"
+      "Bash(git commit -q -m 'feat: redesign concessionarias + novas variaveis de template + colunas nas regras *)",
+      "Bash(git commit -q -m 'feat\\(templates\\): variavel {area_ocupada} \\(qtd de modulos x 3 m2\\) *)"
     ]
   }
 }

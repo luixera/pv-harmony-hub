@@ -216,6 +216,7 @@ export function GenerateDocumentDialog({
       modelo_modulo:     e.module_model            ?? '',
       potencia_modulo:   e.module_power    != null ? `${e.module_power} Wp`      : '',
       qtd_modulos:       String(e.module_quantity  ?? ''),
+      area_ocupada:      moduleOccupiedArea(e.module_quantity),
       potencia_total:    e.total_installed_power != null
         ? `${e.total_installed_power} kWp` : '',
       kwp:               String(e.total_installed_power ?? ''),

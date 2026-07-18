@@ -51,6 +51,7 @@ export const TEMPLATE_VARIABLES: TemplateVariable[] = [
   { key: 'modelo_modulo',     desc: 'Modelo dos módulos',                category: 'Equipamentos', example: 'CS7L-600MS' },
   { key: 'potencia_modulo',   desc: 'Potência dos módulos',              category: 'Equipamentos', example: '600 Wp' },
   { key: 'qtd_modulos',       desc: 'Quantidade de módulos',             category: 'Equipamentos', example: '10' },
+  { key: 'area_ocupada',      desc: 'Área ocupada pelos módulos (qtd × 3 m²)', category: 'Equipamentos', example: '30 m²' },
   { key: 'potencia_total',    desc: 'Potência total instalada',          category: 'Equipamentos', example: '6 kWp' },
   { key: 'kwp',               desc: 'Potência total (só o número)',      category: 'Equipamentos', example: '6' },
   // Padrão de entrada (regras da concessionária, resolvidas por fase + disjuntor)
@@ -121,6 +122,14 @@ export function inverterTotalPower(power: number | null | undefined, qty: number
   if (!p || !q) return '';
   const total = p * q;
   return `${Number.isInteger(total) ? total : total.toFixed(2)} kW`;
+}
+
+/** Área ocupada aproximada pelos módulos = qtd de módulos × 3 m² (ex.: "30 m²"). */
+export function moduleOccupiedArea(qty: number | null | undefined): string {
+  const q = Number(qty);
+  if (!q) return '';
+  const area = q * 3;
+  return `${Number.isInteger(area) ? area : area.toFixed(2)} m²`;
 }
 
 /** Converte um grau decimal em Graus/Minutos/Segundos (SIRGAS 2000). */
@@ -197,6 +206,7 @@ export function buildProjectValues(project: ProjectWithDetails): Record<string, 
     modelo_modulo:     e.module_model ?? '',
     potencia_modulo:   e.module_power != null ? `${e.module_power} Wp` : '',
     qtd_modulos:       String(e.module_quantity ?? ''),
+    area_ocupada:      moduleOccupiedArea(e.module_quantity),
     potencia_total:    e.total_installed_power != null ? `${e.total_installed_power} kWp` : '',
     kwp:               String(e.total_installed_power ?? ''),
     data:              today,
