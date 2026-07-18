@@ -22,6 +22,7 @@ import { GenerateDocumentDialog } from './GenerateDocumentDialog';
 import { InstallerPackageDialog } from './InstallerPackageDialog';
 import { Package as PackageIcon } from 'lucide-react';
 import { StaffAssignmentDialog } from './StaffAssignmentDialog';
+import { useProjectAssignments } from '@/hooks/useProjectAssignments';
 import { DeleteProjectDialog } from './DeleteProjectDialog';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -1543,6 +1544,12 @@ export function ProjectModal({ projectId, onClose, initialTab = 'geral' }: Proje
   const canEdit = isAdmin || isStaff;
 
   const { data: project, isLoading } = useProject(projectId);
+  const { data: assignments = [], isLoading: loadingAssignments } = useProjectAssignments(projectId);
+  // Projetista com acesso restrito só pode abrir projetos atribuídos a ele
+  // (ele pode chegar aqui por outras telas, como a de e-mails do Claudinho).
+  const restrictedStaff = isStaff && user?.staffAccessMode === 'assigned_only';
+  const accessDenied =
+    restrictedStaff && !loadingAssignments && !assignments.some(a => a.staff_user_id === user?.id);
   const { data: documents = [] } = useDocuments(projectId);
   const { data: checklists = [] } = useStageChecklists();
   const updateStatus = useUpdateProjectStatus();
@@ -1665,11 +1672,28 @@ export function ProjectModal({ projectId, onClose, initialTab = 'geral' }: Proje
           }}
           onClick={e => e.stopPropagation()}
         >
-          {isLoading || !project ? (
+          {isLoading || (!project && !accessDenied) ? (
             <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 60 }}>
               <Loader2 size={28} className="animate-spin" style={{ color: '#F5A800' }} />
             </div>
-          ) : (
+          ) : accessDenied ? (
+            /* Staff com acesso restrito tentando abrir projeto que não é dele
+               (ex.: clicando num e-mail da tela do Claudinho). */
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 48, gap: 14, textAlign: 'center' }}>
+              <Lock size={34} style={{ color: '#E0E0E0' }} />
+              <p style={{ fontSize: 16, fontWeight: 700, color: '#1A1A1A' }}>Projeto não atribuído a você</p>
+              <p style={{ fontSize: 13, color: '#777', maxWidth: 340, lineHeight: 1.6 }}>
+                Este projeto não está sob sua responsabilidade, por isso os detalhes não podem ser abertos.
+                Se você precisa acompanhá-lo, peça a um administrador para atribuí-lo a você.
+              </p>
+              <button
+                onClick={onClose}
+                style={{ marginTop: 4, padding: '8px 18px', borderRadius: 8, background: '#F5A800', border: 'none', color: '#1A1A1A', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}
+              >
+                Fechar
+              </button>
+            </div>
+          ) : !project ? null : (
             <>
               {/* Header */}
               <div style={{ background: '#1A1A1A', padding: '20px 28px', flexShrink: 0 }}>

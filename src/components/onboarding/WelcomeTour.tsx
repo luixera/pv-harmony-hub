@@ -38,7 +38,7 @@ function stepsForRole(role: string | undefined, tenantName: string): { intro: st
       steps: [
         { icon: Kanban, title: 'Kanban de Projetos', body: 'Arraste os projetos pelas etapas (recebido, análise, protocolo, aprovado…). É o seu painel de trabalho.', actionLabel: 'Abrir Kanban', actionPath: '/projects', essential: true },
         { icon: CheckSquare, title: 'Tarefas', body: 'Suas pendências e prazos ficam aqui — nada se perde.', actionLabel: 'Ver Tarefas', actionPath: '/tasks' },
-        { icon: Mail, title: 'E-mails das concessionárias', body: 'O Claudinho lê os e-mails e vincula automaticamente ao projeto certo. Confira as atualizações.', actionLabel: 'Ver E-mails', actionPath: '/email-updates' },
+        { icon: Mail, title: 'E-mails das concessionárias', body: 'O Claudinho lê os e-mails, vincula ao projeto certo pelo nº de protocolo e sugere o que mudou. Você revisa e decide o que aplicar — nada muda no projeto sozinho.', actionLabel: 'Ver E-mails', actionPath: '/email-updates' },
         { icon: Map, title: 'Mapa de projetos', body: 'Veja os projetos por localização.', actionLabel: 'Abrir Mapa', actionPath: '/projects-map' },
       ],
     };
@@ -50,7 +50,7 @@ function stepsForRole(role: string | undefined, tenantName: string): { intro: st
       { icon: Building2, title: '1. Cadastre suas empresas', body: 'Empresas são os integradores/clientes que enviam projetos. Todo projeto pertence a uma empresa — por isso este é o primeiro passo.', actionLabel: 'Ir para Empresas', actionPath: '/admin/companies', essential: true },
       { icon: Users, title: '2. Convide sua equipe', body: 'Crie usuários para seus colaboradores (staff) e defina o que cada um acessa.', actionLabel: 'Ir para Usuários', actionPath: '/admin/users', essential: true },
       { icon: Sun, title: 'Concessionárias já prontas', body: 'Seu ambiente já veio com as concessionárias, regras de padrão de entrada e o pacote do projetista da biblioteca GD Manager. Ajuste os templates se precisar.', actionLabel: 'Ver Concessionárias', actionPath: '/admin/energy-concessionaires' },
-      { icon: Mail, title: 'Ative o Claudinho (opcional)', body: 'Conecte um e-mail para o assistente ler as respostas das concessionárias e atualizar os projetos sozinho.', actionLabel: 'Configurar E-mails', actionPath: '/email-updates' },
+      { icon: Mail, title: 'Ative o Claudinho (opcional)', body: 'Conecte um e-mail para o assistente ler as respostas das concessionárias, vincular ao projeto pelo protocolo e sugerir a etapa. A aplicação da mudança continua sendo sua — a atualização automática é um passo futuro.', actionLabel: 'Configurar E-mails', actionPath: '/email-updates' },
       { icon: Rocket, title: 'Comece a receber projetos', body: 'Cada empresa tem um link público de formulário para o cliente enviar o projeto — ou cadastre manualmente. Pronto para começar!', actionLabel: 'Abrir Kanban', actionPath: '/projects' },
     ],
   };

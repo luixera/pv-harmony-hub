@@ -1,8 +1,9 @@
+import { useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Database } from '@/integrations/supabase/types';
 import { toast } from 'sonner';
-import { toProjectStatus } from '@/lib/statusMapping';
+import { toProjectStatus, projectStatusLabel } from '@/lib/statusMapping';
 import { upperizeStrings } from '@/lib/textCase';
 import { dispatchNotification } from '@/lib/notify';
 
@@ -158,6 +159,9 @@ export function useProject(id: string | undefined) {
 
 export function useUpdateProjectStatus() {
   const queryClient = useQueryClient();
+  // Etapa anterior de cada projeto em movimento, para registrar "de X → para Y"
+  // no histórico sem precisar de uma consulta extra.
+  const prevStatusRef = useRef(new Map<string, string>());
 
   return useMutation({
     // ── 1. Optimistic update: move the card instantly in the UI ────────────
@@ -167,6 +171,9 @@ export function useUpdateProjectStatus() {
 
       // Snapshot previous state so we can roll back on error
       const previousProjects = queryClient.getQueryData<ProjectWithDetails[]>(['projects']);
+
+      const before = previousProjects?.find(p => p.id === projectId)?.status;
+      if (before) prevStatusRef.current.set(projectId, before as string);
 
       // Immediately reflect new status in the cache — card moves at once
       queryClient.setQueryData<ProjectWithDetails[]>(['projects'], (old) => {
@@ -193,20 +200,34 @@ export function useUpdateProjectStatus() {
         throw error;
       }
 
-      // History insert — fire and forget (non-critical, does NOT block the mutation)
-      supabase.auth.getUser().then(({ data: { user } }) => {
-        if (!user) return;
-        supabase.from('profiles').select('name').eq('id', user.id).single()
-          .then(({ data: profile }) => {
-            supabase.from('project_history').insert({
-              project_id: projectId,
-              action: 'Status alterado',
-              description: `Status alterado para "${status}"`,
-              user_id: user.id,
-              user_name: profile?.name || user.email,
-            });
+      // Histórico da mudança de etapa. Precisa ser AGUARDADO: no supabase-js o
+      // builder é lazy — sem await/then a requisição nunca é enviada (foi por
+      // isso que os registros de mudança de etapa pararam de aparecer).
+      // Falha aqui não derruba a troca de status (já feita acima).
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const { data: profile } = await supabase
+            .from('profiles').select('name').eq('id', user.id).single();
+
+          const before = prevStatusRef.current.get(projectId);
+          prevStatusRef.current.delete(projectId);
+          const description = before
+            ? `Etapa alterada de "${projectStatusLabel(before)}" para "${projectStatusLabel(safeStatus)}"`
+            : `Etapa alterada para "${projectStatusLabel(safeStatus)}"`;
+
+          const { error: histErr } = await supabase.from('project_history').insert({
+            project_id: projectId,
+            action: 'Etapa alterada',
+            description,
+            user_id: user.id,
+            user_name: profile?.name || user.email,
           });
-      });
+          if (histErr) console.error('Erro ao registrar histórico de etapa:', histErr);
+        }
+      } catch (e) {
+        console.error('Falha ao registrar histórico de etapa:', e);
+      }
     },
 
     onSuccess: () => {

@@ -30,3 +30,21 @@ export function isValidProjectStatus(
 ): boolean {
   return VALID_PROJECT_STATUSES.includes(status)
 }
+
+/** Nome amigável da etapa, para exibir ao usuário (histórico, avisos, e-mails). */
+export const PROJECT_STATUS_LABELS: Record<string, string> = {
+  pending: 'Projetos Recebidos',
+  analysis: 'Em Análise',
+  documentation: 'Documentação',
+  approval: 'Aguardando Aprovação',
+  approved: 'Aprovado',
+  pendencia: 'Pendência',
+  vistoria_solicitada: 'Vistoria Solicitada',
+  completed: 'Concluído',
+}
+
+/** Rótulo da etapa; cai no próprio código se for um status customizado. */
+export function projectStatusLabel(status: string | null | undefined): string {
+  if (!status) return '—'
+  return PROJECT_STATUS_LABELS[status] ?? status
+}

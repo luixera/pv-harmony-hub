@@ -13,6 +13,8 @@ interface UserProfile {
   isActive?: boolean;
   isMaster?: boolean;
   tenantId?: string;
+  /** 'global' | 'assigned_only' — staff restrito só vê projetos atribuídos a ele. */
+  staffAccessMode?: string;
 }
 
 interface AuthContextType {
@@ -61,6 +63,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isActive: profile.active,
         isMaster: (profile as { is_master?: boolean }).is_master || false,
         tenantId: (profile as { tenant_id?: string }).tenant_id || undefined,
+        staffAccessMode: (profile as { staff_access_mode?: string }).staff_access_mode || undefined,
       };
 
       return userProfile;

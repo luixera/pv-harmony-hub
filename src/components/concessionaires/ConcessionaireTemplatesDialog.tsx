@@ -106,6 +106,24 @@ export function ConcessionaireTemplatesDialog({
     if (!files || !concessionaire) return;
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
+
+      // Já existe um template com esse nome? Pergunta se é uma nova versão
+      // (substitui, excluindo o antigo) ou se deve manter os dois.
+      const antigos = templates.filter(t => getDisplayName(t.name) === file.name);
+      if (antigos.length > 0) {
+        const substituir = window.confirm(
+          `Já existe um template chamado "${file.name}".\n\n` +
+          `OK = enviar como nova versão e EXCLUIR o antigo.\n` +
+          `Cancelar = manter os dois (ficarão duplicados na lista).`,
+        );
+        if (substituir) {
+          for (const antigo of antigos) {
+            await deleteMutation.mutateAsync({ concessionaireId: concessionaire.id, path: antigo.path });
+            invalidateAnalysis(antigo.path);
+          }
+        }
+      }
+
       await uploadMutation.mutateAsync({ concessionaireId: concessionaire.id, file });
       // análise imediata: avisa se o arquivo tem tags não reconhecidas
       try {

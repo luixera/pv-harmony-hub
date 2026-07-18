@@ -285,7 +285,15 @@ export function GenerateDocumentDialog({
       }
     } catch (error) {
       console.error('[GenerateDoc] Erro:', error);
-      toast.error('Erro ao gerar documento. Verifique se o template é válido.');
+      const msg = error instanceof Error ? error.message : String(error);
+      // Mensagem específica para as causas mais comuns, em vez do erro cru
+      const friendly =
+        /not found|does not exist|404|Object not found/i.test(msg)
+          ? 'O arquivo do template não foi encontrado no servidor. Reenvie o template em Concessionárias → Templates.'
+        : /filetype|corrupt|zip|End of data/i.test(msg)
+          ? 'O arquivo do template parece inválido ou corrompido. Baixe-o, abra no Word, salve como .docx e reenvie.'
+        : `Erro ao gerar documento: ${msg}`;
+      toast.error(friendly, { duration: 9000 });
     } finally {
       setIsGenerating(false);
     }
