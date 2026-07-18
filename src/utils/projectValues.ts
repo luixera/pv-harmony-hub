@@ -165,10 +165,21 @@ export function coordinateValues(raw: string | null | undefined): Record<string,
   };
 }
 
-/** Mapa de tags → valores do projeto, usado para preencher templates .docx. */
-export function buildProjectValues(project: ProjectWithDetails): Record<string, string> {
-  const g = project.generalData ?? ({} as NonNullable<ProjectWithDetails['generalData']>);
-  const e = project.equipment ?? ({} as NonNullable<ProjectWithDetails['equipment']>);
+/** Dados de uma revisão podem substituir os do projeto na geração do documento. */
+export interface ProjectValueOverrides {
+  generalData?: Partial<NonNullable<ProjectWithDetails['generalData']>> | null;
+  equipment?: Partial<NonNullable<ProjectWithDetails['equipment']>> | null;
+}
+
+/** Mapa de tags → valores do projeto, usado para preencher templates .docx.
+ *  Esta é a ÚNICA fonte dessas tags: tanto "Gerar documento" quanto o pacote do
+ *  projetista passam por aqui, para que uma variável nova apareça nos dois. */
+export function buildProjectValues(
+  project: ProjectWithDetails,
+  overrides?: ProjectValueOverrides,
+): Record<string, string> {
+  const g = (overrides?.generalData ?? project.generalData ?? {}) as NonNullable<ProjectWithDetails['generalData']>;
+  const e = (overrides?.equipment ?? project.equipment ?? {}) as NonNullable<ProjectWithDetails['equipment']>;
   const today = format(new Date(), 'dd/MM/yyyy', { locale: ptBR });
 
   const endereco_completo = [

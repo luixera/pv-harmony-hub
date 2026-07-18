@@ -19,7 +19,7 @@ import { RevisionGeneralData, RevisionEquipment } from '@/hooks/useProjectRevisi
 import { useDocumentPreview } from '@/hooks/useDocumentPreview';
 import { detectTemplateTags, generateDocxFromTemplate } from '@/utils/docxGenerator';
 import { useEntryRules, matchEntryRule, entryRuleValues } from '@/hooks/useEntryRules';
-import { coordinateValues, inverterTotalPower, datePlusDays } from '@/utils/projectValues';
+import { buildProjectValues as buildProjectValues_ } from '@/utils/projectValues';
 import { logEvent } from '@/lib/tracking';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -171,60 +171,19 @@ export function GenerateDocumentDialog({
     .filter(([k, v]) => v !== originalValues[k]).length;
 
   // ── Template values builder ────────────────────────────────────────────────
+  // Delega para a fonte única de variáveis (a mesma usada pelo pacote do
+  // projetista), só acrescentando o que é específico daqui: os dados da
+  // revisão selecionada e as colunas do padrão de entrada da concessionária.
   const buildProjectValues = (): Record<string, string> => {
-    const g = revisionData?.general_data ?? project.generalData ?? {};
-    const e = revisionData?.equipment    ?? project.equipment    ?? {};
-    const today = format(new Date(), 'dd/MM/yyyy', { locale: ptBR });
-
-    const endereco_completo = [
-      g.address, g.city, g.state,
-      g.cep ? `CEP: ${g.cep}` : '',
-    ].filter(Boolean).join(', ');
-
-    // Padrão de entrada da concessionária (categoria resolvida por fase + disjuntor)
-    const entryRule = matchEntryRule(entryRules, g.phase_type, g.circuit_breaker_current);
+    const g = revisionData?.general_data ?? project.generalData;
+    const entryRule = matchEntryRule(entryRules, g?.phase_type, g?.circuit_breaker_current);
 
     return {
       ...entryRuleValues(entryRule),
-      codigo_projeto:    project.code              ?? '',
-      empresa:           project.companyName       ?? '',
-      concessionaria:    project.concessionaireName ?? g.utility_company ?? '',
-      nome_titular:      g.holder_name             ?? '',
-      cpf_cnpj:          g.holder_cpf_cnpj         ?? '',
-      email_titular:     g.holder_email            ?? '',
-      telefone_titular:  g.holder_phone            ?? '',
-      endereco:          g.address                 ?? '',
-      cidade:            g.city                    ?? '',
-      estado:            g.state                   ?? '',
-      uf:                g.state                   ?? '',
-      cep:               g.cep                     ?? '',
-      endereco_completo,
-      uc:                g.uc_number               ?? '',
-      numero_uc:         g.uc_number               ?? '',
-      disjuntor:         g.circuit_breaker_current ?? '',
-      fase:              g.phase_type              ?? '',
-      tipo_fase:         g.phase_type              ?? '',
-      rural:             g.is_rural ? 'Sim' : 'Não',
-      coordenadas:       g.coordinates             ?? '',
-      ...coordinateValues(g.coordinates),
-      marca_inversor:    e.inverter_brand          ?? '',
-      modelo_inversor:   e.inverter_model          ?? '',
-      potencia_inversor: e.inverter_power   != null ? `${e.inverter_power} kW`   : '',
-      qtd_inversores:    String(e.inverter_quantity ?? ''),
-      potencia_inversores: inverterTotalPower(e.inverter_power, e.inverter_quantity),
-      marca_modulo:      e.module_brand            ?? '',
-      modelo_modulo:     e.module_model            ?? '',
-      potencia_modulo:   e.module_power    != null ? `${e.module_power} Wp`      : '',
-      qtd_modulos:       String(e.module_quantity  ?? ''),
-      area_ocupada:      moduleOccupiedArea(e.module_quantity),
-      potencia_total:    e.total_installed_power != null
-        ? `${e.total_installed_power} kWp` : '',
-      kwp:               String(e.total_installed_power ?? ''),
-      data:              today,
-      data_emissao:      today,
-      data_atual:        today,
-      data_mais_30:      datePlusDays(30),
-      data_criacao:      format(new Date(project.created_at), 'dd/MM/yyyy', { locale: ptBR }),
+      ...buildProjectValues_(project, {
+        generalData: revisionData?.general_data,
+        equipment:   revisionData?.equipment,
+      }),
     };
   };
 
