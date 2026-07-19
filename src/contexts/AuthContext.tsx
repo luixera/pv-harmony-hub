@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 import { UserRole } from '@/types';
+import { logSystemEvent } from '@/lib/systemLog';
 
 interface UserProfile {
   id: string;
@@ -118,6 +119,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
 
       if (error) {
+        // Registra a tentativa no painel de monitoramento (nunca a senha).
+        void logSystemEvent('login_failed', error.message, { email });
         if (error.message.includes('Invalid login credentials')) {
           return { success: false, error: 'Email ou senha inválidos' };
         }

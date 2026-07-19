@@ -3,7 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { ResponsiveContainer, LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 import { Loader2, Building2, Users, DollarSign, FolderOpen, Activity, MapPin, Cpu, FileText, Package } from 'lucide-react';
 
-const GOLD = '#F5A800';
+export const GOLD = '#F5A800';
 const money = (cents: number) => `R$ ${((cents ?? 0) / 100).toLocaleString('pt-BR', { minimumFractionDigits: 0 })}`;
 
 function useStat<T>(fn: string) {
@@ -19,8 +19,8 @@ function useStat<T>(fn: string) {
 }
 
 // ── UI helpers ──────────────────────────────────────────────────────────────
-const card: React.CSSProperties = { background: '#16161F', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 12, padding: 16 };
-function Kpi({ icon: Icon, label, value, hint }: { icon: React.ElementType; label: string; value: string; hint?: string }) {
+export const card: React.CSSProperties = { background: '#16161F', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 12, padding: 16 };
+export function Kpi({ icon: Icon, label, value, hint }: { icon: React.ElementType; label: string; value: string; hint?: string }) {
   return (
     <div style={card}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#888', fontSize: 12 }}><Icon size={15} style={{ color: GOLD }} /> {label}</div>
@@ -29,14 +29,14 @@ function Kpi({ icon: Icon, label, value, hint }: { icon: React.ElementType; labe
     </div>
   );
 }
-const grid = (min = 180): React.CSSProperties => ({ display: 'grid', gridTemplateColumns: `repeat(auto-fit, minmax(${min}px, 1fr))`, gap: 14 });
-function Loading() { return <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}><Loader2 size={26} className="animate-spin" style={{ color: GOLD }} /></div>; }
-function SectionTitle({ children }: { children: React.ReactNode }) { return <h2 style={{ fontSize: 18, fontWeight: 800, color: '#fff', margin: '0 0 16px' }}>{children}</h2>; }
-function ChartBox({ title, children }: { title: string; children: React.ReactNode }) {
+export const grid = (min = 180): React.CSSProperties => ({ display: 'grid', gridTemplateColumns: `repeat(auto-fit, minmax(${min}px, 1fr))`, gap: 14 });
+export function Loading() { return <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}><Loader2 size={26} className="animate-spin" style={{ color: GOLD }} /></div>; }
+export function SectionTitle({ children }: { children: React.ReactNode }) { return <h2 style={{ fontSize: 18, fontWeight: 800, color: '#fff', margin: '0 0 16px' }}>{children}</h2>; }
+export function ChartBox({ title, children }: { title: string; children: React.ReactNode }) {
   return <div style={{ ...card, height: 240 }}><p style={{ fontSize: 12, color: '#aaa', margin: '0 0 10px' }}>{title}</p><ResponsiveContainer width="100%" height="85%">{children as never}</ResponsiveContainer></div>;
 }
-const tt = { contentStyle: { background: '#0E0E14', border: '1px solid #333', borderRadius: 8, fontSize: 12 }, labelStyle: { color: '#aaa' } };
-const dayShort = (d: string) => d.slice(8, 10) + '/' + d.slice(5, 7);
+export const tt = { contentStyle: { background: '#0E0E14', border: '1px solid #333', borderRadius: 8, fontSize: 12 }, labelStyle: { color: '#aaa' } };
+export const dayShort = (d: string) => d.slice(8, 10) + '/' + d.slice(5, 7);
 
 // ── Visão geral ─────────────────────────────────────────────────────────────
 interface Overview { tenants_total: number; tenants_active: number; tenants_trial: number; tenants_suspended: number; tenants_new_month: number; mrr_cents: number; projects_total: number; projects_month: number; logins_today: number; active_users_month: number; }

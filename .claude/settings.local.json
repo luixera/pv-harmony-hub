@@ -165,7 +165,10 @@
       "Bash(echo \"exit=$?\")",
       "Read(//tmp/**)",
       "Bash(cd \"C:/Users/luiza/Desktop/DADOS/DESENVOLVIMENTO - GD MANAGER ENERGY/pv-harmony-hub-main/pv-harmony-hub-main\" && cat /tmp/err.txt | head -20)",
-      "Bash(python -)"
+      "Bash(python -)",
+      "Bash(curl -s -o /dev/null -w \"home:%{http_code}\\\\n\" https://homologamanager.com.br/)",
+      "Bash(curl -s https://homologamanager.com.br/)",
+      "Bash(curl -s -m 15 -o /dev/null -w \"site=%{http_code}\\\\n\" https://homologamanager.com.br/)"
     ]
   }
 }

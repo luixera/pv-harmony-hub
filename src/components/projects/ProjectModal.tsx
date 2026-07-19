@@ -23,6 +23,7 @@ import { InstallerPackageDialog } from './InstallerPackageDialog';
 import { Package as PackageIcon } from 'lucide-react';
 import { StaffAssignmentDialog } from './StaffAssignmentDialog';
 import { useProjectAssignments } from '@/hooks/useProjectAssignments';
+import { logSystemEvent } from '@/lib/systemLog';
 import { DeleteProjectDialog } from './DeleteProjectDialog';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -1564,6 +1565,12 @@ export function ProjectModal({ projectId, onClose, initialTab = 'geral' }: Proje
   const restrictedStaff = isStaff && user?.staffAccessMode === 'assigned_only';
   const accessDenied =
     restrictedStaff && !loadingAssignments && !assignments.some(a => a.staff_user_id === user?.id);
+
+  useEffect(() => {
+    if (accessDenied && projectId) {
+      void logSystemEvent('forbidden_access', 'Tentou abrir projeto não atribuído', { projectId });
+    }
+  }, [accessDenied, projectId]);
   const { data: documents = [] } = useDocuments(projectId);
   const { data: checklists = [] } = useStageChecklists();
   const updateStatus = useUpdateProjectStatus();

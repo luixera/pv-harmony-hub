@@ -95,6 +95,30 @@ jobs:
             exit 1
           fi
 
+      # Registra a publicação no painel de monitoramento, para dar
+      # para cruzar "começou a dar erro depois da versão X".
+      - name: Registrar deploy no painel
+        if: always()
+        continue-on-error: true
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          DEPLOY_LOG_TOKEN: ${{ secrets.DEPLOY_LOG_TOKEN }}
+          ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          if [ -z "$DEPLOY_LOG_TOKEN" ] || [ -z "$SUPABASE_URL" ]; then
+            echo "Segredos de log ausentes — pulando."; exit 0
+          fi
+          MSG=$(git log -1 --pretty=%s | head -c 300)
+          curl -s -m 20 -X POST "$SUPABASE_URL/functions/v1/log-event" \
+            -H "Content-Type: application/json" \
+            -H "apikey: $ANON_KEY" \
+            -H "x-deploy-token: $DEPLOY_LOG_TOKEN" \
+            -d "$(jq -n --arg m "$MSG" --arg sha "$GITHUB_SHA" \
+                       --arg ref "$GITHUB_REF_NAME" --arg st "${{ job.status }}" \
+                  '{action:"deploy", message:$m,
+                    metadata:{commit:$sha, branch:$ref, resultado:$st,
+                              run:"'"$GITHUB_RUN_ID"'"}}')" || true
+
       - name: Cleanup
         if: always()
         run: rm -f ~/.ssh/deploy_key

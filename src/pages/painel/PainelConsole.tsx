@@ -2,10 +2,11 @@ import { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import MasterPanel from '@/pages/master/MasterPanel';
 import { OverviewSection, AccessSection, UsageSection, FinanceSection } from './ConsoleSections';
-import { Crown, LogOut, Loader2, Building2, LayoutGrid, Activity, BarChart3, DollarSign, Lock, Sun } from 'lucide-react';
+import { MonitoringSection } from './MonitoringSection';
+import { Crown, LogOut, Loader2, Building2, LayoutGrid, Activity, BarChart3, DollarSign, Lock, Sun, ShieldAlert } from 'lucide-react';
 import { toast } from 'sonner';
 
-type Section = 'tenants' | 'overview' | 'access' | 'usage' | 'finance';
+type Section = 'tenants' | 'overview' | 'access' | 'usage' | 'finance' | 'monitoring';
 
 const NAV: { key: Section; label: string; icon: React.ElementType }[] = [
   { key: 'overview', label: 'Visão geral', icon: LayoutGrid },
@@ -13,6 +14,7 @@ const NAV: { key: Section; label: string; icon: React.ElementType }[] = [
   { key: 'access', label: 'Acessos', icon: Activity },
   { key: 'usage', label: 'Uso da plataforma', icon: BarChart3 },
   { key: 'finance', label: 'Financeiro', icon: DollarSign },
+  { key: 'monitoring', label: 'Monitoramento', icon: ShieldAlert },
 ];
 
 export default function PainelConsole() {
@@ -86,6 +88,7 @@ export default function PainelConsole() {
         {section === 'access' && <AccessSection />}
         {section === 'usage' && <UsageSection />}
         {section === 'finance' && <FinanceSection />}
+        {section === 'monitoring' && <MonitoringSection />}
       </main>
     </div>
   );
