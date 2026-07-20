@@ -168,7 +168,12 @@
       "Bash(python -)",
       "Bash(curl -s -o /dev/null -w \"home:%{http_code}\\\\n\" https://homologamanager.com.br/)",
       "Bash(curl -s https://homologamanager.com.br/)",
-      "Bash(curl -s -m 15 -o /dev/null -w \"site=%{http_code}\\\\n\" https://homologamanager.com.br/)"
+      "Bash(curl -s -m 15 -o /dev/null -w \"site=%{http_code}\\\\n\" https://homologamanager.com.br/)",
+      "Bash(curl -s -m 15 -o /dev/null -w \"http=%{http_code}\\\\n\" https://homologamanager.com.br/)",
+      "Bash(node -e 'console.log\\(require\\(\"crypto\"\\).randomBytes\\(24\\).toString\\(\"base64url\"\\)\\)')",
+      "Bash(curl -s https://api.github.com/repos/__TRACKED_VAR__/actions/runs/29708774862/jobs)",
+      "Bash(curl -s \"https://api.github.com/repos/luixera/pv-harmony-hub/actions/runs?per_page=1\")",
+      "Bash(grep -E '^index-.*\\\\.js$')"
     ]
   }
 }

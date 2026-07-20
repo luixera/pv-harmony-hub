@@ -101,9 +101,11 @@ jobs:
         if: always()
         continue-on-error: true
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          # Reaproveita os segredos que o build já usa: o único novo a
+          # cadastrar é o DEPLOY_LOG_TOKEN.
+          SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           DEPLOY_LOG_TOKEN: ${{ secrets.DEPLOY_LOG_TOKEN }}
-          ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          ANON_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
         run: |
           if [ -z "$DEPLOY_LOG_TOKEN" ] || [ -z "$SUPABASE_URL" ]; then
             echo "Segredos de log ausentes — pulando."; exit 0
