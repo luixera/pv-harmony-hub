@@ -39,6 +39,16 @@ jobs:
             --project-ref yqsqrdndvsnhbsoaoilf \
             --no-verify-jwt
 
+      # Sem verify-jwt: o login que falhou ainda não tem sessão. A proteção
+      # é a lista fechada de ações + limite por IP dentro da própria função.
+      - name: Deploy log-event
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          supabase functions deploy log-event \
+            --project-ref yqsqrdndvsnhbsoaoilf \
+            --no-verify-jwt
+
   build-and-deploy:
     runs-on: ubuntu-latest
     timeout-minutes: 15
