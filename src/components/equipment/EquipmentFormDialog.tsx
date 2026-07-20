@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { useSaveEquipment, EquipmentType, EquipmentCatalogItem } from '@/hooks/useEquipmentCatalog';
+import { useSaveEquipment, useAfciDaMarca, EquipmentType, EquipmentCatalogItem } from '@/hooks/useEquipmentCatalog';
 import { Upload, Loader2 } from 'lucide-react';
 
 const UNIT: Record<EquipmentType, string> = { inverter: 'kW', module: 'Wp' };
@@ -30,6 +30,8 @@ export function EquipmentFormDialog({ type, editing, initialBrand, initialModel,
   const afciRef = useRef<HTMLInputElement>(null);
 
   const isInverter = type === 'inverter';
+  // AFCI é documento da marca: se a marca já tem, não precisa anexar de novo.
+  const { data: afciHerdado } = useAfciDaMarca(isInverter ? brand : '');
 
   const handleSave = async () => {
     if (!brand.trim() || !model.trim()) return;
@@ -66,7 +68,22 @@ export function EquipmentFormDialog({ type, editing, initialBrand, initialModel,
           <FileRow label="Datasheet (PDF ou imagem)" file={datasheetFile} existing={editing?.datasheet_url} inputRef={dsRef} onPick={setDatasheetFile} />
           <FileRow label="Certificado INMETRO (PDF ou imagem)" file={inmetroFile} existing={editing?.inmetro_url} inputRef={inRef} onPick={setInmetroFile} />
           {isInverter && (
-            <FileRow label="Certificado AFCI (PDF ou imagem)" file={afciFile} existing={editing?.afci_url} inputRef={afciRef} onPick={setAfciFile} />
+            <>
+              <FileRow
+                label="Certificado AFCI (PDF ou imagem)"
+                file={afciFile}
+                existing={editing?.afci_url ?? afciHerdado ?? undefined}
+                inputRef={afciRef}
+                onPick={setAfciFile}
+              />
+              {/* O AFCI é da marca: se já existe um, este modelo herda. */}
+              {!editing?.afci_url && afciHerdado && !afciFile && (
+                <p className="text-[11px] text-emerald-700 -mt-2">
+                  A marca <strong>{brand.trim()}</strong> já tem certificado AFCI cadastrado —
+                  este modelo vai usar o mesmo. Só anexe se for enviar uma versão nova.
+                </p>
+              )}
+            </>
           )}
           <p className="text-[11px] text-muted-foreground">
             Aceita PDF, JPG ou PNG. Imagens são convertidas em PDF automaticamente, e o arquivo é renomeado no padrão <strong>TIPO MARCA MODELO</strong>.

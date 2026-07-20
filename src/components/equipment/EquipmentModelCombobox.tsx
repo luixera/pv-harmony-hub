@@ -15,6 +15,8 @@ interface Props {
   /** seleção de um item do catálogo → preenche marca/modelo/potência */
   onSelect: (sel: Selection) => void;
   placeholder?: string;
+  /** Marca já escolhida no formulário: restringe a lista a ela. */
+  brand?: string;
 }
 
 /**
@@ -22,11 +24,15 @@ interface Props {
  * Ao selecionar um item, preenche marca/modelo/potência via onSelect.
  * Se o modelo digitado não existir, oferece "Cadastrar novo equipamento".
  */
-export function EquipmentModelCombobox({ type, value, onType, onSelect, placeholder }: Props) {
+export function EquipmentModelCombobox({ type, value, onType, onSelect, placeholder, brand }: Props) {
   const { data: items = [] } = useEquipmentCatalog(type);
   const [open, setOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
+  const [verTodas, setVerTodas] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
+
+  // Trocou a marca no formulário → volta a filtrar por ela.
+  useEffect(() => { setVerTodas(false); }, [brand]);
 
   useEffect(() => {
     const onDoc = (e: MouseEvent) => { if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false); };
@@ -35,9 +41,19 @@ export function EquipmentModelCombobox({ type, value, onType, onSelect, placehol
   }, []);
 
   const q = value.trim().toLowerCase();
+  // "Ver todas as marcas" solta o filtro sem precisar apagar o campo Marca.
+  const marca = verTodas ? '' : (brand ?? '').trim().toLowerCase();
+
+  // Com a marca preenchida, mostra só os equipamentos dela. Se a marca não
+  // tem nenhum modelo no catálogo, volta a listar tudo em vez de deixar o
+  // usuário diante de uma lista vazia sem explicação.
+  const daMarca = marca ? items.filter(i => i.brand.trim().toLowerCase() === marca) : items;
+  const base = marca && daMarca.length === 0 ? items : daMarca;
+  const filtradoPorMarca = marca && daMarca.length > 0;
+
   const matches = q
-    ? items.filter(i => `${i.brand} ${i.model}`.toLowerCase().includes(q))
-    : items;
+    ? base.filter(i => `${i.brand} ${i.model}`.toLowerCase().includes(q))
+    : base;
   const exact = items.some(i => i.model.toLowerCase() === q && q !== '');
 
   const pick = (item: EquipmentCatalogItem) => {
@@ -60,6 +76,24 @@ export function EquipmentModelCombobox({ type, value, onType, onSelect, placehol
           background: '#fff', border: '1px solid #E5E7EB', borderRadius: 8,
           boxShadow: '0 8px 24px rgba(0,0,0,0.12)', maxHeight: 260, overflowY: 'auto',
         }}>
+          {/* Deixa explícito que a lista está restrita à marca escolhida. */}
+          {filtradoPorMarca && (
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+              padding: '7px 12px', borderBottom: '1px solid #F0F0F0', background: '#F9FAFB',
+              fontSize: 11, color: '#6B7280',
+            }}>
+              <span>Mostrando apenas <strong>{brand?.trim()}</strong></span>
+              <button
+                type="button"
+                onClick={() => setVerTodas(true)}
+                style={{ border: 'none', background: 'none', color: '#854F0B', fontWeight: 600, cursor: 'pointer', fontSize: 11 }}
+              >
+                Ver todas as marcas
+              </button>
+            </div>
+          )}
+
           {matches.slice(0, 20).map(item => (
             <button
               key={item.id}
@@ -91,7 +125,11 @@ export function EquipmentModelCombobox({ type, value, onType, onSelect, placehol
           ))}
 
           {matches.length === 0 && (
-            <div style={{ padding: '10px 12px', fontSize: 12, color: '#9CA3AF' }}>Nenhum modelo no catálogo</div>
+            <div style={{ padding: '10px 12px', fontSize: 12, color: '#9CA3AF' }}>
+              {filtradoPorMarca
+                ? `Nenhum modelo de ${brand?.trim()} com esse texto`
+                : 'Nenhum modelo no catálogo'}
+            </div>
           )}
 
           {/* Cadastrar novo — quando não há correspondência exata */}
@@ -114,6 +152,7 @@ export function EquipmentModelCombobox({ type, value, onType, onSelect, placehol
       {addOpen && (
         <EquipmentFormDialog
           type={type}
+          initialBrand={brand?.trim() || undefined}
           initialModel={value.trim()}
           onClose={() => setAddOpen(false)}
           onSaved={(item) => onSelect({ brand: item.brand, model: item.model, power: item.power, catalogId: item.id })}

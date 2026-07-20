@@ -100,6 +100,31 @@ interface SaveEquipmentInput {
   afci_url?: string | null;
 }
 
+/** Busca o certificado AFCI já cadastrado para uma marca de inversor. */
+export async function afciDaMarca(brand: string): Promise<string | null> {
+  const nome = brand.trim();
+  if (!nome) return null;
+  const { data } = await supabase
+    .from('equipment_catalog' as never)
+    .select('afci_url')
+    .eq('type', 'inverter')
+    .ilike('brand', nome)
+    .not('afci_url', 'is', null)
+    .limit(1)
+    .maybeSingle();
+  return (data as { afci_url?: string } | null)?.afci_url ?? null;
+}
+
+/** Hook de leitura para a UI avisar que a marca já tem AFCI. */
+export function useAfciDaMarca(brand: string) {
+  return useQuery({
+    queryKey: ['afci-marca', brand.trim().toLowerCase()],
+    queryFn: () => afciDaMarca(brand),
+    enabled: brand.trim().length > 1,
+    staleTime: 60_000,
+  });
+}
+
 export function useSaveEquipment() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -116,10 +141,14 @@ export function useSaveEquipment() {
 
       const datasheet_url = await resolveDoc('datasheet', input.datasheetFile, input.datasheet_url ?? null);
       const inmetro_url = await resolveDoc('inmetro', input.inmetroFile, input.inmetro_url ?? null);
-      // AFCI só existe para inversores
-      const afci_url = input.type === 'inverter'
-        ? await resolveDoc('afci', input.afciFile, input.afci_url ?? null)
-        : null;
+      // AFCI só existe para inversores e é um documento da MARCA, não do
+      // modelo: se a marca já tem certificado, o novo equipamento herda em
+      // vez de obrigar a anexar o mesmo arquivo de novo.
+      let afci_url: string | null = null;
+      if (input.type === 'inverter') {
+        afci_url = await resolveDoc('afci', input.afciFile, input.afci_url ?? null);
+        if (!afci_url) afci_url = await afciDaMarca(input.brand);
+      }
 
       const row = {
         type: input.type,
@@ -130,6 +159,17 @@ export function useSaveEquipment() {
         inmetro_url,
         afci_url,
       };
+
+      // Certificado novo anexado → passa a valer para os outros inversores da
+      // mesma marca que ainda não tinham. Não sobrescreve quem já tem, para
+      // não apagar um documento anexado de propósito.
+      if (input.type === 'inverter' && input.afciFile && afci_url) {
+        await supabase.from('equipment_catalog' as never)
+          .update({ afci_url } as never)
+          .eq('type', 'inverter')
+          .ilike('brand', input.brand.trim())
+          .is('afci_url', null);
+      }
 
       if (input.id) {
         const { error } = await supabase.from('equipment_catalog' as never).update(row as never).eq('id', input.id);

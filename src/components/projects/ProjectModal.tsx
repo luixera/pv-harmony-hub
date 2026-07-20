@@ -24,6 +24,7 @@ import { Package as PackageIcon } from 'lucide-react';
 import { StaffAssignmentDialog } from './StaffAssignmentDialog';
 import { useProjectAssignments } from '@/hooks/useProjectAssignments';
 import { logSystemEvent } from '@/lib/systemLog';
+import { EquipmentModelCombobox } from '@/components/equipment/EquipmentModelCombobox';
 import { DeleteProjectDialog } from './DeleteProjectDialog';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -280,6 +281,86 @@ function parseCoordsModal(value: string | null | undefined): { lat: number; lng:
 }
 
 // ── Tab: General ───────────────────────────────────────────────────────────────
+/**
+ * Bloco de equipamento (inversor ou módulo) do modal.
+ *
+ * Em edição, o campo Modelo é um combobox do catálogo — assim dá para trocar
+ * o equipamento por um já cadastrado sem redigitar, e escolher um item
+ * preenche marca e potência de uma vez. Digitar livre continua permitido,
+ * para quem tem um equipamento fora do catálogo.
+ */
+function EquipmentBlock<T extends Record<string, string>>({
+  titulo, type, campos, labels, isEditing, form, setForm,
+}: {
+  titulo: string;
+  type: 'inverter' | 'module';
+  campos: string[];
+  labels: Record<string, string>;
+  isEditing: boolean;
+  form: T;
+  setForm: React.Dispatch<React.SetStateAction<T>>;
+}) {
+  const campoModelo = `${type}_model`;
+  const campoMarca = `${type}_brand`;
+  const campoPotencia = `${type}_power`;
+
+  return (
+    <div style={{ background: '#F8F8F8', borderRadius: 10, padding: '16px 20px', border: '1px solid #EFEFEF' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12 }}>
+        <p style={{ fontSize: 11, fontWeight: 700, color: '#888', margin: 0 }}>{titulo}</p>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {campos.map(k => (
+          <div key={k} style={{
+            display: 'flex', flexDirection: isEditing ? 'column' : 'row',
+            justifyContent: 'space-between', alignItems: isEditing ? 'flex-start' : 'center',
+            gap: isEditing ? 3 : 0,
+          }}>
+            <span style={{
+              fontSize: 11, color: '#aaa', fontWeight: 600, textTransform: 'uppercase',
+              letterSpacing: '0.05em', whiteSpace: 'nowrap', flexShrink: 0,
+            }}>{labels[k]}</span>
+
+            {!isEditing ? (
+              form[k]
+                ? <span style={{
+                    fontSize: 13, fontWeight: 500, color: '#1A1A1A', textAlign: 'right',
+                    overflowWrap: 'anywhere', wordBreak: 'break-word', minWidth: 0, paddingLeft: 8,
+                  }}>{form[k]}</span>
+                : <em style={{ color: '#ccc', fontSize: 12 }}>—</em>
+            ) : k === campoModelo ? (
+              <div style={{ width: '100%' }}>
+                <EquipmentModelCombobox
+                  type={type}
+                  brand={form[campoMarca]}
+                  value={form[k]}
+                  onType={v => setForm(f => ({ ...f, [k]: v }))}
+                  onSelect={sel => setForm(f => ({
+                    ...f,
+                    [campoMarca]: sel.brand,
+                    [campoModelo]: sel.model,
+                    ...(sel.power != null ? { [campoPotencia]: String(sel.power) } : {}),
+                  }))}
+                  placeholder="Buscar no catálogo ou digitar…"
+                />
+              </div>
+            ) : (
+              <input
+                value={form[k]}
+                onChange={e => setForm(f => ({ ...f, [k]: e.target.value }))}
+                style={{
+                  width: '100%', padding: '5px 8px', borderRadius: 6,
+                  border: '1px solid #E0E0E0', fontSize: 13, color: '#1A1A1A', outline: 'none',
+                }}
+              />
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function TabGeneral({ project, isEditing, onSave, onCancel, onEdit }: {
   project: ProjectWithDetails;
   isEditing: boolean;
@@ -544,60 +625,18 @@ function TabGeneral({ project, isEditing, onSave, onCancel, onEdit }: {
       <div>
         <SectionTitle title="Equipamentos" />
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          {/* Inversor */}
-          <div style={{ background: '#F8F8F8', borderRadius: 10, padding: '16px 20px', border: '1px solid #EFEFEF' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12 }}>
-              <p style={{ fontSize: 11, fontWeight: 700, color: '#888', margin: 0 }}>INVERSOR</p>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {['inverter_brand', 'inverter_model', 'inverter_power', 'inverter_quantity'].map(k => {
-                const labels: Record<string, string> = { inverter_brand: 'Marca', inverter_model: 'Modelo', inverter_power: 'Potência (kW)', inverter_quantity: 'Quantidade' };
-                return (
-                  <div key={k} style={{ display: 'flex', flexDirection: isEditing ? 'column' : 'row', justifyContent: 'space-between', alignItems: isEditing ? 'flex-start' : 'center', gap: isEditing ? 3 : 0 }}>
-                    <span style={{ fontSize: 11, color: '#aaa', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap', flexShrink: 0 }}>{labels[k]}</span>
-                    {isEditing ? (
-                      <input
-                        value={form[k as keyof typeof form]}
-                        onChange={e => setForm(f => ({ ...f, [k]: e.target.value }))}
-                        style={{ width: '100%', padding: '5px 8px', borderRadius: 6, border: '1px solid #E0E0E0', fontSize: 13, color: '#1A1A1A', outline: 'none' }}
-                      />
-                    ) : (
-                      form[k as keyof typeof form]
-                        ? <span style={{ fontSize: 13, fontWeight: 500, color: '#1A1A1A', textAlign: 'right', overflowWrap: 'anywhere', wordBreak: 'break-word', minWidth: 0, paddingLeft: 8 }}>{form[k as keyof typeof form]}</span>
-                        : <em style={{ color: '#ccc', fontSize: 12 }}>—</em>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-          {/* Módulos */}
-          <div style={{ background: '#F8F8F8', borderRadius: 10, padding: '16px 20px', border: '1px solid #EFEFEF' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12 }}>
-              <p style={{ fontSize: 11, fontWeight: 700, color: '#888', margin: 0 }}>MÓDULOS</p>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {['module_brand', 'module_model', 'module_power', 'module_quantity'].map(k => {
-                const labels: Record<string, string> = { module_brand: 'Marca', module_model: 'Modelo', module_power: 'Potência (Wp)', module_quantity: 'Quantidade' };
-                return (
-                  <div key={k} style={{ display: 'flex', flexDirection: isEditing ? 'column' : 'row', justifyContent: 'space-between', alignItems: isEditing ? 'flex-start' : 'center', gap: isEditing ? 3 : 0 }}>
-                    <span style={{ fontSize: 11, color: '#aaa', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap', flexShrink: 0 }}>{labels[k]}</span>
-                    {isEditing ? (
-                      <input
-                        value={form[k as keyof typeof form]}
-                        onChange={e => setForm(f => ({ ...f, [k]: e.target.value }))}
-                        style={{ width: '100%', padding: '5px 8px', borderRadius: 6, border: '1px solid #E0E0E0', fontSize: 13, color: '#1A1A1A', outline: 'none' }}
-                      />
-                    ) : (
-                      form[k as keyof typeof form]
-                        ? <span style={{ fontSize: 13, fontWeight: 500, color: '#1A1A1A', textAlign: 'right', overflowWrap: 'anywhere', wordBreak: 'break-word', minWidth: 0, paddingLeft: 8 }}>{form[k as keyof typeof form]}</span>
-                        : <em style={{ color: '#ccc', fontSize: 12 }}>—</em>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+          <EquipmentBlock
+            titulo="INVERSOR" type="inverter"
+            campos={["inverter_brand", "inverter_model", "inverter_power", "inverter_quantity"]}
+            labels={{ inverter_brand: "Marca", inverter_model: "Modelo", inverter_power: "Potência (kW)", inverter_quantity: "Quantidade" }}
+            isEditing={isEditing} form={form} setForm={setForm}
+          />
+          <EquipmentBlock
+            titulo="MÓDULOS" type="module"
+            campos={["module_brand", "module_model", "module_power", "module_quantity"]}
+            labels={{ module_brand: "Marca", module_model: "Modelo", module_power: "Potência (Wp)", module_quantity: "Quantidade" }}
+            isEditing={isEditing} form={form} setForm={setForm}
+          />
         </div>
         {totalPower > 0 && (
           <div style={{ marginTop: 14, display: 'inline-flex', alignItems: 'center', gap: 6, background: '#FEF3D0', borderRadius: 8, padding: '12px 20px' }}>

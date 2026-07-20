@@ -1211,6 +1211,7 @@ export default function NewProject() {
                       ) : (
                         <EquipmentModelCombobox
                           type="inverter"
+                          brand={formData.inverterBrand}
                           value={formData.inverterModel}
                           onType={v => { updateField('inverterModel', v); setInvCatalogId(null); }}
                           onSelect={sel => {
@@ -1251,6 +1252,7 @@ export default function NewProject() {
                       ) : (
                         <EquipmentModelCombobox
                           type="module"
+                          brand={formData.moduleBrand}
                           value={formData.moduleModel}
                           onType={v => { updateField('moduleModel', v); setModCatalogId(null); }}
                           onSelect={sel => {
