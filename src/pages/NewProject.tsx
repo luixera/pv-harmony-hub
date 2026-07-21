@@ -21,6 +21,7 @@ import { DocumentUploadField } from '@/components/forms/DocumentUploadField';
 import { Database } from '@/integrations/supabase/types';
 import { useEnergyConcessionaires } from '@/hooks/useEnergyConcessionaires';
 import { validateFile, sanitizeFileName } from '@/lib/utils';
+import { formatCpfCnpj, isPessoaJuridica, tipoPessoa, erroCpfCnpj } from '@/lib/cpfCnpj';
 import { upperizeStrings } from '@/lib/textCase';
 import { useQuery } from '@tanstack/react-query';
 
@@ -96,6 +97,11 @@ interface FormDocuments {
   entranceStandardPhoto: File[];
   circuitBreakerPhoto: File[];
   otherPhotos: File[];
+  // Só aparecem quando o titular é pessoa jurídica (CNPJ completo).
+  cnpjCard: File[];
+  socialContract: File[];
+  legalRepDocument: File[];
+  powerOfAttorney: File[];
 }
 
 // ── Helpers visuais ───────────────────────────────────────────────────────────
@@ -283,6 +289,10 @@ export default function NewProject() {
     entranceStandardPhoto: [],
     circuitBreakerPhoto: [],
     otherPhotos: [],
+    cnpjCard: [],
+    socialContract: [],
+    legalRepDocument: [],
+    powerOfAttorney: [],
   });
   const [isGeocoding, setIsGeocoding] = useState(false);
   const [showMapPreview, setShowMapPreview] = useState(false);
@@ -302,20 +312,9 @@ export default function NewProject() {
 
   // ── Formatadores ─────────────────────────────────────────────────────────────
 
-  const formatCpfCnpj = (value: string) => {
-    const n = value.replace(/\D/g, '').slice(0, 14);
-    if (n.length <= 11) {
-      return n
-        .replace(/(\d{3})(\d)/, '$1.$2')
-        .replace(/(\d{3})(\d)/, '$1.$2')
-        .replace(/(\d{3})(\d{1,2})$/, '$1-$2');
-    }
-    return n
-      .replace(/(\d{2})(\d)/, '$1.$2')
-      .replace(/(\d{3})(\d)/, '$1.$2')
-      .replace(/(\d{3})(\d)/, '$1/$2')
-      .replace(/(\d{4})(\d{1,2})$/, '$1-$2');
-  };
+  // Máscara e tipo de pessoa vêm de @/lib/cpfCnpj (compartilhado com o
+  // formulário público, para os dois validarem igual).
+  const ehPessoaJuridica = isPessoaJuridica(formData.holderCpfCnpj);
 
   const formatCEP = (value: string) => {
     const numbers = value.replace(/\D/g, '').slice(0, 8);
@@ -526,6 +525,11 @@ export default function NewProject() {
     switch (step) {
       case 1:
         if (!formData.holderName || !formData.holderCpfCnpj) { toast.error('Preencha os dados do titular'); return false; }
+        // CPF/CNPJ tem que estar completo: 11 ou 14 dígitos, nada no meio.
+        {
+          const erroDoc = erroCpfCnpj(formData.holderCpfCnpj);
+          if (erroDoc) { toast.error(erroDoc); return false; }
+        }
         if (!formData.holderEmail || !formData.holderPhone) { toast.error('Preencha email e telefone do titular'); return false; }
         if (!formData.address || !formData.city || !formData.state) { toast.error('Preencha o endereço completo'); return false; }
         if (!formData.consumerUnitNumber || !formData.phaseType) { toast.error('Preencha os dados da unidade consumidora'); return false; }
@@ -545,6 +549,17 @@ export default function NewProject() {
         if (!hasEnergyBill || !hasBeneficiaryBills || !hasHolderDoc || !hasEntrancePhoto || !hasCircuitBreaker) {
           toast.error('Envie todos os documentos obrigatórios');
           return false;
+        }
+        // Documentos de PJ não travam o envio, mas o usuário é avisado do que
+        // ainda falta — senão a pendência só apareceria lá na análise.
+        if (ehPessoaJuridica) {
+          const faltando = [
+            documents.cnpjCard.length === 0 && 'cartão CNPJ',
+            documents.socialContract.length === 0 && 'contrato social',
+          ].filter(Boolean) as string[];
+          if (faltando.length > 0) {
+            toast.warning(`Titular é pessoa jurídica e falta anexar: ${faltando.join(' e ')}. Você pode enviar assim e anexar depois.`, { duration: 7000 });
+          }
         }
         return true;
       }
@@ -689,6 +704,10 @@ export default function NewProject() {
         { files: documents.entranceStandardPhoto, type: 'entrance_standard_photo' },
         { files: documents.circuitBreakerPhoto, type: 'breaker_photo' },
         { files: documents.otherPhotos, type: 'other_photos' },
+        { files: documents.cnpjCard, type: 'cnpj_card' },
+        { files: documents.socialContract, type: 'social_contract' },
+        { files: documents.legalRepDocument, type: 'legal_rep_document' },
+        { files: documents.powerOfAttorney, type: 'power_of_attorney' },
       ];
       try {
         for (const mapping of docMappings) {
@@ -1074,6 +1093,12 @@ export default function NewProject() {
                     </AIField>
                     <AIField label="CPF / CNPJ *" confidence={fc('holderCpfCnpj')?.confidence} source={fc('holderCpfCnpj')?.source}>
                       <Input value={formData.holderCpfCnpj} onChange={e => updateField('holderCpfCnpj', formatCpfCnpj(e.target.value))} placeholder="000.000.000-00 ou 00.000.000/0001-00" />
+                      {/* Mostra o tipo assim que o número fica completo. */}
+                      {tipoPessoa(formData.holderCpfCnpj) !== 'indefinido' && (
+                        <p style={{ fontSize: 11, color: '#16A34A', marginTop: 3 }}>
+                          {ehPessoaJuridica ? 'Pessoa jurídica — documentos da empresa na etapa de anexos' : 'Pessoa física'}
+                        </p>
+                      )}
                     </AIField>
                     <AIField label="Email do Titular *">
                       <Input type="email" value={formData.holderEmail} onChange={e => updateField('holderEmail', e.target.value)} placeholder="email@exemplo.com" disabled={useCompanyContact === 'company'} className={useCompanyContact === 'company' ? 'bg-muted' : ''} />
@@ -1308,6 +1333,25 @@ export default function NewProject() {
                 <DocumentUploadField id="entrance_standard_photo" label="Foto do padrão de entrada" required files={documents.entranceStandardPhoto} onFilesChange={files => updateDocuments('entranceStandardPhoto', files)} />
                 <DocumentUploadField id="circuit_breaker_photo" label="Foto do disjuntor de entrada" required files={documents.circuitBreakerPhoto} onFilesChange={files => updateDocuments('circuitBreakerPhoto', files)} hasAlternativeInput alternativeLabel="Corrente do disjuntor (A)" alternativeValue={circuitBreakerCurrent} onAlternativeChange={setCircuitBreakerCurrent} useAlternative={noCircuitBreakerPhoto} onUseAlternativeChange={setNoCircuitBreakerPhoto} />
                 <DocumentUploadField id="other_photos" label="Outras fotos (telhado, quadro geral, transformador)" multiple files={documents.otherPhotos} onFilesChange={files => updateDocuments('otherPhotos', files)} />
+
+                {/* Bloco que só existe para titular pessoa jurídica. */}
+                {ehPessoaJuridica && (
+                  <div style={{ borderTop: '1px solid #EEE', paddingTop: 16, marginTop: 4, display: 'flex', flexDirection: 'column', gap: 16 }}>
+                    <div style={{ background: 'rgba(59,130,246,0.06)', border: '1px solid rgba(59,130,246,0.2)', borderRadius: 10, padding: '10px 14px' }}>
+                      <p style={{ fontSize: 12, color: '#1D4ED8', margin: 0, fontWeight: 600 }}>
+                        Titular é pessoa jurídica (CNPJ)
+                      </p>
+                      <p style={{ fontSize: 11, color: '#3B82F6', margin: '2px 0 0' }}>
+                        Anexe os documentos da empresa. Não são obrigatórios para enviar, mas a
+                        concessionária costuma exigir na análise.
+                      </p>
+                    </div>
+                    <DocumentUploadField id="cnpj_card" label="Cartão CNPJ" files={documents.cnpjCard} onFilesChange={files => updateDocuments('cnpjCard', files)} />
+                    <DocumentUploadField id="social_contract" label="Contrato social ou estatuto" files={documents.socialContract} onFilesChange={files => updateDocuments('socialContract', files)} />
+                    <DocumentUploadField id="legal_rep_document" label="Documento do responsável legal" files={documents.legalRepDocument} onFilesChange={files => updateDocuments('legalRepDocument', files)} />
+                    <DocumentUploadField id="power_of_attorney" label="Procuração (se quem assina não é o sócio administrador)" files={documents.powerOfAttorney} onFilesChange={files => updateDocuments('powerOfAttorney', files)} />
+                  </div>
+                )}
 
                 <div style={{ paddingTop: 16, borderTop: '1px solid #F3F4F6' }}>
                   <FieldGroup label="Observações do projeto (opcional)">

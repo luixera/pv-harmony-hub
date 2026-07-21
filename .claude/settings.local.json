@@ -175,7 +175,9 @@
       "Bash(curl -s \"https://api.github.com/repos/luixera/pv-harmony-hub/actions/runs?per_page=1\")",
       "Bash(grep -E '^index-.*\\\\.js$')",
       "Bash(awk 'NR<546 && /^\\(function|const [A-Z][A-Za-z]* =|export function\\)/ {l=NR\": \"$0} END{}{}' src/components/projects/ProjectModal.tsx)",
-      "Bash(awk -F: '$1<546')"
+      "Bash(awk -F: '$1<546')",
+      "Bash(grep -nE \"^\\\\s{0,4}\\(export|type|interface|\\\\}|[A-Za-z_]+:\\)\")",
+      "Bash(awk 'NR<=1533 && /^\\(export type Database|export type|export const|  [a-z_]+: \\\\{\\)/ {print NR\": \"$0}' src/integrations/supabase/types.ts)"
     ]
   }
 }

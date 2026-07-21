@@ -62,6 +62,11 @@ const DOC_TYPE_LABELS: Record<string, string> = {
   entrance_standard_photo: 'Foto do padrão de entrada',
   breaker_photo: 'Foto do disjuntor',
   other_photos: 'Outras fotos',
+  // Titular pessoa jurídica
+  cnpj_card: 'Cartão CNPJ',
+  social_contract: 'Contrato social',
+  legal_rep_document: 'Documento do responsável legal',
+  power_of_attorney: 'Procuração',
 };
 const ROLE_COLORS: Record<string, { bg: string; color: string; label: string }> = {
   admin:   { bg: '#FEF3D0', color: '#854F0B', label: 'Admin' },

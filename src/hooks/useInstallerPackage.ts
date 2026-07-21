@@ -26,6 +26,11 @@ export const PROJECT_DOCUMENT_TYPES: { value: string; label: string }[] = [
   { value: 'energy_bill_generator', label: 'Conta de energia (gerador)' },
   { value: 'energy_bill_beneficiaries', label: 'Conta de energia (beneficiários)' },
   { value: 'other_photos', label: 'Outros anexos' },
+  // Titular pessoa jurídica — entram no pacote quando o projeto tiver.
+  { value: 'cnpj_card', label: 'Cartão CNPJ' },
+  { value: 'social_contract', label: 'Contrato social' },
+  { value: 'legal_rep_document', label: 'Documento do responsável legal' },
+  { value: 'power_of_attorney', label: 'Procuração' },
 ];
 
 /** Fotos de instalação que podem ser reaproveitadas de outro projeto (mesmo disjuntor + fase). */

@@ -1546,6 +1546,10 @@ export type Database = {
         | "entrance_standard_photo"
         | "breaker_photo"
         | "other_photos"
+        | "cnpj_card"
+        | "social_contract"
+        | "legal_rep_document"
+        | "power_of_attorney"
       field_action: "show" | "hide" | "require" | "optional"
       field_type:
         | "text"
@@ -1717,6 +1721,10 @@ export const Constants = {
         "entrance_standard_photo",
         "breaker_photo",
         "other_photos",
+        "cnpj_card",
+        "social_contract",
+        "legal_rep_document",
+        "power_of_attorney",
       ],
       field_action: ["show", "hide", "require", "optional"],
       field_type: [

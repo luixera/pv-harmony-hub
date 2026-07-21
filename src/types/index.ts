@@ -36,7 +36,12 @@ export type DocumentType =
   | 'holder_document'
   | 'entrance_standard_photo'
   | 'circuit_breaker_photo'
-  | 'other_photos';
+  | 'other_photos'
+  // Titular pessoa jurídica
+  | 'cnpj_card'
+  | 'social_contract'
+  | 'legal_rep_document'
+  | 'power_of_attorney';
 
 export interface ProjectDocument {
   id: string;

@@ -399,4 +399,8 @@ export const documentTypeLabels: Record<string, string> = {
   entrance_standard_photo: 'Foto do padrão de entrada',
   circuit_breaker_photo: 'Foto do disjuntor de entrada',
   other_photos: 'Outras fotos',
+  cnpj_card: 'Cartão CNPJ',
+  social_contract: 'Contrato social',
+  legal_rep_document: 'Documento do responsável legal',
+  power_of_attorney: 'Procuração',
 };
