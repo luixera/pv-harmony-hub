@@ -79,6 +79,15 @@ REGRAS IMPORTANTES:
 6. phase_type deve ser: "monofasico", "bifasico" ou "trifasico" (baseado na classe de tensão da conta).
 7. document_type_detected deve ser: "rg", "cnh", "cnpj", "contrato_social", "purchase_order", "energy_bill", "outro".
 8. unexpected_document = true se o documento de identidade enviado NÃO for RG, CNH ou Cartão CNPJ.
+9. NOME DO TITULAR NO DOCUMENTO DE IDENTIDADE — atenção máxima:
+   - RG/CNH contêm VÁRIOS nomes. O titular é SEMPRE o campo "NOME" (o nome do
+     portador do documento), NUNCA a "FILIAÇÃO" / "NOME DO PAI" / "NOME DA MÃE".
+   - Em CNH, o nome do titular fica logo após o rótulo "NOME"; a filiação vem
+     abaixo, rotulada "FILIAÇÃO" (dois nomes: pai e mãe). Ignore a filiação.
+   - Em RG, o titular é o campo "NOME"; ignore "FILIAÇÃO"/"PAI"/"MÃE".
+   - Em Cartão CNPJ, o titular é a "RAZÃO SOCIAL" / "NOME EMPRESARIAL".
+   - Se houver dúvida entre nome do portador e filiação, prefira o que estiver
+     rotulado como "NOME" e reduza a confiança.
 
 Retorne APENAS JSON válido sem markdown, no formato exato:
 {
@@ -124,6 +133,9 @@ REGRAS:
 2. unexpected_document = true se NÃO for RG, CNH ou Cartão CNPJ
 3. similarity 0-100: 100=idêntico, 80+=mesmo nome com variação menor, <60=pessoas diferentes
 4. match = true se similarity >= 75
+5. O nome no documento de identidade é o campo "NOME" (o portador), NUNCA a
+   "FILIAÇÃO"/"NOME DO PAI"/"NOME DA MÃE". Em CNH a filiação vem logo abaixo do
+   nome — ignore-a. Em Cartão CNPJ, use a "RAZÃO SOCIAL".
 
 Retorne APENAS JSON válido sem markdown:
 {

@@ -178,7 +178,8 @@
       "Bash(awk -F: '$1<546')",
       "Bash(grep -nE \"^\\\\s{0,4}\\(export|type|interface|\\\\}|[A-Za-z_]+:\\)\")",
       "Bash(awk 'NR<=1533 && /^\\(export type Database|export type|export const|  [a-z_]+: \\\\{\\)/ {print NR\": \"$0}' src/integrations/supabase/types.ts)",
-      "Bash(node -e \"const p=require\\('./package.json'\\); console.log\\('deps:', Object.keys\\(p.dependencies\\).join\\(', '\\)\\); console.log\\('---'\\); console.log\\('devDeps:', Object.keys\\(p.devDependencies\\).join\\(', '\\)\\);\")"
+      "Bash(node -e \"const p=require\\('./package.json'\\); console.log\\('deps:', Object.keys\\(p.dependencies\\).join\\(', '\\)\\); console.log\\('---'\\); console.log\\('devDeps:', Object.keys\\(p.devDependencies\\).join\\(', '\\)\\);\")",
+      "Bash(node --check supabase/functions/claudinho-verifica/index.ts)"
     ]
   }
 }

@@ -28,6 +28,17 @@
   `agent_config_safe` usa `security_invoker=true` (não vaza credenciais).
 - **RN-OCR-04** — Consumo de IA é limitado por plano (`ai_usage_log`,
   `consume_ai_quota`).
+- **RN-OCR-05** — Nome do titular no documento de identidade: em **RG/CNH** o
+  titular é o campo **"NOME"** (o portador), **nunca a FILIAÇÃO** (pai/mãe); em
+  **Cartão CNPJ** é a **razão social**. O prompt (`claudinho-verifica`,
+  `buildAnalyzePrompt`/`buildComparePrompt`) instrui isso explicitamente. Bug
+  histórico: em CNH, pegava o nome da filiação (corrigido, jul/2026).
+
+## Deploy
+`claudinho-verifica` **não está no CI** (só scan-emails, test-gmail, log-event).
+É publicada via MCP `deploy_edge_function` (mantendo `verify_jwt: false`, pois a
+função faz a própria checagem de Authorization). Segredo: `ANTHROPIC_API_KEY`.
+Modelo: `claude-haiku-4-5`.
 
 ## Fluxo
 ```mermaid
