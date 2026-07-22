@@ -113,27 +113,29 @@ async function resolveEquipmentDoc(
   const brand = which === 'inverter' ? eq.inverter_brand : eq.module_brand;
   const model = which === 'inverter' ? eq.inverter_model : eq.module_model;
 
+  type Row = { datasheet_url: string | null; inmetro_url: string | null; afci_url: string | null };
   const COLS = 'datasheet_url, inmetro_url, afci_url';
-  let row: { datasheet_url: string | null; inmetro_url: string | null; afci_url: string | null } | null = null;
+  const pick = (r: Row | null) => !r ? null
+    : kind === 'inmetro' ? r.inmetro_url : kind === 'afci' ? r.afci_url : r.datasheet_url;
+
+  // 1) tenta o item vinculado do catálogo
+  let path: string | null = null;
   if (catalogId) {
     const { data } = await supabase.from('equipment_catalog' as never).select(COLS).eq('id', catalogId).maybeSingle();
-    row = data as never;
+    path = pick(data as Row | null);
   }
-  if (!row && brand && model) {
+  // 2) se o vínculo não tem ESTE documento, procura por marca+modelo — outro
+  //    registro da mesma marca/modelo pode ter o arquivo. Isso conserta o caso
+  //    do inversor digitado à mão ou vinculado a um item sem INMETRO.
+  if (!path && brand && model) {
     const { data } = await supabase.from('equipment_catalog' as never)
-      .select(COLS)
-      .eq('type', which)
-      .ilike('brand', brand)
-      .ilike('model', model)
-      .limit(1)
-      .maybeSingle();
-    row = data as never;
+      .select(COLS).eq('type', which).ilike('brand', brand).ilike('model', model)
+      .not(kind === 'inmetro' ? 'inmetro_url' : kind === 'afci' ? 'afci_url' : 'datasheet_url', 'is', null)
+      .limit(1).maybeSingle();
+    path = pick(data as Row | null);
   }
-  if (!row) return null;
-  const path = kind === 'inmetro' ? row.inmetro_url : kind === 'afci' ? row.afci_url : row.datasheet_url;
   if (!path) return null;
-  const blob = await downloadFromBucket('equipment-documents', path);
-  return blob;
+  return downloadFromBucket('equipment-documents', path);
 }
 
 /** Resolve todos os itens do pacote para blobs (ou marca faltantes). */

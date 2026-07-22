@@ -41,7 +41,8 @@ export type DocumentType =
   | 'cnpj_card'
   | 'social_contract'
   | 'legal_rep_document'
-  | 'power_of_attorney';
+  | 'power_of_attorney'
+  | 'extra_attachment';
 
 export interface ProjectDocument {
   id: string;

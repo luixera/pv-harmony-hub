@@ -67,6 +67,7 @@ const DOC_TYPE_LABELS: Record<string, string> = {
   social_contract: 'Contrato social',
   legal_rep_document: 'Documento do responsável legal',
   power_of_attorney: 'Procuração',
+  extra_attachment: 'Arquivos extras',
 };
 const ROLE_COLORS: Record<string, { bg: string; color: string; label: string }> = {
   admin:   { bg: '#FEF3D0', color: '#854F0B', label: 'Admin' },

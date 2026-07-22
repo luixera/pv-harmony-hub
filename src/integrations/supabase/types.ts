@@ -1550,6 +1550,7 @@ export type Database = {
         | "social_contract"
         | "legal_rep_document"
         | "power_of_attorney"
+        | "extra_attachment"
       field_action: "show" | "hide" | "require" | "optional"
       field_type:
         | "text"
@@ -1725,6 +1726,7 @@ export const Constants = {
         "social_contract",
         "legal_rep_document",
         "power_of_attorney",
+        "extra_attachment",
       ],
       field_action: ["show", "hide", "require", "optional"],
       field_type: [

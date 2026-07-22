@@ -14,6 +14,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Database } from '@/integrations/supabase/types';
 import { CompanyPricingFields, PricingState, emptyPricing, pricingToPayload, pricingFromCompany } from '@/components/admin/CompanyPricingFields';
+import { LogoUpload } from '@/components/common/LogoUpload';
 type Company = Database['public']['Tables']['companies']['Row'];
 export default function Companies() {
   const navigate = useNavigate();
@@ -37,7 +38,8 @@ export default function Companies() {
     contactName: '',
     email: '',
     phone: '',
-    isActive: true
+    isActive: true,
+    logoUrl: null as string | null,
   });
   const [pricing, setPricing] = useState<PricingState>({ ...emptyPricing });
   const filteredCompanies = companies.filter(company => company.name.toLowerCase().includes(search.toLowerCase()) || company.contact_name.toLowerCase().includes(search.toLowerCase()) || company.contact_email.toLowerCase().includes(search.toLowerCase()));
@@ -57,7 +59,8 @@ export default function Companies() {
       contactName: '',
       email: '',
       phone: '',
-      isActive: true
+      isActive: true,
+      logoUrl: null,
     });
     setPricing({ ...emptyPricing });
     setIsDialogOpen(true);
@@ -70,7 +73,8 @@ export default function Companies() {
       contactName: company.contact_name,
       email: company.contact_email,
       phone: company.contact_phone || '',
-      isActive: company.active
+      isActive: company.active,
+      logoUrl: (company as unknown as { logo_url?: string | null }).logo_url ?? null,
     });
     setPricing(pricingFromCompany(company as unknown as Record<string, unknown>));
     setIsDialogOpen(true);
@@ -90,6 +94,7 @@ export default function Companies() {
           contact_email: formData.email,
           contact_phone: formData.phone || null,
           active: formData.isActive,
+          logo_url: formData.logoUrl,
           ...pricingToPayload(pricing),
         } as never);
       } else {
@@ -239,6 +244,21 @@ export default function Companies() {
             </div>
 
             <CompanyPricingFields value={pricing} onChange={setPricing} />
+
+            {editingCompany ? (
+              <div className="pt-3 border-t border-border">
+                <LogoUpload
+                  label="Logotipo da empresa"
+                  value={formData.logoUrl}
+                  folder={`company/${editingCompany.id}`}
+                  onChange={(url) => setFormData({ ...formData, logoUrl: url })}
+                />
+              </div>
+            ) : (
+              <p className="text-[11px] text-muted-foreground pt-1">
+                Salve a empresa para poder enviar o logotipo dela.
+              </p>
+            )}
 
             {editingCompany && <div className="pt-2 border-t border-border">
                 <Label className="text-muted-foreground text-xs">Link público de envio</Label>

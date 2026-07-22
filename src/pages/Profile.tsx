@@ -14,6 +14,9 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { sanitizeFileName } from '@/lib/utils';
 import { useUsers } from '@/hooks/useUsers';
+import { useTenant } from '@/hooks/useTenant';
+import { useQueryClient } from '@tanstack/react-query';
+import { LogoUpload } from '@/components/common/LogoUpload';
 
 type Tab = 'info' | 'security' | 'company' | 'users';
 
@@ -106,6 +109,8 @@ export default function Profile() {
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { data: allUsers = [] } = useUsers();
+  const { data: tenant } = useTenant();
+  const queryClient = useQueryClient();
 
   const [activeTab, setActiveTab] = useState<Tab>('info');
   const [avatarPreview, setAvatarPreview] = useState<string | null>(user?.avatar || null);
@@ -156,7 +161,7 @@ export default function Profile() {
     if (user?.role !== 'company' || !user.companyId) return;
     supabase
       .from('companies')
-      .select('name, cnpj, contact_email, contact_phone, active, created_at, contact_name')
+      .select('id, name, cnpj, contact_email, contact_phone, active, created_at, contact_name, logo_url')
       .eq('id', user.companyId)
       .single()
       .then(({ data }) => setCompanyData(data));
@@ -435,6 +440,22 @@ export default function Profile() {
                       Salvar alterações
                     </button>
                   </div>
+
+                  {/* Identidade visual do tenant (admin) — usada nos relatórios */}
+                  {user?.role === 'admin' && tenant && (
+                    <div style={{ borderTop: '1px solid #EEE', marginTop: 20, paddingTop: 20, maxWidth: 320 }}>
+                      <LogoUpload
+                        label="Logotipo da sua empresa (aparece nos relatórios)"
+                        value={tenant.logo_url}
+                        folder={tenant.id}
+                        onChange={async (url) => {
+                          await supabase.from('tenants' as never).update({ logo_url: url } as never).eq('id', tenant.id);
+                          queryClient.invalidateQueries({ queryKey: ['tenant'] });
+                          toast.success('Logotipo atualizado');
+                        }}
+                      />
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -549,8 +570,20 @@ export default function Profile() {
                           </div>
                         ))}
                       </div>
+                      <div style={{ borderTop: '1px solid #EEE', paddingTop: 16, marginBottom: 16, maxWidth: 320 }}>
+                        <LogoUpload
+                          label="Logotipo da sua empresa"
+                          value={companyData.logo_url}
+                          folder={`company/${companyData.id}`}
+                          onChange={async (url) => {
+                            setCompanyData({ ...companyData, logo_url: url });
+                            await supabase.from('companies').update({ logo_url: url } as never).eq('id', companyData.id);
+                            toast.success('Logotipo atualizado');
+                          }}
+                        />
+                      </div>
                       <p style={{ fontSize: 11, color: '#aaa', textAlign: 'center' }}>
-                        Para alterar os dados da empresa, entre em contato com o administrador do sistema.
+                        Para alterar os demais dados da empresa, entre em contato com o administrador do sistema.
                       </p>
                     </>
                   ) : (

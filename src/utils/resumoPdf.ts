@@ -1,9 +1,39 @@
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { ProjectWithDetails } from '@/hooks/useProjects';
+import { supabase } from '@/integrations/supabase/client';
 
 const GOLD = '#F5A800';
 const DARK = '#1A1A1A';
+
+/** Logo do tenant do projeto, como data URL + dimensões, para o cabeçalho. */
+async function loadTenantLogo(tenantId: string | null | undefined):
+  Promise<{ dataUrl: string; w: number; h: number; fmt: 'PNG' | 'JPEG' } | null> {
+  if (!tenantId) return null;
+  try {
+    const { data } = await supabase.from('tenants' as never)
+      .select('logo_url').eq('id', tenantId).maybeSingle();
+    const url = (data as { logo_url?: string } | null)?.logo_url;
+    if (!url) return null;
+    const resp = await fetch(url);
+    if (!resp.ok) return null;
+    const blob = await resp.blob();
+    // jsPDF não desenha SVG; ignora silenciosamente nesse caso.
+    const fmt: 'PNG' | 'JPEG' = blob.type.includes('jpeg') || blob.type.includes('jpg') ? 'JPEG' : 'PNG';
+    if (!blob.type.includes('png') && fmt !== 'JPEG') return null;
+    const dataUrl: string = await new Promise((res, rej) => {
+      const r = new FileReader(); r.onload = () => res(r.result as string); r.onerror = rej; r.readAsDataURL(blob);
+    });
+    const dims = await new Promise<{ w: number; h: number }>((res) => {
+      const img = new Image();
+      img.onload = () => res({ w: img.width, h: img.height });
+      img.onerror = () => res({ w: 0, h: 0 });
+      img.src = dataUrl;
+    });
+    if (!dims.w || !dims.h) return null;
+    return { dataUrl, w: dims.w, h: dims.h, fmt };
+  } catch { return null; }
+}
 
 /**
  * Gera a cartilha RESUMO do projeto em PDF (jsPDF), com Titular/UC, endereço,
@@ -18,14 +48,26 @@ export async function generateResumoPdf(project: ProjectWithDetails): Promise<Bl
   const margin = 16;
   let y = 0;
 
-  // Cabeçalho
+  // Cabeçalho (com o logo do tenant, quando houver)
+  const logo = await loadTenantLogo((project as { tenant_id?: string | null }).tenant_id);
   doc.setFillColor(DARK); doc.rect(0, 0, W, 26, 'F');
   doc.setTextColor(GOLD); doc.setFont('helvetica', 'bold'); doc.setFontSize(15);
   doc.text('RESUMO DO PROJETO', margin, 12);
   doc.setTextColor('#FFFFFF'); doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
   doc.text(`${project.code}  ·  ${project.concessionaireName ?? ''}`, margin, 19);
+  let dateX = W - margin;
+  if (logo) {
+    // encaixa o logo à direita, altura máx. 14mm, mantendo proporção
+    const maxH = 14, maxW = 40;
+    let h = maxH, w = (logo.w / logo.h) * h;
+    if (w > maxW) { w = maxW; h = (logo.h / logo.w) * w; }
+    const x = W - margin - w, yImg = (26 - h) / 2;
+    try { doc.addImage(logo.dataUrl, logo.fmt, x, yImg, w, h); dateX = x - 3; } catch { /* ignora */ }
+  }
   doc.setFontSize(8); doc.setTextColor('#B0B0B0');
-  doc.text(`Gerado em ${format(new Date(), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}`, W - margin, 12, { align: 'right' });
+  if (!logo) {
+    doc.text(`Gerado em ${format(new Date(), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}`, dateX, 12, { align: 'right' });
+  }
   y = 34;
 
   const section = (title: string) => {

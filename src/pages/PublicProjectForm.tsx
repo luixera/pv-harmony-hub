@@ -38,6 +38,7 @@ interface FormDocuments {
   entranceStandardPhoto: File[];
   circuitBreakerPhoto: File[];
   otherPhotos: File[];
+  extraAttachments: File[];
   // Só aparecem quando o titular é pessoa jurídica (CNPJ completo).
   cnpjCard: File[];
   socialContract: File[];
@@ -134,7 +135,8 @@ export default function PublicProjectForm() {
     entranceStandardPhoto: [],
     circuitBreakerPhoto: [],
     otherPhotos: [],
-  cnpjCard: [],
+    extraAttachments: [],
+    cnpjCard: [],
     socialContract: [],
     legalRepDocument: [],
     powerOfAttorney: [],
@@ -158,6 +160,12 @@ export default function PublicProjectForm() {
   // Antes truncava em 11 dígitos, o que impedia digitar um CNPJ neste
   // formulário. Agora usa a mesma máscara do formulário interno.
   const ehPessoaJuridica = isPessoaJuridica(formData.holderCpfCnpj);
+  const [latRaw, lonRaw] = (formData.coordinates || '').split(',').map(s => s.trim());
+  const latLon = { lat: latRaw || '', lon: lonRaw || '' };
+  const setLatLon = (which: 'lat' | 'lon', v: string) => {
+    const next = which === 'lat' ? { ...latLon, lat: v } : { ...latLon, lon: v };
+    updateField('coordinates', next.lat || next.lon ? `${next.lat}, ${next.lon}` : '');
+  };
   const formatCEP = (value: string) => {
     const numbers = value.replace(/\D/g, '').slice(0, 8);
     return numbers.replace(/(\d{5})(\d{3})/, '$1-$2');
@@ -301,7 +309,8 @@ export default function PublicProjectForm() {
         city: formData.city,
         state: formData.state,
         is_rural: formData.isRural,
-        coordinates: formData.isRural ? formData.coordinates || null : null,
+        // Coordenadas agora valem para qualquer projeto, não só rural.
+        coordinates: formData.coordinates || null,
         utility_company: 'A definir',
         uc_number: formData.consumerUnitNumber,
         phase_type: formData.phaseType,
@@ -351,6 +360,7 @@ export default function PublicProjectForm() {
         { files: documents.socialContract, type: 'social_contract' },
         { files: documents.legalRepDocument, type: 'legal_rep_document' },
         { files: documents.powerOfAttorney, type: 'power_of_attorney' },
+        { files: documents.extraAttachments, type: 'extra_attachment' },
       ];
       for (const mapping of docMappings) {
         for (const file of mapping.files) {
@@ -650,17 +660,18 @@ export default function PublicProjectForm() {
                     <Label className="cursor-pointer">Projeto rural?</Label>
                   </div>
 
-                  {formData.isRural && (
-                    <div style={{ paddingLeft: 16, borderLeft: '2px solid rgba(245,168,0,0.3)' }}>
-                      <FieldGroup label="Coordenadas do local">
-                        <Input
-                          placeholder="-23.5505, -46.6333"
-                          value={formData.coordinates}
-                          onChange={e => updateField('coordinates', e.target.value)}
-                        />
-                      </FieldGroup>
-                    </div>
-                  )}
+                  {/* Latitude/longitude — na maioria dos casos não vem do endereço */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <FieldGroup label="Latitude do local">
+                      <Input placeholder="-23.550520" value={latLon.lat} onChange={e => setLatLon('lat', e.target.value)} />
+                    </FieldGroup>
+                    <FieldGroup label="Longitude do local">
+                      <Input placeholder="-46.633308" value={latLon.lon} onChange={e => setLatLon('lon', e.target.value)} />
+                    </FieldGroup>
+                  </div>
+                  <p style={{ fontSize: 11, color: '#9CA3AF' }}>
+                    Dica: no Google Maps, toque e segure no local para copiar as coordenadas.
+                  </p>
                 </div>
               </div>
             </div>
@@ -816,6 +827,15 @@ export default function PublicProjectForm() {
                   />
                 </FieldGroup>
               </div>
+
+              <DocumentUploadField
+                id="extra_attachment"
+                label="Arquivos extras (opcional) — foto, PDF, Word ou Excel"
+                multiple
+                accept="image/*,.pdf,.doc,.docx,.xls,.xlsx"
+                files={documents.extraAttachments}
+                onFilesChange={(files) => updateDocuments('extraAttachments', files)}
+              />
 
               {/* CAPTCHA Turnstile — só renderiza se a site key estiver configurada */}
               {TURNSTILE_SITE_KEY && (

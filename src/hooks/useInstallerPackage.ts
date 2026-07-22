@@ -31,6 +31,7 @@ export const PROJECT_DOCUMENT_TYPES: { value: string; label: string }[] = [
   { value: 'social_contract', label: 'Contrato social' },
   { value: 'legal_rep_document', label: 'Documento do responsável legal' },
   { value: 'power_of_attorney', label: 'Procuração' },
+  { value: 'extra_attachment', label: 'Arquivos extras' },
 ];
 
 /** Fotos de instalação que podem ser reaproveitadas de outro projeto (mesmo disjuntor + fase). */

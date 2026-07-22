@@ -102,6 +102,8 @@ interface FormDocuments {
   socialContract: File[];
   legalRepDocument: File[];
   powerOfAttorney: File[];
+  // Anexos livres (foto, pdf, word, excel).
+  extraAttachments: File[];
 }
 
 // ── Helpers visuais ───────────────────────────────────────────────────────────
@@ -293,6 +295,7 @@ export default function NewProject() {
     socialContract: [],
     legalRepDocument: [],
     powerOfAttorney: [],
+    extraAttachments: [],
   });
   const [isGeocoding, setIsGeocoding] = useState(false);
   const [showMapPreview, setShowMapPreview] = useState(false);
@@ -315,6 +318,15 @@ export default function NewProject() {
   // Máscara e tipo de pessoa vêm de @/lib/cpfCnpj (compartilhado com o
   // formulário público, para os dois validarem igual).
   const ehPessoaJuridica = isPessoaJuridica(formData.holderCpfCnpj);
+
+  // Coordenadas são guardadas como "lat, lon"; os campos separados leem e
+  // escrevem nessa mesma string, mantendo o mapa em sincronia.
+  const [latRaw, lonRaw] = (formData.coordinates || '').split(',').map(s => s.trim());
+  const latLon = { lat: latRaw || '', lon: lonRaw || '' };
+  const setLatLon = (which: 'lat' | 'lon', v: string) => {
+    const next = which === 'lat' ? { ...latLon, lat: v } : { ...latLon, lon: v };
+    updateField('coordinates', next.lat || next.lon ? `${next.lat}, ${next.lon}` : '');
+  };
 
   const formatCEP = (value: string) => {
     const numbers = value.replace(/\D/g, '').slice(0, 8);
@@ -708,6 +720,7 @@ export default function NewProject() {
         { files: documents.socialContract, type: 'social_contract' },
         { files: documents.legalRepDocument, type: 'legal_rep_document' },
         { files: documents.powerOfAttorney, type: 'power_of_attorney' },
+        { files: documents.extraAttachments, type: 'extra_attachment' },
       ];
       try {
         for (const mapping of docMappings) {
@@ -1147,6 +1160,17 @@ export default function NewProject() {
                         {isGeocoding ? <><Loader2 style={{ width: 13, height: 13 }} className="animate-spin" /> Buscando...</> : <><MapPin style={{ width: 13, height: 13 }} /> Buscar no mapa</>}
                       </button>
                     </div>
+                    {/* Latitude/longitude manuais — a maioria dos casos não vem do endereço */}
+                    <div className="grid grid-cols-2 gap-3 mb-3">
+                      <div>
+                        <label style={{ fontSize: 11, color: '#6B7280', fontWeight: 600 }}>Latitude</label>
+                        <Input value={latLon.lat} onChange={e => setLatLon('lat', e.target.value)} placeholder="-23.550520" style={{ fontSize: 12, fontFamily: 'monospace' }} />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: 11, color: '#6B7280', fontWeight: 600 }}>Longitude</label>
+                        <Input value={latLon.lon} onChange={e => setLatLon('lon', e.target.value)} placeholder="-46.633308" style={{ fontSize: 12, fontFamily: 'monospace' }} />
+                      </div>
+                    </div>
                     {(showMapPreview || formData.coordinates) ? (
                       <div className="space-y-2">
                         <MapPicker label="" value={formData.coordinates} onChange={coords => updateField('coordinates', coords)} showAutocomplete={false} height={260} draggable={true} />
@@ -1358,6 +1382,16 @@ export default function NewProject() {
                     <Textarea className="keep-case" placeholder="Informe particularidades do projeto ou recados para o projetista..." value={formData.observations} onChange={e => updateField('observations', e.target.value)} rows={4} />
                   </FieldGroup>
                 </div>
+
+                {/* Anexos extras livres */}
+                <DocumentUploadField
+                  id="extra_attachment"
+                  label="Arquivos extras (opcional) — foto, PDF, Word ou Excel"
+                  multiple
+                  accept="image/*,.pdf,.doc,.docx,.xls,.xlsx"
+                  files={documents.extraAttachments}
+                  onFilesChange={files => updateDocuments('extraAttachments', files)}
+                />
 
                 {/* Resumo */}
                 <div style={{ background: '#F9FAFB', border: '1px solid #F3F4F6', borderRadius: 12, padding: '16px 20px', fontSize: 13 }}>

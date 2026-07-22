@@ -23,6 +23,8 @@ interface DocumentUploadFieldProps {
   conditionalLabel?: string;
   isConditionalActive?: boolean;
   onConditionalChange?: (checked: boolean) => void;
+  /** Sobrescreve os tipos aceitos no seletor (padrão: imagem + PDF). */
+  accept?: string;
 }
 
 // Compress image before upload (max 1200px wide, quality 0.8)
@@ -79,6 +81,7 @@ export function DocumentUploadField({
   conditionalLabel,
   isConditionalActive,
   onConditionalChange,
+  accept,
 }: DocumentUploadFieldProps) {
   const isMobile = useIsMobile();
   const [isDragging, setIsDragging] = useState(false);
@@ -221,7 +224,7 @@ export function DocumentUploadField({
             multiple={multiple}
             onChange={handleFileSelect}
             className="hidden"
-            accept="image/*,.pdf"
+            accept={accept ?? "image/*,.pdf"}
           />
           <input
             ref={cameraInputRef}

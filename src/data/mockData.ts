@@ -403,4 +403,5 @@ export const documentTypeLabels: Record<string, string> = {
   social_contract: 'Contrato social',
   legal_rep_document: 'Documento do responsável legal',
   power_of_attorney: 'Procuração',
+  extra_attachment: 'Arquivos extras',
 };
