@@ -5,7 +5,10 @@
   Equipamentos, Anexos). CPF/CNPJ com tipo de pessoa, lat/long, anexos extras.
 - `src/pages/PublicProjectForm.tsx` — formulário público (mesma estrutura,
   anônimo, com Turnstile).
-- `src/pages/Projects.tsx` — Kanban (drag-and-drop entre etapas).
+- `src/pages/ProjectsKanban.tsx` — Kanban (drag-and-drop entre etapas). Filtros
+  por empresa (`company_id`) e por concessionária (`concessionaire_id`, via
+  `useEnergyConcessionaires()` — lista real do tenant, não texto livre; ver
+  nota em [database.md](database.md) sobre `utility_company`).
 - `src/pages/ProjectsMap.tsx` — mapa (Google Maps).
 
 ## Componentes-chave

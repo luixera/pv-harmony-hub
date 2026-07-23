@@ -3,6 +3,7 @@ import { MainLayout } from '@/components/layout/MainLayout';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
 import { useProjects, useUpdateProjectStatus } from '@/hooks/useProjects';
 import { useCompanies } from '@/hooks/useCompanies';
+import { useEnergyConcessionaires } from '@/hooks/useEnergyConcessionaires';
 import { useCompanyDisplay } from '@/hooks/useCompanyDisplay';
 import { useDefaultKanbanModel, useStaleProjects } from '@/hooks/useKanbanConfig';
 import { useStaleNotifications } from '@/hooks/useStaleNotifications';
@@ -37,8 +38,6 @@ const fallbackColumns: { id: string; title: string; color: string; isRejectionSt
   { id: 'approval', title: 'Aprovação', color: 'bg-kanban-progress', isRejectionStage: false, requiresProtocol: false },
   { id: 'approved', title: 'Aprovado', color: 'bg-kanban-approved', isRejectionStage: false, requiresProtocol: false },
 ];
-
-const utilityCompanies = ['CPFL Energia', 'Enel SP', 'Elektro', 'EDP São Paulo', 'Energisa', 'Light', 'Cemig', 'Copel', 'Celesc', 'CEEE'];
 
 const statusVariants: Record<string, string> = {
   pending: 'pending',
@@ -416,6 +415,7 @@ export default function ProjectsKanban() {
 
   const { data: projects = [], isLoading } = useProjects();
   const { data: companies = [] } = useCompanies();
+  const { data: concessionaires = [] } = useEnergyConcessionaires();
   const { getCompanyDisplayName, shouldHideCompanyName } = useCompanyDisplay();
   const { data: kanbanModel, isLoading: isLoadingModel } = useDefaultKanbanModel();
   const { data: staleProjectsData = [] } = useStaleProjects();
@@ -468,7 +468,7 @@ export default function ProjectsKanban() {
       project.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
       holderName.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesCompany = companyFilter === 'all' || project.company_id === companyFilter;
-    const matchesUtility = utilityFilter === 'all' || project.generalData?.utility_company === utilityFilter;
+    const matchesUtility = utilityFilter === 'all' || project.concessionaire_id === utilityFilter;
     const matchesStatus = mobileStatusFilter === 'all' || project.status === mobileStatusFilter;
     const matchesNoValue = !noValueFilter || hasNoValue(project);
     return matchesSearch && matchesCompany && matchesUtility && matchesNoValue && (isMobile ? matchesStatus : true);
@@ -619,8 +619,8 @@ export default function ProjectsKanban() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todas as concessionárias</SelectItem>
-                  {utilityCompanies.map(utility => (
-                    <SelectItem key={utility} value={utility}>{utility}</SelectItem>
+                  {concessionaires.map(concessionaire => (
+                    <SelectItem key={concessionaire.id} value={concessionaire.id}>{concessionaire.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
