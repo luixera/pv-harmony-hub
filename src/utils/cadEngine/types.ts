@@ -67,6 +67,8 @@ export interface BlockInstance {
   layer: LayerId;
   blockRef: ComponentKind;
   at: Point;
+  /** Graus, sentido horário, em torno do centro do bloco (0/90/180/270). */
+  rotation?: number;
 }
 
 export interface Scene {

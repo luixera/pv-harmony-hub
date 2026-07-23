@@ -1,4 +1,5 @@
 import { LayerId, Point, Primitive, Scene } from './types';
+import { SYMBOL_BBOX } from './symbols';
 
 /** Scene → SVG. Serializador dedicado (não usa canvas/lib externa). */
 
@@ -17,7 +18,7 @@ function pts(points: Point[]): string {
   return points.map(p => `${p.x},${p.y}`).join(' ');
 }
 
-function primitiveToSvg(p: Primitive, color: string, strokeWidth: number): string {
+export function primitiveToSvg(p: Primitive, color: string, strokeWidth: number): string {
   switch (p.kind) {
     case 'line':
       return `<line x1="${p.a.x}" y1="${p.a.y}" x2="${p.b.x}" y2="${p.b.y}" stroke="${color}" stroke-width="${strokeWidth}" />`;
@@ -38,7 +39,8 @@ function escapeXml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-export function sceneToSvg(scene: Scene): string {
+/** Conteúdo interno (sem a tag <svg> em volta) — reaproveitado pelo canvas interativo. */
+export function sceneToSvgInner(scene: Scene): string {
   const parts: string[] = [];
   for (const shape of scene.shapes) {
     parts.push(primitiveToSvg(shape.geometry, LAYER_COLOR[shape.layer], LAYER_WIDTH[shape.layer]));
@@ -48,7 +50,12 @@ export function sceneToSvg(scene: Scene): string {
     const color = LAYER_COLOR[block.layer];
     const width = LAYER_WIDTH[block.layer];
     const inner = defs.map(p => primitiveToSvg(p, color, width)).join('');
-    parts.push(`<g transform="translate(${block.at.x},${block.at.y})">${inner}</g>`);
+    const rot = block.rotation ? ` rotate(${block.rotation},${SYMBOL_BBOX.w / 2},${SYMBOL_BBOX.h / 2})` : '';
+    parts.push(`<g transform="translate(${block.at.x},${block.at.y})${rot}">${inner}</g>`);
   }
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${scene.paper.widthMm} ${scene.paper.heightMm}" width="${scene.paper.widthMm}mm" height="${scene.paper.heightMm}mm" style="background:#fff">${parts.join('')}</svg>`;
+  return parts.join('');
+}
+
+export function sceneToSvg(scene: Scene): string {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${scene.paper.widthMm} ${scene.paper.heightMm}" width="${scene.paper.widthMm}mm" height="${scene.paper.heightMm}mm" style="background:#fff">${sceneToSvgInner(scene)}</svg>`;
 }

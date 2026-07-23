@@ -45,3 +45,12 @@ criar monorepo nem adicionar dependências pesadas novas:
 - Suporta só a cadeia PV→Inversor→Disjuntor→Medidor→Rede — projetos com BESS,
   múltiplos inversores/QDCs ou geração compartilhada não são representados
   ainda.
+
+## Atualização (mesmo dia)
+O primeiro recorte era só leitura (prévia calculada). Feedback direto do
+usuário: "muito simples" — pediu incrementar com **arrastar, girar e ligar
+manualmente**, aceitando que fosse gradual. Implementado o
+`ManualLayoutSource` do §17.2 **antes** do motor automático (inversão
+deliberada da ordem do roadmap original — ver `docs/modules/diagrams/overview.md`).
+Persistência ficou em `localStorage` por projeto (não é o `DiagramTemplate`
+do §17.3, que continua no roadmap).

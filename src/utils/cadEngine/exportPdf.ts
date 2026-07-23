@@ -1,4 +1,16 @@
-import { LayerId, Primitive, Scene } from './types';
+import { LayerId, Point, Primitive, Scene } from './types';
+import { SYMBOL_BBOX } from './symbols';
+
+/** Rotação padrão (mesma fórmula do `rotate()` do SVG), em torno de (cx,cy). */
+function rotatePoint(p: Point, deg: number, cx: number, cy: number): Point {
+  if (!deg) return p;
+  const rad = (deg * Math.PI) / 180;
+  const dx = p.x - cx, dy = p.y - cy;
+  return {
+    x: cx + dx * Math.cos(rad) - dy * Math.sin(rad),
+    y: cy + dx * Math.sin(rad) + dy * Math.cos(rad),
+  };
+}
 
 /**
  * Scene → PDF, via jsPDF (já usado em resumoPdf.ts — sem dependência nova).
@@ -17,30 +29,55 @@ const LAYER_WIDTH: Record<LayerId, number> = {
   FRAME: 0.5, TITLE_BLOCK: 0.3, SYMBOLS: 0.35, CONDUCTOR_AC: 0.4, TEXT_LABEL: 0.2,
 };
 
-function drawPrimitive(doc: import('jspdf').default, p: Primitive, rgb: [number, number, number], lineWidth: number, dx = 0, dy = 0) {
+/**
+ * `rotDeg`/`rotCenter` giram a geometria ANTES de aplicar (dx,dy) — usado para
+ * girar os símbolos (bloco inteiro), em coordenadas locais do bloco.
+ */
+function drawPrimitive(
+  doc: import('jspdf').default, p: Primitive, rgb: [number, number, number], lineWidth: number,
+  dx = 0, dy = 0, rotDeg = 0, rotCenter: Point = { x: 0, y: 0 },
+) {
   doc.setDrawColor(...rgb);
   doc.setTextColor(...rgb);
   doc.setLineWidth(lineWidth);
+  const R = (pt: Point) => rotatePoint(pt, rotDeg, rotCenter.x, rotCenter.y);
   switch (p.kind) {
-    case 'line':
-      doc.line(p.a.x + dx, p.a.y + dy, p.b.x + dx, p.b.y + dy);
+    case 'line': {
+      const a = R(p.a), b = R(p.b);
+      doc.line(a.x + dx, a.y + dy, b.x + dx, b.y + dy);
       break;
-    case 'polyline':
-      for (let i = 0; i < p.points.length - 1; i++) {
-        doc.line(p.points[i].x + dx, p.points[i].y + dy, p.points[i + 1].x + dx, p.points[i + 1].y + dy);
+    }
+    case 'polyline': {
+      const pts = p.points.map(R);
+      for (let i = 0; i < pts.length - 1; i++) {
+        doc.line(pts[i].x + dx, pts[i].y + dy, pts[i + 1].x + dx, pts[i + 1].y + dy);
       }
       break;
-    case 'rect':
-      doc.rect(p.x + dx, p.y + dy, p.w, p.h);
+    }
+    case 'rect': {
+      if (!rotDeg) { doc.rect(p.x + dx, p.y + dy, p.w, p.h); break; }
+      // sem rotação nativa de retângulo no jsPDF: desenha como 4 lados girados
+      const corners = [
+        { x: p.x, y: p.y }, { x: p.x + p.w, y: p.y },
+        { x: p.x + p.w, y: p.y + p.h }, { x: p.x, y: p.y + p.h },
+      ].map(R);
+      for (let i = 0; i < 4; i++) {
+        const a = corners[i], b = corners[(i + 1) % 4];
+        doc.line(a.x + dx, a.y + dy, b.x + dx, b.y + dy);
+      }
       break;
-    case 'circle':
-      doc.circle(p.center.x + dx, p.center.y + dy, p.radius);
+    }
+    case 'circle': {
+      const c = R(p.center);
+      doc.circle(c.x + dx, c.y + dy, p.radius);
       break;
+    }
     case 'text': {
+      const at = R(p.at);
       const align = p.anchor === 'middle' ? 'center' : p.anchor === 'end' ? 'right' : 'left';
       doc.setFont('helvetica', p.weight === 'bold' ? 'bold' : 'normal');
       doc.setFontSize(p.size * 2.83); // mm → pt aproximado para o mesmo tamanho visual do SVG
-      doc.text(p.value, p.at.x + dx, p.at.y + dy, { align });
+      doc.text(p.value, at.x + dx, at.y + dy, { align });
       break;
     }
   }
@@ -53,10 +90,11 @@ export async function sceneToPdfBlob(scene: Scene): Promise<Blob> {
   for (const shape of scene.shapes) {
     drawPrimitive(doc, shape.geometry, LAYER_RGB[shape.layer], LAYER_WIDTH[shape.layer]);
   }
+  const blockCenter: Point = { x: SYMBOL_BBOX.w / 2, y: SYMBOL_BBOX.h / 2 };
   for (const block of scene.blocks) {
     const defs = scene.blockDefs[block.blockRef] ?? [];
     for (const prim of defs) {
-      drawPrimitive(doc, prim, LAYER_RGB[block.layer], LAYER_WIDTH[block.layer], block.at.x, block.at.y);
+      drawPrimitive(doc, prim, LAYER_RGB[block.layer], LAYER_WIDTH[block.layer], block.at.x, block.at.y, block.rotation ?? 0, blockCenter);
     }
   }
 
