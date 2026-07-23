@@ -14,7 +14,7 @@
 // ── JSON técnico (mínimo) ────────────────────────────────────────────────────
 
 export type ComponentKind =
-  | 'pv-array' | 'inverter' | 'breaker' | 'meter' | 'utility-grid';
+  | 'pv-array' | 'inverter' | 'breaker' | 'meter' | 'utility-grid' | 'dps';
 
 export interface ComponentNode {
   id: string;
@@ -52,10 +52,11 @@ export type Primitive =
   | { kind: 'polyline'; points: Point[] }
   | { kind: 'rect'; x: number; y: number; w: number; h: number }
   | { kind: 'circle'; center: Point; radius: number }
-  | { kind: 'text'; at: Point; value: string; size: number; anchor: 'start' | 'middle' | 'end'; weight?: 'normal' | 'bold' };
+  | { kind: 'text'; at: Point; value: string; size: number; anchor: 'start' | 'middle' | 'end'; weight?: 'normal' | 'bold' }
+  | { kind: 'image'; at: Point; w: number; h: number; href: string };
 
 export type LayerId =
-  | 'FRAME' | 'TITLE_BLOCK' | 'SYMBOLS' | 'CONDUCTOR_AC' | 'TEXT_LABEL';
+  | 'FRAME' | 'TITLE_BLOCK' | 'SYMBOLS' | 'CONDUCTOR_AC' | 'TEXT_LABEL' | 'PHOTO';
 
 export interface ShapeNode {
   layer: LayerId;

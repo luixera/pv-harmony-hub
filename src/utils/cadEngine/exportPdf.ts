@@ -24,10 +24,18 @@ const LAYER_RGB: Record<LayerId, [number, number, number]> = {
   SYMBOLS: [26, 26, 26],
   CONDUCTOR_AC: [176, 39, 26],
   TEXT_LABEL: [51, 51, 51],
+  PHOTO: [0, 0, 0],
 };
 const LAYER_WIDTH: Record<LayerId, number> = {
-  FRAME: 0.5, TITLE_BLOCK: 0.3, SYMBOLS: 0.35, CONDUCTOR_AC: 0.4, TEXT_LABEL: 0.2,
+  FRAME: 0.5, TITLE_BLOCK: 0.3, SYMBOLS: 0.35, CONDUCTOR_AC: 0.4, TEXT_LABEL: 0.2, PHOTO: 0,
 };
+
+/** `data:image/jpeg;base64,...` → `JPEG` (formato que o jsPDF espera em `addImage`). */
+function imageFormatFromDataUrl(href: string): string {
+  const match = /^data:image\/(\w+);/.exec(href);
+  const ext = (match?.[1] ?? 'jpeg').toLowerCase();
+  return ext === 'jpg' ? 'JPEG' : ext.toUpperCase();
+}
 
 /**
  * `rotDeg`/`rotCenter` giram a geometria ANTES de aplicar (dx,dy) — usado para
@@ -78,6 +86,11 @@ function drawPrimitive(
       doc.setFont('helvetica', p.weight === 'bold' ? 'bold' : 'normal');
       doc.setFontSize(p.size * 2.83); // mm → pt aproximado para o mesmo tamanho visual do SVG
       doc.text(p.value, at.x + dx, at.y + dy, { align });
+      break;
+    }
+    case 'image': {
+      // fotos não giram nesta fatia — rotDeg sempre 0 para este tipo de primitiva
+      doc.addImage(p.href, imageFormatFromDataUrl(p.href), p.at.x + dx, p.at.y + dy, p.w, p.h);
       break;
     }
   }

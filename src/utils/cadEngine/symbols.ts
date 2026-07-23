@@ -16,6 +16,16 @@ const W = 24, H = 20;
 
 export const SYMBOL_BBOX = { w: W, h: H };
 
+/** Nome curto por tipo — usado na paleta "adicionar componente" e nos rótulos automáticos. */
+export const KIND_LABEL: Record<ComponentKind, string> = {
+  'pv-array': 'Módulos',
+  inverter: 'Inversor',
+  breaker: 'Disjuntor',
+  meter: 'Medidor',
+  'utility-grid': 'Rede',
+  dps: 'DPS',
+};
+
 export const SYMBOL_DEFS: Record<ComponentKind, Primitive[]> = {
   'pv-array': [
     { kind: 'rect', x: 2, y: 3, w: W - 4, h: H - 6 },
@@ -60,5 +70,27 @@ export const SYMBOL_DEFS: Record<ComponentKind, Primitive[]> = {
     { kind: 'line', a: { x: 10, y: H / 2 }, b: { x: 7, y: H / 2 + 5 } },
     { kind: 'line', a: { x: 14, y: H / 2 }, b: { x: 11, y: H / 2 + 5 } },
     { kind: 'line', a: { x: 18, y: H / 2 }, b: { x: 15, y: H / 2 + 5 } },
+  ],
+  // DPS (dispositivo de proteção contra surtos): desenhado no eixo VERTICAL —
+  // é um componente de derivação (liga do condutor para o terra), não um
+  // componente em série no fluxo horizontal como os demais. Conecta por cima
+  // (entrada, ligado ao condutor) e o traço de terra embaixo é só indicativo
+  // (não precisa ligação — a "conexão" real de terra não faz parte do MVP).
+  dps: [
+    { kind: 'line', a: { x: W / 2, y: 2 }, b: { x: W / 2, y: 6 } },
+    { kind: 'rect', x: W / 2 - 4, y: 6, w: 8, h: 7 },
+    { kind: 'line', a: { x: W / 2 - 2, y: 7.5 }, b: { x: W / 2 + 2, y: 11.5 } },
+    {
+      kind: 'polyline',
+      points: [
+        { x: W / 2 + 0.4, y: 10 },
+        { x: W / 2 + 2, y: 11.5 },
+        { x: W / 2 + 0.3, y: 12.3 },
+      ],
+    },
+    { kind: 'line', a: { x: W / 2, y: 13 }, b: { x: W / 2, y: 15.5 } },
+    { kind: 'line', a: { x: W / 2 - 3, y: 15.5 }, b: { x: W / 2 + 3, y: 15.5 } },
+    { kind: 'line', a: { x: W / 2 - 2, y: 17 }, b: { x: W / 2 + 2, y: 17 } },
+    { kind: 'line', a: { x: W / 2 - 1, y: 18.5 }, b: { x: W / 2 + 1, y: 18.5 } },
   ],
 };

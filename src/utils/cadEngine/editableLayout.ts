@@ -28,6 +28,17 @@ export interface ManualConnection {
   waypoints?: Point[];
 }
 
+/** Foto solta no diagrama (ex.: local, fachada, padrão de entrada) — não é um `ComponentKind`. */
+export interface PlacedPhoto {
+  id: string;
+  /** Data URL (já redimensionada/comprimida no upload). */
+  href: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
 const GRID = 2.5; // mm — mesmo módulo da proposta (§7, Fase 3)
 
 export function snapToGrid(v: number): number {
@@ -98,9 +109,17 @@ export function buildSceneFromPlacement(
   json: TechnicalJsonMvp,
   placements: PlacedSymbol[],
   connections: ManualConnection[],
+  photos: PlacedPhoto[] = [],
 ): Scene {
   const scene: Scene = { paper: { widthMm: 297, heightMm: 210 }, shapes: [], blocks: [], blockDefs: SYMBOL_DEFS };
   drawFrameAndHeader(scene, json);
+
+  for (const photo of photos) {
+    scene.shapes.push({
+      layer: 'PHOTO',
+      geometry: { kind: 'image', at: { x: photo.x, y: photo.y }, w: photo.w, h: photo.h, href: photo.href },
+    });
+  }
 
   const byId = new Map(placements.map(p => [p.id, p]));
 

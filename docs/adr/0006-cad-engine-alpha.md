@@ -71,3 +71,29 @@ Novo feedback direto: "ainda está bem simples" — três pontos concretos:
    `computeConnectorPoints` (`editableLayout.ts`) decide entre o roteamento
    ortogonal automático (sem pontos de dobra) e o caminho manual exato
    (com eles).
+
+## Atualização (3ª rodada) — componentes/fotos avulsos + desenhar linha
+Pedido do usuário: mexer mais na linha, "ter a opção de desenhar", e poder
+adicionar componentes (inversor extra, módulos, DPS, disjuntor) e uma foto ao
+diagrama. Decisões tomadas com o usuário antes de implementar (3 perguntas):
+- **Componentes extras são só visuais** — não precisam existir no cadastro do
+  projeto; ficam junto do layout manual (`localStorage`), sem tocar em
+  `project_equipment`. Habilita, por ex., um DPS (símbolo novo,
+  `ComponentKind` ganhou `dps`) mesmo sem campo de cadastro pra isso.
+- **"Desenhar linha" virou parte do mesmo modo de ligar**: clicar na origem,
+  depois no destino liga direto (como antes); clicar em pontos vazios do
+  canvas antes do destino desenha o traço manualmente, já na criação da
+  ligação (em vez de só poder ajustar depois, arrastando).
+- **Foto é elemento do diagrama** (não fundo/referência): vira um bloco
+  arrastável/redimensionável, sai impressa no SVG/PDF. `Primitive` ganhou a
+  variante `image`; `LayerId` ganhou `PHOTO`.
+
+Ao implementar, um teste headless (`node` + `esbuild`, mesma técnica já usada
+nesta fatia) pegou um bug antes do commit: o `reconcile()` que funde o layout
+salvo com o projeto atual usava "id ausente do projeto atual" como critério
+para decidir o que era "componente manual" — mas um componente **real**,
+removido do cadastro do projeto, cai no mesmo caso e viraria um fantasma
+permanente no diagrama. Corrigido adotando um marcador estável: todo id criado
+manualmente pelo `addComponent()`/upload de foto começa com `manual-`, e é
+esse prefixo (não a ausência no projeto atual) que decide o que sobrevive à
+reconciliação.

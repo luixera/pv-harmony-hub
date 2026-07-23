@@ -9,9 +9,10 @@ const LAYER_COLOR: Record<LayerId, string> = {
   SYMBOLS: '#1A1A1A',
   CONDUCTOR_AC: '#B0271A',
   TEXT_LABEL: '#333333',
+  PHOTO: 'transparent',
 };
 const LAYER_WIDTH: Record<LayerId, number> = {
-  FRAME: 0.5, TITLE_BLOCK: 0.3, SYMBOLS: 0.35, CONDUCTOR_AC: 0.4, TEXT_LABEL: 0,
+  FRAME: 0.5, TITLE_BLOCK: 0.3, SYMBOLS: 0.35, CONDUCTOR_AC: 0.4, TEXT_LABEL: 0, PHOTO: 0,
 };
 
 function pts(points: Point[]): string {
@@ -32,6 +33,8 @@ export function primitiveToSvg(p: Primitive, color: string, strokeWidth: number)
       const weight = p.weight === 'bold' ? 'bold' : 'normal';
       return `<text x="${p.at.x}" y="${p.at.y}" font-size="${p.size}" text-anchor="${p.anchor}" font-weight="${weight}" font-family="Arial, sans-serif" fill="${color}">${escapeXml(p.value)}</text>`;
     }
+    case 'image':
+      return `<image x="${p.at.x}" y="${p.at.y}" width="${p.w}" height="${p.h}" href="${p.href}" preserveAspectRatio="none" />`;
   }
 }
 

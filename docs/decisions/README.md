@@ -17,6 +17,15 @@ Registro de decisões de produto/UX (não arquiteturais — essas ficam em
   automático e templates reutilizáveis continuam no roadmap. Símbolos
   aproximados de IEC 60617 até o usuário enviar unifilares reais aprovados
   para calibração. Ver [ADR 0006](../adr/0006-cad-engine-alpha.md). (jul/2026)
+- **Diagrama unifilar — componentes/fotos avulsos e desenhar linha** (3ª
+  rodada, mesmo mês): componentes adicionados manualmente (2º inversor, DPS,
+  disjuntor extra) são **só visuais**, sem exigir cadastro real no projeto —
+  prioriza flexibilidade do desenho sobre consistência estrita com
+  `project_equipment`. "Desenhar linha" virou parte do próprio modo de ligar
+  (clicar pontos no canvas antes do destino), em vez de uma ferramenta
+  separada. Foto é elemento do diagrama (arrasta/redimensiona, sai impressa),
+  não fundo de referência. Ver [ADR 0006](../adr/0006-cad-engine-alpha.md).
+  (jul/2026)
 - **Visão master de empresas por tenant**: drill-down dentro da aba **Tenants**
   do `/painel` (não uma aba nova) — cada tenant expande para suas empresas, e
   cada empresa para seus projetos. Só o master vê, via RPCs `is_master`-gated.
