@@ -25,13 +25,14 @@ import { StaffAssignmentDialog } from './StaffAssignmentDialog';
 import { useProjectAssignments } from '@/hooks/useProjectAssignments';
 import { logSystemEvent } from '@/lib/systemLog';
 import { EquipmentModelCombobox } from '@/components/equipment/EquipmentModelCombobox';
+import { UnifilarTab } from './UnifilarTab';
 import { DeleteProjectDialog } from './DeleteProjectDialog';
 import { Badge } from '@/components/ui/badge';
 import {
   X, ExternalLink, Pencil, FileOutput, MoreVertical, Users, Trash2,
   Check, ChevronRight, Upload, Download, Send, Paperclip, FileText,
   Image, Loader2, AlertTriangle, Save, Lock, DollarSign, Clock, MapPin, Hash,
-  CheckSquare, Plus, Circle, CheckCircle2, Calendar, User as UserIcon, RotateCcw,
+  CheckSquare, Plus, Circle, CheckCircle2, Calendar, User as UserIcon, RotateCcw, FlaskConical,
 } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -1689,6 +1690,9 @@ export function ProjectModal({ projectId, onClose, initialTab = 'geral' }: Proje
     ...(canEdit ? [{ id: 'tarefas', label: 'Tarefas', icon: <CheckSquare size={13} style={{ marginRight: 5 }} /> }] : []),
     { id: 'financeiro', label: 'Financeiro', icon: <DollarSign size={13} style={{ marginRight: 5 }} /> },
     { id: 'historico', label: 'Histórico', icon: <Clock size={13} style={{ marginRight: 5 }} /> },
+    // Alpha interno do CAD Engine — só o master vê (por enquanto, só o
+    // tenant GD Manager, já que é o próprio tenant do master no app normal).
+    ...(user?.isMaster ? [{ id: 'unifilar', label: 'Unifilar', icon: <FlaskConical size={13} style={{ marginRight: 5 }} /> }] : []),
   ];
 
   const statusCfg: Record<string, { color: string; bg: string }> = {
@@ -1968,6 +1972,9 @@ export function ProjectModal({ projectId, onClose, initialTab = 'geral' }: Proje
                 )}
                 {activeTab === 'historico' && (
                   <TabHistory projectId={project.id} />
+                )}
+                {activeTab === 'unifilar' && user?.isMaster && (
+                  <UnifilarTab project={project} />
                 )}
               </div>
             </>

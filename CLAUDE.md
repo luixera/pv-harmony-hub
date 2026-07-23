@@ -54,7 +54,7 @@ Detalhes: [docs/project/tech-stack.md](docs/project/tech-stack.md).
 | Usuários | ✅ | [modules/users](docs/modules/users/overview.md) |
 | Permissões (RLS) | ✅ | [modules/permissions](docs/modules/permissions/overview.md) |
 | Geração compartilhada | 🟡 Parcial | [modules/shared-generation](docs/modules/shared-generation/overview.md) |
-| Diagramas | 🟡 Parcial | [modules/diagrams](docs/modules/diagrams/overview.md) |
+| Diagramas (unifilar) | 🟡 Alpha — só master/GD Manager | [modules/diagrams](docs/modules/diagrams/overview.md) |
 | Marketplace | ⛔ Planejado | [modules/marketplace](docs/modules/marketplace/overview.md) |
 | BESS (armazenamento) | ⛔ Planejado | [modules/bess](docs/modules/bess/overview.md) |
 | Mercado Livre de energia | ⛔ Planejado | [modules/market-free](docs/modules/market-free/overview.md) |

@@ -7,6 +7,13 @@
 - **Listagem pública de buckets** `avatars`/`tenant-logos`: revisar.
 
 ## Tarefas de produto em aberto (do backlog de sessão)
+- **Diagrama unifilar — evoluir do alpha**: hoje é uma fatia vertical (layout
+  fixo, 5 símbolos, só master/GD Manager — ver
+  [modules/diagrams](../modules/diagrams/overview.md) e [ADR 0006](../adr/0006-cad-engine-alpha.md)).
+  Próximos passos: calibrar símbolos com unifilares reais aprovados (usuário
+  vai enviar), motor de layout automático (grafo + roteador), exportador DXF,
+  liberar para outros tenants, suportar BESS/múltiplos inversores/geração
+  compartilhada.
 - **Templates de outras concessionárias em .pdf/.xls**: hoje o motor só aceita
   `.docx`. Avaliar suporte a PDF com formulário (AcroForm) e a `.xlsx`.
 - **Catálogo de equipamentos no formulário público**: o combobox não aparece no

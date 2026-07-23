@@ -5,6 +5,12 @@ Registro de decisões de produto/UX (não arquiteturais — essas ficam em
 
 ## Log
 
+- **Diagrama unifilar — alpha só para master/GD Manager**: começar com uma
+  fatia vertical dentro do app (sem monorepo, sem dependência nova, layout
+  fixo) em vez do motor completo da proposta de arquitetura, para validar a
+  qualidade visual rápido. Símbolos aproximados de IEC 60617 até o usuário
+  enviar unifilares reais aprovados para calibração. Ver [ADR 0006](../adr/0006-cad-engine-alpha.md).
+  (jul/2026)
 - **Visão master de empresas por tenant**: drill-down dentro da aba **Tenants**
   do `/painel` (não uma aba nova) — cada tenant expande para suas empresas, e
   cada empresa para seus projetos. Só o master vê, via RPCs `is_master`-gated.
