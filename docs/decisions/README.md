@@ -5,6 +5,11 @@ Registro de decisões de produto/UX (não arquiteturais — essas ficam em
 
 ## Log
 
+- **Visão master de empresas por tenant**: drill-down dentro da aba **Tenants**
+  do `/painel` (não uma aba nova) — cada tenant expande para suas empresas, e
+  cada empresa para seus projetos. Só o master vê, via RPCs `is_master`-gated.
+  (jul/2026)
+
 - **Precificação por faixa fixa** (`tiered_flat`): faixas de/até kWp com **preço
   fechado** por projeto, além da faixa por kWp existente. No limite exato, vale a
   faixa que termina nele. (jul/2026)

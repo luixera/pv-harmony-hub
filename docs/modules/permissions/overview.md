@@ -10,8 +10,11 @@ Autorização do sistema: quem enxerga e altera o quê. A barreira principal é 
 - **Helpers** (`SECURITY DEFINER`, `search_path` fixo): `is_master`, `has_role`,
   `get_user_role`, `get_user_tenant_id`, `get_user_company_id`,
   `staff_can_access_project`, `tenant_has_access`.
-- **RPCs master-only** para o console (`console_*`, `master_tenant_stats`) —
-  gated por `is_master`.
+- **RPCs master-only** para o console (`console_*`, `master_tenant_stats`,
+  `master_companies_by_tenant`, `master_company_projects`) — gated por
+  `is_master`. Ex.: o drill-down "Empresas e projetos" por tenant no `/painel`
+  (aba Tenants) cruza tenants **apenas** por estas RPCs, mantendo o "sem bypass"
+  de RLS em `companies`/`projects`.
 - **Edge functions** com `service_role` (ignoram RLS) verificam o tenant do alvo.
 
 ## Papéis

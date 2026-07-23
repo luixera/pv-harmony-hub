@@ -8,7 +8,9 @@ import { toast } from 'sonner';
 import {
   Crown, Plus, Building2, Users as UsersIcon, FolderOpen, Sparkles,
   CalendarCheck, Ban, Play, Upload, Loader2, ArrowLeft, Pencil, X, Check,
+  ChevronDown, ChevronRight,
 } from 'lucide-react';
+import { projectStatusLabel } from '@/lib/statusMapping';
 
 // ── Hooks locais do painel ─────────────────────────────────────────────────────
 
@@ -186,6 +188,9 @@ export default function MasterPanel({ embedded = false }: { embedded?: boolean }
                     <Metric icon={<Building2 size={13} />} label="Empresas" value={s ? String(s.companies_count) : '…'} />
                     <Metric icon={<Sparkles size={13} />} label="IA no mês" value={s ? `${s.ai_month}${t.plan?.ai_analyses_per_month ? ` / ${t.plan.ai_analyses_per_month}` : ''}` : '…'} />
                   </div>
+
+                  {/* Drill-down: empresas do tenant e seus projetos (só master) */}
+                  <TenantDrillDown tenantId={t.id} />
                 </div>
               );
             })}
@@ -212,6 +217,95 @@ function Metric({ icon, label, value }: { icon: React.ReactNode; label: string; 
       <span style={{ color: '#F5A800', display: 'flex' }}>{icon}</span>
       <span>{label}:</span>
       <span style={{ color: '#fff', fontWeight: 600 }}>{value}</span>
+    </div>
+  );
+}
+
+// ── Drill-down: empresas do tenant e seus projetos ──────────────────────────────
+// Dados das RPCs master-only master_companies_by_tenant(id) / master_company_projects.
+interface MasterCompany {
+  company_id: string | null; company_name: string | null; company_active: boolean | null;
+  company_cnpj: string | null; projects_count: number; projects_active: number;
+}
+interface MasterProject {
+  project_id: string; code: string | null; title: string | null; status: string;
+  holder_name: string | null; created_at: string; project_value: number | null;
+  payment_status: string | null; protocol_number: string | null;
+}
+const brl = (n: number | null) => n == null ? '—' : `R$ ${Number(n).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+
+function CompanyProjects({ companyId }: { companyId: string }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['master-company-projects', companyId],
+    queryFn: async (): Promise<MasterProject[]> => {
+      const { data, error } = await supabase.rpc('master_company_projects' as never, { _company_id: companyId } as never);
+      if (error) throw error;
+      return (data ?? []) as MasterProject[];
+    },
+    staleTime: 30_000,
+  });
+  if (isLoading) return <div style={{ padding: '6px 0 6px 44px' }}><Loader2 size={14} className="animate-spin" style={{ color: '#F5A800' }} /></div>;
+  const rows = data ?? [];
+  if (rows.length === 0) return <div style={{ padding: '6px 0 8px 44px', fontSize: 11, color: '#777' }}>Nenhum projeto.</div>;
+  return (
+    <div style={{ paddingBottom: 6 }}>
+      {rows.map(p => (
+        <div key={p.project_id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 12px 4px 44px', fontSize: 11 }}>
+          <span style={{ fontFamily: 'monospace', color: '#888', flexShrink: 0 }}>{p.code || '—'}</span>
+          <span style={{ color: '#ccc', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.holder_name || p.title || '—'}</span>
+          <span style={{ color: '#999', flexShrink: 0 }}>{projectStatusLabel(p.status)}</span>
+          <span style={{ color: '#888', flexShrink: 0, width: 96, textAlign: 'right' }}>{brl(p.project_value)}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function CompanyItem({ c }: { c: MasterCompany }) {
+  const [open, setOpen] = useState(false);
+  if (!c.company_id) return null;
+  return (
+    <div style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+      <button onClick={() => setOpen(o => !o)} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px 7px 26px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
+        {open ? <ChevronDown size={13} color="#888" /> : <ChevronRight size={13} color="#888" />}
+        <Building2 size={13} style={{ color: c.company_active ? '#8FA88F' : '#666', flexShrink: 0 }} />
+        <span style={{ fontSize: 12, color: '#eee', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {c.company_name}{!c.company_active && <span style={{ fontSize: 10, color: '#FF6B4A', marginLeft: 6 }}>inativa</span>}
+        </span>
+        <span style={{ fontSize: 11, color: '#888', flexShrink: 0 }}>
+          {c.projects_count} proj.{Number(c.projects_active) > 0 && <span style={{ color: '#F5A800' }}> · {c.projects_active} ativo{Number(c.projects_active) === 1 ? '' : 's'}</span>}
+        </span>
+      </button>
+      {open && <CompanyProjects companyId={c.company_id} />}
+    </div>
+  );
+}
+
+function TenantDrillDown({ tenantId }: { tenantId: string }) {
+  const [open, setOpen] = useState(false);
+  const { data, isLoading } = useQuery({
+    queryKey: ['master-tenant-companies', tenantId],
+    enabled: open, // carrega só quando expandido
+    queryFn: async (): Promise<MasterCompany[]> => {
+      const { data, error } = await supabase.rpc('master_companies_by_tenant' as never, { _tenant_id: tenantId } as never);
+      if (error) throw error;
+      return ((data ?? []) as MasterCompany[]).filter(r => r.company_id);
+    },
+    staleTime: 30_000,
+  });
+  return (
+    <div style={{ marginTop: 12, borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 8 }}>
+      <button onClick={() => setOpen(o => !o)} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', cursor: 'pointer', color: '#aaa', fontSize: 12, fontWeight: 600, padding: '2px 0' }}>
+        {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        Empresas e projetos
+      </button>
+      {open && (
+        isLoading ? <div style={{ padding: '8px 0 8px 22px' }}><Loader2 size={15} className="animate-spin" style={{ color: '#F5A800' }} /></div>
+        : (data ?? []).length === 0 ? <div style={{ padding: '6px 0 6px 22px', fontSize: 12, color: '#777' }}>Nenhuma empresa cadastrada.</div>
+        : <div style={{ marginTop: 6, background: 'rgba(0,0,0,0.15)', borderRadius: 10, overflow: 'hidden' }}>
+            {(data ?? []).map(c => <CompanyItem key={c.company_id} c={c} />)}
+          </div>
+      )}
     </div>
   );
 }
