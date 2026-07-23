@@ -4,8 +4,9 @@ import { ProjectWithDetails } from '@/hooks/useProjects';
 import { buildTechnicalJsonFromProject } from '@/utils/cadEngine/buildTechnicalJson';
 import {
   ManualConnection, PlacedSymbol, buildSceneFromPlacement,
-  initialConnections, initialPlacement, orthogonalPath, snapToGrid,
+  computeConnectorPoints, initialConnections, initialPlacement, snapToGrid,
 } from '@/utils/cadEngine/editableLayout';
+import { Point } from '@/utils/cadEngine/types';
 import { sceneToSvgInner, primitiveToSvg } from '@/utils/cadEngine/exportSvg';
 import { sceneToPdfBlob } from '@/utils/cadEngine/exportPdf';
 import { SYMBOL_BBOX, SYMBOL_DEFS } from '@/utils/cadEngine/symbols';
@@ -79,9 +80,12 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
 
   const scene = useMemo(() => buildSceneFromPlacement(json, placements, connections), [json, placements, connections]);
 
-  // ── Interação: arrastar ──────────────────────────────────────────────────
+  // ── Interação: arrastar símbolos e pontos de dobra das linhas ────────────
   const svgRef = useRef<SVGSVGElement>(null);
-  const dragRef = useRef<{ id: string; startX: number; startY: number; origX: number; origY: number; moved: boolean } | null>(null);
+  type DragState =
+    | { type: 'symbol'; id: string; startX: number; startY: number; origX: number; origY: number; moved: boolean }
+    | { type: 'waypoint'; connId: string; index: number; startX: number; startY: number; origX: number; origY: number; moved: boolean };
+  const dragRef = useRef<DragState | null>(null);
 
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
@@ -94,13 +98,23 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
       if (Math.abs(dx) > 0.3 || Math.abs(dy) > 0.3) drag.moved = true;
       let nx = drag.origX + dx, ny = drag.origY + dy;
       if (snap) { nx = snapToGrid(nx); ny = snapToGrid(ny); }
-      setPlacements(prev => prev.map(p => (p.id === drag.id ? { ...p, x: nx, y: ny } : p)));
+
+      if (drag.type === 'symbol') {
+        setPlacements(prev => prev.map(p => (p.id === drag.id ? { ...p, x: nx, y: ny } : p)));
+      } else {
+        setConnections(prev => prev.map(c => {
+          if (c.id !== drag.connId) return c;
+          const waypoints = [...(c.waypoints ?? [])];
+          waypoints[drag.index] = { x: nx, y: ny };
+          return { ...c, waypoints };
+        }));
+      }
     };
     const onUp = () => {
       const drag = dragRef.current;
       dragRef.current = null;
       if (!drag) return;
-      if (!drag.moved) handleSymbolClick(drag.id); // arrasto não ocorreu → foi um clique
+      if (drag.type === 'symbol' && !drag.moved) handleSymbolClick(drag.id); // arrasto não ocorreu → foi um clique
     };
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
@@ -110,7 +124,8 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
 
   const handleSymbolMouseDown = (e: React.MouseEvent, p: PlacedSymbol) => {
     e.preventDefault();
-    dragRef.current = { id: p.id, startX: e.clientX, startY: e.clientY, origX: p.x, origY: p.y, moved: false };
+    e.stopPropagation();
+    dragRef.current = { type: 'symbol', id: p.id, startX: e.clientX, startY: e.clientY, origX: p.x, origY: p.y, moved: false };
   };
 
   const handleSymbolClick = (id: string) => {
@@ -130,6 +145,35 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
   };
 
   const removeConnection = (id: string) => setConnections(prev => prev.filter(c => c.id !== id));
+
+  // Arrastar um ponto de dobra já existente.
+  const handleWaypointMouseDown = (e: React.MouseEvent, connId: string, index: number, at: Point) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragRef.current = { type: 'waypoint', connId, index, startX: e.clientX, startY: e.clientY, origX: at.x, origY: at.y, moved: false };
+  };
+
+  // Clicar (e arrastar) no meio de um trecho cria um novo ponto de dobra ali.
+  const handleAddWaypoint = (e: React.MouseEvent, connId: string, index: number, at: Point) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setConnections(prev => prev.map(c => {
+      if (c.id !== connId) return c;
+      const waypoints = [...(c.waypoints ?? [])];
+      waypoints.splice(index, 0, at);
+      return { ...c, waypoints };
+    }));
+    dragRef.current = { type: 'waypoint', connId, index, startX: e.clientX, startY: e.clientY, origX: at.x, origY: at.y, moved: false };
+  };
+
+  const removeWaypoint = (connId: string, index: number) => {
+    setConnections(prev => prev.map(c => {
+      if (c.id !== connId) return c;
+      const waypoints = [...(c.waypoints ?? [])];
+      waypoints.splice(index, 1);
+      return { ...c, waypoints };
+    }));
+  };
 
   const resetLayout = () => {
     if (!confirm('Restaurar o layout automático? As posições e ligações manuais deste projeto serão perdidas (só neste navegador).')) return;
@@ -173,9 +217,11 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
       }}>
         <FlaskConical size={15} style={{ color: '#854F0B', flexShrink: 0 }} />
         <p style={{ fontSize: 12, color: '#854F0B', margin: 0 }}>
-          <strong>Alpha interno (só master).</strong> Arraste os símbolos, gire o selecionado e ligue
-          componentes manualmente. Sem motor de roteamento automático ainda; o layout é salvo
-          só neste navegador — não sincroniza entre dispositivos nem gera template reutilizável.
+          <strong>Alpha interno (só master).</strong> Arraste os símbolos (clique em qualquer parte
+          da figura), gire o selecionado e ligue componentes manualmente. Nas linhas: arraste o
+          traço para criar um ponto de dobra, arraste um ponto já criado para reposicioná-lo, e
+          dê duplo-clique nele para remover. O layout é salvo só neste navegador — não sincroniza
+          entre dispositivos nem gera template reutilizável.
         </p>
       </div>
 
@@ -242,14 +288,43 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
           {/* Moldura, cabeçalho e carimbo — estáticos */}
           <g dangerouslySetInnerHTML={{ __html: sceneToSvgInner(buildSceneFromPlacement(json, [], [])) }} />
 
-          {/* Condutores — recalculados a cada posição atual */}
+          {/* Condutores — recalculados a cada posição atual; pontos de dobra são arrastáveis */}
           {connections.map(conn => {
             const a = byId.get(conn.from), b = byId.get(conn.to);
             if (!a || !b) return null;
-            const ca = { x: a.x + SYMBOL_BBOX.w / 2, y: a.y + SYMBOL_BBOX.h / 2 };
-            const cb = { x: b.x + SYMBOL_BBOX.w / 2, y: b.y + SYMBOL_BBOX.h / 2 };
-            const points = orthogonalPath(ca, cb).map(p => `${p.x},${p.y}`).join(' ');
-            return <polyline key={conn.id} points={points} fill="none" stroke="#B0271A" strokeWidth={0.4} />;
+            const routePoints = computeConnectorPoints(a, b, conn.waypoints);
+            const pointsStr = routePoints.map(p => `${p.x},${p.y}`).join(' ');
+            const waypoints = conn.waypoints ?? [];
+            return (
+              <g key={conn.id}>
+                <polyline points={pointsStr} fill="none" stroke="#B0271A" strokeWidth={0.4} />
+                {/* trecho invisível mais grosso — alvo de clique maior para arrastar/criar dobra */}
+                {routePoints.slice(0, -1).map((p, i) => {
+                  const q = routePoints[i + 1];
+                  const mid = { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 };
+                  return (
+                    <g key={i}>
+                      <line
+                        x1={p.x} y1={p.y} x2={q.x} y2={q.y}
+                        stroke="transparent" strokeWidth={2.5}
+                        style={{ cursor: 'crosshair' }}
+                        onMouseDown={e => handleAddWaypoint(e, conn.id, i, mid)}
+                      />
+                    </g>
+                  );
+                })}
+                {waypoints.map((wp, i) => (
+                  <circle
+                    key={i}
+                    cx={wp.x} cy={wp.y} r={1.3}
+                    fill="#fff" stroke="#B0271A" strokeWidth={0.4}
+                    style={{ cursor: 'move' }}
+                    onMouseDown={e => handleWaypointMouseDown(e, conn.id, i, wp)}
+                    onDoubleClick={e => { e.stopPropagation(); removeWaypoint(conn.id, i); }}
+                  />
+                ))}
+              </g>
+            );
           })}
 
           {/* Símbolos — arrastáveis, giráveis, clicáveis */}
@@ -266,6 +341,9 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
                   onMouseDown={e => handleSymbolMouseDown(e, p)}
                   style={{ cursor: linkMode ? 'crosshair' : 'grab' }}
                 >
+                  {/* área de clique invisível: sem isto, símbolos com fill="none" só respondem
+                      a clique bem em cima do traço fino — não no meio da figura */}
+                  <rect x={0} y={0} width={SYMBOL_BBOX.w} height={SYMBOL_BBOX.h} fill="transparent" />
                   {(isSelected || isLinkFrom) && (
                     <rect
                       x={-2} y={-2} width={SYMBOL_BBOX.w + 4} height={SYMBOL_BBOX.h + 4}

@@ -24,6 +24,8 @@ export interface ManualConnection {
   id: string;
   from: string;
   to: string;
+  /** Pontos de dobra adicionados manualmente pelo usuário, na ordem de `from` a `to`. */
+  waypoints?: Point[];
 }
 
 const GRID = 2.5; // mm — mesmo módulo da proposta (§7, Fase 3)
@@ -76,6 +78,22 @@ function edgePoint(from: PlacedSymbol, towards: Point): Point {
   return { x: c.x, y: c.y + Math.sign(dy || 1) * (SYMBOL_BBOX.h / 2) };
 }
 
+/**
+ * Pontos do condutor entre dois símbolos. Sem pontos de dobra manuais, cai no
+ * roteamento ortogonal automático (`orthogonalPath`). Com pontos de dobra, a
+ * linha passa exatamente por eles (roteamento manual — o usuário controla o
+ * traço), sem tentar "ortogonalizar" o meio.
+ */
+export function computeConnectorPoints(a: PlacedSymbol, b: PlacedSymbol, waypoints?: Point[]): Point[] {
+  const wps = waypoints ?? [];
+  const towardsFromA = wps[0] ?? blockCenter(b);
+  const towardsFromB = wps[wps.length - 1] ?? blockCenter(a);
+  const pa = edgePoint(a, towardsFromA);
+  const pb = edgePoint(b, towardsFromB);
+  if (wps.length === 0) return orthogonalPath(pa, pb);
+  return [pa, ...wps, pb];
+}
+
 export function buildSceneFromPlacement(
   json: TechnicalJsonMvp,
   placements: PlacedSymbol[],
@@ -89,9 +107,7 @@ export function buildSceneFromPlacement(
   for (const conn of connections) {
     const a = byId.get(conn.from), b = byId.get(conn.to);
     if (!a || !b) continue;
-    const ca = blockCenter(a), cb = blockCenter(b);
-    const pa = edgePoint(a, cb), pb = edgePoint(b, ca);
-    const points = orthogonalPath(pa, pb);
+    const points = computeConnectorPoints(a, b, conn.waypoints);
     scene.shapes.push({ layer: 'CONDUCTOR_AC', geometry: { kind: 'polyline', points } });
   }
 

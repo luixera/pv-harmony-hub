@@ -30,8 +30,8 @@ usuário: útil mais cedo, e o motor automático continua no roadmap):
 |---|---|
 | Pacote isolado `packages/cad-engine/` (monorepo) | Módulo comum em `src/utils/cadEngine/` — este repo não é monorepo |
 | Motor de layout automático (grafo, ranking, roteador ortogonal) | Ainda não construído. Existe um **layout fixo inicial** (fileira única) como ponto de partida, editável manualmente por cima. |
-| `ManualLayoutSource` (§17.2) — layout desenhado pelo usuário | **Implementado**: arrastar (com grade de 2,5 mm), girar em passos de 90°, ligar dois componentes manualmente. Condutores entre componentes ligados usam roteamento **ortogonal simplificado** (`orthogonalPath`) — segue a posição atual, não é o roteador com detecção de cruzamento da proposta. |
-| Biblioteca de símbolos declarativa versionada | 5 símbolos fixos (`symbols.ts`), aproximados de IEC 60617 |
+| `ManualLayoutSource` (§17.2) — layout desenhado pelo usuário | **Implementado**: arrastar (clique em qualquer ponto da figura, não só no traço — ver nota abaixo), girar em passos de 90°, ligar dois componentes manualmente. Condutores sem pontos de dobra usam roteamento **ortogonal simplificado** (`orthogonalPath`); com pontos de dobra adicionados manualmente (`waypoints`, arrastando o traço ou um ponto já criado), a linha segue exatamente o caminho desenhado (`computeConnectorPoints`) — ainda não é o roteador com detecção de cruzamento da proposta. |
+| Biblioteca de símbolos declarativa versionada | 5 símbolos fixos (`symbols.ts`), aproximados de IEC 60617. Todos desenhados no eixo horizontal (`y = H/2`), para alinhar com o fluxo esquerda→direita do diagrama e com os pontos de conexão (`edgePoint`) — o disjuntor (chave de abertura) foi redesenhado nesse sentido depois de sair vertical na primeira versão. |
 | Exportadores SVG / PDF / DXF / PNG via IR neutra | **SVG e PDF**, ambos consumindo a mesma `Scene` (IR já segue o princípio D1: um exportador novo não toca em layout/símbolos) |
 | JSON Técnico completo (grafo elétrico genérico) | `TechnicalJsonMvp`: cadeia fixa PV → Inversor → Disjuntor → Medidor → Rede, montada a partir de `project_equipment`/`project_general_data` do próprio projeto |
 | `DiagramTemplate` — salvar/aplicar layout como template (§17.3) | Não implementado ainda — ver roadmap |
@@ -42,7 +42,7 @@ usuário: útil mais cedo, e o motor automático continua no roadmap):
 - `src/utils/cadEngine/paper.ts` — constantes de papel/margem + moldura/carimbo (compartilhado entre o layout fixo e o editável).
 - `src/utils/cadEngine/buildTechnicalJson.ts` — projeto → JSON técnico (reaproveita `buildProjectValues`).
 - `src/utils/cadEngine/layout.ts` — JSON técnico → `Scene` com layout fixo (posição inicial, antes de qualquer edição).
-- `src/utils/cadEngine/editableLayout.ts` — `PlacedSymbol`/`ManualConnection`, `orthogonalPath`, `snapToGrid`, `buildSceneFromPlacement` (a `Scene` a partir do estado editado).
+- `src/utils/cadEngine/editableLayout.ts` — `PlacedSymbol`/`ManualConnection` (com `waypoints?: Point[]`), `orthogonalPath`, `computeConnectorPoints` (roteamento automático sem pontos de dobra, ou caminho manual exato quando há), `snapToGrid`, `buildSceneFromPlacement` (a `Scene` a partir do estado editado).
 - `src/utils/cadEngine/exportSvg.ts` / `exportPdf.ts` — `Scene` → SVG / PDF, com suporte a `rotation` do bloco (PDF gira os pontos manualmente; SVG usa `transform="rotate(...)"` nativo). PDF via `jspdf`, já usado em `resumoPdf.ts` — nenhuma dependência nova.
 - `src/components/projects/UnifilarTab.tsx` — canvas SVG interativo (arrastar/girar/ligar) + botões de download.
 
@@ -63,6 +63,16 @@ com os componentes atuais do projeto (`reconcile()` em `UnifilarTab.tsx`):
 ids que não existem mais são descartados; componentes novos entram na posição
 padrão da fileira.
 
+## Nota técnica — arrastar símbolos com `fill="none"`
+Os primitivos dos símbolos são desenhados com `fill="none"` (só contorno). Em
+SVG, uma forma sem preenchimento só recebe eventos de mouse **exatamente em
+cima do traço**, não no interior da figura — clicar no meio de um símbolo
+"vazio" não disparava o `mousedown` de arrastar. Corrigido com um `<rect>`
+invisível (`fill="transparent"`, do tamanho da caixa 24×20mm) como primeiro
+filho do `<g>` arrastável de cada símbolo: preenchimento transparente ainda
+é "pintado" para fins de hit-test do navegador, então captura clique em
+qualquer ponto da caixa e propaga para o handler do grupo.
+
 ## Fluxo
 ```mermaid
 flowchart LR
@@ -78,8 +88,10 @@ flowchart LR
 ## Limitações desta fatia (deliberadas)
 - Só a cadeia PV→Inversor→Disjuntor→Medidor→Rede — sem BESS, sem múltiplos
   inversores/QDCs, sem geração compartilhada.
-- Sem motor de layout automático/roteador com detecção de cruzamento — o
-  roteamento entre componentes ligados é um Manhattan de 2 segmentos simples.
+- Sem motor de layout automático/roteador com detecção de cruzamento — sem
+  pontos de dobra manuais, o roteamento é um Manhattan de 2 segmentos simples;
+  com pontos de dobra, o usuário desenha o caminho à mão, sem ajuda automática
+  (sem ortogonalização, sem desvio de outros traços/símbolos).
 - Símbolos aproximados; **pendente calibrar** com unifilares reais aprovados da
   GD Manager (combinado com o usuário — ele vai enviar exemplos).
 - Sem exportador DXF, sem `DiagramTemplate` (salvar/aplicar layout em outro

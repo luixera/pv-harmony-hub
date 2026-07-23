@@ -7,8 +7,10 @@
 - **Listagem pública de buckets** `avatars`/`tenant-logos`: revisar.
 
 ## Tarefas de produto em aberto (do backlog de sessão)
-- **Diagrama unifilar — evoluir do alpha**: hoje tem edição manual (arrastar,
-  girar, ligar), 5 símbolos, layout salvo só em `localStorage`, só
+- **Diagrama unifilar — evoluir do alpha**: hoje tem edição manual (arrastar
+  de qualquer ponto do símbolo, girar, ligar, e desenhar o traço da linha com
+  pontos de dobra arrastáveis), 5 símbolos (disjuntor corrigido para
+  orientação horizontal), layout salvo só em `localStorage`, só
   master/GD Manager — ver [modules/diagrams](../modules/diagrams/overview.md)
   e [ADR 0006](../adr/0006-cad-engine-alpha.md). Próximos passos, em ordem
   sugerida: (1) calibrar símbolos com unifilares reais aprovados (usuário vai

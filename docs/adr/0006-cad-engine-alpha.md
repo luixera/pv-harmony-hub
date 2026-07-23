@@ -54,3 +54,20 @@ manualmente**, aceitando que fosse gradual. Implementado o
 deliberada da ordem do roadmap original — ver `docs/modules/diagrams/overview.md`).
 Persistência ficou em `localStorage` por projeto (não é o `DiagramTemplate`
 do §17.3, que continua no roadmap).
+
+## Atualização (mesmo dia, 2ª rodada)
+Novo feedback direto: "ainda está bem simples" — três pontos concretos:
+1. **Disjuntor com orientação errada**: o símbolo (`symbols.ts`) tinha sido
+   desenhado como chave **vertical**, enquanto todo o resto do diagrama (e o
+   roteamento de condutores, que assume conexão nas bordas esquerda/direita à
+   altura `y = H/2`) flui na **horizontal**. Redesenhado como chave horizontal.
+2. **Arrastar não pegava de qualquer ponto do símbolo**: primitivos com
+   `fill="none"` só capturam clique em cima do traço em SVG, não no interior —
+   corrigido com uma área de clique invisível (`fill="transparent"`) do
+   tamanho da caixa do símbolo, ver `docs/modules/diagrams/overview.md`.
+3. **Traço de linha 100% automático**: adicionados pontos de dobra
+   (`waypoints`) arrastáveis por conexão — arrastar o traço cria um ponto novo
+   ali; arrastar um ponto existente o reposiciona; duplo-clique remove.
+   `computeConnectorPoints` (`editableLayout.ts`) decide entre o roteamento
+   ortogonal automático (sem pontos de dobra) e o caminho manual exato
+   (com eles).

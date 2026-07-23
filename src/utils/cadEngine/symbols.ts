@@ -40,12 +40,15 @@ export const SYMBOL_DEFS: Record<ComponentKind, Primitive[]> = {
       ],
     },
   ],
+  // Chave HORIZONTAL — todo o resto do unifilar flui da esquerda p/ direita,
+  // então o traço de abertura tem que ficar no sentido do condutor, não
+  // atravessado (era o bug: a versão anterior desenhava a chave na vertical).
   breaker: [
-    { kind: 'line', a: { x: W / 2, y: 2 }, b: { x: W / 2, y: 7 } },
-    { kind: 'line', a: { x: W / 2, y: 7 }, b: { x: W / 2 + 7, y: H - 5 } },
-    { kind: 'line', a: { x: W / 2, y: H - 5 }, b: { x: W / 2, y: H - 2 } },
-    { kind: 'circle', center: { x: W / 2, y: 7 }, radius: 1 },
-    { kind: 'circle', center: { x: W / 2, y: H - 5 }, radius: 1 },
+    { kind: 'line', a: { x: 2, y: H / 2 }, b: { x: W / 2 - 4, y: H / 2 } },
+    { kind: 'circle', center: { x: W / 2 - 4, y: H / 2 }, radius: 1 },
+    { kind: 'line', a: { x: W / 2 - 4, y: H / 2 }, b: { x: W / 2 + 4, y: H / 2 - 7 } },
+    { kind: 'circle', center: { x: W / 2 + 4, y: H / 2 }, radius: 1 },
+    { kind: 'line', a: { x: W / 2 + 4, y: H / 2 }, b: { x: W - 2, y: H / 2 } },
   ],
   meter: [
     { kind: 'circle', center: { x: W / 2, y: H / 2 }, radius: 8 },
