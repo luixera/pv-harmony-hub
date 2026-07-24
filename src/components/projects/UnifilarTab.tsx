@@ -34,6 +34,8 @@ interface SavedLayout {
   connections: unknown[]; // formato salvo pode ser antigo (string) ou novo (ConnectionEndpoint) — migrado abaixo
   photos?: DiagramSceneState['photos'];
   texts?: DiagramSceneState['texts'];
+  groups?: DiagramSceneState['groups'];
+  sheet?: DiagramSceneState['sheet'];
 }
 
 /** Diagramas salvos antes das ligações virarem `ConnectionEndpoint` gravavam
@@ -60,7 +62,7 @@ function migrateConnection(raw: unknown): ManualConnection {
  */
 function reconcile(json: ReturnType<typeof buildTechnicalJsonFromProject>, saved: SavedLayout | null): DiagramSceneState {
   const fresh = initialPlacement(json);
-  if (!saved) return { placements: fresh, connections: initialConnections(json), photos: [], texts: [] };
+  if (!saved) return { placements: fresh, connections: initialConnections(json), photos: [], texts: [], groups: [] };
 
   const reconciledProject = fresh.map(f => {
     const s = saved.placements.find(p => p.id === f.id);
@@ -76,7 +78,11 @@ function reconcile(json: ReturnType<typeof buildTechnicalJsonFromProject>, saved
     .map(migrateConnection)
     .filter(c => isConnectionResolvable(c, byId));
 
-  return { placements, connections, photos: saved.photos ?? [], texts: saved.texts ?? [] };
+  return {
+    placements, connections,
+    photos: saved.photos ?? [], texts: saved.texts ?? [],
+    groups: saved.groups ?? [], sheet: saved.sheet,
+  };
 }
 
 function loadInitialState(project: ProjectWithDetails, json: ReturnType<typeof buildTechnicalJsonFromProject>): DiagramSceneState {

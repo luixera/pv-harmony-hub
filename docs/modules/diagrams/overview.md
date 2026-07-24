@@ -68,7 +68,8 @@ usuário: útil mais cedo, e o motor automático continua no roadmap):
 - `src/pages/admin/DiagramTemplates.tsx` — motor de templates: lista de modelos (criar/renomear/duplicar/excluir) e, ao abrir um, usa o mesmo `DiagramEditor` com `json.components = []` (modelo começa vazio, sem cadeia fixa — todo símbolo nasce com prefixo `manual-`) e autosave debounced (800ms) em `diagram_templates.scene_data`.
 - `src/hooks/useDiagramTemplates.ts` — CRUD via React Query (`useDiagramTemplates`, `useCreateDiagramTemplate`, `useUpdateDiagramTemplate`, `useDeleteDiagramTemplate`, `useDuplicateDiagramTemplate`).
 - `src/hooks/useDiagramEngineAccess.ts` — regra de acesso única, reaproveitada no menu lateral, na rota e na aba do modal do projeto.
-- `src/hooks/useDiagramRecognition.ts` — chama a edge function `diagram-recognize` (upload → base64 → IA de visão → lista de componentes/ligações).
+- `src/hooks/useDiagramRecognition.ts` — chama a edge function `diagram-recognize` (upload → base64 → IA de visão → componentes com posição 0–100 + grupos + bitolas).
+- `src/utils/pdfPreview.ts` — 1ª página do PDF → data URL (pdfjs-dist, import dinâmico) pro fundo de referência do editor.
 - `supabase/functions/diagram-recognize/index.ts` — edge function (mesmo padrão do `claudinho-verifica`: Anthropic API, PDF nativo via `anthropic-beta: pdfs-2024-09-25`, `consume_ai_quota`).
 
 ## Permissões
@@ -125,33 +126,39 @@ usuário sobe um PDF (ou foto) de um diagrama unifilar já aprovado, a edge
 function `diagram-recognize` chama a IA de visão (Anthropic, mesmo mecanismo
 do Claudinho — `claudinho-verifica`) com o vocabulário fechado dos 12
 `ComponentKind` existentes e devolve, por componente: `kind`, rótulo,
-**`stage`** (posição inteira no fluxo principal, 0 = geração, crescente até a
-rede) e **`branch`** (`true` = derivação — DPS, aterramento — que não fica em
-série no condutor principal), além das `connections` entre os ids. Nunca
-posição/rotação exata em mm — só essa topologia aproximada (ver "Por que só
-topologia" abaixo). `layoutFromRecognition` (`editableLayout.ts`) usa
-`stage`/`branch` pra montar uma cena que já se parece com um unifilar de
-verdade: componentes `branch: false` do mesmo `stage` ficam na fileira
-principal (mesmo `x`), os `branch: true` empilham abaixo, na mesma coluna —
-bem mais próximo do pedido original ("o PDF é redesenhado no editor") do que
-uma fileira única. O template é criado **num único insert já com essa cena**
-(`useCreateDiagramTemplate` aceita `sceneData` opcional) — antes era
-criar-vazio-depois-atualizar em duas chamadas, e uma falha na segunda deixava
-um modelo órfão e vazio pra trás (bug real, aconteceu na primeira tentativa
-real de importação; corrigido). Abre direto no editor com um aviso roxo:
-**"reconhecido automaticamente, revise antes de usar"**. Dados pessoais do
-documento (titular, endereço, ART, CPF/CNPJ) são explicitamente instruídos a
-ficar de fora da resposta — a IA só devolve tipo/rótulo de componente e
-conexão, nunca texto livre do documento.
+**`x`/`y` normalizados 0–100** (posição do centro do símbolo na área do
+diagrama original — não coordenada mm exata, mas suficiente pra preservar a
+disposição relativa: o que está acima/abaixo, alinhado com o quê), mais
+`stage`/`branch` como fallback quando a IA não estima posição. Também
+devolve **`groups`** (caixas de agrupamento com título e caixa 0–100, ex.:
+"QG - Sistema Fotovoltaico") e, por conexão, **`label`** (a bitola escrita
+no trecho, ex.: `2#6mm² + #6mm²`). `buildSceneFromRecognition`
+(`editableLayout.ts`): com posição válida na maioria (≥60%) dos componentes,
+mapeia as coordenadas normalizadas pra área útil da folha (com snap na grade
+e separação de sobreposições) — o diagrama importado **sai com a mesma
+disposição espacial do PDF original**; senão, cai no layout `stage`/`branch`
+(fileira principal + derivações empilhadas). Validado com o diagrama ENEL
+real de referência: a cadeia FV horizontal embaixo, o eixo da rede subindo
+na vertical à direita e o grupo do QG saíram nas posições certas.
 
-**Por que só topologia (+ stage/branch), sem posição/rotação/coordenadas em
-mm:** pedir à IA coordenadas exatas alinhadas à nossa página teria uma taxa
-de erro alta demais pra ser útil (LLMs de visão são bons em "o que tem aqui",
-"onde mais ou menos fica no fluxo" e "o que conecta com o quê", ruins em
-coordenada pixel-perfeita) — o editor manual já existe e é bom o bastante pra
-ajustar posição fina depois. `stage`/`branch` é o meio-termo: estrutura
-suficiente pra sair parecido com o diagrama real sem depender da IA acertar
-geometria exata.
+Junto da cena reconhecida, a importação renderiza a 1ª página do PDF
+original (`pdfPreview.ts`, `pdfjs-dist`, client-side) como **fundo de
+referência (underlay)**: esmaecido atrás do diagrama no editor, travado
+(não arrasta), com liga/desliga e "remover fundo" na barra — e **nunca sai
+no SVG/PDF exportado**. É a ferramenta de conferência do reconhecimento: o
+usuário vê o original atrás do redesenho e corrige o que a IA errou
+arrastando por cima.
+
+O template é criado **num único insert já com a cena** (`useCreateDiagramTemplate`
+aceita `sceneData`) — sem o segundo passo de update que já deixou um modelo
+órfão vazio pra trás. Abre direto no editor com um aviso roxo: "reconhecido
+automaticamente, revise antes de usar". Dados pessoais do documento
+(titular, endereço, ART, CPF/CNPJ) são explicitamente instruídos a ficar de
+fora da resposta da IA. **Atenção**: o underlay em si é a imagem do
+documento original — se o PDF importado contém dados pessoais, eles ficam
+visíveis no fundo DENTRO do editor (nunca no arquivo exportado); modelos são
+restritos à GD Manager (admin/staff) e o fundo pode ser removido a qualquer
+momento.
 
 **Robustez contra resposta da IA fora do esperado:** `KIND_ALIASES` (edge
 function) normaliza variações comuns que a IA às vezes usa em vez do `kind`
@@ -167,6 +174,35 @@ Cota de uso: mesma função `consume_ai_quota` do Claudinho (`_kind:
 'diagram_recognize'`), registrada em `ai_usage_log` — hoje sem efeito prático
 porque o recurso é restrito à GD Manager (plano interno sem limite), mas já
 fica com o consumo rastreado se algum dia abrir pra outros tenants.
+
+## Folha profissional (legenda automática, carimbo completo, grupos, bitola)
+A folha exportada segue o padrão dos unifilares reais usados como referência:
+
+- **Tabela de LEGENDA automática** (`drawLegendTable`, `paper.ts`): coluna no
+  lado direito da folha listando mini-símbolo + descrição (`KIND_LEGEND`) de
+  cada tipo de componente efetivamente usado no diagrama — gerada do
+  conteúdo, nunca mantida à mão. Liga/desliga em "Dados da folha"
+  (`sheet.showLegend`). A área útil de desenho vai até `LEGEND_X0`; o layout
+  do reconhecimento comprime o espaçamento pra respeitar essa faixa.
+- **Carimbo completo** (`drawTitleBlock`, 2 linhas × 4 colunas): TITULAR,
+  ENDEREÇO, CONCESSIONÁRIA, POTÊNCIA INSTALADA / RESP. TÉCNICO, ART, DATA,
+  REVISÃO. Resp. técnico, ART e revisão são campos editáveis por diagrama
+  (painel "Dados da folha" na barra do editor, persistidos em
+  `DiagramSceneState.sheet`) e aceitam tags `{chave}` — num template, o
+  engenheiro digita uma vez e todo projeto que importar herda.
+- **Caixas de agrupamento** (`PlacedGroup`): retângulo tracejado com título
+  em cima (ex.: "QG – Sistema Fotovoltaico"), arrastável/redimensionável,
+  atrás dos símbolos; botão "Grupo" na fileira Adicionar; o reconhecimento
+  de PDF também as cria sozinho quando o original tem.
+- **Rótulo de bitola por ligação** (`ManualConnection.label`): texto
+  (ex.: `2#6mm² + #6mm²`) desenhado junto ao trecho mais longo do condutor;
+  edita pelo botão "Editar texto" com a ligação selecionada (ou duplo-clique
+  no rótulo); aceita tags; o reconhecimento preenche automaticamente quando
+  a bitola está escrita no PDF original.
+
+Tudo isso vale igual no editor do projeto e no motor de templates (mesma
+`Scene`), e sai idêntico no SVG e no PDF exportados (primitiva `rect`/`line`
+ganhou `dashed`; camada nova `GROUP_BOX`).
 
 ## Componentes e fotos adicionados manualmente
 Além dos 5 componentes que vêm do cadastro do projeto (`TechnicalJsonMvp`), a
@@ -362,12 +398,12 @@ flowchart LR
   não importa nenhum — falta o elo final (ver "Motor de templates" acima) e
   o casamento automático por critério (§17.3 da proposta) nunca foi
   implementado.
-- **Reconhecimento automático de PDF não é pixel-perfeito** — identifica
-  componentes, posição aproximada no fluxo (`stage`) e derivações (`branch`),
-  mas nunca coordenada/rotação exata em mm, nem confiança total em
-  quantidade de itens repetidos; todo modelo importado precisa de revisão
-  manual no editor antes de ser considerado pronto (ver "Reconhecimento
-  automático a partir de PDF" acima). Sem memória entre importações — cada
+- **Reconhecimento automático de PDF não é pixel-perfeito** — as posições
+  vêm normalizadas 0–100 com ~5% de erro típico (disposição relativa
+  preservada, geometria fina não), rotação nunca é estimada, e quantidade
+  de itens repetidos não tem confiança total; todo modelo importado precisa
+  de revisão manual no editor (o underlay do original atrás facilita
+  exatamente isso). Sem memória entre importações — cada
   PDF é analisado do zero, não aprende com
   correções feitas em importações anteriores.
 - Layout do projeto persiste só em `localStorage` deste navegador — não

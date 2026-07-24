@@ -23,23 +23,23 @@
   aba própria (`/admin/diagram-templates`, editor reaproveitado —
   `DiagramEditor.tsx` —, persistido em `diagram_templates` no banco), acesso
   por papel (admin/staff) em vez de só master, ainda restrito à GD Manager
-  (`tenants.is_library`), e agora também **"Importar de PDF"** —
-  reconhecimento automático via IA de visão (`diagram-recognize`, mesmo
-  padrão do Claudinho) que identifica componentes/ligações e a posição
-  aproximada de cada um no fluxo (`stage`/`branch` — fileira principal +
-  derivações empilhadas, nunca coordenada exata) e monta um modelo inicial
-  pra revisão — ver
-  [modules/diagrams](../modules/diagrams/overview.md) e
-  [ADR 0006](../adr/0006-cad-engine-alpha.md). Próximos passos, em ordem
-  sugerida: (1) **importar um modelo salvo dentro do modal do projeto** —
-  falta decidir com o usuário como ele escolhe qual (manual, por
-  concessionária, por critério paramétrico) antes de construir; (2)
-  calibrar símbolos e o prompt do reconhecimento com mais unifilares reais;
-  (3) liberar o motor de templates para todos os tenants (RLS já pronto);
-  (4) motor de layout automático (grafo + roteador com detecção de
-  cruzamento — beneficiaria direto o reconhecimento de PDF); (5) exportador
-  DXF; (6) suportar BESS/múltiplos inversores/geração compartilhada
-  oficialmente no cadastro (hoje só dá pra representar visualmente, avulso).
+  (`tenants.is_library`), e **"Importar de PDF"** com reconhecimento por IA
+  (`diagram-recognize`): posições normalizadas 0–100 preservando a
+  disposição espacial do original, grupos, bitolas por trecho, e o PDF
+  original como fundo esmaecido de conferência no editor (nunca exportado).
+  A folha exportada tem legenda automática, carimbo completo (resp.
+  técnico/ART/revisão editáveis com tags), caixas de agrupamento e bitola
+  por ligação — ver [modules/diagrams](../modules/diagrams/overview.md) e
+  [ADR 0006](../adr/0006-cad-engine-alpha.md). **Plano de 4 fases aprovado
+  (10ª rodada)** — A (folha) e C (reconhecimento+underlay) entregues;
+  próximos: **Fase B** (undo/redo, zoom/pan, painel de propriedades no
+  lugar dos prompts, multi-seleção) e **Fase D** (importar modelo dentro do
+  modal do projeto — dropdown + sugestão por concessionária — e diagrama do
+  projeto persistido no banco em vez de localStorage). Depois: calibrar
+  prompt/símbolos com mais unifilares reais; liberar pra todos os tenants
+  (RLS pronto); componentes em série desenhados "no fio" + portas CC/CA no
+  inversor (Fase E, refactor visual final); motor de layout automático;
+  exportador DXF; BESS/múltiplos inversores oficiais no cadastro.
 - **Templates de outras concessionárias em .pdf/.xls**: hoje o motor só aceita
   `.docx`. Avaliar suporte a PDF com formulário (AcroForm) e a `.xlsx`.
 - **Catálogo de equipamentos no formulário público**: o combobox não aparece no

@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Loader2, Download, FileImage, RotateCw, Link2, Trash2, RefreshCw,
-  Image as ImageIcon, Plus, Pencil, Type,
+  Image as ImageIcon, Plus, Pencil, Type, BoxSelect, FileText,
 } from 'lucide-react';
 import {
-  ConnectionEndpoint, DiagramSceneState, ManualConnection, PlacedPhoto, PlacedSymbol, PlacedText,
-  blockCenter, buildSceneFromPlacement, computeConnectorPoints, findNearestSymbol,
-  initialConnections, initialPlacement, isConnectionResolvable, nearestPointOnPolyline,
-  SNAP_RADIUS, snapToGrid,
+  ConnectionEndpoint, DiagramSceneState, ManualConnection, PlacedGroup, PlacedPhoto, PlacedSymbol, PlacedText,
+  SheetOptions, blockCenter, buildSceneFromPlacement, buildSheetFurnitureScene, computeConnectorPoints,
+  connectionLabelPosition, findNearestSymbol, initialConnections, initialPlacement, isConnectionResolvable,
+  nearestPointOnPolyline, SNAP_RADIUS, snapToGrid, usedKindsOf,
 } from '@/utils/cadEngine/editableLayout';
 import { ComponentKind, Point, TechnicalJsonMvp } from '@/utils/cadEngine/types';
 import { sceneToSvgInner, primitiveToSvg, blockTransform } from '@/utils/cadEngine/exportSvg';
@@ -66,19 +66,24 @@ export function DiagramEditor({
   const [connections, setConnections] = useState<ManualConnection[]>([]);
   const [photos, setPhotos] = useState<PlacedPhoto[]>([]);
   const [texts, setTexts] = useState<PlacedText[]>([]);
+  const [groups, setGroups] = useState<PlacedGroup[]>([]);
+  const [sheet, setSheet] = useState<SheetOptions>({});
   const [loaded, setLoaded] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedPhotoId, setSelectedPhotoId] = useState<string | null>(null);
   const [selectedTextId, setSelectedTextId] = useState<string | null>(null);
   const [selectedConnId, setSelectedConnId] = useState<string | null>(null);
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [linkMode, setLinkMode] = useState(false);
   const [linkFrom, setLinkFrom] = useState<ConnectionEndpoint | null>(null);
   const [drawnWaypoints, setDrawnWaypoints] = useState<Point[]>([]);
   const [snap, setSnap] = useState(true);
+  const [sheetPanelOpen, setSheetPanelOpen] = useState(false);
+  const [showUnderlay, setShowUnderlay] = useState(true);
   const [generatingPdf, setGeneratingPdf] = useState(false);
 
   const clearSelection = () => {
-    setSelectedId(null); setSelectedPhotoId(null); setSelectedTextId(null); setSelectedConnId(null);
+    setSelectedId(null); setSelectedPhotoId(null); setSelectedTextId(null); setSelectedConnId(null); setSelectedGroupId(null);
   };
 
   // Reseeda o estado interno sempre que o "documento" (projeto/template) muda.
@@ -87,10 +92,14 @@ export function DiagramEditor({
     setConnections(initialState.connections);
     setPhotos(initialState.photos);
     setTexts(initialState.texts);
+    setGroups(initialState.groups ?? []); // diagramas salvos antes dos grupos não têm o campo
+    setSheet(initialState.sheet ?? {});
     clearSelection();
     setLinkMode(false);
     setLinkFrom(null);
     setDrawnWaypoints([]);
+    setSheetPanelOpen(false);
+    setShowUnderlay(true);
     setLoaded(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- só reage à troca de documento
   }, [stateKey]);
@@ -98,9 +107,9 @@ export function DiagramEditor({
   // Notifica o dono (localStorage por projeto, ou o motor de templates) a cada mudança.
   useEffect(() => {
     if (!loaded) return;
-    onStateChange({ placements, connections, photos, texts });
+    onStateChange({ placements, connections, photos, texts, groups, sheet });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- onStateChange não entra: reagimos à mudança de estado, não à identidade da função
-  }, [placements, connections, photos, texts, loaded]);
+  }, [placements, connections, photos, texts, groups, sheet, loaded]);
 
   const byId = useMemo(() => new Map(placements.map(p => [p.id, p])), [placements]);
   // Espelha `placements`/`connections` num ref pra ler a versão mais recente
@@ -112,8 +121,15 @@ export function DiagramEditor({
   const connectionsRef = useRef(connections);
   useEffect(() => { connectionsRef.current = connections; }, [connections]);
   const scene = useMemo(
-    () => buildSceneFromPlacement(json, placements, connections, photos, texts, values),
-    [json, placements, connections, photos, texts, values],
+    () => buildSceneFromPlacement(json, { placements, connections, photos, texts, groups, sheet }, values),
+    [json, placements, connections, photos, texts, groups, sheet, values],
+  );
+  // Mobília da folha (moldura, cabeçalho, carimbo, legenda automática) —
+  // camada estática atrás do conteúdo interativo; reage a mudanças de
+  // símbolos usados (legenda) e dos campos do carimbo.
+  const furnitureSvg = useMemo(
+    () => sceneToSvgInner(buildSheetFurnitureScene(json, usedKindsOf(placements), sheet, values)),
+    [json, placements, sheet, values],
   );
 
   // ── Interação: arrastar símbolos, fotos, textos, linhas inteiras e pontos ─
@@ -126,7 +142,9 @@ export function DiagramEditor({
     | { type: 'conn-move'; connId: string; startX: number; startY: number; origWaypoints: Point[]; origFromAt: Point | null; origToAt: Point | null; moved: boolean }
     | { type: 'photo'; id: string; startX: number; startY: number; origX: number; origY: number; moved: boolean }
     | { type: 'photo-resize'; id: string; startX: number; startY: number; origW: number; origH: number; moved: boolean }
-    | { type: 'text'; id: string; startX: number; startY: number; origX: number; origY: number; moved: boolean };
+    | { type: 'text'; id: string; startX: number; startY: number; origX: number; origY: number; moved: boolean }
+    | { type: 'group'; id: string; startX: number; startY: number; origX: number; origY: number; moved: boolean }
+    | { type: 'group-resize'; id: string; startX: number; startY: number; origW: number; origH: number; moved: boolean };
   const dragRef = useRef<DragState | null>(null);
 
   useEffect(() => {
@@ -185,6 +203,14 @@ export function DiagramEditor({
         let nx = drag.origX + dx, ny = drag.origY + dy;
         if (snap) { nx = snapToGrid(nx); ny = snapToGrid(ny); }
         setTexts(prev => prev.map(t => (t.id === drag.id ? { ...t, x: nx, y: ny } : t)));
+      } else if (drag.type === 'group') {
+        let nx = drag.origX + dx, ny = drag.origY + dy;
+        if (snap) { nx = snapToGrid(nx); ny = snapToGrid(ny); }
+        setGroups(prev => prev.map(g => (g.id === drag.id ? { ...g, x: nx, y: ny } : g)));
+      } else if (drag.type === 'group-resize') {
+        let nw = Math.max(20, drag.origW + dx), nh = Math.max(15, drag.origH + dy);
+        if (snap) { nw = snapToGrid(nw); nh = snapToGrid(nh); }
+        setGroups(prev => prev.map(g => (g.id === drag.id ? { ...g, w: nw, h: nh } : g)));
       }
     };
     const onUp = () => {
@@ -423,6 +449,11 @@ export function DiagramEditor({
   };
 
   const removeSelected = () => {
+    if (selectedGroupId) {
+      setGroups(prev => prev.filter(g => g.id !== selectedGroupId));
+      setSelectedGroupId(null);
+      return;
+    }
     if (selectedConnId) {
       setConnections(prev => prev.filter(c => c.id !== selectedConnId));
       setSelectedConnId(null);
@@ -448,7 +479,7 @@ export function DiagramEditor({
     }
   };
 
-  const canRemoveSelected = !!selectedConnId || !!selectedTextId || !!selectedPhotoId || (!!selectedId && isManualSymbol(selectedId));
+  const canRemoveSelected = !!selectedGroupId || !!selectedConnId || !!selectedTextId || !!selectedPhotoId || (!!selectedId && isManualSymbol(selectedId));
 
   // Esc cancela uma ligação em andamento; Delete/Backspace remove o que estiver selecionado.
   useEffect(() => {
@@ -460,7 +491,7 @@ export function DiagramEditor({
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [linkMode, linkFrom, selectedConnId, selectedTextId, selectedPhotoId, selectedId]);
+  }, [linkMode, linkFrom, selectedConnId, selectedTextId, selectedPhotoId, selectedId, selectedGroupId]);
 
   // ── Tags do projeto (mesmo catálogo dos templates .docx) ─────────────────
   const insertTag = (key: string) => {
@@ -555,12 +586,52 @@ export function DiagramEditor({
     if (selectedTextId === id) setSelectedTextId(null);
   };
 
+  // ── Caixas de agrupamento ─────────────────────────────────────────────────
+  const handleAddGroup = () => {
+    const title = window.prompt('Título do grupo (ex.: QG – Sistema Fotovoltaico):', '');
+    if (!title) return;
+    const id = `group-${Date.now()}`;
+    setGroups(prev => [...prev, { id, title, x: START_X, y: CENTER_Y - 25, w: 80, h: 50 }]);
+    clearSelection();
+    setSelectedGroupId(id);
+  };
+
+  const handleGroupMouseDown = (e: React.MouseEvent, g: PlacedGroup) => {
+    if (linkMode) return; // no modo ligar, o clique é do canvas
+    e.preventDefault();
+    e.stopPropagation();
+    clearSelection();
+    setSelectedGroupId(g.id);
+    dragRef.current = { type: 'group', id: g.id, startX: e.clientX, startY: e.clientY, origX: g.x, origY: g.y, moved: false };
+  };
+
+  const handleGroupResizeMouseDown = (e: React.MouseEvent, g: PlacedGroup) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragRef.current = { type: 'group-resize', id: g.id, startX: e.clientX, startY: e.clientY, origW: g.w, origH: g.h, moved: false };
+  };
+
+  const handleEditGroupTitle = (g: PlacedGroup) => {
+    const title = window.prompt('Título do grupo:', g.title);
+    if (title === null) return;
+    setGroups(prev => prev.map(x => (x.id === g.id ? { ...x, title } : x)));
+  };
+
+  const handleEditConnectionLabel = (conn: ManualConnection) => {
+    const label = window.prompt('Rótulo do condutor (ex.: 2#6mm² + #6mm²; vazio remove):', conn.label ?? '');
+    if (label === null) return;
+    setConnections(prev => prev.map(c => (c.id === conn.id ? { ...c, label: label.trim() || undefined } : c)));
+  };
+
   const resetLayout = () => {
     if (!confirm(resetConfirmMessage)) return;
     setPlacements(initialPlacement(json));
     setConnections(initialConnections(json));
     setPhotos([]);
     setTexts([]);
+    setGroups([]);
+    // `sheet` (resp. técnico/ART/revisão) sobrevive ao reset — é metadado da
+    // folha digitado pelo usuário, não parte do layout.
     clearSelection();
     setLinkFrom(null);
     setDrawnWaypoints([]);
@@ -586,6 +657,14 @@ export function DiagramEditor({
 
   const labelOf = (id: string) => byId.get(id)?.label ?? id;
   const labelOfEndpoint = (e: ConnectionEndpoint) => (e.kind === 'symbol' ? labelOf(e.id) : 'Ponto');
+
+  // Fundo de referência (PDF original importado) vs. fotos comuns do diagrama.
+  const underlays = photos.filter(p => p.underlay);
+  const regularPhotos = photos.filter(p => !p.underlay);
+  const removeUnderlay = () => {
+    if (!confirm('Remover o PDF original do fundo? Ele não sai no PDF/SVG exportado, é só referência do editor.')) return;
+    setPhotos(prev => prev.filter(p => !p.underlay));
+  };
 
   if (!loaded) {
     return <div style={{ padding: 40, textAlign: 'center' }}><Loader2 size={22} className="animate-spin" style={{ color: '#F5A800' }} /></div>;
@@ -619,11 +698,27 @@ export function DiagramEditor({
         </button>
 
         <button
-          onClick={() => selectedId && handleEditSymbolText(byId.get(selectedId)!)}
-          disabled={!selectedId}
-          style={{ ...btnStyle(), color: selectedId ? '#333' : '#bbb', cursor: selectedId ? 'pointer' : 'not-allowed' }}
+          onClick={() => {
+            if (selectedId) { handleEditSymbolText(byId.get(selectedId)!); return; }
+            if (selectedConnId) {
+              const conn = connections.find(c => c.id === selectedConnId);
+              if (conn) handleEditConnectionLabel(conn);
+              return;
+            }
+            if (selectedGroupId) {
+              const g = groups.find(x => x.id === selectedGroupId);
+              if (g) handleEditGroupTitle(g);
+            }
+          }}
+          disabled={!selectedId && !selectedConnId && !selectedGroupId}
+          style={{ ...btnStyle(), color: (selectedId || selectedConnId || selectedGroupId) ? '#333' : '#bbb', cursor: (selectedId || selectedConnId || selectedGroupId) ? 'pointer' : 'not-allowed' }}
+          title={selectedConnId ? 'Editar rótulo do condutor (ex.: bitola)' : selectedGroupId ? 'Editar título do grupo' : 'Editar nome/legenda do componente'}
         >
           <Pencil size={13} /> Editar texto
+        </button>
+
+        <button onClick={() => setSheetPanelOpen(o => !o)} style={btnStyle(sheetPanelOpen)}>
+          <FileText size={13} /> Dados da folha
         </button>
 
         {canInsertTag && (
@@ -649,6 +744,17 @@ export function DiagramEditor({
           <input type="checkbox" checked={snap} onChange={e => setSnap(e.target.checked)} /> Ajustar à grade
         </label>
 
+        {underlays.length > 0 && (
+          <>
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#555' }} title="O PDF original importado, esmaecido no fundo — só referência, não sai no arquivo exportado">
+              <input type="checkbox" checked={showUnderlay} onChange={e => setShowUnderlay(e.target.checked)} /> Ver original no fundo
+            </label>
+            <button onClick={removeUnderlay} style={{ ...btnStyle(), color: '#A32D2D', padding: '5px 9px', fontSize: 11 }}>
+              Remover fundo
+            </button>
+          </>
+        )}
+
         <button onClick={resetLayout} style={{ ...btnStyle(), color: '#A32D2D' }}>
           <RefreshCw size={13} /> {json.components.length > 0 ? 'Restaurar automático' : 'Limpar tudo'}
         </button>
@@ -666,6 +772,42 @@ export function DiagramEditor({
           {generatingPdf ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />} Baixar PDF
         </button>
       </div>
+
+      {/* Dados da folha: carimbo (resp. técnico/ART/revisão) + legenda automática */}
+      {sheetPanelOpen && (
+        <div style={{
+          display: 'flex', alignItems: 'flex-end', gap: 10, flexWrap: 'wrap', marginBottom: 12,
+          background: '#FAFAFA', border: '1px solid #E8E8E8', borderRadius: 10, padding: '10px 14px',
+        }}>
+          {([
+            ['respTecnico', 'Resp. técnico (nome + CREA)', 'Ex.: FULANO DE TAL — CREA 0000000000-SP', 240],
+            ['art', 'ART', 'Nº da ART', 150],
+            ['revisao', 'Revisão', '00', 70],
+          ] as const).map(([field, label, placeholder, width]) => (
+            <label key={field} style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: 11, color: '#666', fontWeight: 600 }}>
+              {label}
+              <input
+                value={sheet[field] ?? ''}
+                onChange={e => setSheet(prev => ({ ...prev, [field]: e.target.value }))}
+                placeholder={placeholder}
+                style={{ width, padding: '6px 8px', borderRadius: 7, border: '1px solid #DDD', fontSize: 12, fontWeight: 400 }}
+              />
+            </label>
+          ))}
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#555', paddingBottom: 7 }}>
+            <input
+              type="checkbox"
+              checked={sheet.showLegend !== false}
+              onChange={e => setSheet(prev => ({ ...prev, showLegend: e.target.checked }))}
+            />
+            Tabela de legenda automática
+          </label>
+          <p style={{ fontSize: 10.5, color: '#999', margin: 0, paddingBottom: 8, flexBasis: '100%' }}>
+            Os campos aceitam tags do projeto (ex.: <code>{'{concessionaria}'}</code>) e saem no carimbo do PDF/SVG.
+            A legenda lista automaticamente os símbolos usados no diagrama.
+          </p>
+        </div>
+      )}
 
       {/* Adicionar componentes/fotos/textos avulsos */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 12, paddingTop: 8, borderTop: '1px dashed #E0E0E0' }}>
@@ -692,6 +834,13 @@ export function DiagramEditor({
         >
           <Type size={11} /> Texto
         </button>
+        <button
+          onClick={handleAddGroup}
+          title="Caixa tracejada de agrupamento com título (ex.: QG – Sistema Fotovoltaico)"
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 10px', borderRadius: 999, border: '1px solid #E0E0E0', background: '#fff', color: '#333', fontSize: 11.5, fontWeight: 600, cursor: 'pointer' }}
+        >
+          <BoxSelect size={11} /> Grupo
+        </button>
       </div>
 
       {/* Canvas */}
@@ -702,11 +851,21 @@ export function DiagramEditor({
           style={{ width: 900, maxWidth: '100%', background: '#fff', boxShadow: '0 2px 12px rgba(0,0,0,0.12)', flexShrink: 0, cursor: linkMode ? 'crosshair' : 'default' }}
           onClick={handleCanvasClick}
         >
-          {/* Moldura, cabeçalho e carimbo — estáticos */}
-          <g dangerouslySetInnerHTML={{ __html: sceneToSvgInner(buildSceneFromPlacement(json, [], [])) }} />
+          {/* Moldura, cabeçalho, carimbo e legenda automática — camada estática */}
+          <g dangerouslySetInnerHTML={{ __html: furnitureSvg }} />
+
+          {/* Fundo de referência (PDF original importado) — esmaecido, travado, nunca exportado */}
+          {showUnderlay && underlays.map(u => (
+            <image
+              key={u.id}
+              href={u.href} x={u.x} y={u.y} width={u.w} height={u.h}
+              preserveAspectRatio="none" opacity={0.35}
+              pointerEvents="none"
+            />
+          ))}
 
           {/* Fotos — atrás dos símbolos/linhas */}
-          {photos.map(ph => {
+          {regularPhotos.map(ph => {
             const isSelected = selectedPhotoId === ph.id;
             return (
               <g key={ph.id}>
@@ -736,6 +895,48 @@ export function DiagramEditor({
                       <line x1={-1.2} y1={1.2} x2={1.2} y2={-1.2} stroke="#fff" strokeWidth={0.5} />
                     </g>
                   </>
+                )}
+              </g>
+            );
+          })}
+
+          {/* Caixas de agrupamento — atrás de linhas/símbolos, arrastáveis/redimensionáveis */}
+          {groups.map(g => {
+            const isSelected = selectedGroupId === g.id;
+            return (
+              <g key={g.id}>
+                <rect
+                  x={g.x} y={g.y} width={g.w} height={g.h}
+                  fill="none" stroke={isSelected ? '#2B8CFF' : '#7A7A7A'}
+                  strokeWidth={isSelected ? 0.5 : 0.3} strokeDasharray="2,1.4"
+                  pointerEvents="none"
+                />
+                {/* borda invisível mais grossa: área de clique da caixa (o miolo fica livre pros símbolos dentro dela) */}
+                <rect
+                  x={g.x} y={g.y} width={g.w} height={g.h}
+                  fill="none" stroke="transparent" strokeWidth={2.5}
+                  pointerEvents={linkMode ? 'none' : 'stroke'}
+                  onMouseDown={e => handleGroupMouseDown(e, g)}
+                  onClick={e => e.stopPropagation()}
+                  onDoubleClick={e => { e.stopPropagation(); handleEditGroupTitle(g); }}
+                  style={{ cursor: linkMode ? 'crosshair' : 'grab' }}
+                />
+                <text
+                  x={g.x + 2} y={g.y - 1.4} fontSize={2.6} fontWeight="bold" fill={isSelected ? '#2B8CFF' : '#555'}
+                  onMouseDown={e => handleGroupMouseDown(e, g)}
+                  onClick={e => e.stopPropagation()}
+                  onDoubleClick={e => { e.stopPropagation(); handleEditGroupTitle(g); }}
+                  style={{ cursor: linkMode ? 'crosshair' : 'grab' }}
+                >
+                  {resolveProjectTags(g.title, values)}
+                </text>
+                {isSelected && (
+                  <rect
+                    x={g.x + g.w - 1.5} y={g.y + g.h - 1.5} width={3} height={3}
+                    fill="#2B8CFF" style={{ cursor: 'nwse-resize' }}
+                    onMouseDown={e => handleGroupResizeMouseDown(e, g)}
+                    onClick={e => e.stopPropagation()}
+                  />
                 )}
               </g>
             );
@@ -796,6 +997,19 @@ export function DiagramEditor({
                 {isSelected && (
                   <polyline points={pointsStr} fill="none" stroke="#2B8CFF" strokeWidth={1.1} strokeDasharray="2,1.5" opacity={0.5} />
                 )}
+                {conn.label && (() => {
+                  const { at, anchor } = connectionLabelPosition(routePoints);
+                  return (
+                    <text
+                      x={at.x} y={at.y} fontSize={2.2} textAnchor={anchor} fill="#333"
+                      onDoubleClick={e => { e.stopPropagation(); handleEditConnectionLabel(conn); }}
+                      onClick={e => e.stopPropagation()}
+                      style={{ cursor: 'text' }}
+                    >
+                      {resolveProjectTags(conn.label, values)}
+                    </text>
+                  );
+                })()}
                 {/* trecho invisível mais grosso — alvo de clique maior para selecionar/arrastar/duplo-clique */}
                 {routePoints.slice(0, -1).map((p, i) => {
                   const q = routePoints[i + 1];

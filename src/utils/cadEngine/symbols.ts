@@ -33,6 +33,26 @@ export const KIND_LABEL: Record<ComponentKind, string> = {
 };
 
 /**
+ * Descrição por tipo pra tabela de LEGENDA automática da folha (mesmo padrão
+ * das legendas de unifilares reais — ex.: o diagrama ENEL usado como
+ * referência). Mais longa que o `KIND_LABEL` (nome curto da paleta).
+ */
+export const KIND_LEGEND: Record<ComponentKind, string> = {
+  'pv-array': 'ARRANJO DE MÓDULOS FOTOVOLTAICOS',
+  inverter: 'INVERSOR FOTOVOLTAICO',
+  breaker: 'DISJUNTOR BIPOLAR',
+  'breaker-tripolar': 'DISJUNTOR TRIPOLAR',
+  'dc-switch': 'CHAVE CC',
+  meter: 'MEDIDOR DE ENERGIA CONVENCIONAL',
+  'meter-bidirectional': 'MEDIDOR DE ENERGIA BIDIRECIONAL',
+  'utility-grid': 'REDE DA CONCESSIONÁRIA',
+  dps: 'DPS (PROTEÇÃO CONTRA SURTO)',
+  fuse: 'FUSÍVEL',
+  ground: 'ATERRAMENTO',
+  'distribution-panel': 'QUADRO DE DISTRIBUIÇÃO',
+};
+
+/**
  * Recuo (mm) entre a borda da caixa (bbox 24×20) e onde o traço visual do
  * símbolo realmente termina — cada símbolo abaixo foi desenhado com uma
  * margem própria (ex.: o medidor é um círculo de raio 8 centrado em (12,10),

@@ -31,10 +31,13 @@ const LAYER_RGB: Record<LayerId, [number, number, number]> = {
   CONDUCTOR_AC: [176, 39, 26],
   TEXT_LABEL: [51, 51, 51],
   PHOTO: [0, 0, 0],
+  GROUP_BOX: [122, 122, 122],
 };
 const LAYER_WIDTH: Record<LayerId, number> = {
-  FRAME: 0.5, TITLE_BLOCK: 0.3, SYMBOLS: 0.35, CONDUCTOR_AC: 0.4, TEXT_LABEL: 0.2, PHOTO: 0,
+  FRAME: 0.5, TITLE_BLOCK: 0.3, SYMBOLS: 0.35, CONDUCTOR_AC: 0.4, TEXT_LABEL: 0.2, PHOTO: 0, GROUP_BOX: 0.3,
 };
+
+const DASH_MM = [2, 1.4]; // mesmo padrão de tracejado do exportador SVG
 
 /** `data:image/jpeg;base64,...` → `JPEG` (formato que o jsPDF espera em `addImage`). */
 function imageFormatFromDataUrl(href: string): string {
@@ -56,6 +59,8 @@ function drawPrimitive(
   doc.setDrawColor(...rgb);
   doc.setTextColor(...rgb);
   doc.setLineWidth(lineWidth);
+  const dashed = (p.kind === 'line' || p.kind === 'rect') && p.dashed;
+  if (dashed) doc.setLineDashPattern(DASH_MM, 0);
   const R = (pt: Point) => rotatePoint(scalePoint(pt, scale, rotCenter.x, rotCenter.y), rotDeg, rotCenter.x, rotCenter.y);
   switch (p.kind) {
     case 'line': {
@@ -102,6 +107,7 @@ function drawPrimitive(
       break;
     }
   }
+  if (dashed) doc.setLineDashPattern([], 0); // volta pro traço contínuo pras próximas primitivas
 }
 
 export async function sceneToPdfBlob(scene: Scene): Promise<Blob> {

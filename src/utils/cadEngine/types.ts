@@ -40,6 +40,8 @@ export interface TechnicalJsonMvp {
     concessionaire: string;
     installedPower: string;
     date: string;
+    /** Endereço da instalação — vai pro carimbo quando presente. */
+    address?: string;
   };
   components: ComponentNode[];
   connections: ConnectionEdge[];
@@ -50,15 +52,15 @@ export interface TechnicalJsonMvp {
 export interface Point { x: number; y: number }
 
 export type Primitive =
-  | { kind: 'line'; a: Point; b: Point }
+  | { kind: 'line'; a: Point; b: Point; dashed?: boolean }
   | { kind: 'polyline'; points: Point[] }
-  | { kind: 'rect'; x: number; y: number; w: number; h: number }
+  | { kind: 'rect'; x: number; y: number; w: number; h: number; dashed?: boolean }
   | { kind: 'circle'; center: Point; radius: number }
   | { kind: 'text'; at: Point; value: string; size: number; anchor: 'start' | 'middle' | 'end'; weight?: 'normal' | 'bold' }
   | { kind: 'image'; at: Point; w: number; h: number; href: string };
 
 export type LayerId =
-  | 'FRAME' | 'TITLE_BLOCK' | 'SYMBOLS' | 'CONDUCTOR_AC' | 'TEXT_LABEL' | 'PHOTO';
+  | 'FRAME' | 'TITLE_BLOCK' | 'SYMBOLS' | 'CONDUCTOR_AC' | 'TEXT_LABEL' | 'PHOTO' | 'GROUP_BOX';
 
 export interface ShapeNode {
   layer: LayerId;

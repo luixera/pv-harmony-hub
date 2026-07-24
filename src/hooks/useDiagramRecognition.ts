@@ -8,16 +8,30 @@ export interface RecognizedComponent {
   label: string;
   stage?: number;
   branch?: boolean;
+  /** Posição normalizada 0–100 no documento original (quando a IA conseguiu estimar). */
+  x?: number;
+  y?: number;
 }
 
 export interface RecognizedConnection {
   from: string;
   to: string;
+  /** Especificação do condutor escrita no trecho (ex.: "2#6mm² + #6mm²"). */
+  label?: string;
+}
+
+export interface RecognizedGroup {
+  title: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
 }
 
 interface RecognizeResult {
   components: RecognizedComponent[];
   connections: RecognizedConnection[];
+  groups: RecognizedGroup[];
   warnings: string[];
 }
 
@@ -53,6 +67,7 @@ export function useDiagramRecognition() {
       return {
         components: data.components ?? [],
         connections: data.connections ?? [],
+        groups: data.groups ?? [],
         warnings: data.warnings ?? [],
       };
     },

@@ -16,7 +16,7 @@ export interface DiagramTemplate {
   updated_at: string;
 }
 
-const EMPTY_SCENE: DiagramSceneState = { placements: [], connections: [], photos: [], texts: [] };
+const EMPTY_SCENE: DiagramSceneState = { placements: [], connections: [], photos: [], texts: [], groups: [] };
 
 /** Modelos de diagrama unifilar do próprio tenant — motor de templates (ver useDiagramEngineAccess). */
 export function useDiagramTemplates() {

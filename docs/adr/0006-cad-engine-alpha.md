@@ -445,3 +445,64 @@ substituída por um stub que só devolve 410 (não há como excluir uma edge
 function via MCP) — não deveria ter ficado exposta sem auth chamando a API
 paga da Anthropic; se sobrar tempo depois, excluir de vez pelo painel do
 Supabase.
+
+## Atualização (10ª rodada) — revisão completa: folha profissional + reconhecimento com posições
+O usuário pediu uma **revisão de tudo** ("ainda está muito cru... o sistema
+não está conseguindo fazer a leitura nativa do diagrama... revise tudo o que
+foi dito, o caminho onde a gente quer chegar, pra que seja construído de
+maneira sólida e seja funcional e tem atributos de UX"). A revisão
+diagnosticou: construímos um editor de **diagrama de blocos**, e o alvo é um
+editor de **unifilar** — a diferença está na folha (legenda/carimbo/grupos),
+na fidelidade espacial do reconhecimento e na UX do editor. Plano aprovado
+em 4 fases (A folha → C reconhecimento+underlay → B UX → D fechar ciclo).
+Esta atualização cobre A e C.
+
+### Fase A — folha profissional (zero IA, tudo determinístico)
+- **Tabela de LEGENDA automática** (`drawLegendTable` + `KIND_LEGEND`):
+  gerada dos tipos usados no diagrama; coluna reservada no lado direito
+  (`LEGEND_X0`); desligável por diagrama (`sheet.showLegend`).
+- **Carimbo 2×4** (`drawTitleBlock`): TITULAR/ENDEREÇO/CONCESSIONÁRIA/
+  POTÊNCIA + RESP. TÉCNICO/ART/DATA/REVISÃO. Resp. técnico/ART/revisão não
+  existem no cadastro do projeto → viraram **campos da folha**
+  (`DiagramSceneState.sheet`, painel "Dados da folha" no editor), com
+  suporte a tags — num template, digita uma vez, todo projeto herda.
+- **`PlacedGroup`** (caixa tracejada com título) e **`ManualConnection.label`**
+  (bitola no trecho) — os dois elementos que faltavam pra reproduzir o
+  visual dos unifilares reais. `Primitive` rect/line ganhou `dashed`
+  (SVG `stroke-dasharray` / jsPDF `setLineDashPattern`, mesmo padrão);
+  camada nova `GROUP_BOX`.
+- API `buildSceneFromPlacement(json, state, tagValues)` passou a receber o
+  `DiagramSceneState` inteiro (era 5 arrays posicionais); mobília da folha
+  extraída em `buildSheetFurnitureScene` pro canvas usar como camada
+  estática que reage a símbolos usados/sheet.
+
+### Fase C — reconhecimento v3 + underlay do PDF
+- **Revisão de decisão da 8ª/9ª rodada**: "nunca pedir posição à IA" era
+  binário demais. IA de visão erra coordenada exata, mas acerta posição
+  RELATIVA. O prompt v3 pede `x`/`y` normalizados 0–100 do centro de cada
+  símbolo (na área do diagrama, ignorando carimbo/legenda/planta), grupos
+  com caixa 0–100 e a bitola escrita em cada conexão. `stage`/`branch`
+  continuam como fallback quando <60% dos componentes vêm com posição.
+- **Testado no PDF ENEL real antes de integrar** (função de debug
+  temporária, depois neutralizada): a IA devolveu a cadeia FV horizontal
+  embaixo, o eixo da rede SUBINDO na vertical à direita, o BEP no
+  alto-esquerda, o grupo do QG e as bitolas `2#6mm² + #6mm²` por trecho —
+  disposição fiel ao original. Headless test confirmou o mapeamento pra
+  folha (colunas verticais preservadas, nada fora da área útil, sem
+  colisões).
+- **Underlay**: a importação também renderiza a 1ª página do PDF
+  (`pdfjs-dist`, dependência nova, import dinâmico — só quem importa PDF
+  carrega) como fundo esmaecido/travado no editor (`PlacedPhoto.underlay`),
+  com liga/desliga e remoção na barra, **excluído do export**. É o
+  "o PDF precisa aparecer" literal + a ferramenta de conferência do
+  reconhecimento. Privacidade: o underlay reproduz o documento original
+  dentro do editor (restrito à GD Manager); nunca vai pro arquivo exportado.
+
+### O que fica pras Fases B e D (aprovadas, ainda não construídas)
+B: undo/redo, zoom/pan, painel de propriedades no lugar de `window.prompt`,
+multi-seleção. D: importar template no modal do projeto (dropdown + sugestão
+por concessionária) e diagrama do projeto persistido no banco em vez de
+`localStorage`. Fase E (futura, não aprovada em detalhe): componentes em
+série desenhados "no fio" (condutor contínuo atravessando
+disjuntor/fusível/chave) e portas CC/CA no inversor — o último degrau
+visual, exige refactor do modelo de cena.

@@ -18,17 +18,29 @@ interface RecognizedComponent {
   label: string
   stage?: number
   branch?: boolean
+  x?: number   // posição normalizada 0-100 no documento (esquerda→direita)
+  y?: number   // posição normalizada 0-100 no documento (topo→baixo)
 }
 
 interface RecognizedConnection {
   from: string
   to: string
+  label?: string  // especificação do condutor escrita no trecho (ex.: "2#6mm² + #6mm²")
+}
+
+interface RecognizedGroup {
+  title: string
+  x: number
+  y: number
+  w: number
+  h: number
 }
 
 interface RecognizeResponse {
   ok: boolean
   components?: RecognizedComponent[]
   connections?: RecognizedConnection[]
+  groups?: RecognizedGroup[]
   warnings?: string[]
   error?: string
 }
@@ -63,21 +75,33 @@ VOCABULÁRIO DE COMPONENTES — use OBRIGATORIAMENTE apenas estes "kind" (nunca 
 ${KIND_CATALOG}
 
 Para cada componente, além do tipo, informe:
+- "x" e "y": a posição do CENTRO do símbolo no desenho do diagrama, em percentual de 0 a 100 —
+  "x": 0 = borda esquerda da ÁREA DO DIAGRAMA, 100 = borda direita; "y": 0 = topo, 100 = base.
+  Considere só a área onde o diagrama elétrico está desenhado (ignore carimbo, tabela de
+  legenda, planta de localização — eles não fazem parte da área 0-100). Precisão aproximada
+  (~5%) é suficiente; o importante é preservar a DISPOSIÇÃO RELATIVA: o que está acima/abaixo,
+  à esquerda/à direita, alinhado com o quê.
 - "stage": um número inteiro (0, 1, 2, 3...) representando a posição dele no fluxo principal da
-  geração (0) até a rede da concessionária (o maior número) — componentes em SEQUÊNCIA no
-  condutor principal (arranjo FV → chave → inversor → proteções → medidor → rede) recebem
-  números crescentes; um componente em derivação (DPS, aterramento) recebe o MESMO "stage" do
-  ponto do condutor principal de onde ele deriva.
+  geração (0) até a rede da concessionária (o maior número); um componente em derivação recebe
+  o MESMO "stage" do ponto do condutor principal de onde ele deriva.
 - "branch": true se o componente NÃO fica no condutor principal (é uma derivação — DPS,
   aterramento, ou qualquer proteção que sai do condutor principal em vez de estar em série nele);
   false se ele está em série no fluxo principal.
 
+Informe também, quando existirem no diagrama:
+- "groups": caixas de agrupamento desenhadas em volta de conjuntos de componentes (ex.:
+  "QG - Sistema Fotovoltaico", "MEDIÇÃO E DISJUNTOR GERAL") — com "title" (o texto do grupo,
+  sem dados pessoais) e "x"/"y"/"w"/"h" em percentual 0-100 da mesma área do diagrama
+  (x,y = canto superior-esquerdo da caixa).
+- Em cada conexão, "label": a especificação do condutor escrita naquele trecho, se houver
+  (ex.: "2#6mm² + #6mm²") — só o texto da bitola/especificação, nada mais.
+
 REGRAS:
-1. Ignore textos que não sejam de um componente do diagrama em si (título, carimbo, planta de
-   localização, dados do titular, coordenadas, ART, endereço, CPF/CNPJ, nomes de pessoas — não
-   inclua NADA disso na resposta, mesmo que apareça no documento).
+1. Ignore textos que não sejam do diagrama em si (título, carimbo, planta de localização, dados
+   do titular, coordenadas geográficas, ART, endereço, CPF/CNPJ, nomes de pessoas — não inclua
+   NADA disso na resposta, mesmo que apareça no documento).
 2. Cada componente ganha um "id" curto e único (ex.: "c1", "c2", ...).
-3. "label" é um rótulo curto em português do componente — pode reaproveitar o texto do diagrama
+3. "label" do componente é um rótulo curto em português — pode reaproveitar o texto do diagrama
    quando fizer sentido, mas sem dados pessoais.
 4. "connections" liga os "id" dos componentes na direção do fluxo elétrico (da geração para a
    rede); um componente em derivação conecta ao componente do condutor principal mais próximo.
@@ -88,13 +112,16 @@ REGRAS:
 Retorne APENAS JSON válido, sem markdown, no formato exato:
 {
   "components": [
-    { "id": "c1", "kind": "pv-array", "label": "Módulos FV", "stage": 0, "branch": false },
-    { "id": "c2", "kind": "inverter", "label": "Inversor", "stage": 1, "branch": false },
-    { "id": "c3", "kind": "dps", "label": "DPS CA", "stage": 1, "branch": true }
+    { "id": "c1", "kind": "pv-array", "label": "Módulos FV", "x": 5, "y": 80, "stage": 0, "branch": false },
+    { "id": "c2", "kind": "inverter", "label": "Inversor", "x": 25, "y": 80, "stage": 1, "branch": false },
+    { "id": "c3", "kind": "dps", "label": "DPS CA", "x": 35, "y": 92, "stage": 1, "branch": true }
   ],
   "connections": [
-    { "from": "c1", "to": "c2" },
+    { "from": "c1", "to": "c2", "label": "2#6mm² + #6mm²" },
     { "from": "c2", "to": "c3" }
+  ],
+  "groups": [
+    { "title": "QG - Sistema Fotovoltaico", "x": 20, "y": 70, "w": 30, "h": 28 }
   ],
   "warnings": []
 }`
@@ -240,17 +267,31 @@ Deno.serve(async (req) => {
     const warnings: string[] = Array.isArray(parsed.warnings) ? parsed.warnings.filter((w: unknown) => typeof w === 'string') : []
     const rawComponents: RecognizedComponent[] = Array.isArray(parsed.components) ? parsed.components : []
     console.log(`diagram-recognize: IA devolveu ${rawComponents.length} componente(s) bruto(s), kinds:`, rawComponents.map((c) => c?.kind))
+    const norm = (v: unknown): number | undefined =>
+      typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.min(100, v)) : undefined
     const components = rawComponents.reduce<RecognizedComponent[]>((acc, c) => {
       const kind = normalizeKind(c?.kind)
       const ok = !!c && typeof c.id === 'string' && typeof c.label === 'string' && VALID_KINDS.has(kind)
       if (!ok) { warnings.push(`Componente ignorado (tipo não reconhecido): ${c?.kind ?? '?'}`); return acc }
       const stage = Number.isFinite(c.stage) ? c.stage : 0
-      acc.push({ ...c, kind, stage, branch: c.branch === true })
+      acc.push({ ...c, kind, stage, branch: c.branch === true, x: norm(c.x), y: norm(c.y) })
       return acc
     }, [])
     const ids = new Set(components.map((c) => c.id))
     const rawConnections: RecognizedConnection[] = Array.isArray(parsed.connections) ? parsed.connections : []
-    const connections = rawConnections.filter((c) => c && ids.has(c.from) && ids.has(c.to) && c.from !== c.to)
+    const connections = rawConnections
+      .filter((c) => c && ids.has(c.from) && ids.has(c.to) && c.from !== c.to)
+      .map((c) => ({
+        from: c.from, to: c.to,
+        label: typeof c.label === 'string' && c.label.trim() ? c.label.trim().slice(0, 60) : undefined,
+      }))
+    const rawGroups: RecognizedGroup[] = Array.isArray(parsed.groups) ? parsed.groups : []
+    const groups = rawGroups.reduce<RecognizedGroup[]>((acc, g) => {
+      const x = norm(g?.x), y = norm(g?.y), w = norm(g?.w), h = norm(g?.h)
+      if (typeof g?.title !== 'string' || !g.title.trim() || x === undefined || y === undefined || !w || !h) return acc
+      acc.push({ title: g.title.trim().slice(0, 80), x, y, w, h })
+      return acc
+    }, [])
 
     if (components.length === 0) {
       console.log('diagram-recognize: 0 componentes válidos após normalização — resposta bruta:', rawText.slice(0, 2000))
@@ -259,7 +300,7 @@ Deno.serve(async (req) => {
       })
     }
 
-    const response: RecognizeResponse = { ok: true, components, connections, warnings }
+    const response: RecognizeResponse = { ok: true, components, connections, groups, warnings }
     return new Response(JSON.stringify(response), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })

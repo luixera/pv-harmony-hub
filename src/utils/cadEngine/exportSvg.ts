@@ -10,23 +10,26 @@ const LAYER_COLOR: Record<LayerId, string> = {
   CONDUCTOR_AC: '#B0271A',
   TEXT_LABEL: '#333333',
   PHOTO: 'transparent',
+  GROUP_BOX: '#7A7A7A',
 };
 const LAYER_WIDTH: Record<LayerId, number> = {
-  FRAME: 0.5, TITLE_BLOCK: 0.3, SYMBOLS: 0.35, CONDUCTOR_AC: 0.4, TEXT_LABEL: 0, PHOTO: 0,
+  FRAME: 0.5, TITLE_BLOCK: 0.3, SYMBOLS: 0.35, CONDUCTOR_AC: 0.4, TEXT_LABEL: 0, PHOTO: 0, GROUP_BOX: 0.3,
 };
 
 function pts(points: Point[]): string {
   return points.map(p => `${p.x},${p.y}`).join(' ');
 }
 
+const DASH = '2,1.4'; // padrão de tracejado (mm) — igual no SVG e no PDF (setLineDashPattern)
+
 export function primitiveToSvg(p: Primitive, color: string, strokeWidth: number): string {
   switch (p.kind) {
     case 'line':
-      return `<line x1="${p.a.x}" y1="${p.a.y}" x2="${p.b.x}" y2="${p.b.y}" stroke="${color}" stroke-width="${strokeWidth}" />`;
+      return `<line x1="${p.a.x}" y1="${p.a.y}" x2="${p.b.x}" y2="${p.b.y}" stroke="${color}" stroke-width="${strokeWidth}"${p.dashed ? ` stroke-dasharray="${DASH}"` : ''} />`;
     case 'polyline':
       return `<polyline points="${pts(p.points)}" fill="none" stroke="${color}" stroke-width="${strokeWidth}" />`;
     case 'rect':
-      return `<rect x="${p.x}" y="${p.y}" width="${p.w}" height="${p.h}" fill="none" stroke="${color}" stroke-width="${strokeWidth}" />`;
+      return `<rect x="${p.x}" y="${p.y}" width="${p.w}" height="${p.h}" fill="none" stroke="${color}" stroke-width="${strokeWidth}"${p.dashed ? ` stroke-dasharray="${DASH}"` : ''} />`;
     case 'circle':
       return `<circle cx="${p.center.x}" cy="${p.center.y}" r="${p.radius}" fill="none" stroke="${color}" stroke-width="${strokeWidth}" />`;
     case 'text': {

@@ -68,6 +68,7 @@ export function buildTechnicalJsonFromProject(project: ProjectWithDetails): Tech
       concessionaire: values.concessionaria || '—',
       installedPower: values.potencia_total ? `${values.potencia_total} kWp` : '—',
       date: values.data || '—',
+      address: values.endereco || undefined,
     },
     components,
     connections,

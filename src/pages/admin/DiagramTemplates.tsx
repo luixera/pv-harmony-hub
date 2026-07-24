@@ -17,6 +17,7 @@ import {
 import { useDiagramRecognition } from '@/hooks/useDiagramRecognition';
 import { DiagramEditor } from '@/components/diagrams/DiagramEditor';
 import { buildSceneFromRecognition, DiagramSceneState } from '@/utils/cadEngine/editableLayout';
+import { renderPdfFirstPageToDataUrl } from '@/utils/pdfPreview';
 import { TechnicalJsonMvp } from '@/utils/cadEngine/types';
 import { buildSampleValues } from '@/utils/projectValues';
 
@@ -80,8 +81,30 @@ export default function DiagramTemplates() {
   const handleImport = async () => {
     if (!importFile || !importName.trim()) return;
     try {
-      const result = await recognizeDiagram.mutateAsync(importFile);
-      const sceneData = buildSceneFromRecognition(result.components, result.connections);
+      // reconhecimento (IA) e render do PDF original (underlay) em paralelo —
+      // o underlay é opcional: se falhar, a importação segue sem ele
+      const isPdf = importFile.type === 'application/pdf' || importFile.name.toLowerCase().endsWith('.pdf');
+      const [result, underlayHref] = await Promise.all([
+        recognizeDiagram.mutateAsync(importFile),
+        isPdf ? renderPdfFirstPageToDataUrl(importFile) : Promise.resolve(null),
+      ]);
+      const sceneData = buildSceneFromRecognition(result.components, result.connections, result.groups);
+      if (underlayHref) {
+        // encaixa a página original dentro da área da moldura, centralizada
+        const dims = await new Promise<{ w: number; h: number }>(res => {
+          const img = new Image();
+          img.onload = () => res({ w: img.width, h: img.height });
+          img.onerror = () => res({ w: 297, h: 210 });
+          img.src = underlayHref;
+        });
+        const maxW = 273, maxH = 158; // dentro da moldura, acima do carimbo
+        const s = Math.min(maxW / dims.w, maxH / dims.h);
+        const w = dims.w * s, h = dims.h * s;
+        sceneData.photos = [{
+          id: `underlay-${Date.now()}`, href: underlayHref, underlay: true,
+          x: 12 + (maxW - w) / 2, y: 12 + (maxH - h) / 2, w, h,
+        }];
+      }
       // insert único, já com a cena reconhecida — evita um 2º passo (update) que,
       // se falhar, deixaria um modelo órfão criado vazio (bug real corrigido aqui)
       const created = await createTemplate.mutateAsync({ name: importName.trim(), sceneData });
