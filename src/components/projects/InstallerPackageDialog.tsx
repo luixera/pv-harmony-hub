@@ -8,10 +8,10 @@ import { sanitizeFileName } from '@/lib/utils';
 import { logEvent } from '@/lib/tracking';
 import { useInstallerPackage } from '@/hooks/useInstallerPackage';
 import {
-  resolveInstallerPackage, buildInstallerZipAsync, loadCandidateBlob,
+  resolveInstallerPackage, retryInstallerPackageItem, buildInstallerZipAsync, loadCandidateBlob,
   ResolvedEntry,
 } from '@/utils/installerPackage';
-import { CheckCircle2, AlertTriangle, XCircle, Loader2, Download, Package, ImageOff } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, XCircle, Loader2, Download, Package, ImageOff, RefreshCw } from 'lucide-react';
 
 interface Props {
   open: boolean;
@@ -25,6 +25,7 @@ export function InstallerPackageDialog({ open, onClose, project }: Props) {
   const [chosen, setChosen] = useState<Record<number, string>>({}); // index → candidate path
   const [resolving, setResolving] = useState(false);
   const [building, setBuilding] = useState(false);
+  const [retrying, setRetrying] = useState<Record<number, boolean>>({});
 
   useEffect(() => {
     if (!open || loadingItems) return;
@@ -88,9 +89,22 @@ export function InstallerPackageDialog({ open, onClose, project }: Props) {
     }
   };
 
+  const handleRetry = async (index: number) => {
+    const item = items[index];
+    if (!item) return;
+    setRetrying(r => ({ ...r, [index]: true }));
+    try {
+      const resolved = await retryInstallerPackageItem(project, item, index);
+      setEntries(prev => prev.map(e => (e.index === index ? resolved : e)));
+    } finally {
+      setRetrying(r => ({ ...r, [index]: false }));
+    }
+  };
+
   const StatusIcon = ({ e }: { e: ResolvedEntry }) => {
     if (e.status === 'ok') return <CheckCircle2 className="w-4 h-4 text-success" />;
     if (e.status === 'reusable_missing') return <ImageOff className="w-4 h-4 text-warning" />;
+    if (e.status === 'error') return <AlertTriangle className="w-4 h-4 text-destructive" />;
     return e.required ? <XCircle className="w-4 h-4 text-destructive" /> : <AlertTriangle className="w-4 h-4 text-muted-foreground" />;
   };
 
@@ -123,6 +137,23 @@ export function InstallerPackageDialog({ open, onClose, project }: Props) {
                   <p className="text-sm font-medium text-foreground">{e.label}</p>
                   {e.status === 'ok' && <p className="text-xs text-muted-foreground">Pronto (.{e.ext})</p>}
                   {e.status === 'missing' && <p className="text-xs text-muted-foreground">{e.required ? 'Faltando (obrigatório)' : 'Faltando (opcional)'}</p>}
+                  {e.status === 'error' && (
+                    <div className="mt-1 space-y-1.5">
+                      <p className="text-xs text-destructive">
+                        Falha ao carregar (documento existe, mas não pôde ser baixado/convertido)
+                        {e.errorMessage ? `: ${e.errorMessage}` : '.'}
+                      </p>
+                      <Button
+                        variant="outline" size="sm" className="h-7 text-xs"
+                        onClick={() => handleRetry(e.index)} disabled={!!retrying[e.index]}
+                      >
+                        {retrying[e.index]
+                          ? <Loader2 className="w-3 h-3 mr-1.5 animate-spin" />
+                          : <RefreshCw className="w-3 h-3 mr-1.5" />}
+                        Tentar novamente
+                      </Button>
+                    </div>
+                  )}
                   {e.status === 'reusable_missing' && (
                     <div className="mt-1.5 space-y-1.5">
                       <p className="text-xs text-warning">Não enviada. Reaproveitar de outro projeto (mesmo disjuntor e fase)?</p>

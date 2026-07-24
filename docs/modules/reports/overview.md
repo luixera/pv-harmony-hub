@@ -29,6 +29,13 @@ Lê `projects`, `project_*`, `documents`, `equipment_catalog`,
   o vínculo do catálogo não tiver o documento (robustez).
 - **RN-REP-04** — Anexos extras do formulário ficam disponíveis para incluir no
   pacote.
+- **RN-REP-05** — Pacote: um item com status `error` (documento existe mas
+  falhou ao baixar/converter) é **diferente** de `missing` (nunca enviado) —
+  mostra a mensagem real e um botão "Tentar novamente" (`retryInstallerPackageItem`),
+  em vez do mesmo "Faltando (obrigatório)" das duas situações. Antes disso, uma
+  falha transitória de rede/conversão era indistinguível de "o cliente nunca
+  mandou o documento", o que dificultava investigar (caso real: PRJ-34220, os
+  documentos existiam no banco/storage mas o dialog mostrava "Faltando").
 
 ## Fluxo
 ```mermaid

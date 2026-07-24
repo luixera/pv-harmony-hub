@@ -23,10 +23,14 @@ export interface ResolvedEntry {
   fileLabel: string;         // nome padronizado do arquivo (derivado da origem)
   ext: string;
   required: boolean;
-  status: 'ok' | 'missing' | 'reusable_missing';
+  /** 'missing' = documento nunca foi enviado/configurado; 'error' = existe mas falhou ao
+   *  baixar/converter (ver `errorMessage`) — distinção importante pra não confundir o
+   *  projetista (ele não pode resolver um 'error' reenviando o documento, só tentando de novo). */
+  status: 'ok' | 'missing' | 'reusable_missing' | 'error';
   blob?: Blob;
   docType?: string;          // para itens de foto reutilizável
   candidates?: PhotoCandidate[];
+  errorMessage?: string;
 }
 
 const extFromName = (name: string, fallback = 'pdf') => {
@@ -138,68 +142,95 @@ async function resolveEquipmentDoc(
   return downloadFromBucket('equipment-documents', path);
 }
 
-/** Resolve todos os itens do pacote para blobs (ou marca faltantes). */
-export async function resolveInstallerPackage(project: ProjectWithDetails, items: PackageItem[]): Promise<ResolvedEntry[]> {
+/** Junta as variáveis de tag do projeto com as do padrão de entrada da concessionária. */
+async function buildPackageValues(project: ProjectWithDetails): Promise<Record<string, string>> {
   const values = buildProjectValues(project);
-  // Variáveis do padrão de entrada da concessionária (categoria por fase + disjuntor)
   if (project.concessionaire_id) {
     const rules = await fetchEntryRules(project.concessionaire_id);
     const rule = matchEntryRule(rules, project.generalData?.phase_type, project.generalData?.circuit_breaker_current);
     Object.assign(values, entryRuleValues(rule));
   }
-  const out: ResolvedEntry[] = [];
+  return values;
+}
 
-  for (let i = 0; i < items.length; i++) {
-    const item = items[i];
-    const base: ResolvedEntry = { index: i, label: item.label, fileLabel: item.label, ext: 'pdf', required: item.required, status: 'missing' };
+/**
+ * Resolve um único item do pacote. Erros de rede/conversão (documento existe mas falhou)
+ * viram status 'error' com `errorMessage` — diferente de 'missing' (documento nunca enviado),
+ * pra deixar claro no dialog que reenviar o documento não é a solução, só tentar de novo.
+ */
+async function resolveOneItem(project: ProjectWithDetails, item: PackageItem, index: number, values: Record<string, string>): Promise<ResolvedEntry> {
+  const base: ResolvedEntry = { index, label: item.label, fileLabel: item.label, ext: 'pdf', required: item.required, status: 'missing' };
 
-    try {
-      if (item.source_type === 'summary') {
-        base.fileLabel = 'RESUMO';
-        base.blob = await generateResumoPdf(project);
-        base.ext = 'pdf'; base.status = 'ok';
+  try {
+    if (item.source_type === 'summary') {
+      base.fileLabel = 'RESUMO';
+      base.blob = await generateResumoPdf(project);
+      base.ext = 'pdf'; base.status = 'ok';
 
-      } else if (item.source_type === 'project_document') {
-        const docType = item.ref ?? '';
-        // nome padronizado a partir do tipo real do documento (corrige rótulos errados)
-        base.fileLabel = PROJECT_DOCUMENT_TYPES.find(d => d.value === docType)?.label ?? item.label;
-        const doc = await latestProjectDoc(project.id, docType);
-        if (doc) {
-          const raw = await downloadFromBucket('project-documents', doc.file_url);
-          if (raw) { const r = await toPdfBlob(raw, doc.file_name); base.blob = r.blob; base.ext = r.ext; base.status = 'ok'; }
+    } else if (item.source_type === 'project_document') {
+      const docType = item.ref ?? '';
+      // nome padronizado a partir do tipo real do documento (corrige rótulos errados)
+      base.fileLabel = PROJECT_DOCUMENT_TYPES.find(d => d.value === docType)?.label ?? item.label;
+      const doc = await latestProjectDoc(project.id, docType);
+      if (doc) {
+        const raw = await downloadFromBucket('project-documents', doc.file_url);
+        if (raw) {
+          const r = await toPdfBlob(raw, doc.file_name);
+          base.blob = r.blob; base.ext = r.ext; base.status = 'ok';
+        } else {
+          // documento existe no banco mas o storage não devolveu o arquivo — não é "faltando"
+          base.status = 'error';
+          base.errorMessage = 'O documento está cadastrado, mas não foi possível baixá-lo do armazenamento.';
         }
-        if (base.status !== 'ok' && REUSABLE_PHOTO_TYPES.includes(docType)) {
-          base.docType = docType;
-          base.candidates = await fetchPhotoCandidates(project, docType);
-          base.status = 'reusable_missing';
-        }
-
-      } else if (item.source_type === 'concessionaire_template') {
-        base.fileLabel = item.label;
-        if (item.ref) {
-          const buffer = await downloadTemplateBuffer(item.ref);
-          base.blob = await generateDocxFromTemplate(buffer, values);
-          base.ext = 'docx'; base.status = 'ok';
-        }
-
-      } else if (item.source_type === 'equipment_inmetro' || item.source_type === 'equipment_datasheet' || item.source_type === 'equipment_afci') {
-        // AFCI é exclusivo de inversor
-        const which: 'inverter' | 'module' =
-          item.source_type === 'equipment_afci' ? 'inverter' : (item.ref === 'module' ? 'module' : 'inverter');
-        const kind = item.source_type === 'equipment_inmetro' ? 'inmetro'
-          : item.source_type === 'equipment_afci' ? 'afci' : 'datasheet';
-        const kindLabel = kind === 'inmetro' ? 'INMETRO' : kind === 'afci' ? 'AFCI' : 'DATASHEET';
-        base.fileLabel = `${kindLabel} ${which === 'inverter' ? 'INVERSOR' : 'MODULO'}`;
-        const blob = await resolveEquipmentDoc(project, which, kind);
-        if (blob) { base.blob = blob; base.ext = 'pdf'; base.status = 'ok'; }
       }
-    } catch (e) {
-      console.error('resolve item', item, e);
-    }
+      if (base.status === 'missing' && REUSABLE_PHOTO_TYPES.includes(docType)) {
+        base.docType = docType;
+        base.candidates = await fetchPhotoCandidates(project, docType);
+        base.status = 'reusable_missing';
+      }
 
-    out.push(base);
+    } else if (item.source_type === 'concessionaire_template') {
+      base.fileLabel = item.label;
+      if (item.ref) {
+        const buffer = await downloadTemplateBuffer(item.ref);
+        base.blob = await generateDocxFromTemplate(buffer, values);
+        base.ext = 'docx'; base.status = 'ok';
+      }
+
+    } else if (item.source_type === 'equipment_inmetro' || item.source_type === 'equipment_datasheet' || item.source_type === 'equipment_afci') {
+      // AFCI é exclusivo de inversor
+      const which: 'inverter' | 'module' =
+        item.source_type === 'equipment_afci' ? 'inverter' : (item.ref === 'module' ? 'module' : 'inverter');
+      const kind = item.source_type === 'equipment_inmetro' ? 'inmetro'
+        : item.source_type === 'equipment_afci' ? 'afci' : 'datasheet';
+      const kindLabel = kind === 'inmetro' ? 'INMETRO' : kind === 'afci' ? 'AFCI' : 'DATASHEET';
+      base.fileLabel = `${kindLabel} ${which === 'inverter' ? 'INVERSOR' : 'MODULO'}`;
+      const blob = await resolveEquipmentDoc(project, which, kind);
+      if (blob) { base.blob = blob; base.ext = 'pdf'; base.status = 'ok'; }
+    }
+  } catch (e) {
+    console.error('resolve item', item, e);
+    base.status = 'error';
+    base.errorMessage = e instanceof Error ? e.message : 'Falha inesperada ao processar este item.';
+  }
+
+  return base;
+}
+
+/** Resolve todos os itens do pacote para blobs (ou marca faltantes/com erro). */
+export async function resolveInstallerPackage(project: ProjectWithDetails, items: PackageItem[]): Promise<ResolvedEntry[]> {
+  const values = await buildPackageValues(project);
+  const out: ResolvedEntry[] = [];
+  for (let i = 0; i < items.length; i++) {
+    out.push(await resolveOneItem(project, items[i], i, values));
   }
   return out;
+}
+
+/** Re-resolve um único item (retry manual pelo usuário após um status 'error'). */
+export async function retryInstallerPackageItem(project: ProjectWithDetails, item: PackageItem, index: number): Promise<ResolvedEntry> {
+  const values = await buildPackageValues(project);
+  return resolveOneItem(project, item, index, values);
 }
 
 /** Baixa uma foto candidata (do bucket project-documents) já convertida em PDF. */
