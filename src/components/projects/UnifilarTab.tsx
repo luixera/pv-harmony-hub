@@ -1,27 +1,31 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Loader2, FlaskConical, Download, FileImage, RotateCw, Link2, Trash2, RefreshCw,
-  Image as ImageIcon, Plus,
+  Image as ImageIcon, Plus, Pencil, Type, Check,
 } from 'lucide-react';
 import { ProjectWithDetails } from '@/hooks/useProjects';
 import { buildTechnicalJsonFromProject } from '@/utils/cadEngine/buildTechnicalJson';
 import {
-  ManualConnection, PlacedPhoto, PlacedSymbol, buildSceneFromPlacement,
-  computeConnectorPoints, initialConnections, initialPlacement, snapToGrid,
+  ConnectionEndpoint, ManualConnection, PlacedPhoto, PlacedSymbol, PlacedText,
+  blockCenter, buildSceneFromPlacement, computeConnectorPoints, initialConnections,
+  initialPlacement, isConnectionResolvable, snapToGrid,
 } from '@/utils/cadEngine/editableLayout';
 import { ComponentKind, Point } from '@/utils/cadEngine/types';
-import { sceneToSvgInner, primitiveToSvg } from '@/utils/cadEngine/exportSvg';
+import { sceneToSvgInner, primitiveToSvg, blockTransform } from '@/utils/cadEngine/exportSvg';
 import { sceneToPdfBlob } from '@/utils/cadEngine/exportPdf';
 import { KIND_LABEL, SYMBOL_BBOX, SYMBOL_DEFS } from '@/utils/cadEngine/symbols';
 import { CENTER_Y, PAPER, PITCH_X, START_X } from '@/utils/cadEngine/paper';
+import { buildProjectValues, resolveProjectTags, TEMPLATE_VARIABLES } from '@/utils/projectValues';
 import { sanitizeFileName } from '@/lib/utils';
 
 /**
  * Diagrama Unifilar (alpha) — visível apenas para o master. Editor interativo
- * mínimo sobre o CAD Engine: arrastar, girar, ligar (com desenho manual do
- * traço) e adicionar componentes/fotos avulsos (o "ManualLayoutSource" da
- * proposta §17.2). Sem motor de roteamento automático, sem templates
- * reutilizáveis ainda — ver DIAGRAMA UNIFILAR/cad-engine-arquitetura.md.
+ * sobre o CAD Engine: arrastar, girar, redimensionar e ligar (com desenho
+ * manual do traço, derivações e linhas soltas) componentes/fotos/textos
+ * avulsos (o "ManualLayoutSource" da proposta §17.2). Sem motor de
+ * roteamento automático, sem templates reutilizáveis ainda — isso fica para
+ * a tela dedicada de templates de diagrama (próxima etapa, fora desta fatia)
+ * — ver DIAGRAMA UNIFILAR/cad-engine-arquitetura.md.
  *
  * O layout editado é salvo só neste navegador (localStorage por projeto) —
  * não é sincronizado entre usuários/dispositivos nem persistido no banco.
@@ -29,50 +33,88 @@ import { sanitizeFileName } from '@/lib/utils';
 
 const STORAGE_PREFIX = 'unifilar-layout:';
 const ALL_KINDS = Object.keys(KIND_LABEL) as ComponentKind[];
+const MIN_SCALE = 0.4, MAX_SCALE = 3;
 
-interface SavedLayout { placements: PlacedSymbol[]; connections: ManualConnection[]; photos?: PlacedPhoto[] }
+const TAGS_BY_CATEGORY = (() => {
+  const map = new Map<string, typeof TEMPLATE_VARIABLES>();
+  for (const v of TEMPLATE_VARIABLES) {
+    if (!map.has(v.category)) map.set(v.category, []);
+    map.get(v.category)!.push(v);
+  }
+  return map;
+})();
+
+interface SavedLayout {
+  placements: PlacedSymbol[];
+  connections: ManualConnection[];
+  photos?: PlacedPhoto[];
+  texts?: PlacedText[];
+}
+
+/** Diagramas salvos antes desta versão gravavam `from`/`to` como string (id do
+ *  componente) direto, sem o envelope `{kind,...}`. Migra na leitura para não
+ *  quebrar diagramas já salvos no navegador do usuário. */
+function migrateConnection(raw: unknown): ManualConnection {
+  const c = raw as { id: string; from: unknown; to: unknown; waypoints?: Point[] };
+  const toEndpoint = (e: unknown): ConnectionEndpoint =>
+    typeof e === 'string' ? { kind: 'symbol', id: e } : (e as ConnectionEndpoint);
+  return { id: c.id, from: toEndpoint(c.from), to: toEndpoint(c.to), waypoints: c.waypoints };
+}
 
 /**
  * Funde o estado salvo com os componentes atuais do projeto. Os componentes
  * derivados do projeto (`json.components`, ids fixos tipo `PV-01`) são
- * resincronizados a cada troca de equipamento — só posição/rotação editadas
- * sobrevivem, e um componente removido do cadastro some do layout. Componentes
- * adicionados manualmente pelo usuário (prefixo `manual-`, ex.: um DPS avulso)
- * não têm origem no projeto — não dá para diferenciá-los "pela ausência no
- * cadastro atual" (um componente real removido do cadastro cairia no mesmo
- * caso), por isso o prefixo do id é o que decide, e eles sobrevivem sempre.
+ * resincronizados a cada troca de equipamento — só posição/rotação/escala
+ * editadas sobrevivem, e um componente removido do cadastro some do layout.
+ * Componentes adicionados manualmente pelo usuário (prefixo `manual-`, ex.:
+ * um DPS avulso) não têm origem no projeto — não dá para diferenciá-los "pela
+ * ausência no cadastro atual" (um componente real removido do cadastro cairia
+ * no mesmo caso), por isso o prefixo do id é o que decide, e eles sobrevivem
+ * sempre. Fotos e textos são sempre avulsos — passam direto.
  */
 function reconcile(json: ReturnType<typeof buildTechnicalJsonFromProject>, saved: SavedLayout | null): SavedLayout {
   const fresh = initialPlacement(json);
-  if (!saved) return { placements: fresh, connections: initialConnections(json), photos: [] };
+  if (!saved) return { placements: fresh, connections: initialConnections(json), photos: [], texts: [] };
 
   const reconciledProject = fresh.map(f => {
     const s = saved.placements.find(p => p.id === f.id);
-    return s ? { ...f, x: s.x, y: s.y, rotation: s.rotation } : f;
+    return s ? { ...f, x: s.x, y: s.y, rotation: s.rotation, scale: s.scale ?? 1 } : f;
   });
-  const manual = saved.placements.filter(p => p.id.startsWith('manual-'));
+  const manual = saved.placements
+    .filter(p => p.id.startsWith('manual-'))
+    .map(p => ({ ...p, scale: p.scale ?? 1 })); // diagramas salvos antes do redimensionamento não tinham "scale"
   const placements = [...reconciledProject, ...manual];
 
-  const validIds = new Set(placements.map(p => p.id));
-  const connections = saved.connections.filter(c => validIds.has(c.from) && validIds.has(c.to));
+  const byId = new Map(placements.map(p => [p.id, p]));
+  const connections = (saved.connections ?? [])
+    .map(migrateConnection)
+    .filter(c => isConnectionResolvable(c, byId));
 
-  return { placements, connections, photos: saved.photos ?? [] };
+  return { placements, connections, photos: saved.photos ?? [], texts: saved.texts ?? [] };
 }
 
 export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
   const json = useMemo(() => buildTechnicalJsonFromProject(project), [project]);
+  const values = useMemo(() => buildProjectValues(project), [project]);
   const storageKey = `${STORAGE_PREFIX}${project.id}`;
 
   const [placements, setPlacements] = useState<PlacedSymbol[]>([]);
   const [connections, setConnections] = useState<ManualConnection[]>([]);
   const [photos, setPhotos] = useState<PlacedPhoto[]>([]);
+  const [texts, setTexts] = useState<PlacedText[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedPhotoId, setSelectedPhotoId] = useState<string | null>(null);
+  const [selectedTextId, setSelectedTextId] = useState<string | null>(null);
+  const [selectedConnId, setSelectedConnId] = useState<string | null>(null);
   const [linkMode, setLinkMode] = useState(false);
-  const [linkFrom, setLinkFrom] = useState<string | null>(null);
+  const [linkFrom, setLinkFrom] = useState<ConnectionEndpoint | null>(null);
   const [drawnWaypoints, setDrawnWaypoints] = useState<Point[]>([]);
   const [snap, setSnap] = useState(true);
   const [generatingPdf, setGeneratingPdf] = useState(false);
+
+  const clearSelection = () => {
+    setSelectedId(null); setSelectedPhotoId(null); setSelectedTextId(null); setSelectedConnId(null);
+  };
 
   // Carrega do localStorage (ou monta o layout inicial) sempre que o projeto muda.
   useEffect(() => {
@@ -85,8 +127,8 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
     setPlacements(merged.placements);
     setConnections(merged.connections);
     setPhotos(merged.photos ?? []);
-    setSelectedId(null);
-    setSelectedPhotoId(null);
+    setTexts(merged.texts ?? []);
+    clearSelection();
     setLinkMode(false);
     setLinkFrom(null);
     setDrawnWaypoints([]);
@@ -96,18 +138,26 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
   // Salva a cada mudança (debounce simples via microtask — edições são raras/manuais).
   useEffect(() => {
     if (placements.length === 0) return; // ainda não carregou
-    try { localStorage.setItem(storageKey, JSON.stringify({ placements, connections, photos })); } catch { /* storage cheio/bloqueado — não é crítico */ }
-  }, [placements, connections, photos, storageKey]);
+    try { localStorage.setItem(storageKey, JSON.stringify({ placements, connections, photos, texts })); } catch { /* storage cheio/bloqueado — não é crítico */ }
+  }, [placements, connections, photos, texts, storageKey]);
 
-  const scene = useMemo(() => buildSceneFromPlacement(json, placements, connections, photos), [json, placements, connections, photos]);
+  const byId = useMemo(() => new Map(placements.map(p => [p.id, p])), [placements]);
+  const scene = useMemo(
+    () => buildSceneFromPlacement(json, placements, connections, photos, texts, values),
+    [json, placements, connections, photos, texts, values],
+  );
 
-  // ── Interação: arrastar símbolos, fotos, pontos de dobra das linhas ──────
+  // ── Interação: arrastar símbolos, fotos, textos, linhas inteiras e pontos ─
   const svgRef = useRef<SVGSVGElement>(null);
   type DragState =
     | { type: 'symbol'; id: string; startX: number; startY: number; origX: number; origY: number; moved: boolean }
+    | { type: 'symbol-resize'; id: string; startX: number; startY: number; origScale: number; moved: boolean }
     | { type: 'waypoint'; connId: string; index: number; startX: number; startY: number; origX: number; origY: number; moved: boolean }
+    | { type: 'endpoint'; connId: string; which: 'from' | 'to'; startX: number; startY: number; origX: number; origY: number; moved: boolean }
+    | { type: 'conn-move'; connId: string; startX: number; startY: number; origWaypoints: Point[]; origFromAt: Point | null; origToAt: Point | null; moved: boolean }
     | { type: 'photo'; id: string; startX: number; startY: number; origX: number; origY: number; moved: boolean }
-    | { type: 'photo-resize'; id: string; startX: number; startY: number; origW: number; origH: number; moved: boolean };
+    | { type: 'photo-resize'; id: string; startX: number; startY: number; origW: number; origH: number; moved: boolean }
+    | { type: 'text'; id: string; startX: number; startY: number; origX: number; origY: number; moved: boolean };
   const dragRef = useRef<DragState | null>(null);
 
   useEffect(() => {
@@ -124,6 +174,10 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
         let nx = drag.origX + dx, ny = drag.origY + dy;
         if (snap) { nx = snapToGrid(nx); ny = snapToGrid(ny); }
         setPlacements(prev => prev.map(p => (p.id === drag.id ? { ...p, x: nx, y: ny } : p)));
+      } else if (drag.type === 'symbol-resize') {
+        const deltaScale = dx / SYMBOL_BBOX.w; // cada W mm arrastados = +1x de escala
+        const newScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, drag.origScale + deltaScale));
+        setPlacements(prev => prev.map(p => (p.id === drag.id ? { ...p, scale: newScale } : p)));
       } else if (drag.type === 'waypoint') {
         let nx = drag.origX + dx, ny = drag.origY + dy;
         if (snap) { nx = snapToGrid(nx); ny = snapToGrid(ny); }
@@ -133,6 +187,23 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
           waypoints[drag.index] = { x: nx, y: ny };
           return { ...c, waypoints };
         }));
+      } else if (drag.type === 'endpoint') {
+        let nx = drag.origX + dx, ny = drag.origY + dy;
+        if (snap) { nx = snapToGrid(nx); ny = snapToGrid(ny); }
+        setConnections(prev => prev.map(c => {
+          if (c.id !== drag.connId) return c;
+          const pt: ConnectionEndpoint = { kind: 'point', at: { x: nx, y: ny } };
+          return drag.which === 'from' ? { ...c, from: pt } : { ...c, to: pt };
+        }));
+      } else if (drag.type === 'conn-move') {
+        const nWaypoints = drag.origWaypoints.map(p => ({ x: p.x + dx, y: p.y + dy }));
+        setConnections(prev => prev.map(c => {
+          if (c.id !== drag.connId) return c;
+          const next: ManualConnection = { ...c, waypoints: nWaypoints.length ? nWaypoints : undefined };
+          if (drag.origFromAt) next.from = { kind: 'point', at: { x: drag.origFromAt.x + dx, y: drag.origFromAt.y + dy } };
+          if (drag.origToAt) next.to = { kind: 'point', at: { x: drag.origToAt.x + dx, y: drag.origToAt.y + dy } };
+          return next;
+        }));
       } else if (drag.type === 'photo') {
         const nx = drag.origX + dx, ny = drag.origY + dy;
         setPhotos(prev => prev.map(ph => (ph.id === drag.id ? { ...ph, x: nx, y: ny } : ph)));
@@ -140,6 +211,10 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
         const newW = Math.max(15, drag.origW + dx);
         const newH = Math.max(10, drag.origH * (newW / drag.origW));
         setPhotos(prev => prev.map(ph => (ph.id === drag.id ? { ...ph, w: newW, h: newH } : ph)));
+      } else if (drag.type === 'text') {
+        let nx = drag.origX + dx, ny = drag.origY + dy;
+        if (snap) { nx = snapToGrid(nx); ny = snapToGrid(ny); }
+        setTexts(prev => prev.map(t => (t.id === drag.id ? { ...t, x: nx, y: ny } : t)));
       }
     };
     const onUp = () => {
@@ -154,47 +229,72 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- handleSymbolClick é estável o bastante (fecha sobre state via setState funcional)
   }, [snap]);
 
-  // Esc cancela uma ligação/desenho de linha em andamento.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && linkMode && linkFrom) { setLinkFrom(null); setDrawnWaypoints([]); }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [linkMode, linkFrom]);
-
   const handleSymbolMouseDown = (e: React.MouseEvent, p: PlacedSymbol) => {
     e.preventDefault();
     e.stopPropagation();
     dragRef.current = { type: 'symbol', id: p.id, startX: e.clientX, startY: e.clientY, origX: p.x, origY: p.y, moved: false };
   };
 
+  const handleSymbolResizeMouseDown = (e: React.MouseEvent, p: PlacedSymbol) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragRef.current = { type: 'symbol-resize', id: p.id, startX: e.clientX, startY: e.clientY, origScale: p.scale, moved: false };
+  };
+
+  const finishLink = (to: ConnectionEndpoint) => {
+    if (!linkFrom) return;
+    setConnections(prev => [...prev, {
+      id: `manual-${Date.now()}`, from: linkFrom, to,
+      waypoints: drawnWaypoints.length ? drawnWaypoints : undefined,
+    }]);
+    setLinkFrom(null);
+    setDrawnWaypoints([]);
+  };
+
   const handleSymbolClick = (id: string) => {
     if (linkMode) {
-      if (!linkFrom) { setLinkFrom(id); setDrawnWaypoints([]); return; }
-      if (linkFrom === id) { setLinkFrom(null); setDrawnWaypoints([]); return; } // clicou no mesmo: cancela
-      setConnections(prev => [...prev, {
-        id: `manual-${Date.now()}`, from: linkFrom, to: id,
-        waypoints: drawnWaypoints.length ? drawnWaypoints : undefined,
-      }]);
-      setLinkFrom(null);
-      setDrawnWaypoints([]);
+      if (!linkFrom) { setLinkFrom({ kind: 'symbol', id }); setDrawnWaypoints([]); return; }
+      if (linkFrom.kind === 'symbol' && linkFrom.id === id) { setLinkFrom(null); setDrawnWaypoints([]); return; } // clicou no mesmo: cancela
+      finishLink({ kind: 'symbol', id });
       return;
     }
     setSelectedId(prev => (prev === id ? null : id));
-    setSelectedPhotoId(null);
+    setSelectedPhotoId(null); setSelectedTextId(null); setSelectedConnId(null);
   };
 
-  // Enquanto uma ligação está sendo criada (linkFrom setado), clicar no canvas
-  // vazio vai acrescentando pontos ao traço — é o modo "desenhar linha".
-  const handleCanvasClick = (e: React.MouseEvent<SVGSVGElement>) => {
-    if (!linkMode || !linkFrom || !svgRef.current) return;
+  const clientToMm = (clientX: number, clientY: number): Point | null => {
+    if (!svgRef.current) return null;
     const rect = svgRef.current.getBoundingClientRect();
     const pxToMm = PAPER.widthMm / rect.width;
-    const x = (e.clientX - rect.left) * pxToMm;
-    const y = (e.clientY - rect.top) * pxToMm;
-    const pt = snap ? { x: snapToGrid(x), y: snapToGrid(y) } : { x, y };
+    const x = (clientX - rect.left) * pxToMm;
+    const y = (clientY - rect.top) * pxToMm;
+    return snap ? { x: snapToGrid(x), y: snapToGrid(y) } : { x, y };
+  };
+
+  // Clique em área vazia do canvas: fora do modo de ligar, desmarca tudo.
+  // No modo de ligar, cada clique vira o ponto de partida (se ainda não
+  // houver origem) ou mais um ponto do traço — é como se cria uma derivação
+  // (clicando em cima de uma linha existente) ou uma linha totalmente solta.
+  const handleCanvasClick = (e: React.MouseEvent<SVGSVGElement>) => {
+    if (!linkMode) { clearSelection(); return; }
+    const pt = clientToMm(e.clientX, e.clientY);
+    if (!pt) return;
+    if (!linkFrom) { setLinkFrom({ kind: 'point', at: pt }); setDrawnWaypoints([]); return; }
     setDrawnWaypoints(prev => [...prev, pt]);
+  };
+
+  // Termina a ligação em andamento no último ponto clicado (vira uma ponta solta
+  // — útil tanto pra derivação que não encosta em componente quanto pra linha livre).
+  const finishLinkHere = () => {
+    if (!linkFrom || drawnWaypoints.length === 0) return;
+    const last = drawnWaypoints[drawnWaypoints.length - 1];
+    const mid = drawnWaypoints.slice(0, -1);
+    setConnections(prev => [...prev, {
+      id: `manual-${Date.now()}`, from: linkFrom, to: { kind: 'point', at: last },
+      waypoints: mid.length ? mid : undefined,
+    }]);
+    setLinkFrom(null);
+    setDrawnWaypoints([]);
   };
 
   const rotateSelected = () => {
@@ -202,35 +302,80 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
     setPlacements(prev => prev.map(p => (p.id === selectedId ? { ...p, rotation: (p.rotation + 90) % 360 } : p)));
   };
 
-  const removeConnection = (id: string) => setConnections(prev => prev.filter(c => c.id !== id));
-
-  // Arrastar um ponto de dobra já existente.
-  const handleWaypointMouseDown = (e: React.MouseEvent, connId: string, index: number, at: Point) => {
-    e.preventDefault();
-    e.stopPropagation();
-    dragRef.current = { type: 'waypoint', connId, index, startX: e.clientX, startY: e.clientY, origX: at.x, origY: at.y, moved: false };
+  const handleEditSymbolText = (p: PlacedSymbol) => {
+    const newLabel = window.prompt('Nome do componente:', p.label);
+    if (newLabel === null) return;
+    const legendRaw = window.prompt('Legenda (uma linha por item; pode usar tags do projeto entre chaves, ex.: {potencia_total}):', p.legend.join('\n'));
+    const legend = legendRaw === null ? p.legend : legendRaw.split('\n').map(s => s.trim()).filter(Boolean);
+    setPlacements(prev => prev.map(x => (x.id === p.id ? { ...x, label: newLabel, legend } : x)));
   };
 
-  // Clicar (e arrastar) no meio de um trecho cria um novo ponto de dobra ali.
-  const handleAddWaypoint = (e: React.MouseEvent, connId: string, index: number, at: Point) => {
+  const removeConnection = (id: string) => {
+    setConnections(prev => prev.filter(c => c.id !== id));
+    if (selectedConnId === id) setSelectedConnId(null);
+  };
+
+  const handleConnMouseDown = (e: React.MouseEvent, connId: string) => {
+    if (linkMode) return; // deixa propagar pro clique de canvas (cria ponto/derivação ali)
     e.preventDefault();
     e.stopPropagation();
+    setSelectedConnId(connId);
+    setSelectedId(null); setSelectedPhotoId(null); setSelectedTextId(null);
+    const conn = connections.find(c => c.id === connId);
+    if (!conn) return;
+    let seedWaypoints = conn.waypoints ?? [];
+    if (seedWaypoints.length === 0) {
+      const full = computeConnectorPoints(conn.from, conn.to, byId, undefined);
+      seedWaypoints = full.slice(1, -1);
+    }
+    dragRef.current = {
+      type: 'conn-move', connId,
+      startX: e.clientX, startY: e.clientY,
+      origWaypoints: seedWaypoints,
+      origFromAt: conn.from.kind === 'point' ? conn.from.at : null,
+      origToAt: conn.to.kind === 'point' ? conn.to.at : null,
+      moved: false,
+    };
+  };
+
+  // Duplo-clique no meio de um trecho cria um novo ponto de dobra ali.
+  const handleConnDoubleClick = (connId: string, index: number, at: Point) => {
+    if (linkMode) return;
     setConnections(prev => prev.map(c => {
       if (c.id !== connId) return c;
       const waypoints = [...(c.waypoints ?? [])];
       waypoints.splice(index, 0, at);
       return { ...c, waypoints };
     }));
+    setSelectedConnId(connId);
+  };
+
+  // Arrastar um ponto de dobra já existente.
+  const handleWaypointMouseDown = (e: React.MouseEvent, connId: string, index: number, at: Point) => {
+    if (linkMode) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setSelectedConnId(connId);
     dragRef.current = { type: 'waypoint', connId, index, startX: e.clientX, startY: e.clientY, origX: at.x, origY: at.y, moved: false };
   };
 
   const removeWaypoint = (connId: string, index: number) => {
+    if (linkMode) return;
     setConnections(prev => prev.map(c => {
       if (c.id !== connId) return c;
       const waypoints = [...(c.waypoints ?? [])];
       waypoints.splice(index, 1);
       return { ...c, waypoints };
     }));
+  };
+
+  // Arrastar uma ponta "solta" (derivação ou linha livre) de uma ligação.
+  const handleEndpointMouseDown = (e: React.MouseEvent, connId: string, which: 'from' | 'to', at: Point) => {
+    if (linkMode) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setSelectedConnId(connId);
+    dragRef.current = { type: 'endpoint', connId, which, startX: e.clientX, startY: e.clientY, origX: at.x, origY: at.y, moved: false };
   };
 
   // ── Componentes adicionados livremente (não vêm do cadastro do projeto) ──
@@ -247,23 +392,62 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
       id, kind, label: `${KIND_LABEL[kind]} ${sameKindCount + 1}`, legend: [],
       x: START_X + col * PITCH_X,
       y: CENTER_Y - SYMBOL_BBOX.h / 2 + 42 + row * 34,
-      rotation: 0,
+      rotation: 0, scale: 1,
     };
     setPlacements(prev => [...prev, newSymbol]);
     setSelectedId(id);
-    setSelectedPhotoId(null);
+    setSelectedPhotoId(null); setSelectedTextId(null); setSelectedConnId(null);
   };
 
   const removeSelected = () => {
+    if (selectedConnId) {
+      setConnections(prev => prev.filter(c => c.id !== selectedConnId));
+      setSelectedConnId(null);
+      return;
+    }
+    if (selectedTextId) {
+      setTexts(prev => prev.filter(t => t.id !== selectedTextId));
+      setSelectedTextId(null);
+      return;
+    }
     if (selectedPhotoId) {
       setPhotos(prev => prev.filter(ph => ph.id !== selectedPhotoId));
       setSelectedPhotoId(null);
       return;
     }
     if (selectedId && isManualSymbol(selectedId)) {
-      setPlacements(prev => prev.filter(p => p.id !== selectedId));
-      setConnections(prev => prev.filter(c => c.from !== selectedId && c.to !== selectedId));
+      const id = selectedId;
+      setPlacements(prev => prev.filter(p => p.id !== id));
+      setConnections(prev => prev.filter(c =>
+        !(c.from.kind === 'symbol' && c.from.id === id) && !(c.to.kind === 'symbol' && c.to.id === id)
+      ));
       setSelectedId(null);
+    }
+  };
+
+  const canRemoveSelected = !!selectedConnId || !!selectedTextId || !!selectedPhotoId || (!!selectedId && isManualSymbol(selectedId));
+
+  // Esc cancela uma ligação em andamento; Delete/Backspace remove o que estiver selecionado.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+      if (e.key === 'Escape' && linkMode && linkFrom) { setLinkFrom(null); setDrawnWaypoints([]); return; }
+      if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); removeSelected(); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [linkMode, linkFrom, selectedConnId, selectedTextId, selectedPhotoId, selectedId]);
+
+  // ── Tags do projeto (mesmo catálogo dos templates .docx) ─────────────────
+  const insertTag = (key: string) => {
+    if (!key) return;
+    if (selectedTextId) {
+      setTexts(prev => prev.map(t => (t.id === selectedTextId ? { ...t, value: `${t.value} {${key}}`.trim() } : t)));
+      return;
+    }
+    if (selectedId) {
+      setPlacements(prev => prev.map(p => (p.id === selectedId ? { ...p, legend: [...p.legend, `{${key}}`] } : p)));
     }
   };
 
@@ -293,7 +477,7 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
         const id = `photo-${Date.now()}`;
         setPhotos(prev => [...prev, { id, href, x: START_X, y: CENTER_Y - hMm / 2, w: wMm, h: hMm }]);
         setSelectedPhotoId(id);
-        setSelectedId(null);
+        setSelectedId(null); setSelectedTextId(null); setSelectedConnId(null);
       };
       img.src = reader.result as string;
     };
@@ -304,7 +488,7 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
     e.preventDefault();
     e.stopPropagation();
     setSelectedPhotoId(ph.id);
-    setSelectedId(null);
+    setSelectedId(null); setSelectedTextId(null); setSelectedConnId(null);
     dragRef.current = { type: 'photo', id: ph.id, startX: e.clientX, startY: e.clientY, origX: ph.x, origY: ph.y, moved: false };
   };
 
@@ -319,14 +503,43 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
     if (selectedPhotoId === id) setSelectedPhotoId(null);
   };
 
+  // ── Textos soltos ─────────────────────────────────────────────────────────
+  const handleAddText = () => {
+    const value = window.prompt('Texto (pode usar tags do projeto entre chaves, ex.: {nome_titular}):', '');
+    if (!value) return;
+    const id = `manual-text-${Date.now()}`;
+    setTexts(prev => [...prev, { id, value, x: START_X, y: CENTER_Y - 30, size: 3.2 }]);
+    setSelectedTextId(id);
+    setSelectedId(null); setSelectedPhotoId(null); setSelectedConnId(null);
+  };
+
+  const handleEditText = (t: PlacedText) => {
+    const value = window.prompt('Editar texto:', t.value);
+    if (value === null) return;
+    setTexts(prev => prev.map(x => (x.id === t.id ? { ...x, value } : x)));
+  };
+
+  const handleTextMouseDown = (e: React.MouseEvent, t: PlacedText) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setSelectedTextId(t.id);
+    setSelectedId(null); setSelectedPhotoId(null); setSelectedConnId(null);
+    dragRef.current = { type: 'text', id: t.id, startX: e.clientX, startY: e.clientY, origX: t.x, origY: t.y, moved: false };
+  };
+
+  const removeText = (id: string) => {
+    setTexts(prev => prev.filter(t => t.id !== id));
+    if (selectedTextId === id) setSelectedTextId(null);
+  };
+
   const resetLayout = () => {
-    if (!confirm('Restaurar o layout automático? Posições, ligações, componentes e fotos adicionados manualmente neste projeto serão perdidos (só neste navegador).')) return;
+    if (!confirm('Restaurar o layout automático? Posições, ligações, componentes, fotos e textos adicionados manualmente neste projeto serão perdidos (só neste navegador).')) return;
     localStorage.removeItem(storageKey);
     setPlacements(initialPlacement(json));
     setConnections(initialConnections(json));
     setPhotos([]);
-    setSelectedId(null);
-    setSelectedPhotoId(null);
+    setTexts([]);
+    clearSelection();
     setLinkFrom(null);
     setDrawnWaypoints([]);
   };
@@ -349,9 +562,8 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
     finally { setGeneratingPdf(false); }
   };
 
-  const byId = useMemo(() => new Map(placements.map(p => [p.id, p])), [placements]);
   const labelOf = (id: string) => byId.get(id)?.label ?? id;
-  const canRemoveSelected = (!!selectedId && isManualSymbol(selectedId)) || !!selectedPhotoId;
+  const labelOfEndpoint = (e: ConnectionEndpoint) => (e.kind === 'symbol' ? labelOf(e.id) : 'Ponto');
 
   if (placements.length === 0) {
     return <div style={{ padding: 40, textAlign: 'center' }}><Loader2 size={22} className="animate-spin" style={{ color: '#F5A800' }} /></div>;
@@ -362,6 +574,8 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
     border: active ? 'none' : '1px solid #E0E0E0', background: active ? '#2B8CFF' : '#fff',
     color: active ? '#fff' : '#333', fontSize: 12, fontWeight: 600, cursor: 'pointer',
   });
+  const canFinishHere = linkMode && !!linkFrom && drawnWaypoints.length > 0;
+  const canInsertTag = !!selectedTextId || !!selectedId;
 
   return (
     <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 24 }}>
@@ -371,30 +585,60 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
       }}>
         <FlaskConical size={15} style={{ color: '#854F0B', flexShrink: 0 }} />
         <p style={{ fontSize: 12, color: '#854F0B', margin: 0 }}>
-          <strong>Alpha interno (só master).</strong> Arraste os símbolos (clique em qualquer parte
-          da figura) e gire o selecionado. Para ligar: clique na origem, depois clique no destino
-          (liga direto) ou clique em pontos do canvas antes do destino para desenhar o traço à mão
-          — Esc cancela. Depois de criada, arraste o traço para adicionar mais dobras. Adicione
-          componentes extras e fotos pela barra abaixo. Nada disso sincroniza entre dispositivos
-          nem gera template reutilizável — fica só neste navegador.
+          <strong>Alpha interno (só master).</strong> Arraste símbolos, fotos e textos; puxe o
+          quadrado azul no canto do símbolo selecionado pra redimensionar. Nas linhas: clique
+          para selecionar e arraste pra mover o traço inteiro, duplo-clique adiciona um ponto de
+          dobra, Delete remove a selecionada. Para ligar: clique na origem (um componente ou um
+          ponto/linha existente, pra criar uma derivação) e depois no destino — ou clique vários
+          pontos e use "Terminar aqui" pra fechar numa ponta solta (linha livre). Nada disso
+          sincroniza entre dispositivos — fica só neste navegador.
         </p>
       </div>
 
       {/* Barra de ferramentas */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
         <button
-          onClick={() => { setLinkMode(m => !m); setLinkFrom(null); setDrawnWaypoints([]); setSelectedId(null); setSelectedPhotoId(null); }}
+          onClick={() => { setLinkMode(m => !m); setLinkFrom(null); setDrawnWaypoints([]); clearSelection(); }}
           style={btnStyle(linkMode)}
         >
           <Link2 size={13} />
           {linkMode
-            ? (linkFrom ? `Ligar ${labelOf(linkFrom)} a… (${drawnWaypoints.length} pontos, Esc cancela)` : 'Clique no componente de origem')
+            ? (linkFrom ? `Ligando ${labelOfEndpoint(linkFrom)} a… (${drawnWaypoints.length} pontos, Esc cancela)` : 'Clique na origem (componente, linha ou canvas)')
             : 'Ligar / desenhar linha'}
         </button>
+
+        {canFinishHere && (
+          <button onClick={finishLinkHere} style={btnStyle(true)}>
+            <Check size={13} /> Terminar aqui
+          </button>
+        )}
 
         <button onClick={rotateSelected} disabled={!selectedId} style={{ ...btnStyle(), color: selectedId ? '#333' : '#bbb', cursor: selectedId ? 'pointer' : 'not-allowed' }}>
           <RotateCw size={13} /> {selectedId ? `Girar ${labelOf(selectedId)}` : 'Girar (selecione um símbolo)'}
         </button>
+
+        <button
+          onClick={() => selectedId && handleEditSymbolText(byId.get(selectedId)!)}
+          disabled={!selectedId}
+          style={{ ...btnStyle(), color: selectedId ? '#333' : '#bbb', cursor: selectedId ? 'pointer' : 'not-allowed' }}
+        >
+          <Pencil size={13} /> Editar texto
+        </button>
+
+        {canInsertTag && (
+          <select
+            value=""
+            onChange={e => { insertTag(e.target.value); e.target.value = ''; }}
+            style={{ padding: '7px 8px', borderRadius: 8, border: '1px solid #E0E0E0', fontSize: 12, color: '#333', background: '#fff', cursor: 'pointer' }}
+          >
+            <option value="" disabled>+ tag do projeto…</option>
+            {[...TAGS_BY_CATEGORY.entries()].map(([cat, vars]) => (
+              <optgroup key={cat} label={cat}>
+                {vars.map(v => <option key={v.key} value={v.key}>{v.desc}</option>)}
+              </optgroup>
+            ))}
+          </select>
+        )}
 
         <button onClick={removeSelected} disabled={!canRemoveSelected} style={{ ...btnStyle(), color: canRemoveSelected ? '#A32D2D' : '#ccc', cursor: canRemoveSelected ? 'pointer' : 'not-allowed' }}>
           <Trash2 size={13} /> Remover selecionado
@@ -422,7 +666,7 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
         </button>
       </div>
 
-      {/* Adicionar componentes/fotos avulsos */}
+      {/* Adicionar componentes/fotos/textos avulsos */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 12, paddingTop: 8, borderTop: '1px dashed #E0E0E0' }}>
         <span style={{ fontSize: 11, fontWeight: 700, color: '#999', textTransform: 'uppercase', letterSpacing: '0.05em', marginRight: 4 }}>Adicionar</span>
         {ALL_KINDS.map(kind => (
@@ -441,6 +685,12 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
         >
           <ImageIcon size={11} /> Foto
         </button>
+        <button
+          onClick={handleAddText}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 10px', borderRadius: 999, border: '1px solid #E0E0E0', background: '#fff', color: '#333', fontSize: 11.5, fontWeight: 600, cursor: 'pointer' }}
+        >
+          <Type size={11} /> Texto
+        </button>
       </div>
 
       {/* Canvas */}
@@ -448,7 +698,7 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
         <svg
           ref={svgRef}
           viewBox={`0 0 ${PAPER.widthMm} ${PAPER.heightMm}`}
-          style={{ width: 900, maxWidth: '100%', background: '#fff', boxShadow: '0 2px 12px rgba(0,0,0,0.12)', flexShrink: 0, cursor: linkMode && linkFrom ? 'crosshair' : linkMode ? 'pointer' : 'default' }}
+          style={{ width: 900, maxWidth: '100%', background: '#fff', boxShadow: '0 2px 12px rgba(0,0,0,0.12)', flexShrink: 0, cursor: linkMode ? 'crosshair' : 'default' }}
           onClick={handleCanvasClick}
         >
           {/* Moldura, cabeçalho e carimbo — estáticos */}
@@ -490,10 +740,39 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
             );
           })}
 
-          {/* Traço em andamento (modo desenhar linha) */}
-          {linkMode && linkFrom && byId.get(linkFrom) && (() => {
-            const from = byId.get(linkFrom)!;
-            const start = { x: from.x + SYMBOL_BBOX.w / 2, y: from.y + SYMBOL_BBOX.h / 2 };
+          {/* Textos soltos */}
+          {texts.map(t => {
+            const isSelected = selectedTextId === t.id;
+            return (
+              <g key={t.id}>
+                <text
+                  x={t.x} y={t.y} fontSize={t.size} fill="#333"
+                  onMouseDown={e => handleTextMouseDown(e, t)}
+                  onClick={e => e.stopPropagation()}
+                  onDoubleClick={e => { e.stopPropagation(); handleEditText(t); }}
+                  style={{ cursor: 'grab' }}
+                >
+                  {resolveProjectTags(t.value, values)}
+                </text>
+                {isSelected && (
+                  <g
+                    transform={`translate(${t.x - 2},${t.y - t.size - 1})`}
+                    onClick={e => { e.stopPropagation(); removeText(t.id); }}
+                    style={{ cursor: 'pointer' }}
+                  >
+                    <circle cx={0} cy={0} r={2.2} fill="#A32D2D" />
+                    <line x1={-1} y1={-1} x2={1} y2={1} stroke="#fff" strokeWidth={0.4} />
+                    <line x1={-1} y1={1} x2={1} y2={-1} stroke="#fff" strokeWidth={0.4} />
+                  </g>
+                )}
+              </g>
+            );
+          })}
+
+          {/* Traço em andamento (modo ligar/desenhar) */}
+          {linkMode && linkFrom && (() => {
+            const start = linkFrom.kind === 'point' ? linkFrom.at : (byId.get(linkFrom.id) ? blockCenter(byId.get(linkFrom.id)!) : null);
+            if (!start) return null;
             const pts = [start, ...drawnWaypoints].map(p => `${p.x},${p.y}`).join(' ');
             return (
               <g>
@@ -503,17 +782,20 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
             );
           })()}
 
-          {/* Condutores — recalculados a cada posição atual; pontos de dobra são arrastáveis */}
+          {/* Condutores — recalculados a cada posição atual; clicáveis, arrastáveis como bloco */}
           {connections.map(conn => {
-            const a = byId.get(conn.from), b = byId.get(conn.to);
-            if (!a || !b) return null;
-            const routePoints = computeConnectorPoints(a, b, conn.waypoints);
+            if (!isConnectionResolvable(conn, byId)) return null;
+            const routePoints = computeConnectorPoints(conn.from, conn.to, byId, conn.waypoints);
             const pointsStr = routePoints.map(p => `${p.x},${p.y}`).join(' ');
             const waypoints = conn.waypoints ?? [];
+            const isSelected = selectedConnId === conn.id;
             return (
               <g key={conn.id}>
-                <polyline points={pointsStr} fill="none" stroke="#B0271A" strokeWidth={0.4} />
-                {/* trecho invisível mais grosso — alvo de clique maior para arrastar/criar dobra */}
+                <polyline points={pointsStr} fill="none" stroke="#B0271A" strokeWidth={isSelected ? 0.7 : 0.4} />
+                {isSelected && (
+                  <polyline points={pointsStr} fill="none" stroke="#2B8CFF" strokeWidth={1.1} strokeDasharray="2,1.5" opacity={0.5} />
+                )}
+                {/* trecho invisível mais grosso — alvo de clique maior para selecionar/arrastar/duplo-clique */}
                 {routePoints.slice(0, -1).map((p, i) => {
                   const q = routePoints[i + 1];
                   const mid = { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 };
@@ -522,9 +804,10 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
                       key={i}
                       x1={p.x} y1={p.y} x2={q.x} y2={q.y}
                       stroke="transparent" strokeWidth={2.5}
-                      style={{ cursor: 'crosshair' }}
-                      onMouseDown={e => handleAddWaypoint(e, conn.id, i, mid)}
+                      style={{ cursor: linkMode ? 'crosshair' : 'grab' }}
+                      onMouseDown={e => handleConnMouseDown(e, conn.id)}
                       onClick={e => e.stopPropagation()}
+                      onDoubleClick={e => { e.stopPropagation(); handleConnDoubleClick(conn.id, i, mid); }}
                     />
                   );
                 })}
@@ -533,29 +816,53 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
                     key={i}
                     cx={wp.x} cy={wp.y} r={1.3}
                     fill="#fff" stroke="#B0271A" strokeWidth={0.4}
-                    style={{ cursor: 'move' }}
+                    style={{ cursor: linkMode ? 'crosshair' : 'move' }}
                     onMouseDown={e => handleWaypointMouseDown(e, conn.id, i, wp)}
                     onClick={e => e.stopPropagation()}
                     onDoubleClick={e => { e.stopPropagation(); removeWaypoint(conn.id, i); }}
                   />
                 ))}
+                {conn.from.kind === 'point' && (() => {
+                  const at = conn.from.at;
+                  return (
+                    <rect
+                      x={at.x - 1} y={at.y - 1} width={2} height={2} fill="#2B8CFF"
+                      style={{ cursor: linkMode ? 'crosshair' : 'move' }}
+                      onMouseDown={e => handleEndpointMouseDown(e, conn.id, 'from', at)}
+                      onClick={e => e.stopPropagation()}
+                    />
+                  );
+                })()}
+                {conn.to.kind === 'point' && (() => {
+                  const at = conn.to.at;
+                  return (
+                    <rect
+                      x={at.x - 1} y={at.y - 1} width={2} height={2} fill="#2B8CFF"
+                      style={{ cursor: linkMode ? 'crosshair' : 'move' }}
+                      onMouseDown={e => handleEndpointMouseDown(e, conn.id, 'to', at)}
+                      onClick={e => e.stopPropagation()}
+                    />
+                  );
+                })()}
               </g>
             );
           })}
 
-          {/* Símbolos — arrastáveis, giráveis, clicáveis */}
+          {/* Símbolos — arrastáveis, giráveis, redimensionáveis, clicáveis */}
           {placements.map(p => {
             const isSelected = selectedId === p.id;
-            const isLinkFrom = linkFrom === p.id;
+            const isLinkFrom = linkFrom?.kind === 'symbol' && linkFrom.id === p.id;
             const inner = (SYMBOL_DEFS[p.kind] ?? []).map((prim, i) => (
               <g key={i} dangerouslySetInnerHTML={{ __html: primitiveToSvg(prim, '#1A1A1A', 0.35) }} />
             ));
+            const scaledW = SYMBOL_BBOX.w * p.scale, scaledH = SYMBOL_BBOX.h * p.scale;
             return (
               <g key={p.id}>
                 <g
-                  transform={`translate(${p.x},${p.y}) rotate(${p.rotation},${SYMBOL_BBOX.w / 2},${SYMBOL_BBOX.h / 2})`}
+                  transform={blockTransform({ at: { x: p.x, y: p.y }, rotation: p.rotation, scale: p.scale })}
                   onMouseDown={e => handleSymbolMouseDown(e, p)}
                   onClick={e => e.stopPropagation()}
+                  onDoubleClick={e => { e.stopPropagation(); handleEditSymbolText(p); }}
                   style={{ cursor: linkMode ? 'crosshair' : 'grab' }}
                 >
                   {/* área de clique invisível: sem isto, símbolos com fill="none" só respondem
@@ -569,9 +876,17 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
                   )}
                   {inner}
                 </g>
-                <text x={p.x + SYMBOL_BBOX.w / 2} y={p.y + SYMBOL_BBOX.h + 5} fontSize={2.6} textAnchor="middle" fontWeight="bold" fill="#333">{p.label}</text>
+                {isSelected && (
+                  <rect
+                    x={p.x + scaledW - 1.2} y={p.y + scaledH - 1.2} width={2.4} height={2.4}
+                    fill="#2B8CFF" style={{ cursor: 'nwse-resize' }}
+                    onMouseDown={e => handleSymbolResizeMouseDown(e, p)}
+                    onClick={e => e.stopPropagation()}
+                  />
+                )}
+                <text x={p.x + scaledW / 2} y={p.y + scaledH + 5} fontSize={2.6} textAnchor="middle" fontWeight="bold" fill="#333">{resolveProjectTags(p.label, values)}</text>
                 {p.legend.map((line, i) => (
-                  <text key={i} x={p.x + SYMBOL_BBOX.w / 2} y={p.y + SYMBOL_BBOX.h + 5 + (i + 1) * 3.6} fontSize={2.4} textAnchor="middle" fill="#333">{line}</text>
+                  <text key={i} x={p.x + scaledW / 2} y={p.y + scaledH + 5 + (i + 1) * 3.6} fontSize={2.4} textAnchor="middle" fill="#333">{resolveProjectTags(line, values)}</text>
                 ))}
               </g>
             );
@@ -583,11 +898,23 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
       {connections.length > 0 && (
         <div style={{ marginTop: 14 }}>
           <p style={{ fontSize: 11, fontWeight: 700, color: '#999', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>Ligações</p>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             {connections.map(c => (
-              <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#555' }}>
-                <span>{labelOf(c.from)} → {labelOf(c.to)}</span>
-                <button onClick={() => removeConnection(c.id)} style={{ border: 'none', background: 'none', color: '#A32D2D', cursor: 'pointer', display: 'flex' }} title="Remover ligação">
+              <div
+                key={c.id}
+                onClick={() => setSelectedConnId(c.id)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#555',
+                  cursor: 'pointer', borderRadius: 6, padding: '4px 6px',
+                  background: selectedConnId === c.id ? '#EAF3FF' : 'transparent',
+                }}
+              >
+                <span>{labelOfEndpoint(c.from)} → {labelOfEndpoint(c.to)}</span>
+                <button
+                  onClick={e => { e.stopPropagation(); removeConnection(c.id); }}
+                  style={{ border: 'none', background: 'none', color: '#A32D2D', cursor: 'pointer', display: 'flex' }}
+                  title="Remover ligação"
+                >
                   <Trash2 size={12} />
                 </button>
               </div>

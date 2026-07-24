@@ -7,20 +7,25 @@
 - **Listagem pública de buckets** `avatars`/`tenant-logos`: revisar.
 
 ## Tarefas de produto em aberto (do backlog de sessão)
-- **Diagrama unifilar — evoluir do alpha**: hoje tem edição manual (arrastar
-  de qualquer ponto do símbolo, girar, ligar-e-desenhar linha à mão com
-  pontos de dobra), 6 símbolos (disjuntor corrigido para orientação
-  horizontal, DPS novo), componentes extras e fotos adicionáveis livremente
-  ao diagrama (só visual, sem tocar no cadastro do projeto), layout salvo só
-  em `localStorage`, só master/GD Manager — ver
+- **Diagrama unifilar — evoluir do alpha**: hoje tem edição manual completa —
+  arrastar de qualquer ponto do símbolo, girar, **redimensionar**, ligar com
+  derivações e linhas soltas (`ConnectionEndpoint` symbol/point), selecionar
+  e arrastar uma linha inteira como bloco, excluir com Delete, 6 símbolos
+  (disjuntor corrigido, DPS novo), componentes/fotos/**textos** adicionáveis
+  livremente (só visual, sem tocar no cadastro do projeto), texto e legenda
+  com **tags do projeto** (mesmo catálogo dos templates .docx). Layout salvo
+  só em `localStorage`, só master/GD Manager — ver
   [modules/diagrams](../modules/diagrams/overview.md) e
-  [ADR 0006](../adr/0006-cad-engine-alpha.md). Próximos passos, em ordem
-  sugerida: (1) calibrar símbolos com unifilares reais aprovados (usuário vai
-  enviar); (2) `DiagramTemplate` — salvar um layout e aplicar em outro projeto
-  (§17.3 da proposta); (3) motor de layout automático (grafo + roteador com
-  detecção de cruzamento); (4) exportador DXF; (5) liberar para outros
-  tenants; (6) suportar BESS/múltiplos inversores/geração compartilhada
-  oficialmente no cadastro (hoje só dá pra representar visualmente, avulso).
+  [ADR 0006](../adr/0006-cad-engine-alpha.md). **Combinado com o usuário**: a
+  próxima etapa é uma **tela dedicada de motor de templates de diagrama**
+  (fora desta fatia) — lá entra o `DiagramTemplate` (§17.3) de verdade, e o
+  modal do projeto passa a *importar* o diagrama pronto conforme a
+  especificação do projeto, em vez de montar do zero. Depois dessa etapa,
+  ainda ficam: (1) calibrar símbolos com unifilares reais aprovados (usuário
+  vai enviar); (2) motor de layout automático (grafo + roteador com detecção
+  de cruzamento); (3) exportador DXF; (4) liberar para outros tenants;
+  (5) suportar BESS/múltiplos inversores/geração compartilhada oficialmente
+  no cadastro (hoje só dá pra representar visualmente, avulso).
 - **Templates de outras concessionárias em .pdf/.xls**: hoje o motor só aceita
   `.docx`. Avaliar suporte a PDF com formulário (AcroForm) e a `.xlsx`.
 - **Catálogo de equipamentos no formulário público**: o combobox não aparece no

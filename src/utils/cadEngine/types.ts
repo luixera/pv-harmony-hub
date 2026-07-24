@@ -70,6 +70,8 @@ export interface BlockInstance {
   at: Point;
   /** Graus, sentido horário, em torno do centro do bloco (0/90/180/270). */
   rotation?: number;
+  /** Fator de escala uniforme em torno do centro do bloco (1 = tamanho padrão). */
+  scale?: number;
 }
 
 export interface Scene {

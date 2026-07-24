@@ -26,6 +26,20 @@ Registro de decisões de produto/UX (não arquiteturais — essas ficam em
   separada. Foto é elemento do diagrama (arrasta/redimensiona, sai impressa),
   não fundo de referência. Ver [ADR 0006](../adr/0006-cad-engine-alpha.md).
   (jul/2026)
+- **Diagrama unifilar — derivações/linhas soltas, tags, motor de templates
+  fica pra depois** (4ª rodada, mesmo mês): "outros caminhos com as linhas" =
+  derivação de uma linha existente **e** linha solta, as duas — resolvido
+  unificando `from`/`to` da ligação num tipo só (`ConnectionEndpoint`:
+  componente OU ponto fixo), em vez de dois mecanismos separados. "Legendas"
+  = texto solto **e** editar legenda do componente **e** puxar as tags do
+  projeto — reaproveitado o catálogo já existente dos templates .docx
+  (mesmo `{chave}`), em vez de inventar um novo sistema de variáveis só para
+  o diagrama. Confirmado com o usuário: o **motor de templates de diagrama**
+  (salvar/aplicar modelos reutilizáveis) vai ganhar uma **tela própria numa
+  etapa futura**, fora do modal do projeto — até lá, o editor ad-hoc dentro
+  do modal continua recebendo incrementos diretos (redimensionar, arrastar
+  linha como bloco, excluir com Delete). Ver
+  [ADR 0006](../adr/0006-cad-engine-alpha.md). (jul/2026)
 - **Visão master de empresas por tenant**: drill-down dentro da aba **Tenants**
   do `/painel` (não uma aba nova) — cada tenant expande para suas empresas, e
   cada empresa para seus projetos. Só o master vê, via RPCs `is_master`-gated.

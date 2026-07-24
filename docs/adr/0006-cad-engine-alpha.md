@@ -97,3 +97,50 @@ permanente no diagrama. Corrigido adotando um marcador estável: todo id criado
 manualmente pelo `addComponent()`/upload de foto começa com `manual-`, e é
 esse prefixo (não a ausência no projeto atual) que decide o que sobrevive à
 reconciliação.
+
+## Atualização (4ª rodada) — derivações/linhas soltas, redimensionar, tags
+Feedback: "está ficando bom", com pedidos concretos de mexer mais na linha
+(excluir, criar outros caminhos), legendas, redimensionar componentes,
+arrastar linha como bloco — e o aviso de que uma **tela dedicada de motor de
+templates de diagrama** virá numa etapa futura (fora desta fatia), onde o
+`DiagramTemplate` (§17.3) vai realmente morar; até lá, o modal do projeto
+continua com o editor ad-hoc. Duas perguntas feitas ao usuário antes de
+implementar, ambas respondidas com múltiplas opções marcadas:
+
+- **"Outros caminhos"** = derivação de uma linha existente **e** linha solta
+  sem amarrar em componente — as duas. Resolvido com uma única mudança de
+  modelo: `ManualConnection.from`/`to` deixou de ser um id de componente
+  (`string`) e virou `ConnectionEndpoint` — `{kind:'symbol', id}` **ou**
+  `{kind:'point', at}`. Clicar num componente gera a primeira; clicar em
+  qualquer outro lugar do canvas (vazio ou em cima de uma linha já existente)
+  gera a segunda — o mesmo mecanismo cobre derivação (parece um Y/T por estar
+  no mesmo ponto de uma linha existente) e linha totalmente livre (as duas
+  pontas soltas), sem precisar de um segundo tipo de entidade só pra isso.
+  Diagramas salvos no formato antigo (`from`/`to` como string) são migrados
+  na leitura (`migrateConnection()`).
+- **"Legendas"** = texto solto no diagrama **e** editar a legenda de cada
+  componente **e** "puxar as tags dos componentes também" (pedido extra do
+  usuário, não estava nas opções oferecidas). Em vez de inventar um novo
+  sistema de variáveis, reaproveitado o catálogo **já existente** dos
+  templates .docx (`TEMPLATE_VARIABLES`/`buildProjectValues` em
+  `projectValues.ts`, mesmo delimitador `{chave}` do `docxGenerator.ts`) —
+  um texto solto ou a legenda de um componente podem conter `{nome_titular}`,
+  `{potencia_total}` etc., resolvidos ao vivo (`resolveProjectTags()`) tanto
+  no canvas quanto no SVG/PDF exportado, com um seletor "+ tag do projeto…"
+  na barra pra não precisar decorar as chaves.
+
+Além disso, sem pergunta separada (interpretação direta do pedido):
+- **Excluir/arrastar linha como bloco**: uma ligação agora é selecionável
+  (clique no traço) e a seleção habilita Delete/Backspace e "Remover
+  selecionado"; arrastar um trecho selecionado ou não move a linha inteira
+  (todos os pontos de dobra e pontas soltas juntos) — se ainda não tinha
+  pontos de dobra, o primeiro arrasto semeia com o roteamento automático
+  atual antes de mover. Criar um novo ponto de dobra virou duplo-clique (era
+  o próprio gesto de arrastar antes — agora esse gesto move a linha toda).
+- **Redimensionar componentes**: `PlacedSymbol.scale` (0,4×–3×), alça de
+  arrastar no canto do símbolo selecionado. A composição escala-depois-gira
+  em torno do centro do bloco precisou ser replicada manualmente no PDF
+  (`scalePoint` antes de `rotatePoint`, mesma ordem do `transform` do SVG,
+  extraído como `blockTransform()` em `exportSvg.ts` e reaproveitado ao vivo
+  pelo canvas) — os dois foram comparados numericamente ponto a ponto antes
+  do commit para garantir que exportam exatamente o que a tela mostra.

@@ -91,6 +91,17 @@ export function buildSampleValues(): Record<string, string> {
   return values;
 }
 
+/** Resolve tags `{chave}` num texto livre usando o mesmo catálogo dos templates
+ *  .docx (`buildProjectValues`) — usado no diagrama unifilar (textos soltos e
+ *  legendas de componentes). Tag desconhecida fica como está (não quebra o
+ *  texto, só não substitui). */
+export function resolveProjectTags(text: string, values: Record<string, string>): string {
+  return text.replace(/\{([a-zA-Z_][a-zA-Z0-9_]*)\}/g, (match, key: string) => {
+    const v = values[key];
+    return v !== undefined ? v : match;
+  });
+}
+
 /** Distância de Levenshtein simples (para sugerir a tag correta). */
 function levenshtein(a: string, b: string): number {
   const m = a.length, n = b.length;

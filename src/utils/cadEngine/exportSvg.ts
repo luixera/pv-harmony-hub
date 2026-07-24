@@ -1,4 +1,4 @@
-import { LayerId, Point, Primitive, Scene } from './types';
+import { BlockInstance, LayerId, Point, Primitive, Scene } from './types';
 import { SYMBOL_BBOX } from './symbols';
 
 /** Scene → SVG. Serializador dedicado (não usa canvas/lib externa). */
@@ -42,6 +42,21 @@ function escapeXml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+/**
+ * String de `transform` de um bloco: posiciona, gira e escala — nessa ordem
+ * de efeito visual (escala em torno do centro, depois giro em torno do mesmo
+ * centro, depois posiciona na página). Exportado para o canvas interativo
+ * (`UnifilarTab.tsx`) usar exatamente a mesma matemática ao vivo.
+ */
+export function blockTransform(block: Pick<BlockInstance, 'at' | 'rotation' | 'scale'>): string {
+  const cx = SYMBOL_BBOX.w / 2, cy = SYMBOL_BBOX.h / 2;
+  const scale = block.scale ?? 1;
+  const parts = [`translate(${block.at.x},${block.at.y})`];
+  if (block.rotation) parts.push(`rotate(${block.rotation},${cx},${cy})`);
+  if (scale !== 1) parts.push(`translate(${cx},${cy})`, `scale(${scale})`, `translate(${-cx},${-cy})`);
+  return parts.join(' ');
+}
+
 /** Conteúdo interno (sem a tag <svg> em volta) — reaproveitado pelo canvas interativo. */
 export function sceneToSvgInner(scene: Scene): string {
   const parts: string[] = [];
@@ -53,8 +68,7 @@ export function sceneToSvgInner(scene: Scene): string {
     const color = LAYER_COLOR[block.layer];
     const width = LAYER_WIDTH[block.layer];
     const inner = defs.map(p => primitiveToSvg(p, color, width)).join('');
-    const rot = block.rotation ? ` rotate(${block.rotation},${SYMBOL_BBOX.w / 2},${SYMBOL_BBOX.h / 2})` : '';
-    parts.push(`<g transform="translate(${block.at.x},${block.at.y})${rot}">${inner}</g>`);
+    parts.push(`<g transform="${blockTransform(block)}">${inner}</g>`);
   }
   return parts.join('');
 }

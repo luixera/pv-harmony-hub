@@ -12,6 +12,12 @@ function rotatePoint(p: Point, deg: number, cx: number, cy: number): Point {
   };
 }
 
+/** Escala em torno de (cx,cy) — mesmo efeito do `translate(cx,cy) scale(s) translate(-cx,-cy)` do SVG. */
+function scalePoint(p: Point, s: number, cx: number, cy: number): Point {
+  if (s === 1) return p;
+  return { x: cx + (p.x - cx) * s, y: cy + (p.y - cy) * s };
+}
+
 /**
  * Scene → PDF, via jsPDF (já usado em resumoPdf.ts — sem dependência nova).
  * Espelha exatamente as mesmas primitivas do exportador SVG: a Scene é a
@@ -38,17 +44,19 @@ function imageFormatFromDataUrl(href: string): string {
 }
 
 /**
- * `rotDeg`/`rotCenter` giram a geometria ANTES de aplicar (dx,dy) — usado para
- * girar os símbolos (bloco inteiro), em coordenadas locais do bloco.
+ * `rotDeg`/`rotCenter`/`scale` transformam a geometria ANTES de aplicar
+ * (dx,dy) — usado para girar/escalar os símbolos (bloco inteiro), em
+ * coordenadas locais do bloco. Escala primeiro, depois gira — mesma ordem
+ * do `transform` do SVG (`blockTransform()` em exportSvg.ts).
  */
 function drawPrimitive(
   doc: import('jspdf').default, p: Primitive, rgb: [number, number, number], lineWidth: number,
-  dx = 0, dy = 0, rotDeg = 0, rotCenter: Point = { x: 0, y: 0 },
+  dx = 0, dy = 0, rotDeg = 0, rotCenter: Point = { x: 0, y: 0 }, scale = 1,
 ) {
   doc.setDrawColor(...rgb);
   doc.setTextColor(...rgb);
   doc.setLineWidth(lineWidth);
-  const R = (pt: Point) => rotatePoint(pt, rotDeg, rotCenter.x, rotCenter.y);
+  const R = (pt: Point) => rotatePoint(scalePoint(pt, scale, rotCenter.x, rotCenter.y), rotDeg, rotCenter.x, rotCenter.y);
   switch (p.kind) {
     case 'line': {
       const a = R(p.a), b = R(p.b);
@@ -63,8 +71,8 @@ function drawPrimitive(
       break;
     }
     case 'rect': {
-      if (!rotDeg) { doc.rect(p.x + dx, p.y + dy, p.w, p.h); break; }
-      // sem rotação nativa de retângulo no jsPDF: desenha como 4 lados girados
+      if (!rotDeg && scale === 1) { doc.rect(p.x + dx, p.y + dy, p.w, p.h); break; }
+      // sem rotação/escala nativas de retângulo no jsPDF: desenha como 4 lados transformados
       const corners = [
         { x: p.x, y: p.y }, { x: p.x + p.w, y: p.y },
         { x: p.x + p.w, y: p.y + p.h }, { x: p.x, y: p.y + p.h },
@@ -77,19 +85,19 @@ function drawPrimitive(
     }
     case 'circle': {
       const c = R(p.center);
-      doc.circle(c.x + dx, c.y + dy, p.radius);
+      doc.circle(c.x + dx, c.y + dy, p.radius * scale);
       break;
     }
     case 'text': {
       const at = R(p.at);
       const align = p.anchor === 'middle' ? 'center' : p.anchor === 'end' ? 'right' : 'left';
       doc.setFont('helvetica', p.weight === 'bold' ? 'bold' : 'normal');
-      doc.setFontSize(p.size * 2.83); // mm → pt aproximado para o mesmo tamanho visual do SVG
+      doc.setFontSize(p.size * 2.83 * scale); // mm → pt aproximado para o mesmo tamanho visual do SVG
       doc.text(p.value, at.x + dx, at.y + dy, { align });
       break;
     }
     case 'image': {
-      // fotos não giram nesta fatia — rotDeg sempre 0 para este tipo de primitiva
+      // fotos não giram/escalam nesta fatia — rotDeg/scale sempre neutros para este tipo de primitiva
       doc.addImage(p.href, imageFormatFromDataUrl(p.href), p.at.x + dx, p.at.y + dy, p.w, p.h);
       break;
     }
@@ -107,7 +115,7 @@ export async function sceneToPdfBlob(scene: Scene): Promise<Blob> {
   for (const block of scene.blocks) {
     const defs = scene.blockDefs[block.blockRef] ?? [];
     for (const prim of defs) {
-      drawPrimitive(doc, prim, LAYER_RGB[block.layer], LAYER_WIDTH[block.layer], block.at.x, block.at.y, block.rotation ?? 0, blockCenter);
+      drawPrimitive(doc, prim, LAYER_RGB[block.layer], LAYER_WIDTH[block.layer], block.at.x, block.at.y, block.rotation ?? 0, blockCenter, block.scale ?? 1);
     }
   }
 
