@@ -31,7 +31,8 @@ export function primitiveToSvg(p: Primitive, color: string, strokeWidth: number)
     case 'rect':
       return `<rect x="${p.x}" y="${p.y}" width="${p.w}" height="${p.h}" fill="none" stroke="${color}" stroke-width="${strokeWidth}"${p.dashed ? ` stroke-dasharray="${DASH}"` : ''} />`;
     case 'circle':
-      return `<circle cx="${p.center.x}" cy="${p.center.y}" r="${p.radius}" fill="none" stroke="${color}" stroke-width="${strokeWidth}" />`;
+      // `filled`: nó de junção de derivação (o ponto preto onde um condutor nasce de outro)
+      return `<circle cx="${p.center.x}" cy="${p.center.y}" r="${p.radius}" fill="${p.filled ? color : 'none'}" stroke="${color}" stroke-width="${strokeWidth}" />`;
     case 'text': {
       const weight = p.weight === 'bold' ? 'bold' : 'normal';
       return `<text x="${p.at.x}" y="${p.at.y}" font-size="${p.size}" text-anchor="${p.anchor}" font-weight="${weight}" font-family="Arial, sans-serif" fill="${color}">${escapeXml(p.value)}</text>`;

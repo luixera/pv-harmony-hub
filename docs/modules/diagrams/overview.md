@@ -60,7 +60,7 @@ usuário: útil mais cedo, e o motor automático continua no roadmap):
 - `src/utils/cadEngine/paper.ts` — constantes de papel/margem + moldura/carimbo (compartilhado entre o layout fixo e o editável).
 - `src/utils/cadEngine/buildTechnicalJson.ts` — projeto → JSON técnico (reaproveita `buildProjectValues`).
 - `src/utils/cadEngine/layout.ts` — JSON técnico → `Scene` com layout fixo (posição inicial, antes de qualquer edição).
-- `src/utils/cadEngine/editableLayout.ts` — `PlacedSymbol` (com `scale`), `ManualConnection` (`from`/`to` são `ConnectionEndpoint` — `{kind:'symbol',id}` ou `{kind:'point',at}` —, mais `waypoints?: Point[]`), `PlacedPhoto`, `PlacedText`, `orthogonalPath`, `computeConnectorPoints` (aceita qualquer combinação de pontas symbol/point; `edgePoint()` interno recua pelo `CONNECTION_INSET`), `isConnectionResolvable`, `blockCenter` (considera a escala), `findNearestSymbol`/`nearestPointOnPolyline`/`SNAP_RADIUS` (snapping de clique/soltura pra componente ou linha perto o bastante), `snapToGrid`, `buildSceneFromPlacement` (a `Scene` a partir do estado editado + fotos + textos, resolvendo tags via `tagValues`), `buildSceneFromRecognition`/`layoutFromRecognition` (resultado da IA de reconhecimento → `DiagramSceneState`: fileira principal por `stage` + derivações `branch` empilhadas na mesma coluna, ver "Reconhecimento automático a partir de PDF" abaixo).
+- `src/utils/cadEngine/editableLayout.ts` — `PlacedSymbol` (com `scale`), `ManualConnection` (`from`/`to` são `ConnectionEndpoint` — `symbol`/`port`/`line`/`point`, ver "Conexões vivas" —, mais `waypoints?: Point[]`), `PlacedPhoto`, `PlacedText`, `orthogonalPath`, `computeAllConnectionPoints` (resolve TODOS os condutores em ordem de dependência, com detecção de ciclo; `edgePoint()` interno recua pelo `CONNECTION_INSET`), `portPagePosition`/`findNearestPort`/`PORT_SNAP`, `pointAtT`/`nearestPointOnPolyline` (com `t`), `connectionDependsOn`, `detachDerivations`, `isConnectionResolvable`, `blockCenter` (considera a escala), `findNearestSymbol`/`SNAP_RADIUS` (snapping de clique/soltura), `snapToGrid`, `buildSceneFromPlacement` (a `Scene` a partir do estado editado + fotos + textos, resolvendo tags via `tagValues`), `buildSceneFromRecognition`/`layoutFromRecognition` (resultado da IA de reconhecimento → `DiagramSceneState`: fileira principal por `stage` + derivações `branch` empilhadas na mesma coluna, ver "Reconhecimento automático a partir de PDF" abaixo).
 - `src/utils/cadEngine/exportSvg.ts` / `exportPdf.ts` — `Scene` → SVG / PDF, com suporte a `rotation`/`scale` do bloco (PDF transforma os pontos manualmente — escala em torno do centro, depois gira, mesma ordem em ambos; SVG usa `transform="...rotate()...scale()..."` nativo via `blockTransform()`, reaproveitado ao vivo pelo canvas) e à primitiva `image` (SVG: `<image href>`; PDF: `doc.addImage`, formato detectado pelo prefixo do data URL). PDF via `jspdf`, já usado em `resumoPdf.ts` — nenhuma dependência nova.
 - `src/utils/projectValues.ts` — `resolveProjectTags(texto, values)`: substitui `{chave}` usando o mesmo catálogo `TEMPLATE_VARIABLES`/`buildProjectValues` dos templates .docx; tag desconhecida fica como está. `buildSampleValues()` (já existia, reaproveitado) gera dados fictícios pra prévia dos modelos.
 - `src/components/diagrams/DiagramEditor.tsx` — canvas SVG interativo compartilhado (arrastar/girar/redimensionar/ligar-e-desenhar-com-derivação/selecionar-e-arrastar-linha-inteira/adicionar componente, foto ou texto) + botões de download. Não sabe de onde vêm os dados nem pra onde vão — recebe `json`/`initialState`/`tagValues` e devolve cada mudança via `onStateChange`; quem chama decide onde persistir.
@@ -273,17 +273,47 @@ Ambos são **só visuais**: não criam nem alteram nenhum registro de
 ícone na foto) o que foi adicionado manualmente — os 5 componentes do
 cadastro do projeto são sempre exibidos.
 
-## Ligar / desenhar linha (só componente-a-componente ou com derivação)
-Uma ligação **sempre** termina em algo real — um componente ou outra linha —,
-nunca fica solta no vazio (decisão explícita do usuário: "não deixe que as
-linhas possam ser desenhadas livremente, mas sim, conectando componentes uns
-aos outros ou em outras linhas"). A origem e o destino
-(`ConnectionEndpoint`) podem ser um **componente** (`{kind:'symbol'}`) ou um
-**ponto sobre outra linha existente** (`{kind:'point', at}`, uma derivação —
-não há uma referência formal "esta ligação deriva da outra" guardada, é só o
-mesmo ponto no espaço, coincidente o bastante pra parecer e funcionar como
-uma derivação). Não existe uma terceira opção de "ponto solto sem ligação a
-nada".
+## Conexões vivas (portas, derivação formal, nós de junção)
+Desde a 12ª rodada as ligações são "vivas" — quatro tipos de ponta
+(`ConnectionEndpoint`):
+
+- **`port`** — uma PORTA nomeada do componente (`SYMBOL_PORTS`,
+  symbols.ts): ponto calibrado da geometria real do símbolo (lado CC/CA do
+  inversor, entrada/saída do disjuntor, topo do DPS...), que acompanha
+  mover/girar/redimensionar (`portPagePosition`, mesma matemática do
+  `blockTransform`). No modo ligar, as portas aparecem como bolinhas
+  clicáveis sobre cada símbolo; soltar uma ponta arrastada perto de uma
+  porta (raio `PORT_SNAP` = 3mm, mais apertado que o `SNAP_RADIUS` de 6mm)
+  gruda nela.
+- **`symbol`** — o componente com lado automático (`edgePoint`, a borda na
+  direção do outro extremo) — o comportamento clássico, continua sendo o
+  default de um clique no meio do símbolo.
+- **`line`** — **derivação FORMAL**: `{connId, t}` = "nasce da ligação X,
+  na fração t (0–1) do comprimento do traçado dela". Mover/redesenhar a
+  linha-mãe **arrasta a derivação junto** (era a reclamação clássica: a
+  derivação antiga era um ponto fixo coincidente que ficava pra trás). O
+  ponto de junção ganha o **nó preto (•)** dos unifilares reais — no canvas
+  (que também é a alça de arrastar a ponta) e no SVG/PDF exportado
+  (primitiva `circle` ganhou `filled`).
+- **`point`** — ponto fixo em mm: legado (diagramas salvos antes da
+  derivação formal continuam abrindo como estavam) e posição temporária
+  durante o arrasto de uma ponta.
+
+A geometria de todos os condutores é resolvida de uma vez por
+`computeAllConnectionPoints` (editableLayout.ts), em ordem de dependência
+(derivação depois da mãe), com **detecção de ciclo** (A deriva de B que
+deriva de A → nenhuma resolve, nada trava) — canvas e exportadores usam o
+mesmo mapa. Grudar uma ponta numa linha que dependa dela é impedido na
+soltura (`connectionDependsOn`). Remover uma linha (ou o símbolo em que ela
+encosta) **não apaga em cascata** as derivações que nasciam dela: cada uma
+vira ponto fixo na posição atual (`detachDerivations`) — nada some da tela
+sem o usuário pedir.
+
+Uma ligação **sempre** termina em algo real — porta, componente ou outra
+linha —, nunca fica solta no vazio (decisão explícita do usuário: "não
+deixe que as linhas possam ser desenhadas livremente, mas sim, conectando
+componentes uns aos outros ou em outras linhas"). Não existe a opção de
+"ponto solto sem ligação a nada".
 
 - Clique num componente → origem/destino é aquele componente.
 - Clique em cima de uma linha existente (dentro do raio de captura,
@@ -428,9 +458,10 @@ flowchart LR
   GD Manager (combinado com o usuário — ele vai enviar exemplos).
 - Fotos não giram (só arrastar/redimensionar) — suficiente para o uso previsto
   (foto do local, fachada, padrão de entrada).
-- Derivação não é uma referência formal ("esta linha nasce daquela outra") —
-  é só um ponto fixo coincidente. Se a linha original for movida depois, a
-  derivação não a acompanha automaticamente (fica visualmente desencostada).
+- Derivações criadas ANTES da derivação formal (12ª rodada) continuam como
+  ponto fixo coincidente — não acompanham a linha-mãe até serem
+  reconectadas (arrastar a pontinha pra cima da linha de novo já grava o
+  vínculo formal). Sem migração automática retroativa.
 - Alça de redimensionar dos símbolos não acompanha a rotação (fica sempre no
   canto "não girado"); o redimensionamento em si funciona normalmente.
 - O recuo de alinhamento (`CONNECTION_INSET`) e o snapping de clique só valem

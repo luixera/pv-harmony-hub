@@ -55,7 +55,7 @@ export type Primitive =
   | { kind: 'line'; a: Point; b: Point; dashed?: boolean }
   | { kind: 'polyline'; points: Point[] }
   | { kind: 'rect'; x: number; y: number; w: number; h: number; dashed?: boolean }
-  | { kind: 'circle'; center: Point; radius: number }
+  | { kind: 'circle'; center: Point; radius: number; filled?: boolean }
   | { kind: 'text'; at: Point; value: string; size: number; anchor: 'start' | 'middle' | 'end'; weight?: 'normal' | 'bold' }
   | { kind: 'image'; at: Point; w: number; h: number; href: string };
 

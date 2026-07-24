@@ -75,6 +75,85 @@ export const CONNECTION_INSET: Record<ComponentKind, number> = {
   'breaker-tripolar': 2,
 };
 
+/**
+ * Porta de conexão de um símbolo: um ponto NOMEADO da geometria onde um
+ * condutor pode encostar com precisão (em vez de mirar "a borda mais
+ * próxima da caixa"). Coordenadas locais do bloco (mesma convenção dos
+ * `SYMBOL_DEFS`: origem no canto superior-esquerdo, caixa 24×20) —
+ * `portPagePosition()` (editableLayout.ts) converte pra página aplicando
+ * escala e rotação na mesma ordem do `blockTransform()`.
+ */
+export interface SymbolPort {
+  id: string;
+  /** Nome curto exibido na UI (tooltip da bolinha de porta, lista de ligações). */
+  name: string;
+  x: number;
+  y: number;
+}
+
+/**
+ * Portas por símbolo — calibradas contra a geometria real de cada
+ * `SYMBOL_DEFS` (a porta fica na PONTA do traço desenhado, não na borda da
+ * caixa). Componentes em série ganham entrada/saída; o inversor distingue
+ * lado CC e lado CA; DPS e aterramento conectam só por cima (derivação).
+ */
+export const SYMBOL_PORTS: Record<ComponentKind, SymbolPort[]> = {
+  'pv-array': [
+    { id: 'esq', name: 'Esquerda', x: 2, y: H / 2 },
+    { id: 'dir', name: 'Direita', x: W - 2, y: H / 2 },
+    { id: 'topo', name: 'Topo', x: W / 2, y: 3 },
+    { id: 'base', name: 'Base', x: W / 2, y: H - 3 },
+  ],
+  inverter: [
+    { id: 'cc', name: 'CC', x: 2, y: H / 2 },
+    { id: 'ca', name: 'CA', x: W - 2, y: H / 2 },
+    { id: 'topo', name: 'Topo', x: W / 2, y: 2 },
+    { id: 'base', name: 'Base', x: W / 2, y: H - 2 },
+  ],
+  breaker: [
+    { id: 'entrada', name: 'Entrada', x: 2, y: H / 2 },
+    { id: 'saida', name: 'Saída', x: W - 2, y: H / 2 },
+  ],
+  'breaker-tripolar': [
+    { id: 'entrada', name: 'Entrada', x: 2, y: H / 2 },
+    { id: 'saida', name: 'Saída', x: W - 2, y: H / 2 },
+  ],
+  'dc-switch': [
+    { id: 'entrada', name: 'Entrada', x: 2, y: H / 2 },
+    { id: 'saida', name: 'Saída', x: W - 2, y: H / 2 },
+  ],
+  fuse: [
+    { id: 'entrada', name: 'Entrada', x: 2, y: H / 2 },
+    { id: 'saida', name: 'Saída', x: W - 2, y: H / 2 },
+  ],
+  meter: [
+    { id: 'esq', name: 'Esquerda', x: 4, y: H / 2 },
+    { id: 'dir', name: 'Direita', x: W - 4, y: H / 2 },
+    { id: 'topo', name: 'Topo', x: W / 2, y: 2 },
+    { id: 'base', name: 'Base', x: W / 2, y: H - 2 },
+  ],
+  'meter-bidirectional': [
+    { id: 'esq', name: 'Esquerda', x: 4, y: H / 2 },
+    { id: 'dir', name: 'Direita', x: W - 4, y: H / 2 },
+    { id: 'topo', name: 'Topo', x: W / 2, y: H / 2 - 6 },
+    { id: 'base', name: 'Base', x: W / 2, y: H / 2 + 6 },
+  ],
+  'utility-grid': [
+    { id: 'esq', name: 'Esquerda', x: 4, y: H / 2 },
+    { id: 'dir', name: 'Direita', x: W - 4, y: H / 2 },
+  ],
+  dps: [
+    { id: 'topo', name: 'Entrada', x: W / 2, y: 2 },
+  ],
+  ground: [
+    { id: 'topo', name: 'Entrada', x: W / 2, y: 2 },
+  ],
+  'distribution-panel': [
+    { id: 'entrada', name: 'Entrada', x: 2, y: H / 2 },
+    { id: 'saida', name: 'Saída', x: W - 2, y: H / 2 },
+  ],
+};
+
 export const SYMBOL_DEFS: Record<ComponentKind, Primitive[]> = {
   'pv-array': [
     { kind: 'rect', x: 2, y: 3, w: W - 4, h: H - 6 },

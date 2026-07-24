@@ -1,5 +1,5 @@
 import { ComponentKind, Point, Scene, TechnicalJsonMvp } from './types';
-import { CONNECTION_INSET, SYMBOL_BBOX, SYMBOL_DEFS } from './symbols';
+import { CONNECTION_INSET, SYMBOL_BBOX, SYMBOL_DEFS, SYMBOL_PORTS, SymbolPort } from './symbols';
 import {
   CENTER_Y, DRAW_BOTTOM, DRAW_TOP, drawFrameAndHeader, drawLegendTable, drawTitleBlock,
   LEGEND_LINE_H, LEGEND_X0, PITCH_X, SheetOptions, START_X,
@@ -29,14 +29,21 @@ export interface PlacedSymbol {
 }
 
 /**
- * Ponta de uma ligação: um componente (`symbol`) ou um ponto fixo em mm
- * (`point`) — usado tanto para derivar um ramal a partir de um ponto
- * qualquer de outra linha (o ponto fica onde o usuário clicou, "colado"
- * visualmente na linha original) quanto para uma linha totalmente solta
- * (as duas pontas são `point`), sem representar uma ligação elétrica real.
+ * Ponta de uma ligação. Quatro formas, da mais "viva" pra mais crua:
+ * - `port`: uma PORTA nomeada de um componente (ex.: lado CA do inversor) —
+ *   pixel-perfeita, acompanha mover/girar/redimensionar o símbolo.
+ * - `symbol`: um componente, lado escolhido automaticamente (`edgePoint`,
+ *   a borda na direção do outro extremo) — o comportamento clássico.
+ * - `line`: DERIVAÇÃO FORMAL — a ponta nasce de outra ligação, na fração
+ *   `t` (0–1) do comprimento do traçado dela. Mover/redesenhar a linha-mãe
+ *   arrasta a derivação junto, e o ponto de junção ganha o nó preto (•).
+ * - `point`: ponto fixo em mm — legado (derivações antigas salvas antes da
+ *   derivação formal) e posição temporária durante um arrasto de ponta.
  */
 export type ConnectionEndpoint =
   | { kind: 'symbol'; id: string }
+  | { kind: 'port'; id: string; port: string }
+  | { kind: 'line'; connId: string; t: number }
   | { kind: 'point'; at: Point };
 
 export interface ManualConnection {
@@ -209,9 +216,10 @@ function toNorm(x: number, y: number): { x: number; y: number } {
 /**
  * Cena atual → o mesmo JSON que o reconhecimento devolve — pra mandar o
  * estado ATUAL do diagrama pro revisor de IA (`diagram-review`) e receber a
- * versão corrigida no mesmo formato. Perdas conhecidas (documentadas na UI):
- * ligações com ponta em derivação (`kind: 'point'`) não têm como ser
- * expressas no schema simples from/to e ficam de fora da revisão.
+ * versão corrigida no mesmo formato. Pontas `port` contam como o próprio
+ * componente. Perdas conhecidas (documentadas na UI): ligações com ponta em
+ * derivação (`line`/`point`) não têm como ser expressas no schema simples
+ * from/to e ficam de fora da revisão.
  */
 export function sceneStateToRecognitionInput(state: DiagramSceneState): {
   components: RecognizedComponentInput[];
@@ -222,13 +230,11 @@ export function sceneStateToRecognitionInput(state: DiagramSceneState): {
     const center = toNorm(p.x + (SYMBOL_BBOX.w * p.scale) / 2, p.y + (SYMBOL_BBOX.h * p.scale) / 2);
     return { id: p.id, kind: p.kind, label: p.label, x: center.x, y: center.y };
   });
+  const symbolIdOf = (e: ConnectionEndpoint): string | null =>
+    e.kind === 'symbol' || e.kind === 'port' ? e.id : null;
   const connections = state.connections
-    .filter(c => c.from.kind === 'symbol' && c.to.kind === 'symbol')
-    .map(c => ({
-      from: (c.from as { kind: 'symbol'; id: string }).id,
-      to: (c.to as { kind: 'symbol'; id: string }).id,
-      label: c.label,
-    }));
+    .map(c => ({ from: symbolIdOf(c.from), to: symbolIdOf(c.to), label: c.label }))
+    .filter((c): c is { from: string; to: string; label: string | undefined } => !!c.from && !!c.to);
   const groups = (state.groups ?? []).map(g => {
     const tl = toNorm(g.x, g.y);
     const br = toNorm(g.x + g.w, g.y + g.h);
@@ -365,7 +371,65 @@ function edgePoint(from: PlacedSymbol, towards: Point): Point {
   return { x: c.x, y: c.y + Math.sign(dy || 1) * hh };
 }
 
+/**
+ * Posição de uma porta na página: aplica escala em torno do centro do bloco,
+ * depois rotação em torno do mesmo centro, depois a posição — EXATAMENTE a
+ * ordem do `blockTransform()` (exportSvg.ts), pra porta cair sempre em cima
+ * da geometria desenhada, girada/escalada ou não.
+ */
+export function portPagePosition(p: PlacedSymbol, port: Pick<SymbolPort, 'x' | 'y'>): Point {
+  const cx = SYMBOL_BBOX.w / 2, cy = SYMBOL_BBOX.h / 2;
+  const sx = cx + (port.x - cx) * p.scale, sy = cy + (port.y - cy) * p.scale;
+  const rad = (p.rotation * Math.PI) / 180;
+  const dx = sx - cx, dy = sy - cy;
+  return {
+    x: p.x + cx + dx * Math.cos(rad) - dy * Math.sin(rad),
+    y: p.y + cy + dx * Math.sin(rad) + dy * Math.cos(rad),
+  };
+}
+
 export const SNAP_RADIUS = 6; // mm — clicar/soltar perto o bastante de um componente ou linha "gruda" nele
+export const PORT_SNAP = 3; // mm — mais apertado que o do componente: a porta é um alvo pequeno e específico
+
+/** Porta mais próxima do ponto entre todos os componentes, dentro do raio de captura. */
+export function findNearestPort(
+  pt: Point, placements: PlacedSymbol[], radius = PORT_SNAP,
+): { symbolId: string; portId: string; at: Point } | null {
+  let best: { symbolId: string; portId: string; at: Point } | null = null;
+  let bestDist = radius;
+  for (const p of placements) {
+    for (const port of SYMBOL_PORTS[p.kind] ?? []) {
+      const at = portPagePosition(p, port);
+      const dist = Math.hypot(pt.x - at.x, pt.y - at.y);
+      if (dist < bestDist) { bestDist = dist; best = { symbolId: p.id, portId: port.id, at }; }
+    }
+  }
+  return best;
+}
+
+/** Ponto na fração `t` (0–1) do comprimento total de uma polilinha. */
+export function pointAtT(points: Point[], t: number): Point {
+  if (points.length === 0) return { x: 0, y: 0 };
+  const clamped = Math.max(0, Math.min(1, t));
+  const segs: number[] = [];
+  let total = 0;
+  for (let i = 0; i < points.length - 1; i++) {
+    const len = Math.hypot(points[i + 1].x - points[i].x, points[i + 1].y - points[i].y);
+    segs.push(len);
+    total += len;
+  }
+  if (total === 0) return points[0];
+  let target = clamped * total;
+  for (let i = 0; i < segs.length; i++) {
+    if (target <= segs[i] || i === segs.length - 1) {
+      const f = segs[i] === 0 ? 0 : Math.min(1, target / segs[i]);
+      const a = points[i], b = points[i + 1];
+      return { x: a.x + (b.x - a.x) * f, y: a.y + (b.y - a.y) * f };
+    }
+    target -= segs[i];
+  }
+  return points[points.length - 1];
+}
 
 /** Componente cuja caixa (já considerando escala) está mais perto do ponto, dentro do raio de captura. */
 export function findNearestSymbol(pt: Point, placements: PlacedSymbol[], radius = SNAP_RADIUS): PlacedSymbol | null {
@@ -383,57 +447,164 @@ export function findNearestSymbol(pt: Point, placements: PlacedSymbol[], radius 
   return best;
 }
 
-/** Ponto mais próximo sobre uma polilinha, e a distância até ele. */
-export function nearestPointOnPolyline(pt: Point, pts: Point[]): { point: Point; dist: number } | null {
-  let best: { point: Point; dist: number } | null = null;
+/** Ponto mais próximo sobre uma polilinha, a distância até ele e a fração `t`
+ *  (0–1 do comprimento total) — `t` é o que a derivação formal grava. */
+export function nearestPointOnPolyline(pt: Point, pts: Point[]): { point: Point; dist: number; t: number } | null {
+  const segs: number[] = [];
+  let total = 0;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const len = Math.hypot(pts[i + 1].x - pts[i].x, pts[i + 1].y - pts[i].y);
+    segs.push(len);
+    total += len;
+  }
+  let best: { point: Point; dist: number; t: number } | null = null;
+  let lenBefore = 0;
   for (let i = 0; i < pts.length - 1; i++) {
     const a = pts[i], b = pts[i + 1];
     const dx = b.x - a.x, dy = b.y - a.y;
     const len2 = dx * dx + dy * dy;
-    const t = len2 === 0 ? 0 : Math.max(0, Math.min(1, ((pt.x - a.x) * dx + (pt.y - a.y) * dy) / len2));
-    const point = { x: a.x + t * dx, y: a.y + t * dy };
+    const f = len2 === 0 ? 0 : Math.max(0, Math.min(1, ((pt.x - a.x) * dx + (pt.y - a.y) * dy) / len2));
+    const point = { x: a.x + f * dx, y: a.y + f * dy };
     const dist = Math.hypot(pt.x - point.x, pt.y - point.y);
-    if (!best || dist < best.dist) best = { point, dist };
+    const t = total === 0 ? 0 : (lenBefore + f * segs[i]) / total;
+    if (!best || dist < best.dist) best = { point, dist, t };
+    lenBefore += segs[i];
   }
   return best;
 }
 
-/** Resolve uma ponta de ligação para um ponto "de referência" (centro do bloco, ou o próprio ponto fixo). */
-function endpointReference(e: ConnectionEndpoint, byId: Map<string, PlacedSymbol>): Point | null {
-  if (e.kind === 'point') return e.at;
-  const sym = byId.get(e.id);
-  return sym ? blockCenter(sym) : null;
-}
-
-/** Uma ligação só é desenhável se as duas pontas resolverem — pontas `point` sempre resolvem;
- *  pontas `symbol` precisam que o componente ainda exista no layout atual. */
-export function isConnectionResolvable(conn: ManualConnection, byId: Map<string, PlacedSymbol>): boolean {
-  const ok = (e: ConnectionEndpoint) => e.kind === 'point' || byId.has(e.id);
+/** Uma ligação só é desenhável se as duas pontas resolverem — pontas `point`
+ *  sempre resolvem; `symbol`/`port` precisam que o componente exista;
+ *  `line` (derivação formal) precisa da linha-mãe (verificada de fato em
+ *  `computeAllConnectionPoints`, que também detecta ciclos). */
+export function isConnectionResolvable(
+  conn: ManualConnection,
+  byId: Map<string, PlacedSymbol>,
+  byConnId?: Map<string, ManualConnection>,
+): boolean {
+  const ok = (e: ConnectionEndpoint) => {
+    if (e.kind === 'point') return true;
+    if (e.kind === 'line') return byConnId ? byConnId.has(e.connId) : true;
+    return byId.has(e.id);
+  };
   return ok(conn.from) && ok(conn.to);
 }
 
 /**
- * Pontos do condutor entre duas pontas (componente ou ponto fixo). Sem
- * pontos de dobra manuais, cai no roteamento ortogonal automático
- * (`orthogonalPath`). Com pontos de dobra, a linha passa exatamente por
- * eles (roteamento manual — o usuário controla o traço), sem tentar
- * "ortogonalizar" o meio.
+ * Resolve TODAS as ligações do diagrama de uma vez, na ordem de dependência
+ * (uma derivação formal só resolve depois da linha-mãe). É a única fonte de
+ * verdade da geometria dos condutores — canvas e exportadores usam o mesmo
+ * mapa. Ligações com ponta quebrada (símbolo/linha-mãe removidos) ou em
+ * ciclo (A deriva de B que deriva de A) ficam FORA do mapa e não são
+ * desenhadas.
+ *
+ * Regras de traçado por ligação: sem pontos de dobra manuais, roteamento
+ * ortogonal automático (`orthogonalPath`); com pontos de dobra, a linha
+ * passa exatamente por eles.
  */
-export function computeConnectorPoints(
-  from: ConnectionEndpoint,
-  to: ConnectionEndpoint,
+export function computeAllConnectionPoints(
+  connections: ManualConnection[],
   byId: Map<string, PlacedSymbol>,
-  waypoints?: Point[],
-): Point[] {
-  const wps = waypoints ?? [];
-  const toRef = endpointReference(to, byId);
-  const fromRef = endpointReference(from, byId);
-  const towardsFromA = wps[0] ?? toRef ?? { x: 0, y: 0 };
-  const towardsFromB = wps[wps.length - 1] ?? fromRef ?? { x: 0, y: 0 };
-  const pa = from.kind === 'point' ? from.at : edgePoint(byId.get(from.id)!, towardsFromA);
-  const pb = to.kind === 'point' ? to.at : edgePoint(byId.get(to.id)!, towardsFromB);
-  if (wps.length === 0) return orthogonalPath(pa, pb);
-  return [pa, ...wps, pb];
+): Map<string, Point[]> {
+  const byConnId = new Map(connections.map(c => [c.id, c]));
+  const resolved = new Map<string, Point[]>();
+  const visiting = new Set<string>();
+  const failed = new Set<string>();
+
+  const portOf = (kind: ComponentKind, portId: string): SymbolPort | null =>
+    (SYMBOL_PORTS[kind] ?? []).find(p => p.id === portId) ?? null;
+
+  // ponto "alvo" de uma ponta — usado pra decidir de que lado o condutor sai de um símbolo
+  const endpointAnchor = (e: ConnectionEndpoint): Point | null => {
+    if (e.kind === 'point') return e.at;
+    if (e.kind === 'symbol') {
+      const s = byId.get(e.id);
+      return s ? blockCenter(s) : null;
+    }
+    if (e.kind === 'port') {
+      const s = byId.get(e.id);
+      const port = s ? portOf(s.kind, e.port) : null;
+      return s && port ? portPagePosition(s, port) : null;
+    }
+    const parent = resolve(e.connId);
+    return parent ? pointAtT(parent, e.t) : null;
+  };
+
+  const endpointPoint = (e: ConnectionEndpoint, towards: Point): Point | null => {
+    if (e.kind === 'symbol') {
+      const s = byId.get(e.id);
+      return s ? edgePoint(s, towards) : null;
+    }
+    return endpointAnchor(e); // point/port/line não dependem da direção
+  };
+
+  const resolve = (id: string): Point[] | null => {
+    if (resolved.has(id)) return resolved.get(id)!;
+    if (failed.has(id) || visiting.has(id)) return null; // quebrada ou ciclo
+    const conn = byConnId.get(id);
+    if (!conn) return null;
+    visiting.add(id);
+    try {
+      const wps = conn.waypoints ?? [];
+      const fromAnchor = endpointAnchor(conn.from);
+      const toAnchor = endpointAnchor(conn.to);
+      if (!fromAnchor || !toAnchor) { failed.add(id); return null; }
+      const pa = endpointPoint(conn.from, wps[0] ?? toAnchor);
+      const pb = endpointPoint(conn.to, wps[wps.length - 1] ?? fromAnchor);
+      if (!pa || !pb) { failed.add(id); return null; }
+      const pts = wps.length === 0 ? orthogonalPath(pa, pb) : [pa, ...wps, pb];
+      resolved.set(id, pts);
+      return pts;
+    } finally {
+      visiting.delete(id);
+    }
+  };
+
+  for (const c of connections) resolve(c.id);
+  return resolved;
+}
+
+/** `conn` depende (direta ou indiretamente, via derivação formal) de `targetId`?
+ *  Usado pra impedir ciclos ao grudar a ponta de uma linha em outra. */
+export function connectionDependsOn(
+  conn: ManualConnection, targetId: string, byConnId: Map<string, ManualConnection>, depth = 0,
+): boolean {
+  if (conn.id === targetId) return true;
+  if (depth > 20) return true; // profundidade absurda: trata como ciclo por segurança
+  for (const e of [conn.from, conn.to]) {
+    if (e.kind !== 'line') continue;
+    if (e.connId === targetId) return true;
+    const parent = byConnId.get(e.connId);
+    if (parent && connectionDependsOn(parent, targetId, byConnId, depth + 1)) return true;
+  }
+  return false;
+}
+
+/**
+ * Remove ligações e SOLTA as derivações formais que nasciam delas: cada ponta
+ * `line` órfã vira um ponto fixo na posição atual (nada some da tela sem o
+ * usuário pedir — a derivação só perde o vínculo "vivo").
+ * `allPts` deve ser o mapa calculado ANTES da remoção (com as linhas-mãe
+ * ainda presentes), senão a posição atual da derivação já não resolve.
+ */
+export function detachDerivations(
+  connections: ManualConnection[],
+  removedIds: Set<string>,
+  allPts: Map<string, Point[]>,
+): ManualConnection[] {
+  return connections
+    .filter(c => !removedIds.has(c.id))
+    .map(c => {
+      const fix = (e: ConnectionEndpoint, which: 'from' | 'to'): ConnectionEndpoint => {
+        if (e.kind !== 'line' || !removedIds.has(e.connId)) return e;
+        const pts = allPts.get(c.id);
+        const at = pts ? (which === 'from' ? pts[0] : pts[pts.length - 1]) : { x: 0, y: 0 };
+        return { kind: 'point', at };
+      };
+      const from = fix(c.from, 'from');
+      const to = fix(c.to, 'to');
+      return from === c.from && to === c.to ? c : { ...c, from, to };
+    });
 }
 
 /** Tipos de componente efetivamente usados, na ordem de primeira aparição — alimenta a tabela de legenda. */
@@ -518,14 +689,22 @@ export function buildSceneFromPlacement(
   }
 
   const byId = new Map(placements.map(p => [p.id, p]));
+  const allPts = computeAllConnectionPoints(connections, byId);
 
   for (const conn of connections) {
-    if (!isConnectionResolvable(conn, byId)) continue;
-    const points = computeConnectorPoints(conn.from, conn.to, byId, conn.waypoints);
+    const points = allPts.get(conn.id);
+    if (!points) continue;
     scene.shapes.push({ layer: 'CONDUCTOR_AC', geometry: { kind: 'polyline', points } });
     if (conn.label) {
       const { at, anchor } = connectionLabelPosition(points);
       scene.shapes.push({ layer: 'TEXT_LABEL', geometry: { kind: 'text', at, value: resolve(conn.label), size: 2.2, anchor } });
+    }
+    // nó de junção (•) onde a derivação formal nasce da linha-mãe — convenção dos unifilares reais
+    if (conn.from.kind === 'line') {
+      scene.shapes.push({ layer: 'CONDUCTOR_AC', geometry: { kind: 'circle', center: points[0], radius: 0.8, filled: true } });
+    }
+    if (conn.to.kind === 'line') {
+      scene.shapes.push({ layer: 'CONDUCTOR_AC', geometry: { kind: 'circle', center: points[points.length - 1], radius: 0.8, filled: true } });
     }
   }
 

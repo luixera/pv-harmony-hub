@@ -6,14 +6,15 @@ import {
 } from 'lucide-react';
 import {
   ConnectionEndpoint, DiagramSceneState, ManualConnection, PlacedGroup, PlacedPhoto, PlacedSymbol, PlacedText,
-  SheetOptions, blockCenter, buildSceneFromPlacement, buildSheetFurnitureScene, computeConnectorPoints,
-  connectionLabelPosition, findNearestSymbol, initialConnections, initialPlacement, isConnectionResolvable,
-  nearestPointOnPolyline, SNAP_RADIUS, snapToGrid, usedKindsOf,
+  SheetOptions, blockCenter, buildSceneFromPlacement, buildSheetFurnitureScene, computeAllConnectionPoints,
+  connectionDependsOn, connectionLabelPosition, detachDerivations, findNearestPort, findNearestSymbol,
+  initialConnections, initialPlacement, nearestPointOnPolyline, pointAtT, portPagePosition,
+  SNAP_RADIUS, snapToGrid, usedKindsOf,
 } from '@/utils/cadEngine/editableLayout';
 import { ComponentKind, Point, TechnicalJsonMvp } from '@/utils/cadEngine/types';
 import { sceneToSvgInner, primitiveToSvg, blockTransform } from '@/utils/cadEngine/exportSvg';
 import { sceneToPdfBlob } from '@/utils/cadEngine/exportPdf';
-import { KIND_LABEL, SYMBOL_BBOX, SYMBOL_DEFS } from '@/utils/cadEngine/symbols';
+import { KIND_LABEL, SYMBOL_BBOX, SYMBOL_DEFS, SYMBOL_PORTS } from '@/utils/cadEngine/symbols';
 import { CENTER_Y, PAPER, PITCH_X, START_X } from '@/utils/cadEngine/paper';
 import { resolveProjectTags, TEMPLATE_VARIABLES } from '@/utils/projectValues';
 import { sanitizeFileName } from '@/lib/utils';
@@ -178,6 +179,10 @@ export function DiagramEditor({
     () => buildSceneFromPlacement(json, { placements, connections, photos, texts, groups, sheet }, values),
     [json, placements, connections, photos, texts, groups, sheet, values],
   );
+  // Geometria de TODOS os condutores, resolvida em ordem de dependência
+  // (derivações formais depois das linhas-mãe) — a mesma fonte usada pelo
+  // export, então o que se vê ao vivo é o que sai no arquivo.
+  const allConnPoints = useMemo(() => computeAllConnectionPoints(connections, byId), [connections, byId]);
   // Mobília da folha (moldura, cabeçalho, carimbo, legenda automática) —
   // camada estática atrás do conteúdo interativo; reage a mudanças de
   // símbolos usados (legenda) e dos campos do carimbo.
@@ -197,7 +202,7 @@ export function DiagramEditor({
     | { type: 'pan'; startX: number; startY: number; origVb: { x: number; y: number; w: number; h: number }; moved: boolean }
     | { type: 'marquee'; startX: number; startY: number; startMm: Point; moved: boolean }
     | { type: 'waypoint'; connId: string; index: number; startX: number; startY: number; origX: number; origY: number; moved: boolean }
-    | { type: 'endpoint'; connId: string; which: 'from' | 'to'; startX: number; startY: number; origX: number; origY: number; lastX: number; lastY: number; moved: boolean }
+    | { type: 'endpoint'; connId: string; which: 'from' | 'to'; startX: number; startY: number; origX: number; origY: number; lastX: number; lastY: number; origEndpoint: ConnectionEndpoint; moved: boolean }
     | { type: 'conn-move'; connId: string; startX: number; startY: number; origWaypoints: Point[]; origFromAt: Point | null; origToAt: Point | null; moved: boolean }
     | { type: 'photo'; id: string; startX: number; startY: number; origX: number; origY: number; moved: boolean }
     | { type: 'photo-resize'; id: string; startX: number; startY: number; origW: number; origH: number; moved: boolean }
@@ -332,21 +337,25 @@ export function DiagramEditor({
       }
       if (drag.type === 'symbol' && !drag.moved) handleSymbolClick(drag.id, e.shiftKey); // arrasto não ocorreu → foi um clique
       if (drag.type === 'endpoint' && drag.moved) {
-        // Uma ponta só pode ficar num componente ou em cima de outra linha —
-        // nunca solta no vazio. Perto de um componente, gruda nele; senão,
-        // perto de outra linha (que não seja ela mesma), gruda no ponto
-        // exato sobre ela; se não achar nenhum dos dois, desfaz o arrasto e
-        // volta pra posição original (não deixa soltar no vazio).
+        // Uma ponta só pode ficar numa porta, num componente ou em cima de
+        // outra linha — nunca solta no vazio. Do alvo mais específico pro
+        // mais genérico: porta nomeada → componente (lado automático) →
+        // derivação FORMAL sobre outra linha (com vínculo vivo). Se não
+        // achar nenhum dos três, desfaz o arrasto e volta pra posição/âncora
+        // original.
         const dropPt = { x: drag.lastX, y: drag.lastY };
-        const nearSymbol = findNearestSymbol(dropPt, placementsRef.current);
         const idsNow = new Map(placementsRef.current.map(p => [p.id, p]));
-        const nearLine = nearSymbol ? null : nearestLinePoint(dropPt, connectionsRef.current, idsNow, drag.connId);
-        const resolved: ConnectionEndpoint | null = nearSymbol
-          ? { kind: 'symbol', id: nearSymbol.id }
-          : nearLine ? { kind: 'point', at: nearLine } : null;
+        const nearPort = findNearestPort(dropPt, placementsRef.current);
+        const nearSymbol = nearPort ? null : findNearestSymbol(dropPt, placementsRef.current);
+        const nearLine = (nearPort || nearSymbol) ? null : nearestLineHit(dropPt, connectionsRef.current, idsNow, drag.connId);
+        const resolved: ConnectionEndpoint | null = nearPort
+          ? { kind: 'port', id: nearPort.symbolId, port: nearPort.portId }
+          : nearSymbol
+            ? { kind: 'symbol', id: nearSymbol.id }
+            : nearLine ? { kind: 'line', connId: nearLine.connId, t: nearLine.t } : null;
         setConnections(prev => prev.map(c => {
           if (c.id !== drag.connId) return c;
-          const pt: ConnectionEndpoint = resolved ?? { kind: 'point', at: { x: drag.origX, y: drag.origY } };
+          const pt: ConnectionEndpoint = resolved ?? drag.origEndpoint;
           return drag.which === 'from' ? { ...c, from: pt } : { ...c, to: pt };
         }));
       }
@@ -409,6 +418,19 @@ export function DiagramEditor({
     setSelectedPhotoId(null); setSelectedTextId(null); setSelectedConnId(null); setSelectedGroupId(null);
   };
 
+  // Clique direto numa bolinha de porta (visíveis no modo ligar): a ponta
+  // vira a PORTA específica, não o componente com lado automático.
+  const handlePortClick = (symbolId: string, portId: string) => {
+    if (!linkMode) return;
+    const ep: ConnectionEndpoint = { kind: 'port', id: symbolId, port: portId };
+    if (!linkFrom) { setLinkFrom(ep); setDrawnWaypoints([]); return; }
+    if (linkFrom.kind === 'port' && linkFrom.id === symbolId && linkFrom.port === portId) {
+      setLinkFrom(null); setDrawnWaypoints([]); // clicou de novo na própria origem: cancela
+      return;
+    }
+    finishLink(ep);
+  };
+
   const clientToMm = (clientX: number, clientY: number, applySnap = true): Point | null => {
     if (!svgRef.current) return null;
     const rect = svgRef.current.getBoundingClientRect();
@@ -419,34 +441,42 @@ export function DiagramEditor({
     return applySnap && snap ? { x: snapToGrid(x), y: snapToGrid(y) } : { x, y };
   };
 
-  // Ponto mais próximo sobre alguma linha existente, dentro do raio de
-  // captura — `excludeConnId` ignora a própria linha (usado ao arrastar a
-  // ponta de uma ligação, senão ela sempre "acerta" a si mesma).
-  const nearestLinePoint = (
+  // Derivação candidata: o ponto mais próximo sobre alguma linha, dentro do
+  // raio de captura, com o `t` (fração do traçado) que a derivação FORMAL
+  // grava — mover a linha-mãe depois arrasta a derivação junto.
+  // `excludeConnId` ignora a própria linha E qualquer linha que dependa dela
+  // (grudar a ponta de A numa linha que deriva de A criaria um ciclo — as
+  // duas sumiriam da tela).
+  const nearestLineHit = (
     pt: Point, conns: ManualConnection[], ids: Map<string, PlacedSymbol>, excludeConnId?: string,
-  ): Point | null => {
-    let best: { point: Point; dist: number } | null = null;
+  ): { connId: string; t: number; point: Point } | null => {
+    const allPts = computeAllConnectionPoints(conns, ids);
+    const byConnId = new Map(conns.map(c => [c.id, c]));
+    let best: { connId: string; t: number; point: Point; dist: number } | null = null;
     for (const conn of conns) {
-      if (conn.id === excludeConnId) continue;
-      if (!isConnectionResolvable(conn, ids)) continue;
-      const pts = computeConnectorPoints(conn.from, conn.to, ids, conn.waypoints);
+      if (excludeConnId && connectionDependsOn(conn, excludeConnId, byConnId)) continue;
+      const pts = allPts.get(conn.id);
+      if (!pts) continue;
       const found = nearestPointOnPolyline(pt, pts);
-      if (found && found.dist <= SNAP_RADIUS && (!best || found.dist < best.dist)) best = found;
+      if (found && found.dist <= SNAP_RADIUS && (!best || found.dist < best.dist)) {
+        best = { connId: conn.id, t: found.t, point: found.point, dist: found.dist };
+      }
     }
-    return best ? best.point : null;
+    return best ? { connId: best.connId, t: best.t, point: best.point } : null;
   };
 
-  // Resolve um clique cru no canvas pra uma ponta de ligação de verdade:
-  // linhas só podem conectar componentes entre si ou a outras linhas — nunca
-  // ficam soltas no vazio. Perto de um componente vira aquele componente
-  // (pixel-perfeito via edgePoint); perto de uma linha existente vira o ponto
-  // exato sobre ela (derivação); longe dos dois, `null` (não é um lugar
-  // válido pra iniciar/terminar uma ligação).
+  // Resolve um clique cru no canvas pra uma ponta de ligação de verdade —
+  // do alvo mais específico pro mais genérico: uma PORTA nomeada (raio
+  // apertado, pixel-perfeita), o componente (lado automático), ou um ponto
+  // sobre outra linha (derivação FORMAL, com vínculo vivo). Longe dos três,
+  // `null` — linhas nunca começam/terminam soltas no vazio.
   const resolveClickEndpoint = (pt: Point): ConnectionEndpoint | null => {
+    const port = findNearestPort(pt, placements);
+    if (port) return { kind: 'port', id: port.symbolId, port: port.portId };
     const symbol = findNearestSymbol(pt, placements);
     if (symbol) return { kind: 'symbol', id: symbol.id };
-    const linePoint = nearestLinePoint(pt, connections, byId);
-    return linePoint ? { kind: 'point', at: linePoint } : null;
+    const lineHit = nearestLineHit(pt, connections, byId);
+    return lineHit ? { kind: 'line', connId: lineHit.connId, t: lineHit.t } : null;
   };
 
   // Mousedown em área vazia: espaço (ou botão do meio) segurado = pan;
@@ -499,7 +529,8 @@ export function DiagramEditor({
 
   const removeConnection = (id: string) => {
     snapshot();
-    setConnections(prev => prev.filter(c => c.id !== id));
+    // derivações que nasciam desta linha não somem junto: viram ponto fixo na posição atual
+    setConnections(prev => detachDerivations(prev, new Set([id]), allConnPoints));
     if (selectedConnId === id) setSelectedConnId(null);
   };
 
@@ -513,7 +544,7 @@ export function DiagramEditor({
     if (!conn) return;
     let seedWaypoints = conn.waypoints ?? [];
     if (seedWaypoints.length === 0) {
-      const full = computeConnectorPoints(conn.from, conn.to, byId, undefined);
+      const full = allConnPoints.get(conn.id) ?? [];
       seedWaypoints = full.slice(1, -1);
     }
     dragRef.current = {
@@ -560,15 +591,17 @@ export function DiagramEditor({
     }));
   };
 
-  // Arrastar uma ponta em derivação (ponto sobre outra linha) de uma
-  // ligação — solta no fim do arrasto, gruda de novo em componente/linha
-  // (ver onUp acima) ou volta pro lugar se não achar nenhum dos dois perto.
-  const handleEndpointMouseDown = (e: React.MouseEvent, connId: string, which: 'from' | 'to', at: Point) => {
+  // Arrastar uma ponta em derivação (formal ou ponto fixo legado) de uma
+  // ligação — vira ponto livre durante o arrasto e, ao soltar, gruda de novo
+  // em porta/componente/linha (ver onUp acima) ou volta pra âncora original
+  // se não achar nenhum dos três perto (inclusive o vínculo formal, que não
+  // se perde num arrasto cancelado).
+  const handleEndpointMouseDown = (e: React.MouseEvent, connId: string, which: 'from' | 'to', at: Point, origEndpoint: ConnectionEndpoint) => {
     if (linkMode) return;
     e.preventDefault();
     e.stopPropagation();
     setSelectedConnId(connId);
-    dragRef.current = { type: 'endpoint', connId, which, startX: e.clientX, startY: e.clientY, origX: at.x, origY: at.y, lastX: at.x, lastY: at.y, moved: false, preState: currentStateRef.current };
+    dragRef.current = { type: 'endpoint', connId, which, startX: e.clientX, startY: e.clientY, origX: at.x, origY: at.y, lastX: at.x, lastY: at.y, origEndpoint, moved: false, preState: currentStateRef.current };
   };
 
   // ── Componentes adicionados livremente (não vêm do cadastro do projeto) ──
@@ -627,10 +660,12 @@ export function DiagramEditor({
     if (removable.length > 0) {
       snapshot();
       const removeSet = new Set(removable);
+      const refsRemoved = (e: ConnectionEndpoint) => (e.kind === 'symbol' || e.kind === 'port') && removeSet.has(e.id);
+      // ligações que encostavam nos símbolos removidos caem; derivações que
+      // nasciam DELAS não caem em cascata — viram ponto fixo na posição atual
+      const droppedIds = new Set(connections.filter(c => refsRemoved(c.from) || refsRemoved(c.to)).map(c => c.id));
       setPlacements(prev => prev.filter(p => !removeSet.has(p.id)));
-      setConnections(prev => prev.filter(c =>
-        !(c.from.kind === 'symbol' && removeSet.has(c.from.id)) && !(c.to.kind === 'symbol' && removeSet.has(c.to.id))
-      ));
+      setConnections(prev => detachDerivations(prev, droppedIds, allConnPoints));
       setSelectedId(null);
       setSelectedIds(new Set());
     }
@@ -867,7 +902,16 @@ export function DiagramEditor({
   };
 
   const labelOf = (id: string) => byId.get(id)?.label ?? id;
-  const labelOfEndpoint = (e: ConnectionEndpoint) => (e.kind === 'symbol' ? labelOf(e.id) : 'Ponto');
+  const portNameOf = (symbolId: string, portId: string) => {
+    const sym = byId.get(symbolId);
+    return (sym ? SYMBOL_PORTS[sym.kind] : []).find(p => p.id === portId)?.name ?? portId;
+  };
+  const labelOfEndpoint = (e: ConnectionEndpoint): string => {
+    if (e.kind === 'symbol') return labelOf(e.id);
+    if (e.kind === 'port') return `${labelOf(e.id)} · ${portNameOf(e.id, e.port)}`;
+    if (e.kind === 'line') return 'Derivação';
+    return 'Ponto';
+  };
 
   // Fundo de referência (PDF original importado) vs. fotos comuns do diagrama.
   const underlays = photos.filter(p => p.underlay);
@@ -1188,7 +1232,20 @@ export function DiagramEditor({
 
           {/* Traço em andamento (modo ligar/desenhar) */}
           {linkMode && linkFrom && (() => {
-            const start = linkFrom.kind === 'point' ? linkFrom.at : (byId.get(linkFrom.id) ? blockCenter(byId.get(linkFrom.id)!) : null);
+            const start = ((): Point | null => {
+              if (linkFrom.kind === 'point') return linkFrom.at;
+              if (linkFrom.kind === 'line') {
+                const pts = allConnPoints.get(linkFrom.connId);
+                return pts ? pointAtT(pts, linkFrom.t) : null;
+              }
+              const sym = byId.get(linkFrom.id);
+              if (!sym) return null;
+              if (linkFrom.kind === 'port') {
+                const port = (SYMBOL_PORTS[sym.kind] ?? []).find(p => p.id === linkFrom.port);
+                return port ? portPagePosition(sym, port) : blockCenter(sym);
+              }
+              return blockCenter(sym);
+            })();
             if (!start) return null;
             const pts = [start, ...drawnWaypoints].map(p => `${p.x},${p.y}`).join(' ');
             return (
@@ -1199,10 +1256,11 @@ export function DiagramEditor({
             );
           })()}
 
-          {/* Condutores — recalculados a cada posição atual; clicáveis, arrastáveis como bloco */}
+          {/* Condutores — recalculados a cada posição atual (derivações formais
+              acompanham a linha-mãe); clicáveis, arrastáveis como bloco */}
           {connections.map(conn => {
-            if (!isConnectionResolvable(conn, byId)) return null;
-            const routePoints = computeConnectorPoints(conn.from, conn.to, byId, conn.waypoints);
+            const routePoints = allConnPoints.get(conn.id);
+            if (!routePoints) return null;
             const pointsStr = routePoints.map(p => `${p.x},${p.y}`).join(' ');
             const waypoints = conn.waypoints ?? [];
             const isSelected = selectedConnId === conn.id;
@@ -1251,28 +1309,32 @@ export function DiagramEditor({
                     onDoubleClick={e => { e.stopPropagation(); removeWaypoint(conn.id, i); }}
                   />
                 ))}
-                {conn.from.kind === 'point' && (() => {
-                  const at = conn.from.at;
-                  return (
+                {(['from', 'to'] as const).map(which => {
+                  const ep = conn[which];
+                  if (ep.kind === 'symbol' || ep.kind === 'port') return null;
+                  const at = which === 'from' ? routePoints[0] : routePoints[routePoints.length - 1];
+                  // derivação FORMAL: nó preto (•) de junção, arrastável; ponto
+                  // fixo legado: quadradinho azul, também arrastável
+                  return ep.kind === 'line' ? (
+                    <circle
+                      key={which}
+                      cx={at.x} cy={at.y} r={1.1} fill="#B0271A" stroke="#fff" strokeWidth={0.25}
+                      style={{ cursor: linkMode ? 'crosshair' : 'move' }}
+                      onMouseDown={e => handleEndpointMouseDown(e, conn.id, which, at, ep)}
+                      onClick={e => e.stopPropagation()}
+                    >
+                      <title>Derivação — nasce desta linha e a acompanha; arraste pra reconectar</title>
+                    </circle>
+                  ) : (
                     <rect
+                      key={which}
                       x={at.x - 1} y={at.y - 1} width={2} height={2} fill="#2B8CFF"
                       style={{ cursor: linkMode ? 'crosshair' : 'move' }}
-                      onMouseDown={e => handleEndpointMouseDown(e, conn.id, 'from', at)}
+                      onMouseDown={e => handleEndpointMouseDown(e, conn.id, which, at, ep)}
                       onClick={e => e.stopPropagation()}
                     />
                   );
-                })()}
-                {conn.to.kind === 'point' && (() => {
-                  const at = conn.to.at;
-                  return (
-                    <rect
-                      x={at.x - 1} y={at.y - 1} width={2} height={2} fill="#2B8CFF"
-                      style={{ cursor: linkMode ? 'crosshair' : 'move' }}
-                      onMouseDown={e => handleEndpointMouseDown(e, conn.id, 'to', at)}
-                      onClick={e => e.stopPropagation()}
-                    />
-                  );
-                })()}
+                })}
               </g>
             );
           })}
@@ -1319,6 +1381,26 @@ export function DiagramEditor({
               </g>
             );
           })}
+
+          {/* Portas de conexão — visíveis no modo ligar: clicar numa gruda a
+              ligação naquele ponto específico da geometria (ex.: lado CA do
+              inversor), em vez do lado automático */}
+          {linkMode && placements.map(p => (SYMBOL_PORTS[p.kind] ?? []).map(port => {
+            const at = portPagePosition(p, port);
+            const isOrigin = linkFrom?.kind === 'port' && linkFrom.id === p.id && linkFrom.port === port.id;
+            return (
+              <g key={`${p.id}:${port.id}`}>
+                <circle
+                  cx={at.x} cy={at.y} r={1.1}
+                  fill={isOrigin ? '#F5A800' : '#fff'} stroke={isOrigin ? '#F5A800' : '#2B8CFF'} strokeWidth={0.35}
+                  style={{ cursor: 'crosshair' }}
+                  onClick={e => { e.stopPropagation(); handlePortClick(p.id, port.id); }}
+                >
+                  <title>{`${p.label} · ${port.name}`}</title>
+                </circle>
+              </g>
+            );
+          }))}
 
           {/* Retângulo de multi-seleção em andamento */}
           {marquee && (

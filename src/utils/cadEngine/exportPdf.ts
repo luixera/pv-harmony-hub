@@ -90,7 +90,12 @@ function drawPrimitive(
     }
     case 'circle': {
       const c = R(p.center);
-      doc.circle(c.x + dx, c.y + dy, p.radius * scale);
+      if (p.filled) {
+        doc.setFillColor(...rgb);
+        doc.circle(c.x + dx, c.y + dy, p.radius * scale, 'FD'); // nó de junção: preenchido
+      } else {
+        doc.circle(c.x + dx, c.y + dy, p.radius * scale);
+      }
       break;
     }
     case 'text': {
