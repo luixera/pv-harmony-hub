@@ -26,8 +26,14 @@ Ver [../../project/permissions.md](../../project/permissions.md) (matriz complet
 - **RN-PERM-02** — Confiança só em `app_metadata` (ADR 0003).
 - **RN-PERM-03** — Staff `assigned_only` só acessa projetos atribuídos; violação
   gera `forbidden_access`.
-- **RN-PERM-04** — Storage: buckets privados (leitura autenticada, escrita
-  admin/staff); logos públicos com escrita por política de caminho.
+- **RN-PERM-04** — Storage: buckets privados de dado de tenant
+  (`project-documents`, `concessionaire-documents`,
+  `concessionaire-templates`) exigem papel (admin/staff) **e** tenant do
+  dono do arquivo (join por `company_id`/`concessionaire_id` no 1º segmento
+  do caminho) — checar só o papel deixa vazar entre tenants (corrigido
+  jul/2026, ver [security.md](../../project/security.md)). `equipment-documents`
+  é exceção deliberada (catálogo global, sem tenant). Logos públicos com
+  escrita por política de caminho.
 
 ## Auditoria
 `fn_audit_row` grava toda alteração sensível em `system_events`. Ver

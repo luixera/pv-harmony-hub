@@ -33,13 +33,38 @@
   `is_master OR ...` de 35 políticas RESTRICTIVE.
 - **`project_general_data_address_backup` sem RLS** (criada via `CREATE TABLE
   AS`) → RLS ligada e privilégios revogados de `anon`/`authenticated`.
+- **Storage de `project-documents`/`concessionaire-documents`/
+  `concessionaire-templates` furava o isolamento por tenant** (jul/2026):
+  as políticas "Admin/Staff can ..." de `storage.objects` checavam só o
+  papel (`has_role(admin)`/`has_role(staff)`), sem checar o tenant do dono
+  do arquivo — diferente das tabelas equivalentes (`documents`,
+  `concessionaire_documents`), que já tinham `tenant_isolation` RESTRICTIVE.
+  Qualquer admin/staff de qualquer tenant baixava/apagava documentos (RG,
+  CNH, conta de energia com CPF) de **outros** tenants chamando o storage
+  direto, contornando o RLS da tabela. `concessionaire-templates` também
+  tinha uma política legada (`Authenticated users can read templates`) que
+  liberava leitura pra **qualquer** usuário autenticado, de qualquer tenant,
+  sem checar nem papel — e duas outras políticas duplicadas/redundantes que
+  sobreviveriam mesmo corrigindo as atuais (PERMISSIVE soma, não substitui).
+  Corrigido adicionando o mesmo join usado nas tabelas (`companies.tenant_id`
+  via `(storage.foldername(name))[1]` = `company_id`, e
+  `energy_concessionaires.tenant_id` via `(storage.foldername(name))[1]` =
+  `concessionaire_id`) e removendo as políticas legadas. **Sem bypass de
+  `is_master`** (ADR 0005) — mesmo padrão das tabelas. `equipment-documents`
+  foi auditado e **não** alterado: `equipment_catalog` é catálogo global por
+  decisão de produto (sem `tenant_id`), o storage já refletia isso
+  corretamente. Achado investigando um bug não relacionado (download do
+  pacote instalador, PRJ-34220). Registrado em `system_events`
+  (`kind='security'`, `action='storage_rls_cross_tenant_fix'`).
 
 ## Buckets de storage
 - Públicos: `avatars`, `tenant-logos` (logos precisam ser lidos sem login, ex.:
   form público e PDF). Escrita restrita por política de caminho.
 - Privados: `project-documents`, `concessionaire-documents`,
-  `concessionaire-templates`, `equipment-documents`. Leitura por usuário
-  autenticado; escrita por admin/staff.
+  `concessionaire-templates` (leitura/escrita por admin/staff **do mesmo
+  tenant do dono do arquivo** — ver correção acima),
+  `equipment-documents` (catálogo global intencional: leitura por qualquer
+  autenticado, escrita por admin/staff de qualquer tenant).
 
 ## Monitoramento
 - Tabela `system_events` (kind: `error`, `security`, `audit`, `signup`,
