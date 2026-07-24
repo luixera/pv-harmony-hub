@@ -5,6 +5,20 @@ Registro de decisões de produto/UX (não arquiteturais — essas ficam em
 
 ## Log
 
+- **Diagrama unifilar — "agente engenheiro" virou 2ª passada de revisão por
+  IA** (11ª rodada): o usuário, ainda insatisfeito com a fidelidade da
+  importação nativa, sugeriu "um agente de IA com características de
+  engenheiro para ajudar nas definições e criação dos templates a partir de
+  um modelo". Decisão de produto: em vez de um chat interativo, a persona de
+  engenheiro revisor roda como **2ª passada automática da importação** e
+  como **botão sob demanda** ("Revisão do engenheiro") no editor de modelos
+  — a IA recebe o documento original E uma imagem do nosso redesenho lado a
+  lado, revisa com checklist de engenharia (tipos, disposição, ligações,
+  coerência elétrica da cadeia FV) e devolve o diagrama corrigido + notas do
+  que mudou (banner no editor). As duas funções de diagrama subiram pro
+  modelo mais capaz (Opus + adaptive thinking) — importar/revisar é raro e
+  de alto valor, diferente do Claudinho que roda em todo envio. Ver
+  [ADR 0006](../adr/0006-cad-engine-alpha.md). (jul/2026)
 - **Diagrama unifilar — revisão completa aprovada em 4 fases; entregues a
   folha profissional e o reconhecimento com posições + fundo do PDF**
   (10ª rodada, mesmo mês): o usuário avaliou que o resultado "ainda está

@@ -538,3 +538,39 @@ Esta atualização cobre A e C.
 Componentes em série desenhados "no fio" (condutor contínuo atravessando
 disjuntor/fusível/chave) e portas CC/CA no inversor — o último degrau
 visual, exige refactor do modelo de cena.
+
+## Atualização (11ª rodada) — engenheiro revisor de IA (2ª passada)
+
+**Contexto**: mesmo com o reconhecimento v3, o usuário reportou que "a
+importação não está sendo feita de maneira nativa" e sugeriu "um agente de
+IA com características de engenheiro para ajudar nas definições e criação
+dos templates a partir de um modelo".
+
+**Decisão**: em vez de um chat/agente interativo, a persona de engenheiro
+virou uma **2ª passada de revisão** (`diagram-review`) sobre o resultado da
+1ª — arquitetura generate-then-review. Racional: (a) o valor do "engenheiro"
+está no checklist (tipos, disposição, ligações, coerência elétrica), não na
+conversa; (b) revisar exige VER a divergência — a função recebe o original
+E um JPEG do nosso redesenho (`sceneToJpegDataUrl`) lado a lado, coisa que a
+1ª passada não tem como fazer; (c) reaproveita todo o pipeline existente
+(mesmo schema, mesma sanitização `KIND_ALIASES`, mesmo `consume_ai_quota`).
+
+**Decisões de implementação**:
+- Ambas as funções subiram de modelo: `claude-opus-4-8` + adaptive thinking
+  (era Haiku na recognize). Importar/revisar é raro e de alto valor; o
+  Claudinho, que roda em todo envio, segue no Haiku. Com thinking, o
+  primeiro bloco da resposta pode ser `thinking` — o parse procura o bloco
+  `text` (não `content[0]`) e trata `stop_reason === 'refusal'`. O beta
+  header de PDF (`pdfs-2024-09-25`) foi removido — PDF base64 é nativo.
+- A revisão roda **automática na importação** (best-effort: falhou, segue a
+  1ª passada) e **sob demanda** no editor (botão "Revisão do engenheiro",
+  visível só com underlay na cena). A sob demanda usa o estado AO VIVO do
+  editor (`latestStateRef`, não o autosave debounced atrasado), converte de
+  volta pra 0–100 (`toNorm`/`sceneStateToRecognitionInput`) e, ao aplicar,
+  preserva fotos/underlay, textos e folha; o editor reseeda via `stateKey`
+  versionado (`${id}:r${v}`).
+- Perda conhecida e aceita: ligações em derivação (`{kind:'point'}`) ficam
+  fora da revisão — o schema da IA só conhece símbolo↔símbolo.
+- `notes[]` (o que o revisor corrigiu) aparece num banner âmbar, chaveado
+  pelo id do modelo — a importação seta notas e troca de tela no mesmo lote,
+  e um reset por `useEffect` na troca apagaria as notas recém-criadas.

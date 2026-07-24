@@ -197,6 +197,46 @@ const DRAW_AREA = {
   y0: DRAW_TOP, y1: DRAW_BOTTOM - SYMBOL_BBOX.h,
 };
 
+/** Inverso do `mapNorm`: posição mm na folha → 0–100 da área útil (clampado). */
+function toNorm(x: number, y: number): { x: number; y: number } {
+  const clamp = (v: number) => Math.max(0, Math.min(100, v));
+  return {
+    x: clamp(((x - DRAW_AREA.x0) / (DRAW_AREA.x1 - DRAW_AREA.x0)) * 100),
+    y: clamp(((y - DRAW_AREA.y0) / (DRAW_AREA.y1 - DRAW_AREA.y0)) * 100),
+  };
+}
+
+/**
+ * Cena atual → o mesmo JSON que o reconhecimento devolve — pra mandar o
+ * estado ATUAL do diagrama pro revisor de IA (`diagram-review`) e receber a
+ * versão corrigida no mesmo formato. Perdas conhecidas (documentadas na UI):
+ * ligações com ponta em derivação (`kind: 'point'`) não têm como ser
+ * expressas no schema simples from/to e ficam de fora da revisão.
+ */
+export function sceneStateToRecognitionInput(state: DiagramSceneState): {
+  components: RecognizedComponentInput[];
+  connections: RecognizedConnectionInput[];
+  groups: RecognizedGroupInput[];
+} {
+  const components = state.placements.map(p => {
+    const center = toNorm(p.x + (SYMBOL_BBOX.w * p.scale) / 2, p.y + (SYMBOL_BBOX.h * p.scale) / 2);
+    return { id: p.id, kind: p.kind, label: p.label, x: center.x, y: center.y };
+  });
+  const connections = state.connections
+    .filter(c => c.from.kind === 'symbol' && c.to.kind === 'symbol')
+    .map(c => ({
+      from: (c.from as { kind: 'symbol'; id: string }).id,
+      to: (c.to as { kind: 'symbol'; id: string }).id,
+      label: c.label,
+    }));
+  const groups = (state.groups ?? []).map(g => {
+    const tl = toNorm(g.x, g.y);
+    const br = toNorm(g.x + g.w, g.y + g.h);
+    return { title: g.title, x: tl.x, y: tl.y, w: Math.max(1, br.x - tl.x), h: Math.max(1, br.y - tl.y) };
+  });
+  return { components, connections, groups };
+}
+
 const normValid = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 100;
 
 /** Mapeia uma coordenada normalizada 0–100 do documento original pra área útil da folha. */

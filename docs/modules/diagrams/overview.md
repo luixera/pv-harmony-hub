@@ -69,9 +69,12 @@ usuário: útil mais cedo, e o motor automático continua no roadmap):
 - `src/hooks/useDiagramTemplates.ts` — CRUD via React Query (`useDiagramTemplates`, `useCreateDiagramTemplate`, `useUpdateDiagramTemplate`, `useDeleteDiagramTemplate`, `useDuplicateDiagramTemplate`).
 - `src/hooks/useDiagramEngineAccess.ts` — regra de acesso única, reaproveitada no menu lateral, na rota e na aba do modal do projeto.
 - `src/hooks/useDiagramRecognition.ts` — chama a edge function `diagram-recognize` (upload → base64 → IA de visão → componentes com posição 0–100 + grupos + bitolas).
+- `src/hooks/useDiagramReview.ts` — chama a edge function `diagram-review` (o "engenheiro revisor": original + render do redesenho + JSON atual → diagrama corrigido + notas).
 - `src/hooks/useProjectDiagram.ts` — carrega/salva o diagrama do projeto em `project_diagrams` (upsert silencioso).
 - `src/utils/pdfPreview.ts` — 1ª página do PDF → data URL (pdfjs-dist, import dinâmico) pro fundo de referência do editor.
-- `supabase/functions/diagram-recognize/index.ts` — edge function (mesmo padrão do `claudinho-verifica`: Anthropic API, PDF nativo via `anthropic-beta: pdfs-2024-09-25`, `consume_ai_quota`).
+- `src/utils/cadEngine/exportPng.ts` — `sceneToJpegDataUrl(scene)`: `Scene` → JPEG data URL no navegador (SVG → `<img>` → canvas) — o render que o revisor de IA recebe pra "ver" como o nosso redesenho ficou.
+- `supabase/functions/diagram-recognize/index.ts` — edge function (mesmo padrão do `claudinho-verifica`: Anthropic API, PDF base64 nativo, `consume_ai_quota`). Modelo: `claude-opus-4-8` com adaptive thinking (importação é rara e de alto valor; o Claudinho segue no Haiku).
+- `supabase/functions/diagram-review/index.ts` — edge function do **engenheiro revisor** (ver seção abaixo). Mesmo modelo/sanitização do recognize; `_kind: 'diagram_review'` na cota.
 
 ## Permissões
 `useDiagramEngineAccess()`: papel `admin` ou `staff` **e** tenant
@@ -175,6 +178,38 @@ Cota de uso: mesma função `consume_ai_quota` do Claudinho (`_kind:
 'diagram_recognize'`), registrada em `ai_usage_log` — hoje sem efeito prático
 porque o recurso é restrito à GD Manager (plano interno sem limite), mas já
 fica com o consumo rastreado se algum dia abrir pra outros tenants.
+
+## Engenheiro revisor (IA) — 2ª passada da importação
+A importação nativa em uma passada só nunca sai perfeita. Por pedido do
+usuário ("um agente de IA com características de engenheiro"), existe uma
+**2ª passada de revisão** (`diagram-review`, Opus + adaptive thinking) com
+persona de **engenheiro eletricista revisor**: recebe (1) a imagem do
+documento ORIGINAL (o mesmo underlay já renderizado no cliente), (2) um
+**JPEG do nosso redesenho atual** (`sceneToJpegDataUrl`) e (3) o JSON da
+recriação, e revisa com checklist de engenharia — completude, tipos
+(bipolar×tripolar, medidor convencional×bidirecional), disposição relativa,
+ligações/bitolas, grupos e **coerência elétrica** da cadeia (módulos → chave
+CC → DPS em derivação → inversor → disjuntor CA → medição → rede; se o
+original contradisser o típico, o original manda). Devolve o diagrama
+COMPLETO corrigido no mesmo schema do recognize, mais `notes[]` (o que
+corrigiu, em português).
+
+Roda em dois lugares:
+- **Automática na importação** (`handleImport`): logo após o reconhecimento,
+  antes de salvar o template — best-effort, se falhar a importação segue com
+  a 1ª passada e avisa nas notas.
+- **Sob demanda, botão "Revisão do engenheiro"** no editor de modelos
+  (visível só quando a cena tem underlay — sem o original não há contra o
+  que revisar): manda o estado ATUAL do editor
+  (`sceneStateToRecognitionInput`, que inclui posições convertidas de volta
+  pra 0–100 via `toNorm`), aplica a cena corrigida preservando
+  fotos/underlay, textos e dados da folha, e reseeda o editor (o `stateKey`
+  ganha a versão da revisão: `${id}:r${v}`). Ligações em derivação (ponta
+  `{kind:'point'}`) não entram na revisão — só símbolo↔símbolo.
+
+As notas aparecem num banner âmbar no editor (chaveadas pelo id do modelo,
+pra sobreviver à troca de tela da importação). Cota: `_kind:
+'diagram_review'` (o `kind` de `ai_usage_log` é texto livre, sem migração).
 
 ## UX do editor
 - **Desfazer/refazer** (Ctrl+Z / Ctrl+Shift+Z ou Ctrl+Y, e botões na barra):
@@ -425,7 +460,8 @@ flowchart LR
   preservada, geometria fina não), rotação nunca é estimada, e quantidade
   de itens repetidos não tem confiança total; todo modelo importado precisa
   de revisão manual no editor (o underlay do original atrás facilita
-  exatamente isso). Sem memória entre importações — cada
+  exatamente isso, e a 2ª passada do engenheiro revisor reduz — mas não
+  zera — o retrabalho). Sem memória entre importações — cada
   PDF é analisado do zero, não aprende com
   correções feitas em importações anteriores.
 - O autosave do diagrama do projeto não tem controle de concorrência: duas

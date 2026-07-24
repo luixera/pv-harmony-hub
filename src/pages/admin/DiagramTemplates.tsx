@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import {
-  ArrowLeft, Copy, FileUp, FlaskConical, LayoutTemplate, Loader2, Pencil, Plus, ShieldAlert, Sparkles, Trash2,
+  ArrowLeft, Copy, FileUp, FlaskConical, HardHat, LayoutTemplate, Loader2, Pencil, Plus, ShieldAlert, Sparkles, Trash2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useDiagramEngineAccess } from '@/hooks/useDiagramEngineAccess';
@@ -15,11 +15,23 @@ import {
   useDuplicateDiagramTemplate, useUpdateDiagramTemplate,
 } from '@/hooks/useDiagramTemplates';
 import { useDiagramRecognition } from '@/hooks/useDiagramRecognition';
+import { useDiagramReview } from '@/hooks/useDiagramReview';
 import { DiagramEditor } from '@/components/diagrams/DiagramEditor';
-import { buildSceneFromRecognition, DiagramSceneState } from '@/utils/cadEngine/editableLayout';
+import {
+  buildSceneFromPlacement, buildSceneFromRecognition, DiagramSceneState, sceneStateToRecognitionInput,
+} from '@/utils/cadEngine/editableLayout';
+import { sceneToJpegDataUrl } from '@/utils/cadEngine/exportPng';
 import { renderPdfFirstPageToDataUrl } from '@/utils/pdfPreview';
 import { TechnicalJsonMvp } from '@/utils/cadEngine/types';
 import { buildSampleValues } from '@/utils/projectValues';
+
+/** JSON técnico "vazio" pra renderizar cenas de modelo (sem projeto por trás). */
+const TEMPLATE_BASE_JSON: TechnicalJsonMvp = {
+  documentId: 'template',
+  title: { projectCode: 'MODELO', holderName: '—', concessionaire: '—', installedPower: '—', date: '—' },
+  components: [],
+  connections: [],
+};
 
 /**
  * Motor de templates de diagrama unifilar — aba própria, fora do modal de
@@ -40,6 +52,7 @@ export default function DiagramTemplates() {
   const deleteTemplate = useDeleteDiagramTemplate();
   const duplicateTemplate = useDuplicateDiagramTemplate();
   const recognizeDiagram = useDiagramRecognition();
+  const reviewDiagram = useDiagramReview();
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
@@ -51,11 +64,26 @@ export default function DiagramTemplates() {
   const [importFile, setImportFile] = useState<File | null>(null);
   /** Avisos do último reconhecimento — mostrados no editor ao abrir o modelo recém-criado. */
   const [importWarnings, setImportWarnings] = useState<string[] | null>(null);
+  /** Notas do engenheiro revisor (IA), chaveadas pelo id do modelo — a importação
+   *  seta as notas E troca o selectedId no mesmo lote; chavear evita que o efeito
+   *  de troca de modelo apague as notas recém-criadas. */
+  const [reviewNotes, setReviewNotes] = useState<{ id: string; notes: string[] } | null>(null);
+  /** Estado ao vivo do editor (o autosave é debounced — a query pode estar atrasada). */
+  const latestStateRef = useRef<DiagramSceneState | null>(null);
+  /** Cena aplicada por uma revisão sob demanda — versionada pra forçar o reseed do editor. */
+  const [reviewedState, setReviewedState] = useState<{ v: number; state: DiagramSceneState } | null>(null);
 
   const selected = templates.find(t => t.id === selectedId) ?? null;
 
   const debounceRef = useRef<number | null>(null);
   useEffect(() => () => { if (debounceRef.current) window.clearTimeout(debounceRef.current); }, []);
+
+  // Trocar de modelo zera o estado ao vivo e a cena de revisão aplicada.
+  // (reviewNotes não precisa: é chaveado pelo id do modelo.)
+  useEffect(() => {
+    latestStateRef.current = null;
+    setReviewedState(null);
+  }, [selectedId]);
 
   if (!hasAccess) {
     return (
@@ -89,6 +117,32 @@ export default function DiagramTemplates() {
         isPdf ? renderPdfFirstPageToDataUrl(importFile) : Promise.resolve(null),
       ]);
       const sceneData = buildSceneFromRecognition(result.components, result.connections, result.groups);
+
+      // ── 2ª passada: o ENGENHEIRO REVISOR (IA) compara o original com o nosso
+      // redesenho e corrige tipos/posições/ligações. Best-effort: se falhar, a
+      // importação segue com a 1ª passada.
+      let notes: string[] = [];
+      let finalResult = result;
+      if (underlayHref) {
+        try {
+          const renderUrl = await sceneToJpegDataUrl(buildSceneFromPlacement(TEMPLATE_BASE_JSON, sceneData));
+          const reviewed = await reviewDiagram.mutateAsync({
+            originalDataUrl: underlayHref,
+            renderDataUrl: renderUrl,
+            current: { components: result.components, connections: result.connections, groups: result.groups },
+          });
+          finalResult = { ...reviewed, warnings: result.warnings };
+          const revised = buildSceneFromRecognition(reviewed.components, reviewed.connections, reviewed.groups);
+          sceneData.placements = revised.placements;
+          sceneData.connections = revised.connections;
+          sceneData.groups = revised.groups;
+          notes = reviewed.notes;
+        } catch (e) {
+          console.error('revisão do engenheiro falhou — mantendo a 1ª passada', e);
+          notes = ['A revisão automática do engenheiro (2ª passada) falhou — resultado da 1ª passada mantido.'];
+        }
+      }
+
       if (underlayHref) {
         // encaixa a página original dentro da área da moldura, centralizada
         const dims = await new Promise<{ w: number; h: number }>(res => {
@@ -110,9 +164,10 @@ export default function DiagramTemplates() {
       const created = await createTemplate.mutateAsync({ name: importName.trim(), sceneData });
       setImportOpen(false);
       setImportName(''); setImportFile(null);
-      setImportWarnings(result.warnings.length > 0 ? result.warnings : []);
+      setImportWarnings(finalResult.warnings.length > 0 ? finalResult.warnings : []);
+      setReviewNotes(notes.length > 0 ? { id: created.id, notes } : null);
       setSelectedId(created.id);
-      toast.success(`${result.components.length} componente(s) reconhecido(s) — revise antes de usar`);
+      toast.success(`${finalResult.components.length} componente(s) reconhecido(s) e revisados — confira contra o original no fundo`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Erro ao reconhecer o diagrama');
     }
@@ -132,14 +187,57 @@ export default function DiagramTemplates() {
 
   const handleStateChange = (state: DiagramSceneState) => {
     if (!selected) return;
+    latestStateRef.current = state; // o revisor de IA usa o estado ao vivo, não o autosave atrasado
     if (debounceRef.current) window.clearTimeout(debounceRef.current);
     debounceRef.current = window.setTimeout(() => {
       updateTemplate.mutate({ id: selected.id, sceneData: state, silent: true });
     }, 800);
   };
 
+  /**
+   * "Revisão do engenheiro" sob demanda: manda pro revisor de IA o PDF
+   * original (o underlay já renderizado), um JPEG do estado ATUAL do
+   * diagrama e o JSON correspondente; aplica a cena corrigida preservando
+   * fotos/underlay, textos e dados da folha.
+   */
+  const handleEngineerReview = async () => {
+    if (!selected) return;
+    const current = latestStateRef.current ?? selected.scene_data;
+    const underlay = current.photos.find(p => p.underlay);
+    if (!underlay) return;
+    if (!confirm('Pedir a revisão do engenheiro (IA)? Componentes, ligações e grupos serão substituídos pela versão revisada (fotos, textos e dados da folha ficam). Ligações em derivação (ponta sobre outra linha) não entram na revisão.')) return;
+    try {
+      const renderUrl = await sceneToJpegDataUrl(buildSceneFromPlacement(TEMPLATE_BASE_JSON, current));
+      const reviewed = await reviewDiagram.mutateAsync({
+        originalDataUrl: underlay.href,
+        renderDataUrl: renderUrl,
+        current: sceneStateToRecognitionInput(current),
+      });
+      const revised = buildSceneFromRecognition(reviewed.components, reviewed.connections, reviewed.groups);
+      const newState: DiagramSceneState = {
+        ...revised,
+        photos: current.photos,
+        texts: current.texts,
+        sheet: current.sheet,
+      };
+      await updateTemplate.mutateAsync({ id: selected.id, sceneData: newState, silent: true });
+      latestStateRef.current = newState;
+      setReviewedState(prev => ({ v: (prev?.v ?? 0) + 1, state: newState }));
+      setReviewNotes({
+        id: selected.id,
+        notes: reviewed.notes.length > 0 ? reviewed.notes : ['O engenheiro revisor não encontrou nada pra corrigir.'],
+      });
+      toast.success('Revisão aplicada — confira contra o original no fundo');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Erro na revisão do engenheiro');
+    }
+  };
+
   // ── Editando um modelo ────────────────────────────────────────────────────
   if (selected) {
+    const editorScene = reviewedState?.state ?? selected.scene_data;
+    const hasUnderlay = (editorScene.photos ?? []).some(p => p.underlay);
+    const selectedNotes = reviewNotes?.id === selected.id ? reviewNotes.notes : null;
     const templateJson: TechnicalJsonMvp = {
       documentId: selected.id,
       title: {
@@ -151,6 +249,26 @@ export default function DiagramTemplates() {
     };
     const banner = (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
+        {selectedNotes !== null && (
+          <div style={{
+            display: 'flex', alignItems: 'flex-start', gap: 10, background: '#FFF7E6',
+            border: '1px solid #FDE1A8', borderRadius: 10, padding: '10px 14px', flexWrap: 'wrap',
+          }}>
+            <HardHat size={15} style={{ color: '#B45309', flexShrink: 0, marginTop: 1 }} />
+            <div style={{ fontSize: 12, color: '#92400E', flex: 1, minWidth: 240 }}>
+              <p style={{ margin: 0 }}><strong>Revisão do engenheiro (IA):</strong></p>
+              <ul style={{ margin: '4px 0 0', paddingLeft: 16 }}>
+                {selectedNotes.map((n, i) => <li key={i}>{n}</li>)}
+              </ul>
+            </div>
+            <button
+              onClick={() => setReviewNotes(null)}
+              style={{ background: 'none', border: 'none', color: '#B45309', fontSize: 12, cursor: 'pointer', padding: 0 }}
+            >
+              fechar
+            </button>
+          </div>
+        )}
         {importWarnings !== null && (
           <div style={{
             display: 'flex', alignItems: 'flex-start', gap: 10, background: '#F3EAFF',
@@ -194,11 +312,23 @@ export default function DiagramTemplates() {
           <Button variant="ghost" size="sm" onClick={() => { setSelectedId(null); setImportWarnings(null); }}>
             <ArrowLeft className="w-4 h-4 mr-1" /> Modelos
           </Button>
+          {hasUnderlay && (
+            <Button
+              variant="outline" size="sm"
+              onClick={handleEngineerReview}
+              disabled={reviewDiagram.isPending}
+              title="A IA compara o diagrama atual com o documento original ao fundo e corrige componentes, ligações e grupos"
+            >
+              {reviewDiagram.isPending
+                ? <><Loader2 className="w-4 h-4 mr-1 animate-spin" /> Revisando…</>
+                : <><HardHat className="w-4 h-4 mr-1" /> Revisão do engenheiro</>}
+            </Button>
+          )}
         </div>
         <DiagramEditor
-          stateKey={selected.id}
+          stateKey={`${selected.id}:r${reviewedState?.v ?? 0}`}
           json={templateJson}
-          initialState={selected.scene_data}
+          initialState={editorScene}
           tagValues={previewSample ? buildSampleValues() : undefined}
           onStateChange={handleStateChange}
           downloadBaseName={selected.name}

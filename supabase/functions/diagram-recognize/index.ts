@@ -220,21 +220,20 @@ Deno.serve(async (req) => {
 
     const contentBlocks: any[] = [buildContentBlock(body), { type: 'text', text: buildPrompt() }]
 
-    const model = 'claude-haiku-4-5-20251001' // mesmo modelo confirmado no claudinho-verifica
-
-    const claudeHeaders: Record<string, string> = {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-    }
-    if (body.mimeType === 'application/pdf') claudeHeaders['anthropic-beta'] = 'pdfs-2024-09-25'
-
+    // Opus + adaptive thinking: importar um diagrama é raro e de alto valor —
+    // o modelo mais capaz em visão compensa aqui (o Claudinho segue no Haiku,
+    // que roda em todo envio de projeto). PDF base64 é nativo, sem beta header.
     const claudeResp = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
-      headers: claudeHeaders,
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
       body: JSON.stringify({
-        model,
-        max_tokens: 3000,
+        model: 'claude-opus-4-8',
+        max_tokens: 8000,
+        thinking: { type: 'adaptive' },
         messages: [{ role: 'user', content: contentBlocks }],
       }),
     })
@@ -248,7 +247,14 @@ Deno.serve(async (req) => {
     }
 
     const claudeData = await claudeResp.json()
-    const rawText = claudeData.content?.[0]?.text || '{}'
+    if (claudeData.stop_reason === 'refusal') {
+      return new Response(JSON.stringify({ ok: false, error: 'A análise foi recusada pelos filtros do modelo' }), {
+        status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+    // com adaptive thinking, o primeiro bloco pode ser "thinking" — pega o de texto
+    const textBlock = (claudeData.content ?? []).find((b: { type: string }) => b.type === 'text')
+    const rawText = textBlock?.text || '{}'
 
     let parsed: any
     try {

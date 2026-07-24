@@ -35,7 +35,11 @@
   (undo/redo Ctrl+Z, zoom/pan, painel de propriedades, multi-seleção,
   Ctrl+D), C reconhecimento fiel + underlay, D ciclo fechado (diagrama do
   projeto em `project_diagrams` no banco + importar modelo no modal com
-  sugestão por concessionária). Próximos: casamento automático de modelo
+  sugestão por concessionária). **11ª rodada: engenheiro revisor de IA**
+  (`diagram-review`, Opus + adaptive thinking): 2ª passada automática na
+  importação + botão "Revisão do engenheiro" no editor de modelos — compara
+  o original com o redesenho (imagem + JSON) usando checklist de engenharia
+  e devolve o diagrama corrigido + notas. Próximos: casamento automático de modelo
   por critério paramétrico; calibrar prompt/símbolos com mais unifilares
   reais; liberar pra todos os tenants (RLS pronto); componentes em série
   desenhados "no fio" + portas CC/CA no inversor (Fase E, refactor visual
