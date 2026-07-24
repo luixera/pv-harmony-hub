@@ -29,6 +29,7 @@ import FormConfig from "./pages/admin/FormConfig";
 import KanbanConfig from "./pages/admin/KanbanConfig";
 import EnergyConcessionaires from "./pages/admin/EnergyConcessionaires";
 import EquipmentCatalog from "./pages/admin/EquipmentCatalog";
+import DiagramTemplates from "./pages/admin/DiagramTemplates";
 import Automations from "./pages/admin/Automations";
 import ProjectsMap from "./pages/ProjectsMap";
 import ForgotPassword from "./pages/ForgotPassword";
@@ -88,6 +89,7 @@ function AppRoutes() {
       <Route path="/admin/kanban-config" element={<ProtectedRoute allowedRoles={['admin']}><KanbanConfig /></ProtectedRoute>} />
       <Route path="/admin/energy-concessionaires" element={<ProtectedRoute allowedRoles={['admin', 'staff']}><EnergyConcessionaires /></ProtectedRoute>} />
       <Route path="/admin/equipment" element={<ProtectedRoute allowedRoles={['admin', 'staff']}><EquipmentCatalog /></ProtectedRoute>} />
+      <Route path="/admin/diagram-templates" element={<ProtectedRoute allowedRoles={['admin', 'staff']}><DiagramTemplates /></ProtectedRoute>} />
       <Route path="/admin/automations" element={<ProtectedRoute allowedRoles={['admin']}><Automations /></ProtectedRoute>} />
       <Route path="/company/financial" element={<ProtectedRoute allowedRoles={['company']}><CompanyFinancial /></ProtectedRoute>} />
       <Route path="/projects-map" element={<ProtectedRoute allowedRoles={['admin', 'staff', 'company']}><ProjectsMap /></ProtectedRoute>} />

@@ -40,6 +40,23 @@ Registro de decisões de produto/UX (não arquiteturais — essas ficam em
   do modal continua recebendo incrementos diretos (redimensionar, arrastar
   linha como bloco, excluir com Delete). Ver
   [ADR 0006](../adr/0006-cad-engine-alpha.md). (jul/2026)
+- **Diagrama unifilar — motor de templates em aba própria, acesso muda de
+  "só master" pra "admin/staff da GD Manager"** (6ª rodada, mesmo mês):
+  pedido do usuário pra "ir pro próximo nível" — sair de editar dentro do
+  modal do projeto pra ter uma aba dedicada de motor de templates, acessível
+  ao projetista (staff) e ao administrador, não só ao master. Duas decisões:
+  (1) **escopo de acesso continua restrito à GD Manager por enquanto** — não
+  libera pra todos os tenants nesta rodada, só muda quem dentro da GD
+  Manager acessa; (2) **reconhecimento automático a partir de um PDF
+  enviado** (pedido separado do usuário) fica pra uma iniciativa própria e
+  dedicada, depois de validar a base do motor de templates com criação
+  manual — não é um ajuste incremental, é outro projeto (IA de visão, não
+  um parser). O usuário mandou um diagrama unifilar real (ENEL) como
+  referência durante a implementação; não usado pra reconhecimento
+  automático (adiado), mas a legenda dele revelou 3 símbolos faltando
+  (fusível, aterramento, quadro de distribuição), adicionados por serem
+  baratos e melhorarem a qualidade de qualquer template novo. Ver
+  [ADR 0006](../adr/0006-cad-engine-alpha.md). (jul/2026)
 - **Visão master de empresas por tenant**: drill-down dentro da aba **Tenants**
   do `/painel` (não uma aba nova) — cada tenant expande para suas empresas, e
   cada empresa para seus projetos. Só o master vê, via RPCs `is_master`-gated.

@@ -25,6 +25,11 @@ export interface Tenant {
   paid_until: string | null;
   notes: string | null;
   created_at: string;
+  /** Tenant "biblioteca" — origem das cópias de concessionárias/pacotes pros
+   *  demais tenants (ver useConcessionaireLibrary.ts). Hoje é só a GD Manager
+   *  — reaproveitado também para restringir o motor de templates de diagrama
+   *  (ver useDiagramEngineAccess.ts) enquanto não libera pra todos os tenants. */
+  is_library: boolean;
   plan?: TenantPlan;
 }
 

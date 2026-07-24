@@ -181,3 +181,73 @@ Diagramas já salvos com uma ponta solta não-grudada continuam com o gap até
 o usuário arrastar a pontinha pra dentro do símbolo ou refazer a ligação —
 não há migração retroativa automática (ver limitações em
 `docs/modules/diagrams/overview.md`).
+
+## Atualização (6ª rodada) — motor de templates, aba própria, mudança de permissão
+Pedido explícito: "a gente ir para o próximo nível" — sair de editar um
+diagrama dentro do modal do projeto pra ter uma **aba própria como motor de
+templates**, com acesso pra projetista (staff) e administrador, não só
+master. Duas decisões tomadas com o usuário antes de implementar:
+
+- **Escopo de acesso continua restrito à GD Manager por enquanto** (não abre
+  pra todos os tenants ainda) — mas o *papel* que ganha acesso muda de
+  "só master" pra "admin/staff do tenant `is_library`". Reaproveitado o flag
+  `tenants.is_library` que já existia (marca a origem da biblioteca de
+  concessionárias) em vez de criar um flag novo só pra isso —
+  `useDiagramEngineAccess()` centraliza a regra (`role admin|staff` **e**
+  `is_library`), usada nos três pontos de gate (menu, rota, aba do modal do
+  projeto). Master, sendo `admin` do tenant GD Manager, já cai na regra sem
+  caso especial.
+- **Reconhecimento automático de PDF fica pra depois, como iniciativa
+  própria** — construir a aba/motor primeiro com criação **manual** de
+  template (reaproveitando o editor já pronto), o reconhecimento (que exige
+  IA de visão, não um parser determinístico — mais parecido com o Claudinho
+  do que com um simples leitor de PDF) vira um projeto à parte, planejado
+  quando chegar a vez.
+
+Durante a implementação, o usuário mandou um diagrama unifilar real (PDF de
+um projeto ENEL) como referência — não usado pra reconhecimento automático
+(decidido que isso fica pra depois), mas a **legenda** dele revelou 3 tipos
+de símbolo que faltavam na biblioteca: fusível, aterramento (como componente
+próprio, não só embutido na base do DPS) e quadro de distribuição. Os três
+foram adicionados (`symbols.ts`) já com `CONNECTION_INSET` calibrado, dado
+que era barato e melhora a qualidade de qualquer template feito daqui pra
+frente — sem tentar recalibrar a biblioteca inteira nesta mesma rodada.
+
+### Arquitetura: extrair o editor do `UnifilarTab`
+Antes desta rodada, todo o canvas interativo (arrastar, ligar, redimensionar
+etc. — ~930 linhas) vivia dentro de `UnifilarTab.tsx`, amarrado a
+`ProjectWithDetails`. Reescrever tudo de novo pro motor de templates
+duplicaria essa lógica inteira — proibido pelas regras do projeto (nunca
+duplicar lógica complexa). Em vez disso, extraído pra
+`src/components/diagrams/DiagramEditor.tsx`, um componente que não sabe se
+está editando um projeto ou um template: recebe `json` (JSON técnico —
+título + `components`/`connections`, vazios num template), `initialState`
+(`DiagramSceneState`, o mesmo formato salvo tanto em `localStorage` quanto
+em `diagram_templates.scene_data`), `tagValues` opcional (ausente = mostra
+`{chave}` cru, presente = resolve — o mesmo mecanismo cobre "modo template"
+e "prévia com dados de exemplo" no motor de templates) e `onStateChange` (o
+dono decide onde persistir). `UnifilarTab.tsx` ficou um wrapper fino: monta
+o JSON/valores do projeto real, carrega/salva em `localStorage`, tem a
+lógica de `reconcile()`/migração de formato antigo — nada disso pertence ao
+editor genérico.
+
+### Banco: `diagram_templates`
+Tabela nova, RLS no mesmo padrão de `energy_concessionaires` (RESTRICTIVE
+por `tenant_id` via `get_user_tenant_id()`, PERMISSIVE liberando
+`admin`/`staff` via `has_role()`). `scene_data jsonb` guarda o
+`DiagramSceneState` inteiro — a legenda de um componente pode conter tags
+`{chave}`, resolvidas só na hora de mostrar/exportar (nunca gravadas como
+valor fixo), então um modelo funciona pra qualquer projeto que o importar.
+Liberar pra todos os tenants no futuro não exige mudança nenhuma de schema
+— só remover a checagem de `is_library` em `useDiagramEngineAccess()`.
+
+### O que ainda falta pra fechar o pedido original
+O usuário descreveu o fluxo completo: motor de templates numa aba própria
+(feito), e o modal do projeto **apresentando** o diagrama (importado de um
+modelo) com opção de editar antes de baixar sem afetar o modelo salvo. A
+segunda metade — importar um modelo salvo dentro do `UnifilarTab` — **não
+foi implementada nesta rodada**: os dois editores já usam o mesmo formato de
+dados (`DiagramSceneState`), então tecnicamente é um `initialState` diferente
+em vez do resultado de `reconcile()`, mas falta decidir com o usuário *como*
+ele escolhe qual modelo importar (manual, por concessionária, por critério
+paramétrico) antes de construir essa tela. Ver roadmap.

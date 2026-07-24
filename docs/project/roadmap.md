@@ -11,24 +11,28 @@
   arrastar de qualquer ponto do símbolo, girar, **redimensionar**, ligar com
   derivações e linhas soltas (`ConnectionEndpoint` symbol/point) que **grudam
   pixel-a-pixel** no componente/linha mais perto (`CONNECTION_INSET` +
-  `findNearestSymbol`/`nearestPointOnPolyline`, corrigido depois de um print
-  do usuário mostrando gap numa derivação), selecionar e arrastar uma linha
-  inteira como bloco, excluir com Delete, 6 símbolos (disjuntor corrigido,
-  DPS novo), componentes/fotos/**textos** adicionáveis livremente (só visual,
-  sem tocar no cadastro do projeto), texto e legenda com **tags do projeto**
-  (mesmo catálogo dos templates .docx). Layout salvo
-  só em `localStorage`, só master/GD Manager — ver
-  [modules/diagrams](../modules/diagrams/overview.md) e
-  [ADR 0006](../adr/0006-cad-engine-alpha.md). **Combinado com o usuário**: a
-  próxima etapa é uma **tela dedicada de motor de templates de diagrama**
-  (fora desta fatia) — lá entra o `DiagramTemplate` (§17.3) de verdade, e o
-  modal do projeto passa a *importar* o diagrama pronto conforme a
-  especificação do projeto, em vez de montar do zero. Depois dessa etapa,
-  ainda ficam: (1) calibrar símbolos com unifilares reais aprovados (usuário
-  vai enviar); (2) motor de layout automático (grafo + roteador com detecção
-  de cruzamento); (3) exportador DXF; (4) liberar para outros tenants;
-  (5) suportar BESS/múltiplos inversores/geração compartilhada oficialmente
-  no cadastro (hoje só dá pra representar visualmente, avulso).
+  `findNearestSymbol`/`nearestPointOnPolyline`), selecionar e arrastar uma
+  linha inteira como bloco, excluir com Delete, 9 símbolos (disjuntor
+  corrigido, DPS/fusível/aterramento/quadro de distribuição novos),
+  componentes/fotos/textos adicionáveis livremente (só visual, sem tocar no
+  cadastro do projeto), texto e legenda com tags do projeto (mesmo catálogo
+  dos templates .docx). **Motor de templates** ganhou aba própria
+  (`/admin/diagram-templates`, editor reaproveitado — `DiagramEditor.tsx` —,
+  persistido em `diagram_templates` no banco), acesso por papel
+  (admin/staff) em vez de só master, ainda restrito à GD Manager
+  (`tenants.is_library`) — ver [modules/diagrams](../modules/diagrams/overview.md)
+  e [ADR 0006](../adr/0006-cad-engine-alpha.md). Próximos passos, em ordem
+  sugerida: (1) **importar um modelo salvo dentro do modal do projeto** —
+  falta decidir com o usuário como ele escolhe qual (manual, por
+  concessionária, por critério paramétrico) antes de construir; (2)
+  **reconhecimento automático a partir de um PDF enviado** (pedido do
+  usuário, decidido como iniciativa própria e dedicada — precisa de IA de
+  visão, não de um parser determinístico); (3) calibrar símbolos com mais
+  unifilares reais; (4) liberar o motor de templates para todos os tenants
+  (RLS já pronto); (5) motor de layout automático (grafo + roteador com
+  detecção de cruzamento); (6) exportador DXF; (7) suportar BESS/múltiplos
+  inversores/geração compartilhada oficialmente no cadastro (hoje só dá pra
+  representar visualmente, avulso).
 - **Templates de outras concessionárias em .pdf/.xls**: hoje o motor só aceita
   `.docx`. Avaliar suporte a PDF com formulário (AcroForm) e a `.xlsx`.
 - **Catálogo de equipamentos no formulário público**: o combobox não aparece no

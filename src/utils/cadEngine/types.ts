@@ -14,7 +14,8 @@
 // ── JSON técnico (mínimo) ────────────────────────────────────────────────────
 
 export type ComponentKind =
-  | 'pv-array' | 'inverter' | 'breaker' | 'meter' | 'utility-grid' | 'dps';
+  | 'pv-array' | 'inverter' | 'breaker' | 'meter' | 'utility-grid' | 'dps'
+  | 'fuse' | 'ground' | 'distribution-panel';
 
 export interface ComponentNode {
   id: string;

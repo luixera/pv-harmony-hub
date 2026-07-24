@@ -24,6 +24,9 @@ export const KIND_LABEL: Record<ComponentKind, string> = {
   meter: 'Medidor',
   'utility-grid': 'Rede',
   dps: 'DPS',
+  fuse: 'Fusível',
+  ground: 'Aterramento',
+  'distribution-panel': 'Quadro de Distribuição',
 };
 
 /**
@@ -41,6 +44,9 @@ export const CONNECTION_INSET: Record<ComponentKind, number> = {
   meter: 4,
   'utility-grid': 4,
   dps: 2,
+  fuse: 2,
+  ground: 2,
+  'distribution-panel': 2,
 };
 
 export const SYMBOL_DEFS: Record<ComponentKind, Primitive[]> = {
@@ -109,5 +115,29 @@ export const SYMBOL_DEFS: Record<ComponentKind, Primitive[]> = {
     { kind: 'line', a: { x: W / 2 - 3, y: 15.5 }, b: { x: W / 2 + 3, y: 15.5 } },
     { kind: 'line', a: { x: W / 2 - 2, y: 17 }, b: { x: W / 2 + 2, y: 17 } },
     { kind: 'line', a: { x: W / 2 - 1, y: 18.5 }, b: { x: W / 2 + 1, y: 18.5 } },
+  ],
+  // Fusível — corpo retangular no meio do condutor horizontal.
+  fuse: [
+    { kind: 'line', a: { x: 2, y: H / 2 }, b: { x: W / 2 - 4, y: H / 2 } },
+    { kind: 'rect', x: W / 2 - 4, y: H / 2 - 3, w: 8, h: 6 },
+    { kind: 'line', a: { x: W / 2 + 4, y: H / 2 }, b: { x: W - 2, y: H / 2 } },
+  ],
+  // Aterramento — mesmo símbolo de terra usado na base do DPS, agora como
+  // componente próprio (para representar um terra que não é o do DPS,
+  // ex.: BEP/malha de aterramento). Conecta só por cima.
+  ground: [
+    { kind: 'line', a: { x: W / 2, y: 2 }, b: { x: W / 2, y: 10 } },
+    { kind: 'line', a: { x: W / 2 - 4, y: 10 }, b: { x: W / 2 + 4, y: 10 } },
+    { kind: 'line', a: { x: W / 2 - 2.5, y: 12.5 }, b: { x: W / 2 + 2.5, y: 12.5 } },
+    { kind: 'line', a: { x: W / 2 - 1, y: 15 }, b: { x: W / 2 + 1, y: 15 } },
+  ],
+  // Quadro de distribuição (QDC/QG) — caixa com divisórias sugerindo circuitos internos.
+  'distribution-panel': [
+    { kind: 'line', a: { x: 2, y: H / 2 }, b: { x: 5, y: H / 2 } },
+    { kind: 'rect', x: 5, y: 3, w: 14, h: 14 },
+    { kind: 'line', a: { x: 8, y: 6 }, b: { x: 8, y: 17 } },
+    { kind: 'line', a: { x: 12, y: 6 }, b: { x: 12, y: 17 } },
+    { kind: 'line', a: { x: 16, y: 6 }, b: { x: 16, y: 17 } },
+    { kind: 'line', a: { x: 19, y: H / 2 }, b: { x: 22, y: H / 2 } },
   ],
 };

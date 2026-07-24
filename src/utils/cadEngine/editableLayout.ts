@@ -65,6 +65,19 @@ export interface PlacedText {
   size: number;
 }
 
+/**
+ * Estado completo de um diagrama editável — usado tanto pelo `UnifilarTab`
+ * (por projeto, salvo em `localStorage`) quanto pelo motor de templates
+ * (por template, salvo em `diagram_templates.scene_data`). O mesmo formato
+ * nos dois lugares é o que permite reaproveitar o `DiagramEditor` inteiro.
+ */
+export interface DiagramSceneState {
+  placements: PlacedSymbol[];
+  connections: ManualConnection[];
+  photos: PlacedPhoto[];
+  texts: PlacedText[];
+}
+
 const GRID = 2.5; // mm — mesmo módulo da proposta (§7, Fase 3)
 
 export function snapToGrid(v: number): number {

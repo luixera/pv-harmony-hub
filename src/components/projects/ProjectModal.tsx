@@ -26,6 +26,7 @@ import { useProjectAssignments } from '@/hooks/useProjectAssignments';
 import { logSystemEvent } from '@/lib/systemLog';
 import { EquipmentModelCombobox } from '@/components/equipment/EquipmentModelCombobox';
 import { UnifilarTab } from './UnifilarTab';
+import { useDiagramEngineAccess } from '@/hooks/useDiagramEngineAccess';
 import { DeleteProjectDialog } from './DeleteProjectDialog';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -1602,6 +1603,7 @@ export function ProjectModal({ projectId, onClose, initialTab = 'geral' }: Proje
   const { isMobile, isTablet } = useWindowSize();
   const isAdmin = user?.role === 'admin';
   const isStaff = user?.role === 'staff';
+  const hasDiagramEngineAccess = useDiagramEngineAccess();
   const canEdit = isAdmin || isStaff;
 
   const { data: project, isLoading } = useProject(projectId);
@@ -1690,9 +1692,10 @@ export function ProjectModal({ projectId, onClose, initialTab = 'geral' }: Proje
     ...(canEdit ? [{ id: 'tarefas', label: 'Tarefas', icon: <CheckSquare size={13} style={{ marginRight: 5 }} /> }] : []),
     { id: 'financeiro', label: 'Financeiro', icon: <DollarSign size={13} style={{ marginRight: 5 }} /> },
     { id: 'historico', label: 'Histórico', icon: <Clock size={13} style={{ marginRight: 5 }} /> },
-    // Alpha interno do CAD Engine — só o master vê (por enquanto, só o
-    // tenant GD Manager, já que é o próprio tenant do master no app normal).
-    ...(user?.isMaster ? [{ id: 'unifilar', label: 'Unifilar', icon: <FlaskConical size={13} style={{ marginRight: 5 }} /> }] : []),
+    // Alpha interno do CAD Engine — restrito por enquanto ao mesmo público do
+    // motor de templates de diagrama (ver useDiagramEngineAccess): projetista
+    // e admin da GD Manager (o master, que é admin da GD Manager, já cai aqui).
+    ...(hasDiagramEngineAccess ? [{ id: 'unifilar', label: 'Unifilar', icon: <FlaskConical size={13} style={{ marginRight: 5 }} /> }] : []),
   ];
 
   const statusCfg: Record<string, { color: string; bg: string }> = {
@@ -1973,7 +1976,7 @@ export function ProjectModal({ projectId, onClose, initialTab = 'geral' }: Proje
                 {activeTab === 'historico' && (
                   <TabHistory projectId={project.id} />
                 )}
-                {activeTab === 'unifilar' && user?.isMaster && (
+                {activeTab === 'unifilar' && hasDiagramEngineAccess && (
                   <UnifilarTab project={project} />
                 )}
               </div>

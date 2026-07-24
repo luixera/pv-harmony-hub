@@ -23,12 +23,14 @@ import {
   Mail,
   Zap,
   HelpCircle,
+  LayoutTemplate,
 } from 'lucide-react';
 import { Cpu } from 'lucide-react';
 import { openWelcomeTour } from '@/components/onboarding/OnboardingController';
 import { useMyPendingTasks } from '@/hooks/useTasks';
 import { useEmailUpdates } from '@/hooks/useEmailUpdates';
 import { useTenant, useTenantFeatures } from '@/hooks/useTenant';
+import { useDiagramEngineAccess } from '@/hooks/useDiagramEngineAccess';
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -38,6 +40,8 @@ interface SidebarItem {
   label: string;
   path: string;
   roles: ('admin' | 'staff' | 'company')[];
+  /** Além dos papéis, exige acesso ao motor de templates de diagrama (hoje só GD Manager). */
+  requiresDiagramEngine?: boolean;
 }
 
 const sidebarItems: SidebarItem[] = [
@@ -56,6 +60,7 @@ const sidebarItems: SidebarItem[] = [
   { icon: Users, label: 'Usuários', path: '/admin/users', roles: ['admin'] },
   { icon: Sun, label: 'Concessionárias', path: '/admin/energy-concessionaires', roles: ['admin', 'staff'] },
   { icon: Cpu, label: 'Equipamentos', path: '/admin/equipment', roles: ['admin', 'staff'] },
+  { icon: LayoutTemplate, label: 'Diagramas (modelos)', path: '/admin/diagram-templates', roles: ['admin', 'staff'], requiresDiagramEngine: true },
   { icon: Zap, label: 'Automações', path: '/admin/automations', roles: ['admin'] },
   { icon: FormInput, label: 'Formulários', path: '/admin/form-config', roles: ['admin'] },
   { icon: Map, label: 'Mapa de Projetos', path: '/projects-map', roles: ['admin', 'staff'] },
@@ -81,6 +86,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   const emailBadge = emailUpdates.filter(u => u.ai_suggested_status !== null).length;
   const { data: tenant } = useTenant();
   const features = useTenantFeatures();
+  const hasDiagramEngineAccess = useDiagramEngineAccess();
 
   // Rotas ocultadas conforme os recursos do plano do tenant
   const featureGate: Record<string, boolean> = {
@@ -92,6 +98,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
 
   const filteredItems = sidebarItems.filter(item =>
     user && item.roles.includes(user.role) && featureGate[item.path] !== false
+    && (!item.requiresDiagramEngine || hasDiagramEngineAccess)
   );
 
   // Marca exibida: logo/nome do tenant, com fallback para a marca padrão

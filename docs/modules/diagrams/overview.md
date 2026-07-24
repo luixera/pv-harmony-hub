@@ -1,8 +1,23 @@
 # Módulo: Diagramas
 
-**Estado: 🟡 Alpha interno** — visível só para o **master**, operando sobre os
-projetos do próprio tenant do master (GD Manager). Não disponível para os
-demais tenants ainda.
+**Estado: 🟡 Alpha interno** — restrito por enquanto ao tenant GD Manager
+(`tenants.is_library = true`), para os papéis **admin** e **staff**
+(`useDiagramEngineAccess()`). Não disponível para os demais tenants ainda,
+nem para o papel `company`.
+
+Duas telas, um editor compartilhado:
+- **Dentro do modal do projeto** (`UnifilarTab.tsx`) — o diagrama daquele
+  projeto específico, com os 5 componentes do cadastro real; edição fica só
+  no `localStorage` deste navegador.
+- **Motor de templates** (`/admin/diagram-templates`, aba própria no menu) —
+  monta/salva **modelos reutilizáveis** de diagrama, persistidos no banco
+  (`diagram_templates`), pra depois importar num projeto em vez de montar do
+  zero. Editar um modelo aqui nunca afeta o que já foi editado dentro de um
+  projeto, e vice-versa — são estados completamente separados.
+
+Os dois usam o **mesmo componente de canvas** (`DiagramEditor.tsx`,
+`src/components/diagrams/`) — arrastar/girar/redimensionar/ligar funciona
+identicamente nos dois lugares.
 
 ## Duas interpretações (contexto histórico)
 Este item da estrutura padrão tinha duas leituras possíveis:
@@ -31,13 +46,13 @@ usuário: útil mais cedo, e o motor automático continua no roadmap):
 | Pacote isolado `packages/cad-engine/` (monorepo) | Módulo comum em `src/utils/cadEngine/` — este repo não é monorepo |
 | Motor de layout automático (grafo, ranking, roteador ortogonal) | Ainda não construído. Existe um **layout fixo inicial** (fileira única) como ponto de partida, editável manualmente por cima. |
 | `ManualLayoutSource` (§17.2) — layout desenhado pelo usuário | **Implementado**: arrastar (clique em qualquer ponto da figura, não só no traço — ver nota abaixo), girar em passos de 90°, **redimensionar** (arrastar o quadrado azul do canto), ligar/desenhar linhas com derivações e pontas soltas, selecionar e arrastar uma linha inteira como bloco. Condutores sem pontos de dobra usam roteamento **ortogonal simplificado** (`orthogonalPath`); com pontos de dobra (`waypoints`), a linha segue exatamente o caminho desenhado (`computeConnectorPoints`) — ver "Ligar / desenhar linha" abaixo. |
-| Biblioteca de símbolos declarativa versionada | 6 símbolos fixos (`symbols.ts`), aproximados de IEC 60617: arranjo FV, inversor, disjuntor, medidor, rede e **DPS** (dispositivo de proteção contra surtos). Os 5 primeiros ficam no eixo horizontal (`y = H/2`), alinhados ao fluxo esquerda→direita; o DPS é vertical (componente de derivação para o terra, não em série). |
+| Biblioteca de símbolos declarativa versionada | 9 símbolos fixos (`symbols.ts`), aproximados de IEC 60617: arranjo FV, inversor, disjuntor, medidor, rede, **DPS**, **fusível**, **aterramento** e **quadro de distribuição** (os 3 últimos vieram direto da legenda de um diagrama ENEL real que o usuário enviou como referência). A maioria fica no eixo horizontal (`y = H/2`), alinhada ao fluxo esquerda→direita; DPS/aterramento são verticais (derivação para o terra, não em série). |
 | Componentes fora da cadeia fixa do projeto | **Implementado, mas só visual**: qualquer um dos 6 tipos pode ser adicionado livremente ao diagrama (paleta "Adicionar"), sem precisar existir no cadastro do projeto — útil para representar um 2º inversor, um DPS, um disjuntor extra etc. Não altera `project_equipment` nem qualquer dado do projeto. |
 | Fotos no diagrama | **Implementado**: upload de uma imagem (comprimida no cliente), vira um bloco arrastável/redimensionável no canvas, sai impressa no SVG/PDF exportado. Não faz parte da `Scene` "elétrica" — é uma camada `PHOTO` à parte. |
 | Texto/legenda livre no diagrama | **Implementado**: bloco de texto solto (`PlacedText`), arrastável, editável por duplo-clique. Tanto ele quanto a legenda de qualquer componente aceitam tags `{chave}` do **mesmo catálogo dos templates .docx** (`TEMPLATE_VARIABLES`/`buildProjectValues` em `projectValues.ts`) — resolvidas ao vivo no canvas e no export, não gravadas como valor fixo. |
 | Exportadores SVG / PDF / DXF / PNG via IR neutra | **SVG e PDF**, ambos consumindo a mesma `Scene` (IR já segue o princípio D1: um exportador novo não toca em layout/símbolos). `Primitive` ganhou a variante `image` para as fotos; `BlockInstance` ganhou `scale` (símbolos redimensionáveis). |
 | JSON Técnico completo (grafo elétrico genérico) | `TechnicalJsonMvp`: cadeia fixa PV → Inversor → Disjuntor → Medidor → Rede, montada a partir de `project_equipment`/`project_general_data` do próprio projeto. Componentes adicionados manualmente (acima) não entram nesse JSON — só existem no layout salvo. |
-| `DiagramTemplate` — salvar/aplicar layout como template (§17.3) | Não implementado ainda — ver roadmap |
+| `DiagramTemplate` — salvar/aplicar layout como template (§17.3) | **MVP implementado**: tabela `diagram_templates` (banco, tenant-isolada), aba própria (`/admin/diagram-templates`) pra montar/salvar modelos manualmente, com o mesmo `DiagramEditor`. Ainda **não tem**: importar um modelo salvo dentro do modal do projeto (falta esse elo), nem casamento automático por critério (§17.3 fala em match `exact`/`parametric` — aqui é 100% manual). Reconhecimento automático a partir de um PDF enviado (pedido do usuário) também não existe — ver "Melhorias futuras". |
 
 ## Arquivos
 - `src/utils/cadEngine/types.ts` — `TechnicalJsonMvp` + Scene IR (subconjunto de D1; `BlockInstance.rotation`; `Primitive` inclui `image`; `LayerId` inclui `PHOTO`).
@@ -47,16 +62,60 @@ usuário: útil mais cedo, e o motor automático continua no roadmap):
 - `src/utils/cadEngine/layout.ts` — JSON técnico → `Scene` com layout fixo (posição inicial, antes de qualquer edição).
 - `src/utils/cadEngine/editableLayout.ts` — `PlacedSymbol` (com `scale`), `ManualConnection` (`from`/`to` são `ConnectionEndpoint` — `{kind:'symbol',id}` ou `{kind:'point',at}` —, mais `waypoints?: Point[]`), `PlacedPhoto`, `PlacedText`, `orthogonalPath`, `computeConnectorPoints` (aceita qualquer combinação de pontas symbol/point; `edgePoint()` interno recua pelo `CONNECTION_INSET`), `isConnectionResolvable`, `blockCenter` (considera a escala), `findNearestSymbol`/`nearestPointOnPolyline`/`SNAP_RADIUS` (snapping de clique/soltura pra componente ou linha perto o bastante), `snapToGrid`, `buildSceneFromPlacement` (a `Scene` a partir do estado editado + fotos + textos, resolvendo tags via `tagValues`).
 - `src/utils/cadEngine/exportSvg.ts` / `exportPdf.ts` — `Scene` → SVG / PDF, com suporte a `rotation`/`scale` do bloco (PDF transforma os pontos manualmente — escala em torno do centro, depois gira, mesma ordem em ambos; SVG usa `transform="...rotate()...scale()..."` nativo via `blockTransform()`, reaproveitado ao vivo pelo canvas) e à primitiva `image` (SVG: `<image href>`; PDF: `doc.addImage`, formato detectado pelo prefixo do data URL). PDF via `jspdf`, já usado em `resumoPdf.ts` — nenhuma dependência nova.
-- `src/utils/projectValues.ts` — `resolveProjectTags(texto, values)`: substitui `{chave}` usando o mesmo catálogo `TEMPLATE_VARIABLES`/`buildProjectValues` dos templates .docx; tag desconhecida fica como está.
-- `src/components/projects/UnifilarTab.tsx` — canvas SVG interativo (arrastar/girar/redimensionar/ligar-e-desenhar-com-derivação/selecionar-e-arrastar-linha-inteira/adicionar componente, foto ou texto) + botões de download.
+- `src/utils/projectValues.ts` — `resolveProjectTags(texto, values)`: substitui `{chave}` usando o mesmo catálogo `TEMPLATE_VARIABLES`/`buildProjectValues` dos templates .docx; tag desconhecida fica como está. `buildSampleValues()` (já existia, reaproveitado) gera dados fictícios pra prévia dos modelos.
+- `src/components/diagrams/DiagramEditor.tsx` — canvas SVG interativo compartilhado (arrastar/girar/redimensionar/ligar-e-desenhar-com-derivação/selecionar-e-arrastar-linha-inteira/adicionar componente, foto ou texto) + botões de download. Não sabe de onde vêm os dados nem pra onde vão — recebe `json`/`initialState`/`tagValues` e devolve cada mudança via `onStateChange`; quem chama decide onde persistir.
+- `src/components/projects/UnifilarTab.tsx` — usa o `DiagramEditor` com os dados do projeto real; persiste em `localStorage` por projeto; tem a lógica de `reconcile()`/migração de formato antigo.
+- `src/pages/admin/DiagramTemplates.tsx` — motor de templates: lista de modelos (criar/renomear/duplicar/excluir) e, ao abrir um, usa o mesmo `DiagramEditor` com `json.components = []` (modelo começa vazio, sem cadeia fixa — todo símbolo nasce com prefixo `manual-`) e autosave debounced (800ms) em `diagram_templates.scene_data`.
+- `src/hooks/useDiagramTemplates.ts` — CRUD via React Query (`useDiagramTemplates`, `useCreateDiagramTemplate`, `useUpdateDiagramTemplate`, `useDeleteDiagramTemplate`, `useDuplicateDiagramTemplate`).
+- `src/hooks/useDiagramEngineAccess.ts` — regra de acesso única, reaproveitada no menu lateral, na rota e na aba do modal do projeto.
 
 ## Permissões
-Aba "Unifilar" no `ProjectModal`, gateada por `user?.isMaster` no front. Como o
-master, no app normal, só vê o próprio tenant (ADR 0005 — sem bypass de RLS), e
-o tenant do master é a GD Manager, o gate por `isMaster` já restringe
-naturalmente a escala inicial pedida ("apenas master, empresa GD Manager") sem
-precisar de RLS/RPC nova — os dados consumidos (`project_equipment`,
-`project_general_data`) já são os do próprio projeto aberto no modal.
+`useDiagramEngineAccess()`: papel `admin` ou `staff` **e** tenant
+`is_library = true` (hoje só a GD Manager — reaproveita o mesmo flag da
+tabela `tenants` que já marca a origem da biblioteca de concessionárias
+copiada pros demais tenants no cadastro, ver
+[modules/integrations](../integrations/overview.md) sobre `sync-library`).
+`company` nunca tem acesso.
+O master, cujo papel é `admin` e cujo tenant é a GD Manager, já cai nessa
+regra sem precisar de caso especial (ADR 0005 — master não tem bypass de
+RLS, opera como qualquer usuário do próprio tenant). Usado em três lugares:
+item "Diagramas (modelos)" no menu lateral, rota `/admin/diagram-templates`
+(dupla checagem — a rota já é protegida por papel via `ProtectedRoute`, mas
+a página confere de novo o `is_library`), e a aba "Unifilar" dentro do modal
+do projeto. RLS de `diagram_templates` é por `tenant_id` normal (mesmo
+padrão de `energy_concessionaires`) — **liberar pra todos os tenants no
+futuro é só remover a checagem de `is_library`**, o banco já está pronto.
+
+## Motor de templates (`/admin/diagram-templates`)
+Aba própria fora do modal do projeto — "montar um modelo uma vez, reaproveitar
+depois", em vez de recriar o diagrama do zero em cada projeto. Duas telas na
+mesma página:
+- **Lista**: cards com nome/descrição/quantidade de componentes, criar
+  (dialog com nome + descrição opcional), renomear (`window.prompt`),
+  duplicar, excluir.
+- **Editor**: abre um modelo com o mesmo `DiagramEditor` do projeto, mas
+  `json.components = []` — o modelo **começa vazio**, sem a cadeia fixa
+  PV→Inversor→Disjuntor→Medidor→Rede; todo componente é adicionado pela
+  paleta "Adicionar" (por isso todo id de componente de um modelo já nasce
+  com o prefixo `manual-`, e a mesma lógica de "componente manual é sempre
+  removível" do modo projeto vale aqui sem precisar de nenhum caso especial).
+  Salva sozinho: cada mudança de estado dispara um autosave com **debounce de
+  800ms** em `diagram_templates.scene_data` (silencioso, sem toast a cada
+  letra digitada). Um botão "Pré-visualizar com dados de exemplo" troca entre
+  mostrar as tags `{chave}` cruas (o que fica gravado) e resolvidas contra
+  `buildSampleValues()` (os mesmos dados fictícios usados no "Testar
+  preenchimento" dos templates .docx) — só afeta a tela, não o que é salvo.
+
+**Elo que falta pra fechar o pedido original** ("no modal do projeto, só
+apresenta o diagrama, e se quiser editar antes de baixar tem essa opção"):
+hoje o modal do projeto **não importa** nenhum modelo salvo aqui — continua
+montando o diagrama a partir da cadeia fixa do cadastro, como sempre fez. Os
+dois editores reaproveitam o mesmo componente e o mesmo formato de dados
+(`DiagramSceneState`), então importar é, em essência, carregar
+`template.scene_data` como o `initialState` do `UnifilarTab` em vez do
+resultado de `reconcile()` — mas a decisão de **como o usuário escolhe qual
+modelo importar** (dropdown manual? por concessionária? por nº de
+inversores?) ainda não foi tomada com o usuário. Ver roadmap.
 
 ## Componentes e fotos adicionados manualmente
 Além dos 5 componentes que vêm do cadastro do projeto (`TechnicalJsonMvp`), a
@@ -221,21 +280,34 @@ flowchart LR
   continua com o gap até o usuário arrastar aquela pontinha pra dentro do
   símbolo (ela gruda sozinha ao soltar) ou apagar/refazer a ligação. Não há
   migração automática retroativa.
-- Sem exportador DXF, sem `DiagramTemplate` (salvar/aplicar layout em outro
-  projeto).
-- Layout persiste só em `localStorage` deste navegador — não sincroniza entre
-  quem usa o sistema, e some se o navegador for trocado ou o storage limpo.
-  Fotos sem compressão agressiva poderiam estourar a cota (~5-10MB) rápido;
-  por isso o upload já redimensiona/comprime antes de salvar.
-- Só o master vê; outros tenants não têm acesso ainda.
+- Sem exportador DXF.
+- `DiagramTemplate` (motor de templates) é **MVP manual**: monta/salva
+  modelos numa aba própria, mas o modal do projeto ainda não importa nenhum
+  — falta o elo final (ver "Motor de templates" acima) e o casamento
+  automático por critério (§17.3 da proposta) nunca foi implementado.
+- **Reconhecimento automático a partir de um PDF enviado** (pedido direto do
+  usuário: subir um diagrama unifilar existente e o sistema reconhecer
+  sozinho traços/componentes) não existe — decidido explicitamente com o
+  usuário que essa é uma iniciativa separada e bem mais complexa (mais perto
+  de reconhecimento de imagem via IA de visão, no padrão do Claudinho, do que
+  de um parser determinístico), a ser planejada à parte.
+- Layout do projeto persiste só em `localStorage` deste navegador — não
+  sincroniza entre quem usa o sistema, e some se o navegador for trocado ou
+  o storage limpo. Fotos sem compressão agressiva poderiam estourar a cota
+  (~5-10MB) rápido; por isso o upload já redimensiona/comprime antes de
+  salvar. Modelos do motor de templates, ao contrário, já vivem no banco.
+- Só GD Manager (admin/staff) vê; outros tenants não têm acesso ainda.
 
 ## Melhorias futuras
-Combinado com o usuário: a próxima etapa é uma **tela dedicada ao motor de
-templates de diagrama** (fora desta fatia, ainda não iniciada) — lá sim entra
-o `DiagramTemplate` (§17.3 da proposta): montar/salvar modelos reutilizáveis
-de unifilar, e o modal do projeto passa a **importar** o diagrama pronto
-conforme a especificação do projeto, em vez de montar tudo do zero como hoje.
-Até lá, esta fatia (dentro do modal do projeto) continua recebendo incrementos
+Ordem sugerida, combinada com o usuário: (1) fechar o elo entre o motor de
+templates e o modal do projeto — importar um modelo salvo (decidir como o
+usuário escolhe qual: dropdown manual primeiro, casamento automático por
+critério depois); (2) reconhecimento automático de PDF, como iniciativa
+própria e dedicada (IA de visão); (3) calibrar os símbolos com mais
+diagramas reais; (4) liberar o motor de templates pra todos os tenants
+(RLS já pronto, é só remover a checagem de `is_library`); (5) motor de
+layout automático com roteador/detecção de cruzamento; (6) exportador DXF.
+Esta fatia (editor dentro do modal do projeto) continua recebendo incrementos
 diretos. Ver a proposta completa em `DIAGRAMA UNIFILAR/cad-engine-arquitetura.md`
 para o plano em etapas (motor de layout automático, roteamento, DXF, editor
 visual, regras por concessionária, liberação para outros tenants). Ver também
