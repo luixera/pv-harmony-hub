@@ -15,7 +15,8 @@
 
 export type ComponentKind =
   | 'pv-array' | 'inverter' | 'breaker' | 'meter' | 'utility-grid' | 'dps'
-  | 'fuse' | 'ground' | 'distribution-panel';
+  | 'fuse' | 'ground' | 'distribution-panel'
+  | 'meter-bidirectional' | 'dc-switch' | 'breaker-tripolar';
 
 export interface ComponentNode {
   id: string;

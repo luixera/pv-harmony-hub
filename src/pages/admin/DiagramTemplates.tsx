@@ -6,15 +6,17 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import {
-  ArrowLeft, Copy, FlaskConical, LayoutTemplate, Loader2, Pencil, Plus, ShieldAlert, Sparkles, Trash2,
+  ArrowLeft, Copy, FileUp, FlaskConical, LayoutTemplate, Loader2, Pencil, Plus, ShieldAlert, Sparkles, Trash2,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { useDiagramEngineAccess } from '@/hooks/useDiagramEngineAccess';
 import {
   useCreateDiagramTemplate, useDeleteDiagramTemplate, useDiagramTemplates,
   useDuplicateDiagramTemplate, useUpdateDiagramTemplate,
 } from '@/hooks/useDiagramTemplates';
+import { useDiagramRecognition } from '@/hooks/useDiagramRecognition';
 import { DiagramEditor } from '@/components/diagrams/DiagramEditor';
-import { DiagramSceneState } from '@/utils/cadEngine/editableLayout';
+import { buildSceneFromRecognition, DiagramSceneState } from '@/utils/cadEngine/editableLayout';
 import { TechnicalJsonMvp } from '@/utils/cadEngine/types';
 import { buildSampleValues } from '@/utils/projectValues';
 
@@ -36,12 +38,18 @@ export default function DiagramTemplates() {
   const updateTemplate = useUpdateDiagramTemplate();
   const deleteTemplate = useDeleteDiagramTemplate();
   const duplicateTemplate = useDuplicateDiagramTemplate();
+  const recognizeDiagram = useDiagramRecognition();
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [newName, setNewName] = useState('');
   const [newDescription, setNewDescription] = useState('');
   const [previewSample, setPreviewSample] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importName, setImportName] = useState('');
+  const [importFile, setImportFile] = useState<File | null>(null);
+  /** Avisos do último reconhecimento — mostrados no editor ao abrir o modelo recém-criado. */
+  const [importWarnings, setImportWarnings] = useState<string[] | null>(null);
 
   const selected = templates.find(t => t.id === selectedId) ?? null;
 
@@ -67,6 +75,23 @@ export default function DiagramTemplates() {
     setCreateOpen(false);
     setNewName(''); setNewDescription('');
     setSelectedId(created.id);
+  };
+
+  const handleImport = async () => {
+    if (!importFile || !importName.trim()) return;
+    try {
+      const result = await recognizeDiagram.mutateAsync(importFile);
+      const sceneData = buildSceneFromRecognition(result.components, result.connections);
+      const created = await createTemplate.mutateAsync({ name: importName.trim() });
+      await updateTemplate.mutateAsync({ id: created.id, sceneData, silent: true });
+      setImportOpen(false);
+      setImportName(''); setImportFile(null);
+      setImportWarnings(result.warnings.length > 0 ? result.warnings : []);
+      setSelectedId(created.id);
+      toast.success(`${result.components.length} componente(s) reconhecido(s) — revise antes de usar`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Erro ao reconhecer o diagrama');
+    }
   };
 
   const handleRename = (id: string, currentName: string) => {
@@ -101,26 +126,48 @@ export default function DiagramTemplates() {
       connections: [],
     };
     const banner = (
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 10, background: '#EAF3FF',
-        border: '1px solid #BFDBFE', borderRadius: 10, padding: '10px 14px', marginBottom: 16, flexWrap: 'wrap',
-      }}>
-        <LayoutTemplate size={15} style={{ color: '#1D4ED8', flexShrink: 0 }} />
-        <p style={{ fontSize: 12, color: '#1D4ED8', margin: 0, flex: 1, minWidth: 240 }}>
-          <strong>Editando o modelo "{selected.name}".</strong> Legendas com tags do projeto
-          (ex.: <code>{'{marca_inversor}'}</code>) ficam salvas cruas aqui — cada projeto que
-          importar este modelo resolve com os próprios dados. Salva automaticamente.
-        </p>
-        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#1D4ED8', whiteSpace: 'nowrap', cursor: 'pointer' }}>
-          <input type="checkbox" checked={previewSample} onChange={e => setPreviewSample(e.target.checked)} />
-          <Sparkles size={12} /> Pré-visualizar com dados de exemplo
-        </label>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
+        {importWarnings !== null && (
+          <div style={{
+            display: 'flex', alignItems: 'flex-start', gap: 10, background: '#F3EAFF',
+            border: '1px solid #DCC8FA', borderRadius: 10, padding: '10px 14px', flexWrap: 'wrap',
+          }}>
+            <Sparkles size={15} style={{ color: '#6D28D9', flexShrink: 0, marginTop: 1 }} />
+            <div style={{ fontSize: 12, color: '#6D28D9', flex: 1, minWidth: 240 }}>
+              <p style={{ margin: 0 }}>
+                <strong>Reconhecido automaticamente a partir do PDF.</strong> A IA identificou
+                os componentes e as ligações, mas posições, rotações e legendas ainda precisam
+                da sua revisão antes de usar este modelo.
+              </p>
+              {importWarnings.length > 0 && (
+                <p style={{ margin: '4px 0 0' }}>
+                  Ignorado no reconhecimento: {importWarnings.join('; ')}
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 10, background: '#EAF3FF',
+          border: '1px solid #BFDBFE', borderRadius: 10, padding: '10px 14px', flexWrap: 'wrap',
+        }}>
+          <LayoutTemplate size={15} style={{ color: '#1D4ED8', flexShrink: 0 }} />
+          <p style={{ fontSize: 12, color: '#1D4ED8', margin: 0, flex: 1, minWidth: 240 }}>
+            <strong>Editando o modelo "{selected.name}".</strong> Legendas com tags do projeto
+            (ex.: <code>{'{marca_inversor}'}</code>) ficam salvas cruas aqui — cada projeto que
+            importar este modelo resolve com os próprios dados. Salva automaticamente.
+          </p>
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#1D4ED8', whiteSpace: 'nowrap', cursor: 'pointer' }}>
+            <input type="checkbox" checked={previewSample} onChange={e => setPreviewSample(e.target.checked)} />
+            <Sparkles size={12} /> Pré-visualizar com dados de exemplo
+          </label>
+        </div>
       </div>
     );
     return (
       <MainLayout>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
-          <Button variant="ghost" size="sm" onClick={() => setSelectedId(null)}>
+          <Button variant="ghost" size="sm" onClick={() => { setSelectedId(null); setImportWarnings(null); }}>
             <ArrowLeft className="w-4 h-4 mr-1" /> Modelos
           </Button>
         </div>
@@ -150,9 +197,14 @@ export default function DiagramTemplates() {
             Monte modelos reutilizáveis aqui; no projeto, é só importar o modelo pronto em vez de montar do zero.
           </p>
         </div>
-        <Button onClick={() => setCreateOpen(true)} style={{ background: '#F5A800', color: '#1A1A1A' }}>
-          <Plus className="w-4 h-4 mr-1" /> Novo modelo
-        </Button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <Button variant="outline" onClick={() => setImportOpen(true)}>
+            <FileUp className="w-4 h-4 mr-1" /> Importar de PDF
+          </Button>
+          <Button onClick={() => setCreateOpen(true)} style={{ background: '#F5A800', color: '#1A1A1A' }}>
+            <Plus className="w-4 h-4 mr-1" /> Novo modelo
+          </Button>
+        </div>
       </div>
 
       <div style={{
@@ -161,9 +213,10 @@ export default function DiagramTemplates() {
       }}>
         <FlaskConical size={15} style={{ color: '#854F0B', flexShrink: 0 }} />
         <p style={{ fontSize: 12, color: '#854F0B', margin: 0 }}>
-          <strong>Alpha interno.</strong> Reconhecimento automático a partir de um PDF enviado
-          ainda não existe — fica pra uma etapa futura dedicada. Por enquanto, os modelos são
-          montados manualmente com o mesmo editor do diagrama do projeto.
+          <strong>Alpha interno.</strong> "Importar de PDF" usa IA de visão pra reconhecer
+          componentes e ligações — não é pixel-perfect, sempre revise no editor antes de usar o
+          modelo. Os modelos também podem ser montados manualmente com o mesmo editor do
+          diagrama do projeto.
         </p>
       </div>
 
@@ -226,6 +279,43 @@ export default function DiagramTemplates() {
             <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancelar</Button>
             <Button onClick={handleCreate} disabled={!newName.trim() || createTemplate.isPending} style={{ background: '#F5A800', color: '#1A1A1A' }}>
               {createTemplate.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Criar e abrir'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={importOpen} onOpenChange={o => { if (!recognizeDiagram.isPending) setImportOpen(o); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Importar modelo de um PDF</DialogTitle>
+          </DialogHeader>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <p style={{ fontSize: 12, color: '#777' }}>
+              Envie o PDF (ou uma foto) de um diagrama unifilar já aprovado. A IA reconhece os
+              componentes e as ligações e monta um modelo inicial — você revisa e ajusta no
+              editor antes de usar.
+            </p>
+            <div>
+              <Label htmlFor="tpl-import-name">Nome do modelo</Label>
+              <Input id="tpl-import-name" value={importName} onChange={e => setImportName(e.target.value)} placeholder="Ex.: ENEL trifásico com DPS duplo" autoFocus />
+            </div>
+            <div>
+              <Label htmlFor="tpl-import-file">Arquivo (PDF, JPG ou PNG)</Label>
+              <Input
+                id="tpl-import-file" type="file" accept="application/pdf,image/jpeg,image/png"
+                onChange={e => setImportFile(e.target.files?.[0] ?? null)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setImportOpen(false)} disabled={recognizeDiagram.isPending}>Cancelar</Button>
+            <Button
+              onClick={handleImport}
+              disabled={!importName.trim() || !importFile || recognizeDiagram.isPending}
+              style={{ background: '#F5A800', color: '#1A1A1A' }}
+            >
+              {recognizeDiagram.isPending ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <FileUp className="w-4 h-4 mr-1.5" />}
+              {recognizeDiagram.isPending ? 'Reconhecendo…' : 'Reconhecer e criar'}
             </Button>
           </DialogFooter>
         </DialogContent>

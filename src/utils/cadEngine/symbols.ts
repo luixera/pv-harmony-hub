@@ -20,13 +20,16 @@ export const SYMBOL_BBOX = { w: W, h: H };
 export const KIND_LABEL: Record<ComponentKind, string> = {
   'pv-array': 'Módulos',
   inverter: 'Inversor',
-  breaker: 'Disjuntor',
-  meter: 'Medidor',
+  breaker: 'Disjuntor Bipolar',
+  meter: 'Medidor Convencional',
   'utility-grid': 'Rede',
   dps: 'DPS',
   fuse: 'Fusível',
   ground: 'Aterramento',
   'distribution-panel': 'Quadro de Distribuição',
+  'meter-bidirectional': 'Medidor Bidirecional',
+  'dc-switch': 'Chave CC',
+  'breaker-tripolar': 'Disjuntor Tripolar',
 };
 
 /**
@@ -47,6 +50,9 @@ export const CONNECTION_INSET: Record<ComponentKind, number> = {
   fuse: 2,
   ground: 2,
   'distribution-panel': 2,
+  'meter-bidirectional': 3,
+  'dc-switch': 2,
+  'breaker-tripolar': 2,
 };
 
 export const SYMBOL_DEFS: Record<ComponentKind, Primitive[]> = {
@@ -139,5 +145,35 @@ export const SYMBOL_DEFS: Record<ComponentKind, Primitive[]> = {
     { kind: 'line', a: { x: 12, y: 6 }, b: { x: 12, y: 17 } },
     { kind: 'line', a: { x: 16, y: 6 }, b: { x: 16, y: 17 } },
     { kind: 'line', a: { x: 19, y: H / 2 }, b: { x: 22, y: H / 2 } },
+  ],
+  // Medidor bidirecional (kWh) — caixa retangular (vs. o círculo do medidor
+  // convencional), calibrado pela legenda de um unifilar real (ENEL): é o
+  // símbolo efetivamente usado no corpo do diagrama (medição bidirecional
+  // kW/kWh/kVarh), o "M" circular fica reservado ao medidor convencional.
+  'meter-bidirectional': [
+    { kind: 'rect', x: W / 2 - 8, y: H / 2 - 6, w: 16, h: 12 },
+    { kind: 'text', at: { x: W / 2, y: H / 2 + 2.5 }, value: 'kWh', size: 5, anchor: 'middle', weight: 'bold' },
+    { kind: 'line', a: { x: W / 2 - 6, y: H / 2 - 4 }, b: { x: W / 2 - 3, y: H / 2 - 4 } },
+    { kind: 'line', a: { x: W / 2 + 3, y: H / 2 - 4 }, b: { x: W / 2 + 6, y: H / 2 - 4 } },
+  ],
+  // Chave CC — desconector de corrente contínua: lâmina diagonal simples entre
+  // dois contatos, sem a marca de disparo do disjuntor (diferença visual
+  // intencional entre os dois, como na legenda de referência).
+  'dc-switch': [
+    { kind: 'line', a: { x: 2, y: H / 2 }, b: { x: W / 2 - 4, y: H / 2 } },
+    { kind: 'circle', center: { x: W / 2 - 4, y: H / 2 }, radius: 1 },
+    { kind: 'line', a: { x: W / 2 - 4, y: H / 2 }, b: { x: W / 2 + 4, y: H / 2 - 7 } },
+    { kind: 'circle', center: { x: W / 2 + 4, y: H / 2 }, radius: 1 },
+    { kind: 'line', a: { x: W / 2 + 4, y: H / 2 }, b: { x: W - 2, y: H / 2 } },
+  ],
+  // Disjuntor tripolar — mesmo glifo do bipolar (`breaker`), com um traço a
+  // mais atravessando a lâmina pra indicar o 3º polo.
+  'breaker-tripolar': [
+    { kind: 'line', a: { x: 2, y: H / 2 }, b: { x: W / 2 - 4, y: H / 2 } },
+    { kind: 'circle', center: { x: W / 2 - 4, y: H / 2 }, radius: 1 },
+    { kind: 'line', a: { x: W / 2 - 4, y: H / 2 }, b: { x: W / 2 + 4, y: H / 2 - 7 } },
+    { kind: 'circle', center: { x: W / 2 + 4, y: H / 2 }, radius: 1 },
+    { kind: 'line', a: { x: W / 2 + 4, y: H / 2 }, b: { x: W - 2, y: H / 2 } },
+    { kind: 'line', a: { x: W / 2 - 1, y: H / 2 + 2.5 }, b: { x: W / 2 + 3, y: H / 2 - 4.5 } },
   ],
 };

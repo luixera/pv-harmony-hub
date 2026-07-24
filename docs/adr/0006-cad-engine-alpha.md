@@ -291,3 +291,77 @@ solta continuam funcionando como estão — não há migração retroativa — m
 arrastar essa ponta agora sempre resolve pra algo ou volta pro lugar, nunca
 mais fica solta de novo (ver limitações em
 `docs/modules/diagrams/overview.md`).
+
+## Atualização (8ª rodada) — reconhecimento de PDF (só topologia) + 3 símbolos novos
+Pedido explícito: "vamos partir para o próximo nível" — construir o
+reconhecimento automático de PDF adiado na 6ª rodada, reaproveitando a
+legenda de um **segundo** diagrama unifilar real (ENEL) enviado como
+referência pra "substituir os já usados pelos que tem lá". Pedido de escopo
+explícito do próprio usuário: "bom, funcional, fácil de mexer... não precisa
+de detalhamentos extremos, apenas a informação completa" — norteou as duas
+decisões abaixo, ambas escolhendo o caminho mais simples que ainda resolve o
+problema de verdade.
+
+### Reconhecimento: só topologia, nunca posição/rotação
+Edge function nova, `diagram-recognize`, no **exato mesmo padrão** do
+`claudinho-verifica` (Anthropic API, PDF nativo via `document` content block
++ `anthropic-beta: pdfs-2024-09-25`, `consume_ai_quota`/`ai_usage_log`,
+`verify_jwt: false` com checagem própria de Authorization, modelo
+`claude-haiku-4-5-20251001` já confirmado funcionando neste projeto,
+publicada manualmente via MCP — não entra no CI). O prompt trava a IA num
+vocabulário fechado (os `ComponentKind` existentes, com descrição visual
+curta de cada um) e devolve **só** `{ components: [{id, kind, label}],
+connections: [{from, to}], warnings }` — deliberadamente sem coordenadas.
+
+Decisão: pedir posição/rotação em mm alinhada à nossa página teria taxa de
+erro alta demais pra ser útil (IA de visão erra grosseiramente em coordenada
+pixel-perfeita, mesmo quando acerta "o que tem e o que liga com o quê"), e
+implementar uma heurística de auto-layout só pra esse caso seria trabalho
+duplicado — o editor manual já existe e já é rápido pra reposicionar. Em vez
+de inventar um posicionamento novo, `buildSceneFromRecognition()`
+(`editableLayout.ts`) reaproveita **exatamente** `initialPlacement()`/
+`initialConnections()` — as mesmas funções que já posicionam a fileira
+inicial de qualquer diagrama novo vindo do cadastro do projeto — tratando a
+resposta da IA como se fosse um `TechnicalJsonMvp.components/connections`
+qualquer. Isso exigiu só afrouxar a assinatura dessas duas funções de
+`TechnicalJsonMvp` completo pra `Pick<TechnicalJsonMvp, 'components'>`/
+`Pick<..., 'connections'>` (mudança compatível, zero lógica nova). O
+resultado abre direto no editor de modelos com um banner roxo avisando que é
+reconhecimento automático e precisa de revisão — nunca é tratado como
+pronto pra uso sem passar pelos olhos do usuário.
+
+UI: botão "Importar de PDF" na lista de `/admin/diagram-templates` (ao lado
+de "Novo modelo") — sobe o arquivo, chama `useDiagramRecognition()`, cria o
+`diagram_template` e já abre editando. Sanitização defensiva na própria edge
+function: componente com `kind` fora do vocabulário é descartado (vira um
+item em `warnings`, nunca quebra o resto); conexão cujas pontas não existam
+entre os componentes aceitos também é descartada.
+
+### Privacidade do PDF de referência
+O usuário reenviou o mesmo tipo de PDF real (diagrama unifilar de um projeto
+real de cliente, com titular/endereço/ART/CREA) usado como referência na 6ª
+rodada, agora atualizado. Só a **legenda de símbolos** (informação técnica
+genérica, sem dado pessoal) foi extraída e usada — em código, prompt ou
+documentação. O prompt de `diagram-recognize` instrui explicitamente a IA a
+nunca incluir dado pessoal do documento analisado na resposta (regra 1 do
+prompt), mesmo que apareça no PDF enviado pelo usuário real do sistema.
+
+### 3 símbolos novos, em vez de generalizar os existentes
+A legenda do segundo diagrama diferenciava visualmente disjuntor
+**bipolar** de **tripolar**, e medidor **convencional** (círculo com "M") de
+**bidirecional** (caixa "kWh") — o símbolo genérico único que já existia
+(`breaker`, `meter`) só cobria uma das duas variações de cada. Também
+apareceu **chave CC** (seccionadora), sem equivalente nenhum na biblioteca.
+Decisão: 3 `ComponentKind` novos (`breaker-tripolar`, `meter-bidirectional`,
+`dc-switch`) em vez de adicionar uma propriedade "variante" aos existentes —
+mantém `breaker`/`meter` com o significado que diagramas/templates já salvos
+esperam (nenhuma migração necessária) e deixa cada símbolo com geometria
+própria, sem `if` de variante dentro do desenho. `KIND_LABEL` de `breaker` e
+`meter` ganhou o sufixo "Bipolar"/"Convencional" só pra clarear a paleta
+"Adicionar" — não afeta rótulos já salvos em diagramas existentes (o rótulo
+de cada componente é gravado no momento da criação, não recalculado ao
+vivo). Símbolos de linha de condutor (cor por tipo: fase/neutro/terra) e o
+rótulo de bitola (`2#6mm²`) que também apareciam na legenda **não** viraram
+funcionalidade nova — são convenção de estilo de linha/anotação de texto,
+não um componente discreto, e o texto livre já cobre a bitola; ver
+"Limitações" em `docs/modules/diagrams/overview.md`.

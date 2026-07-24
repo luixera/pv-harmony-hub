@@ -14,27 +14,30 @@
   do usuário) que **grudam pixel-a-pixel** no componente/linha mais perto
   (`CONNECTION_INSET` + `findNearestSymbol`/`nearestPointOnPolyline`),
   selecionar e arrastar uma
-  linha inteira como bloco, excluir com Delete, 9 símbolos (disjuntor
-  corrigido, DPS/fusível/aterramento/quadro de distribuição novos),
-  componentes/fotos/textos adicionáveis livremente (só visual, sem tocar no
-  cadastro do projeto), texto e legenda com tags do projeto (mesmo catálogo
-  dos templates .docx). **Motor de templates** ganhou aba própria
-  (`/admin/diagram-templates`, editor reaproveitado — `DiagramEditor.tsx` —,
-  persistido em `diagram_templates` no banco), acesso por papel
-  (admin/staff) em vez de só master, ainda restrito à GD Manager
-  (`tenants.is_library`) — ver [modules/diagrams](../modules/diagrams/overview.md)
-  e [ADR 0006](../adr/0006-cad-engine-alpha.md). Próximos passos, em ordem
+  linha inteira como bloco, excluir com Delete, 12 símbolos calibrados por
+  dois diagramas reais (ENEL) — disjuntor bipolar/tripolar, chave CC, medidor
+  convencional/bidirecional, DPS, fusível, aterramento, quadro de
+  distribuição —, componentes/fotos/textos adicionáveis livremente (só
+  visual, sem tocar no cadastro do projeto), texto e legenda com tags do
+  projeto (mesmo catálogo dos templates .docx). **Motor de templates** tem
+  aba própria (`/admin/diagram-templates`, editor reaproveitado —
+  `DiagramEditor.tsx` —, persistido em `diagram_templates` no banco), acesso
+  por papel (admin/staff) em vez de só master, ainda restrito à GD Manager
+  (`tenants.is_library`), e agora também **"Importar de PDF"** —
+  reconhecimento automático via IA de visão (`diagram-recognize`, mesmo
+  padrão do Claudinho) que identifica componentes/ligações (só topologia,
+  não posição/rotação) e monta um modelo inicial pra revisão — ver
+  [modules/diagrams](../modules/diagrams/overview.md) e
+  [ADR 0006](../adr/0006-cad-engine-alpha.md). Próximos passos, em ordem
   sugerida: (1) **importar um modelo salvo dentro do modal do projeto** —
   falta decidir com o usuário como ele escolhe qual (manual, por
   concessionária, por critério paramétrico) antes de construir; (2)
-  **reconhecimento automático a partir de um PDF enviado** (pedido do
-  usuário, decidido como iniciativa própria e dedicada — precisa de IA de
-  visão, não de um parser determinístico); (3) calibrar símbolos com mais
-  unifilares reais; (4) liberar o motor de templates para todos os tenants
-  (RLS já pronto); (5) motor de layout automático (grafo + roteador com
-  detecção de cruzamento); (6) exportador DXF; (7) suportar BESS/múltiplos
-  inversores/geração compartilhada oficialmente no cadastro (hoje só dá pra
-  representar visualmente, avulso).
+  calibrar símbolos e o prompt do reconhecimento com mais unifilares reais;
+  (3) liberar o motor de templates para todos os tenants (RLS já pronto);
+  (4) motor de layout automático (grafo + roteador com detecção de
+  cruzamento — beneficiaria direto o reconhecimento de PDF); (5) exportador
+  DXF; (6) suportar BESS/múltiplos inversores/geração compartilhada
+  oficialmente no cadastro (hoje só dá pra representar visualmente, avulso).
 - **Templates de outras concessionárias em .pdf/.xls**: hoje o motor só aceita
   `.docx`. Avaliar suporte a PDF com formulário (AcroForm) e a `.xlsx`.
 - **Catálogo de equipamentos no formulário público**: o combobox não aparece no

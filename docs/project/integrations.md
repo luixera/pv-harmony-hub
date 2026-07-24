@@ -12,6 +12,7 @@
 | `scan-emails` | — | cron/admin | Varre Gmail por tenant, casa e-mails a protocolos (Claudinho). |
 | `test-gmail` | — | admin | Testa credenciais Gmail do tenant. |
 | `claudinho-verifica` | — | interno | Análise de e-mail/documento (sugere etapa/protocolo). |
+| `diagram-recognize` | — | interno (GD Manager) | Reconhece componentes/ligações de um diagrama unifilar (PDF/imagem) via IA de visão — mesmo padrão do `claudinho-verifica`. |
 | `notify-dispatch` | — | interno | Renderiza template e envia e-mail via Resend. |
 | `log-session` | verifica | usuário | Registra sessão de acesso (IP + geo). |
 | `log-event` | — (lista fechada) | qualquer | Recebe erros/segurança/deploy p/ `system_events`. |
@@ -38,9 +39,13 @@
   `VITE_GOOGLE_MAPS_API_KEY`, `VITE_TURNSTILE_SITE_KEY`, `SUPABASE_ACCESS_TOKEN`,
   `DEPLOY_LOG_TOKEN`, `VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY`, `VPS_SSH_PORT`.
 - Supabase Edge Secrets: `SUPABASE_URL`, `SUPABASE_ANON_KEY`,
-  `SUPABASE_SERVICE_ROLE_KEY`, `DEPLOY_LOG_TOKEN`, credenciais Gmail/Resend.
+  `SUPABASE_SERVICE_ROLE_KEY`, `DEPLOY_LOG_TOKEN`, `ANTHROPIC_API_KEY`
+  (`claudinho-verifica` e `diagram-recognize`), credenciais Gmail/Resend.
 
 ## Deploy de funções
 O job `deploy-functions` publica **uma a uma** (não todas da pasta). Ao criar
 uma edge function nova, **adicione o passo de deploy** em
-`.github/workflows/deploy.yml` — senão ela não sobe (foi o caso de `log-event`).
+`.github/workflows/deploy.yml` — senão ela não sobe (foi o caso de
+`log-event`). Exceção: `claudinho-verifica` e `diagram-recognize` **não**
+estão no CI — publicadas manualmente via MCP `deploy_edge_function`
+(`verify_jwt: false`, pois cada uma faz a própria checagem de Authorization).

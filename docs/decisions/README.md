@@ -5,6 +5,26 @@ Registro de decisões de produto/UX (não arquiteturais — essas ficam em
 
 ## Log
 
+- **Diagrama unifilar — reconhecimento de PDF só reconhece topologia, símbolos
+  recalibrados por um 2º diagrama real** (8ª rodada, mesmo mês): pedido do
+  usuário pra "ir pro próximo nível" (reconhecimento automático, adiado desde
+  a 6ª rodada) e reaproveitar a legenda de um segundo diagrama unifilar real
+  (ENEL) enviado como referência pra substituir símbolos aproximados por
+  símbolos calibrados. Duas decisões: (1) o reconhecimento (`diagram-recognize`,
+  IA de visão via Anthropic, mesmo padrão do Claudinho) devolve **só
+  topologia** — quais componentes existem e como se ligam — e nunca posição,
+  rotação ou coordenadas; pedir isso à IA teria taxa de erro alta demais pra
+  ser confiável, e o editor manual já existente é rápido o bastante pra
+  reposicionar, então o resultado sempre abre com um aviso de revisão
+  obrigatória antes de considerar o modelo pronto; (2) a legenda do segundo
+  diagrama revelou que o disjuntor genérico e o medidor confundiam variações
+  reais (bipolar/tripolar, convencional/bidirecional) e faltava chave CC —
+  viraram 3 símbolos novos (`breaker-tripolar`, `meter-bidirectional`,
+  `dc-switch`) em vez de generalizar os existentes, pra não perder a
+  distinção visual que aparece nos diagramas reais. Dados pessoais do PDF de
+  referência (titular, endereço, ART) não entraram em nenhum lugar do
+  código/prompt — só a legenda de símbolos (informação genérica/técnica) foi
+  usada. Ver [ADR 0006](../adr/0006-cad-engine-alpha.md). (jul/2026)
 - **Diagrama unifilar — linhas nunca ficam soltas no vazio** (7ª rodada):
   reversão parcial da decisão da 4ª rodada. Pedido direto: "não deixe que as
   linhas possam ser desenhadas livremente, mas sim, conectando componentes

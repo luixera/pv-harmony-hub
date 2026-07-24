@@ -1,4 +1,4 @@
-import { ComponentKind, Point, Scene, TechnicalJsonMvp } from './types';
+import { ComponentKind, ComponentNode, ConnectionEdge, Point, Scene, TechnicalJsonMvp } from './types';
 import { CONNECTION_INSET, SYMBOL_BBOX, SYMBOL_DEFS } from './symbols';
 import { CENTER_Y, drawFrameAndHeader, drawTitleBlock, LEGEND_LINE_H, PITCH_X, START_X } from './paper';
 import { resolveProjectTags } from '@/utils/projectValues';
@@ -85,7 +85,7 @@ export function snapToGrid(v: number): number {
 }
 
 /** Posição inicial: a mesma fileira do layout fixo — ponto de partida para o usuário ajustar. */
-export function initialPlacement(json: TechnicalJsonMvp): PlacedSymbol[] {
+export function initialPlacement(json: Pick<TechnicalJsonMvp, 'components'>): PlacedSymbol[] {
   const y = CENTER_Y - SYMBOL_BBOX.h / 2;
   return json.components.map((c, i) => ({
     id: c.id, kind: c.kind, label: c.label, legend: c.legend,
@@ -93,12 +93,35 @@ export function initialPlacement(json: TechnicalJsonMvp): PlacedSymbol[] {
   }));
 }
 
-export function initialConnections(json: TechnicalJsonMvp): ManualConnection[] {
+export function initialConnections(json: Pick<TechnicalJsonMvp, 'connections'>): ManualConnection[] {
   return json.connections.map(c => ({
     id: c.id,
     from: { kind: 'symbol', id: c.from },
     to: { kind: 'symbol', id: c.to },
   }));
+}
+
+/**
+ * Monta uma cena a partir do resultado do reconhecimento automático por IA
+ * (edge function `diagram-recognize`, ver `useDiagramRecognition`): mesma
+ * fileira inicial do layout manual comum (`initialPlacement`/`initialConnections`)
+ * — o reconhecimento só identifica QUAIS componentes existem e COMO se ligam,
+ * não posições/rotações precisas (isso fica pro usuário ajustar no editor,
+ * arrastando — não há coordenadas confiáveis o bastante vindas da IA pra
+ * pular essa revisão).
+ */
+export function buildSceneFromRecognition(
+  components: { id: string; kind: ComponentKind; label: string }[],
+  connections: { from: string; to: string }[],
+): DiagramSceneState {
+  const nodes: ComponentNode[] = components.map(c => ({ id: c.id, kind: c.kind, label: c.label, legend: [] }));
+  const edges: ConnectionEdge[] = connections.map((c, i) => ({ id: `rec-${i}`, from: c.from, to: c.to }));
+  return {
+    placements: initialPlacement({ components: nodes }),
+    connections: initialConnections({ connections: edges }),
+    photos: [],
+    texts: [],
+  };
 }
 
 /**

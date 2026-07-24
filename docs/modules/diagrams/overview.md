@@ -46,13 +46,13 @@ usuário: útil mais cedo, e o motor automático continua no roadmap):
 | Pacote isolado `packages/cad-engine/` (monorepo) | Módulo comum em `src/utils/cadEngine/` — este repo não é monorepo |
 | Motor de layout automático (grafo, ranking, roteador ortogonal) | Ainda não construído. Existe um **layout fixo inicial** (fileira única) como ponto de partida, editável manualmente por cima. |
 | `ManualLayoutSource` (§17.2) — layout desenhado pelo usuário | **Implementado**: arrastar (clique em qualquer ponto da figura, não só no traço — ver nota abaixo), girar em passos de 90°, **redimensionar** (arrastar o quadrado azul do canto), ligar/desenhar linhas com derivações e pontas soltas, selecionar e arrastar uma linha inteira como bloco. Condutores sem pontos de dobra usam roteamento **ortogonal simplificado** (`orthogonalPath`); com pontos de dobra (`waypoints`), a linha segue exatamente o caminho desenhado (`computeConnectorPoints`) — ver "Ligar / desenhar linha" abaixo. |
-| Biblioteca de símbolos declarativa versionada | 9 símbolos fixos (`symbols.ts`), aproximados de IEC 60617: arranjo FV, inversor, disjuntor, medidor, rede, **DPS**, **fusível**, **aterramento** e **quadro de distribuição** (os 3 últimos vieram direto da legenda de um diagrama ENEL real que o usuário enviou como referência). A maioria fica no eixo horizontal (`y = H/2`), alinhada ao fluxo esquerda→direita; DPS/aterramento são verticais (derivação para o terra, não em série). |
+| Biblioteca de símbolos declarativa versionada | 12 símbolos fixos (`symbols.ts`), aproximados de IEC 60617 e calibrados contra a legenda de dois diagramas reais (ENEL) enviados pelo usuário como referência: arranjo FV, inversor, disjuntor **bipolar**, disjuntor **tripolar**, chave CC, medidor **convencional**, medidor **bidirecional**, rede, DPS, fusível, aterramento e quadro de distribuição. A maioria fica no eixo horizontal (`y = H/2`), alinhada ao fluxo esquerda→direita; DPS/aterramento são verticais (derivação para o terra, não em série). |
 | Componentes fora da cadeia fixa do projeto | **Implementado, mas só visual**: qualquer um dos 6 tipos pode ser adicionado livremente ao diagrama (paleta "Adicionar"), sem precisar existir no cadastro do projeto — útil para representar um 2º inversor, um DPS, um disjuntor extra etc. Não altera `project_equipment` nem qualquer dado do projeto. |
 | Fotos no diagrama | **Implementado**: upload de uma imagem (comprimida no cliente), vira um bloco arrastável/redimensionável no canvas, sai impressa no SVG/PDF exportado. Não faz parte da `Scene` "elétrica" — é uma camada `PHOTO` à parte. |
 | Texto/legenda livre no diagrama | **Implementado**: bloco de texto solto (`PlacedText`), arrastável, editável por duplo-clique. Tanto ele quanto a legenda de qualquer componente aceitam tags `{chave}` do **mesmo catálogo dos templates .docx** (`TEMPLATE_VARIABLES`/`buildProjectValues` em `projectValues.ts`) — resolvidas ao vivo no canvas e no export, não gravadas como valor fixo. |
 | Exportadores SVG / PDF / DXF / PNG via IR neutra | **SVG e PDF**, ambos consumindo a mesma `Scene` (IR já segue o princípio D1: um exportador novo não toca em layout/símbolos). `Primitive` ganhou a variante `image` para as fotos; `BlockInstance` ganhou `scale` (símbolos redimensionáveis). |
 | JSON Técnico completo (grafo elétrico genérico) | `TechnicalJsonMvp`: cadeia fixa PV → Inversor → Disjuntor → Medidor → Rede, montada a partir de `project_equipment`/`project_general_data` do próprio projeto. Componentes adicionados manualmente (acima) não entram nesse JSON — só existem no layout salvo. |
-| `DiagramTemplate` — salvar/aplicar layout como template (§17.3) | **MVP implementado**: tabela `diagram_templates` (banco, tenant-isolada), aba própria (`/admin/diagram-templates`) pra montar/salvar modelos manualmente, com o mesmo `DiagramEditor`. Ainda **não tem**: importar um modelo salvo dentro do modal do projeto (falta esse elo), nem casamento automático por critério (§17.3 fala em match `exact`/`parametric` — aqui é 100% manual). Reconhecimento automático a partir de um PDF enviado (pedido do usuário) também não existe — ver "Melhorias futuras". |
+| `DiagramTemplate` — salvar/aplicar layout como template (§17.3) | **MVP implementado**: tabela `diagram_templates` (banco, tenant-isolada), aba própria (`/admin/diagram-templates`) pra montar/salvar modelos manualmente (ou **importar de um PDF**, ver "Reconhecimento automático" abaixo), com o mesmo `DiagramEditor`. Ainda **não tem**: importar um modelo salvo dentro do modal do projeto (falta esse elo), nem casamento automático por critério (§17.3 fala em match `exact`/`parametric` — aqui é 100% manual). |
 
 ## Arquivos
 - `src/utils/cadEngine/types.ts` — `TechnicalJsonMvp` + Scene IR (subconjunto de D1; `BlockInstance.rotation`; `Primitive` inclui `image`; `LayerId` inclui `PHOTO`).
@@ -60,7 +60,7 @@ usuário: útil mais cedo, e o motor automático continua no roadmap):
 - `src/utils/cadEngine/paper.ts` — constantes de papel/margem + moldura/carimbo (compartilhado entre o layout fixo e o editável).
 - `src/utils/cadEngine/buildTechnicalJson.ts` — projeto → JSON técnico (reaproveita `buildProjectValues`).
 - `src/utils/cadEngine/layout.ts` — JSON técnico → `Scene` com layout fixo (posição inicial, antes de qualquer edição).
-- `src/utils/cadEngine/editableLayout.ts` — `PlacedSymbol` (com `scale`), `ManualConnection` (`from`/`to` são `ConnectionEndpoint` — `{kind:'symbol',id}` ou `{kind:'point',at}` —, mais `waypoints?: Point[]`), `PlacedPhoto`, `PlacedText`, `orthogonalPath`, `computeConnectorPoints` (aceita qualquer combinação de pontas symbol/point; `edgePoint()` interno recua pelo `CONNECTION_INSET`), `isConnectionResolvable`, `blockCenter` (considera a escala), `findNearestSymbol`/`nearestPointOnPolyline`/`SNAP_RADIUS` (snapping de clique/soltura pra componente ou linha perto o bastante), `snapToGrid`, `buildSceneFromPlacement` (a `Scene` a partir do estado editado + fotos + textos, resolvendo tags via `tagValues`).
+- `src/utils/cadEngine/editableLayout.ts` — `PlacedSymbol` (com `scale`), `ManualConnection` (`from`/`to` são `ConnectionEndpoint` — `{kind:'symbol',id}` ou `{kind:'point',at}` —, mais `waypoints?: Point[]`), `PlacedPhoto`, `PlacedText`, `orthogonalPath`, `computeConnectorPoints` (aceita qualquer combinação de pontas symbol/point; `edgePoint()` interno recua pelo `CONNECTION_INSET`), `isConnectionResolvable`, `blockCenter` (considera a escala), `findNearestSymbol`/`nearestPointOnPolyline`/`SNAP_RADIUS` (snapping de clique/soltura pra componente ou linha perto o bastante), `snapToGrid`, `buildSceneFromPlacement` (a `Scene` a partir do estado editado + fotos + textos, resolvendo tags via `tagValues`), `buildSceneFromRecognition` (resultado da IA de reconhecimento → `DiagramSceneState`, reaproveitando `initialPlacement`/`initialConnections` — mesma fileira inicial de qualquer diagrama novo).
 - `src/utils/cadEngine/exportSvg.ts` / `exportPdf.ts` — `Scene` → SVG / PDF, com suporte a `rotation`/`scale` do bloco (PDF transforma os pontos manualmente — escala em torno do centro, depois gira, mesma ordem em ambos; SVG usa `transform="...rotate()...scale()..."` nativo via `blockTransform()`, reaproveitado ao vivo pelo canvas) e à primitiva `image` (SVG: `<image href>`; PDF: `doc.addImage`, formato detectado pelo prefixo do data URL). PDF via `jspdf`, já usado em `resumoPdf.ts` — nenhuma dependência nova.
 - `src/utils/projectValues.ts` — `resolveProjectTags(texto, values)`: substitui `{chave}` usando o mesmo catálogo `TEMPLATE_VARIABLES`/`buildProjectValues` dos templates .docx; tag desconhecida fica como está. `buildSampleValues()` (já existia, reaproveitado) gera dados fictícios pra prévia dos modelos.
 - `src/components/diagrams/DiagramEditor.tsx` — canvas SVG interativo compartilhado (arrastar/girar/redimensionar/ligar-e-desenhar-com-derivação/selecionar-e-arrastar-linha-inteira/adicionar componente, foto ou texto) + botões de download. Não sabe de onde vêm os dados nem pra onde vão — recebe `json`/`initialState`/`tagValues` e devolve cada mudança via `onStateChange`; quem chama decide onde persistir.
@@ -68,6 +68,8 @@ usuário: útil mais cedo, e o motor automático continua no roadmap):
 - `src/pages/admin/DiagramTemplates.tsx` — motor de templates: lista de modelos (criar/renomear/duplicar/excluir) e, ao abrir um, usa o mesmo `DiagramEditor` com `json.components = []` (modelo começa vazio, sem cadeia fixa — todo símbolo nasce com prefixo `manual-`) e autosave debounced (800ms) em `diagram_templates.scene_data`.
 - `src/hooks/useDiagramTemplates.ts` — CRUD via React Query (`useDiagramTemplates`, `useCreateDiagramTemplate`, `useUpdateDiagramTemplate`, `useDeleteDiagramTemplate`, `useDuplicateDiagramTemplate`).
 - `src/hooks/useDiagramEngineAccess.ts` — regra de acesso única, reaproveitada no menu lateral, na rota e na aba do modal do projeto.
+- `src/hooks/useDiagramRecognition.ts` — chama a edge function `diagram-recognize` (upload → base64 → IA de visão → lista de componentes/ligações).
+- `supabase/functions/diagram-recognize/index.ts` — edge function (mesmo padrão do `claudinho-verifica`: Anthropic API, PDF nativo via `anthropic-beta: pdfs-2024-09-25`, `consume_ai_quota`).
 
 ## Permissões
 `useDiagramEngineAccess()`: papel `admin` ou `staff` **e** tenant
@@ -116,6 +118,35 @@ dois editores reaproveitam o mesmo componente e o mesmo formato de dados
 resultado de `reconcile()` — mas a decisão de **como o usuário escolhe qual
 modelo importar** (dropdown manual? por concessionária? por nº de
 inversores?) ainda não foi tomada com o usuário. Ver roadmap.
+
+## Reconhecimento automático a partir de PDF
+Botão "Importar de PDF" na lista de modelos (`/admin/diagram-templates`): o
+usuário sobe um PDF (ou foto) de um diagrama unifilar já aprovado, a edge
+function `diagram-recognize` chama a IA de visão (Anthropic, mesmo mecanismo
+do Claudinho — `claudinho-verifica`) com o vocabulário fechado dos 12
+`ComponentKind` existentes e devolve **só topologia**: quais componentes
+existem (`kind` + rótulo) e como se ligam entre si, nunca posição/rotação
+exata (a IA não é confiável o bastante pra isso, e não vale a pena fingir que
+é — ver "Por que só topologia" abaixo). O front (`buildSceneFromRecognition`)
+usa essa lista pra criar um novo `diagram_template`, já com a mesma fileira
+inicial de qualquer diagrama novo (`initialPlacement`/`initialConnections`),
+e abre direto no editor com um aviso roxo: **"reconhecido automaticamente,
+revise antes de usar"**. Dados pessoais do documento (titular, endereço, ART,
+CPF/CNPJ) são explicitamente instruídos a ficar de fora da resposta — a IA só
+devolve tipo/rótulo de componente e conexão, nunca texto livre do documento.
+
+**Por que só topologia, sem posição/rotação/coordenadas:** pedir à IA
+coordenadas em mm alinhadas à nossa página teria uma taxa de erro alta demais
+pra ser útil (LLMs de visão são bons em "o que tem aqui" e "o que conecta com
+o quê", ruins em coordenada pixel-perfeita) — e o editor manual já existe e é
+bom o bastante pra reposicionar rápido. Reaproveitar `initialPlacement` em vez
+de inventar um layout novo pro caso "vindo da IA" também mantém uma única
+implementação de posicionamento inicial pra manter.
+
+Cota de uso: mesma função `consume_ai_quota` do Claudinho (`_kind:
+'diagram_recognize'`), registrada em `ai_usage_log` — hoje sem efeito prático
+porque o recurso é restrito à GD Manager (plano interno sem limite), mas já
+fica com o consumo rastreado se algum dia abrir pra outros tenants.
 
 ## Componentes e fotos adicionados manualmente
 Além dos 5 componentes que vêm do cadastro do projeto (`TechnicalJsonMvp`), a
@@ -299,17 +330,25 @@ flowchart LR
   esse tipo de ponta continuam funcionando como estavam (nada quebra), mas
   arrastar essa ponta agora sempre resolve pra um componente/linha perto ou
   volta pro lugar original — não dá mais pra deixá-la solta de novo.
+- **Sem cor por tipo de condutor** (fase/neutro/terra, convenção que aparece
+  na legenda de diagramas reais) nem símbolo dedicado pra bitola
+  (`2#6mm²`) — condutor é sempre uma linha única, e a bitola, se precisar
+  aparecer, é texto livre posicionado ao lado. Deliberado: é estilo de linha
+  e anotação, não um componente discreto — implementar mudaria
+  `exportSvg.ts`/`exportPdf.ts`/`DiagramEditor.tsx` pra pouco ganho real.
 - Sem exportador DXF.
-- `DiagramTemplate` (motor de templates) é **MVP manual**: monta/salva
-  modelos numa aba própria, mas o modal do projeto ainda não importa nenhum
-  — falta o elo final (ver "Motor de templates" acima) e o casamento
-  automático por critério (§17.3 da proposta) nunca foi implementado.
-- **Reconhecimento automático a partir de um PDF enviado** (pedido direto do
-  usuário: subir um diagrama unifilar existente e o sistema reconhecer
-  sozinho traços/componentes) não existe — decidido explicitamente com o
-  usuário que essa é uma iniciativa separada e bem mais complexa (mais perto
-  de reconhecimento de imagem via IA de visão, no padrão do Claudinho, do que
-  de um parser determinístico), a ser planejada à parte.
+- `DiagramTemplate` (motor de templates) monta/salva modelos numa aba própria
+  (manualmente ou por reconhecimento de PDF), mas o modal do projeto ainda
+  não importa nenhum — falta o elo final (ver "Motor de templates" acima) e
+  o casamento automático por critério (§17.3 da proposta) nunca foi
+  implementado.
+- **Reconhecimento automático de PDF só identifica topologia** (quais
+  componentes existem e como se ligam) — nunca posição, rotação ou
+  quantidade exata de itens repetidos com confiança total; todo modelo
+  importado precisa de revisão manual no editor antes de ser considerado
+  pronto (ver "Reconhecimento automático a partir de PDF" acima). Sem
+  memória entre importações — cada PDF é analisado do zero, não aprende com
+  correções feitas em importações anteriores.
 - Layout do projeto persiste só em `localStorage` deste navegador — não
   sincroniza entre quem usa o sistema, e some se o navegador for trocado ou
   o storage limpo. Fotos sem compressão agressiva poderiam estourar a cota
@@ -321,11 +360,13 @@ flowchart LR
 Ordem sugerida, combinada com o usuário: (1) fechar o elo entre o motor de
 templates e o modal do projeto — importar um modelo salvo (decidir como o
 usuário escolhe qual: dropdown manual primeiro, casamento automático por
-critério depois); (2) reconhecimento automático de PDF, como iniciativa
-própria e dedicada (IA de visão); (3) calibrar os símbolos com mais
-diagramas reais; (4) liberar o motor de templates pra todos os tenants
-(RLS já pronto, é só remover a checagem de `is_library`); (5) motor de
-layout automático com roteador/detecção de cruzamento; (6) exportador DXF.
+critério depois); (2) calibrar os símbolos com mais diagramas reais e, se o
+reconhecimento de PDF errar sistematicamente algum tipo de componente,
+ajustar o vocabulário/prompt de `diagram-recognize`; (3) liberar o motor de
+templates pra todos os tenants (RLS já pronto, é só remover a checagem de
+`is_library`); (4) motor de layout automático com roteador/detecção de
+cruzamento (o reconhecimento de PDF se beneficiaria direto: hoje cai na
+mesma fileira inicial de qualquer diagrama novo); (5) exportador DXF.
 Esta fatia (editor dentro do modal do projeto) continua recebendo incrementos
 diretos. Ver a proposta completa em `DIAGRAMA UNIFILAR/cad-engine-arquitetura.md`
 para o plano em etapas (motor de layout automático, roteamento, DXF, editor
