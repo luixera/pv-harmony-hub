@@ -30,16 +30,17 @@
   A folha exportada tem legenda automática, carimbo completo (resp.
   técnico/ART/revisão editáveis com tags), caixas de agrupamento e bitola
   por ligação — ver [modules/diagrams](../modules/diagrams/overview.md) e
-  [ADR 0006](../adr/0006-cad-engine-alpha.md). **Plano de 4 fases aprovado
-  (10ª rodada)** — A (folha) e C (reconhecimento+underlay) entregues;
-  próximos: **Fase B** (undo/redo, zoom/pan, painel de propriedades no
-  lugar dos prompts, multi-seleção) e **Fase D** (importar modelo dentro do
-  modal do projeto — dropdown + sugestão por concessionária — e diagrama do
-  projeto persistido no banco em vez de localStorage). Depois: calibrar
-  prompt/símbolos com mais unifilares reais; liberar pra todos os tenants
-  (RLS pronto); componentes em série desenhados "no fio" + portas CC/CA no
-  inversor (Fase E, refactor visual final); motor de layout automático;
-  exportador DXF; BESS/múltiplos inversores oficiais no cadastro.
+  [ADR 0006](../adr/0006-cad-engine-alpha.md). **Plano de 4 fases da revisão
+  (10ª rodada) todo entregue**: A folha profissional, B UX do editor
+  (undo/redo Ctrl+Z, zoom/pan, painel de propriedades, multi-seleção,
+  Ctrl+D), C reconhecimento fiel + underlay, D ciclo fechado (diagrama do
+  projeto em `project_diagrams` no banco + importar modelo no modal com
+  sugestão por concessionária). Próximos: casamento automático de modelo
+  por critério paramétrico; calibrar prompt/símbolos com mais unifilares
+  reais; liberar pra todos os tenants (RLS pronto); componentes em série
+  desenhados "no fio" + portas CC/CA no inversor (Fase E, refactor visual
+  final); motor de layout automático; exportador DXF; BESS/múltiplos
+  inversores oficiais no cadastro.
 - **Templates de outras concessionárias em .pdf/.xls**: hoje o motor só aceita
   `.docx`. Avaliar suporte a PDF com formulário (AcroForm) e a `.xlsx`.
 - **Catálogo de equipamentos no formulário público**: o combobox não aparece no

@@ -12,15 +12,20 @@ Registro de decisões de produto/UX (não arquiteturais — essas ficam em
   (funcional, sólido, com UX). Diagnóstico apresentado e aprovado ("sim"):
   o que existia era um editor de diagrama de blocos, não de unifilar. Plano
   em 4 fases na ordem A folha profissional → C reconhecimento fiel +
-  underlay → B UX do editor → D fechar o ciclo template→projeto. Entregues
-  A e C: legenda automática, carimbo completo (resp. técnico/ART/revisão
+  underlay → B UX do editor → D fechar o ciclo template→projeto — **as 4
+  entregues na mesma rodada**. A e C: legenda automática, carimbo completo (resp. técnico/ART/revisão
   como campos da folha com tags), caixas de agrupamento, bitola por
   ligação; reconhecimento passou a pedir posições normalizadas 0–100 à IA
   (revisão explícita da decisão anterior de "nunca pedir posição" — posição
   RELATIVA é confiável, mm exato não) e o PDF original agora aparece
   esmaecido no fundo do editor pra conferência (nunca no arquivo
-  exportado). Validado com o diagrama ENEL real: disposição espacial
-  preservada. Ver [ADR 0006](../adr/0006-cad-engine-alpha.md). (jul/2026)
+  exportado). B: undo/redo, zoom/pan, painel de propriedades no lugar dos
+  prompts, multi-seleção/duplicar. D: diagrama do projeto saiu do
+  localStorage pro banco (project_diagrams) e o modal do projeto agora
+  IMPORTA modelos (dropdown + sugestão por concessionária — decisão de UX
+  que estava pendente desde a 6ª rodada). Validado com o diagrama ENEL
+  real: disposição espacial preservada. Ver
+  [ADR 0006](../adr/0006-cad-engine-alpha.md). (jul/2026)
 - **Diagrama unifilar — reconhecimento de PDF ganha stage/branch (fileira
   principal + derivações) em vez de fileira única** (9ª rodada, mesmo mês):
   a primeira importação real ficou aquém do esperado ("falhou

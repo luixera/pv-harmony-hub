@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Loader2, Download, FileImage, RotateCw, Link2, Trash2, RefreshCw,
-  Image as ImageIcon, Plus, Pencil, Type, BoxSelect, FileText,
+  Image as ImageIcon, Plus, Type, BoxSelect, FileText,
+  Undo2, Redo2, ZoomIn, ZoomOut, Maximize, Copy,
 } from 'lucide-react';
 import {
   ConnectionEndpoint, DiagramSceneState, ManualConnection, PlacedGroup, PlacedPhoto, PlacedSymbol, PlacedText,
@@ -70,6 +71,8 @@ export function DiagramEditor({
   const [sheet, setSheet] = useState<SheetOptions>({});
   const [loaded, setLoaded] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  /** Multi-seleção de símbolos (shift+clique / retângulo de seleção) — sempre contém `selectedId` quando há um. */
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [selectedPhotoId, setSelectedPhotoId] = useState<string | null>(null);
   const [selectedTextId, setSelectedTextId] = useState<string | null>(null);
   const [selectedConnId, setSelectedConnId] = useState<string | null>(null);
@@ -81,9 +84,51 @@ export function DiagramEditor({
   const [sheetPanelOpen, setSheetPanelOpen] = useState(false);
   const [showUnderlay, setShowUnderlay] = useState(true);
   const [generatingPdf, setGeneratingPdf] = useState(false);
+  /** Janela visível da folha (zoom/pan) — viewBox do SVG em mm. */
+  const [viewBox, setViewBox] = useState({ x: 0, y: 0, w: PAPER.widthMm, h: PAPER.heightMm });
+  const [marquee, setMarquee] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
+  const [historyTick, setHistoryTick] = useState(0); // só pra reabilitar/desabilitar os botões desfazer/refazer
 
   const clearSelection = () => {
-    setSelectedId(null); setSelectedPhotoId(null); setSelectedTextId(null); setSelectedConnId(null); setSelectedGroupId(null);
+    setSelectedId(null); setSelectedIds(new Set());
+    setSelectedPhotoId(null); setSelectedTextId(null); setSelectedConnId(null); setSelectedGroupId(null);
+  };
+
+  // ── Desfazer/refazer ──────────────────────────────────────────────────────
+  // Snapshots do DiagramSceneState inteiro, tirados no INÍCIO de cada ação
+  // que muda o desenho (não a cada mousemove) — o estado é pequeno o
+  // suficiente (fotos são a exceção; ainda ok pra ~50 passos).
+  const HISTORY_MAX = 50;
+  const currentStateRef = useRef<DiagramSceneState>({ placements: [], connections: [], photos: [], texts: [], groups: [], sheet: {} });
+  const historyRef = useRef<{ undo: DiagramSceneState[]; redo: DiagramSceneState[] }>({ undo: [], redo: [] });
+  const snapshot = () => {
+    historyRef.current.undo.push(currentStateRef.current);
+    if (historyRef.current.undo.length > HISTORY_MAX) historyRef.current.undo.shift();
+    historyRef.current.redo = [];
+    setHistoryTick(t => t + 1);
+  };
+  const applyState = (s: DiagramSceneState) => {
+    setPlacements(s.placements);
+    setConnections(s.connections);
+    setPhotos(s.photos);
+    setTexts(s.texts);
+    setGroups(s.groups ?? []);
+    setSheet(s.sheet ?? {});
+    clearSelection();
+  };
+  const undo = () => {
+    const prev = historyRef.current.undo.pop();
+    if (!prev) return;
+    historyRef.current.redo.push(currentStateRef.current);
+    applyState(prev);
+    setHistoryTick(t => t + 1);
+  };
+  const redo = () => {
+    const next = historyRef.current.redo.pop();
+    if (!next) return;
+    historyRef.current.undo.push(currentStateRef.current);
+    applyState(next);
+    setHistoryTick(t => t + 1);
   };
 
   // Reseeda o estado interno sempre que o "documento" (projeto/template) muda.
@@ -100,6 +145,13 @@ export function DiagramEditor({
     setDrawnWaypoints([]);
     setSheetPanelOpen(false);
     setShowUnderlay(true);
+    setViewBox({ x: 0, y: 0, w: PAPER.widthMm, h: PAPER.heightMm });
+    historyRef.current = { undo: [], redo: [] };
+    currentStateRef.current = {
+      placements: initialState.placements, connections: initialState.connections,
+      photos: initialState.photos, texts: initialState.texts,
+      groups: initialState.groups ?? [], sheet: initialState.sheet ?? {},
+    };
     setLoaded(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- só reage à troca de documento
   }, [stateKey]);
@@ -107,7 +159,9 @@ export function DiagramEditor({
   // Notifica o dono (localStorage por projeto, ou o motor de templates) a cada mudança.
   useEffect(() => {
     if (!loaded) return;
-    onStateChange({ placements, connections, photos, texts, groups, sheet });
+    const state: DiagramSceneState = { placements, connections, photos, texts, groups, sheet };
+    currentStateRef.current = state; // espelho pro desfazer/refazer (snapshot lê daqui)
+    onStateChange(state);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- onStateChange não entra: reagimos à mudança de estado, não à identidade da função
   }, [placements, connections, photos, texts, groups, sheet, loaded]);
 
@@ -134,9 +188,14 @@ export function DiagramEditor({
 
   // ── Interação: arrastar símbolos, fotos, textos, linhas inteiras e pontos ─
   const svgRef = useRef<SVGSVGElement>(null);
+  const viewBoxRef = useRef(viewBox);
+  useEffect(() => { viewBoxRef.current = viewBox; }, [viewBox]);
+  const spaceHeldRef = useRef(false);
   type DragState =
-    | { type: 'symbol'; id: string; startX: number; startY: number; origX: number; origY: number; moved: boolean }
+    | { type: 'symbol'; id: string; startX: number; startY: number; origX: number; origY: number; moved: boolean; origPositions?: Record<string, { x: number; y: number }> }
     | { type: 'symbol-resize'; id: string; startX: number; startY: number; origScale: number; moved: boolean }
+    | { type: 'pan'; startX: number; startY: number; origVb: { x: number; y: number; w: number; h: number }; moved: boolean }
+    | { type: 'marquee'; startX: number; startY: number; startMm: Point; moved: boolean }
     | { type: 'waypoint'; connId: string; index: number; startX: number; startY: number; origX: number; origY: number; moved: boolean }
     | { type: 'endpoint'; connId: string; which: 'from' | 'to'; startX: number; startY: number; origX: number; origY: number; lastX: number; lastY: number; moved: boolean }
     | { type: 'conn-move'; connId: string; startX: number; startY: number; origWaypoints: Point[]; origFromAt: Point | null; origToAt: Point | null; moved: boolean }
@@ -145,22 +204,55 @@ export function DiagramEditor({
     | { type: 'text'; id: string; startX: number; startY: number; origX: number; origY: number; moved: boolean }
     | { type: 'group'; id: string; startX: number; startY: number; origX: number; origY: number; moved: boolean }
     | { type: 'group-resize'; id: string; startX: number; startY: number; origW: number; origH: number; moved: boolean };
-  const dragRef = useRef<DragState | null>(null);
+  // `preState`: estado capturado no mousedown — só vira passo de desfazer se o
+  // arrasto realmente mover (evita poluir o histórico com cliques de seleção).
+  const dragRef = useRef<(DragState & { preState?: DiagramSceneState }) | null>(null);
 
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
       const drag = dragRef.current;
       if (!drag || !svgRef.current) return;
       const rect = svgRef.current.getBoundingClientRect();
-      const pxToMm = PAPER.widthMm / rect.width;
+      const pxToMm = viewBoxRef.current.w / rect.width; // considera o zoom atual
       const dx = (e.clientX - drag.startX) * pxToMm;
       const dy = (e.clientY - drag.startY) * pxToMm;
+      const wasMoved = drag.moved;
       if (Math.abs(dx) > 0.3 || Math.abs(dy) > 0.3) drag.moved = true;
+      if (!wasMoved && drag.moved && drag.preState) {
+        // primeiro movimento real deste arrasto: o estado pré-arrasto vira um passo de desfazer
+        historyRef.current.undo.push(drag.preState);
+        if (historyRef.current.undo.length > HISTORY_MAX) historyRef.current.undo.shift();
+        historyRef.current.redo = [];
+        setHistoryTick(t => t + 1);
+        drag.preState = undefined;
+      }
 
-      if (drag.type === 'symbol') {
-        let nx = drag.origX + dx, ny = drag.origY + dy;
-        if (snap) { nx = snapToGrid(nx); ny = snapToGrid(ny); }
-        setPlacements(prev => prev.map(p => (p.id === drag.id ? { ...p, x: nx, y: ny } : p)));
+      if (drag.type === 'pan') {
+        const vb = drag.origVb;
+        const maxX = PAPER.widthMm - vb.w, maxY = PAPER.heightMm - vb.h;
+        setViewBox({
+          x: Math.max(0, Math.min(maxX, vb.x - dx)),
+          y: Math.max(0, Math.min(maxY, vb.y - dy)),
+          w: vb.w, h: vb.h,
+        });
+      } else if (drag.type === 'marquee') {
+        const vb = viewBoxRef.current;
+        const mmX = vb.x + (e.clientX - rect.left) * pxToMm;
+        const mmY = vb.y + (e.clientY - rect.top) * pxToMm;
+        setMarquee({ x1: drag.startMm.x, y1: drag.startMm.y, x2: mmX, y2: mmY });
+      } else if (drag.type === 'symbol') {
+        if (drag.origPositions) {
+          // multi-seleção: move todos os selecionados juntos, mantendo o arranjo
+          const sdx = snap ? snapToGrid(dx) : dx, sdy = snap ? snapToGrid(dy) : dy;
+          setPlacements(prev => prev.map(p => {
+            const orig = drag.origPositions![p.id];
+            return orig ? { ...p, x: orig.x + sdx, y: orig.y + sdy } : p;
+          }));
+        } else {
+          let nx = drag.origX + dx, ny = drag.origY + dy;
+          if (snap) { nx = snapToGrid(nx); ny = snapToGrid(ny); }
+          setPlacements(prev => prev.map(p => (p.id === drag.id ? { ...p, x: nx, y: ny } : p)));
+        }
       } else if (drag.type === 'symbol-resize') {
         const deltaScale = dx / SYMBOL_BBOX.w; // cada W mm arrastados = +1x de escala
         const newScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, drag.origScale + deltaScale));
@@ -213,11 +305,32 @@ export function DiagramEditor({
         setGroups(prev => prev.map(g => (g.id === drag.id ? { ...g, w: nw, h: nh } : g)));
       }
     };
-    const onUp = () => {
+    const onUp = (e: MouseEvent) => {
       const drag = dragRef.current;
       dragRef.current = null;
       if (!drag) return;
-      if (drag.type === 'symbol' && !drag.moved) handleSymbolClick(drag.id); // arrasto não ocorreu → foi um clique
+      if (drag.type === 'marquee') {
+        setMarquee(null);
+        if (drag.moved && svgRef.current) {
+          const rect = svgRef.current.getBoundingClientRect();
+          const vb = viewBoxRef.current;
+          const pxToMm = vb.w / rect.width;
+          const endX = vb.x + (e.clientX - rect.left) * pxToMm;
+          const endY = vb.y + (e.clientY - rect.top) * pxToMm;
+          const x0 = Math.min(drag.startMm.x, endX), x1 = Math.max(drag.startMm.x, endX);
+          const y0 = Math.min(drag.startMm.y, endY), y1 = Math.max(drag.startMm.y, endY);
+          const inside = placementsRef.current.filter(p => {
+            const cx = p.x + (SYMBOL_BBOX.w * p.scale) / 2, cy = p.y + (SYMBOL_BBOX.h * p.scale) / 2;
+            return cx >= x0 && cx <= x1 && cy >= y0 && cy <= y1;
+          });
+          setSelectedIds(new Set(inside.map(p => p.id)));
+          setSelectedId(inside.length > 0 ? inside[inside.length - 1].id : null);
+          setSelectedPhotoId(null); setSelectedTextId(null); setSelectedConnId(null); setSelectedGroupId(null);
+          marqueeJustFinishedRef.current = true; // o click que vem em seguida não deve limpar a seleção recém-feita
+        }
+        return;
+      }
+      if (drag.type === 'symbol' && !drag.moved) handleSymbolClick(drag.id, e.shiftKey); // arrasto não ocorreu → foi um clique
       if (drag.type === 'endpoint' && drag.moved) {
         // Uma ponta só pode ficar num componente ou em cima de outra linha —
         // nunca solta no vazio. Perto de um componente, gruda nele; senão,
@@ -247,17 +360,22 @@ export function DiagramEditor({
   const handleSymbolMouseDown = (e: React.MouseEvent, p: PlacedSymbol) => {
     e.preventDefault();
     e.stopPropagation();
-    dragRef.current = { type: 'symbol', id: p.id, startX: e.clientX, startY: e.clientY, origX: p.x, origY: p.y, moved: false };
+    // arrastar um símbolo que faz parte da multi-seleção move o conjunto inteiro
+    const origPositions = selectedIds.size > 1 && selectedIds.has(p.id)
+      ? Object.fromEntries(placements.filter(x => selectedIds.has(x.id)).map(x => [x.id, { x: x.x, y: x.y }]))
+      : undefined;
+    dragRef.current = { type: 'symbol', id: p.id, startX: e.clientX, startY: e.clientY, origX: p.x, origY: p.y, moved: false, origPositions, preState: currentStateRef.current };
   };
 
   const handleSymbolResizeMouseDown = (e: React.MouseEvent, p: PlacedSymbol) => {
     e.preventDefault();
     e.stopPropagation();
-    dragRef.current = { type: 'symbol-resize', id: p.id, startX: e.clientX, startY: e.clientY, origScale: p.scale, moved: false };
+    dragRef.current = { type: 'symbol-resize', id: p.id, startX: e.clientX, startY: e.clientY, origScale: p.scale, moved: false, preState: currentStateRef.current };
   };
 
   const finishLink = (to: ConnectionEndpoint) => {
     if (!linkFrom) return;
+    snapshot();
     setConnections(prev => [...prev, {
       id: `manual-${Date.now()}`, from: linkFrom, to,
       waypoints: drawnWaypoints.length ? drawnWaypoints : undefined,
@@ -266,24 +384,39 @@ export function DiagramEditor({
     setDrawnWaypoints([]);
   };
 
-  const handleSymbolClick = (id: string) => {
+  const handleSymbolClick = (id: string, shiftKey = false) => {
     if (linkMode) {
       if (!linkFrom) { setLinkFrom({ kind: 'symbol', id }); setDrawnWaypoints([]); return; }
       if (linkFrom.kind === 'symbol' && linkFrom.id === id) { setLinkFrom(null); setDrawnWaypoints([]); return; } // clicou no mesmo: cancela
       finishLink({ kind: 'symbol', id });
       return;
     }
-    setSelectedId(prev => (prev === id ? null : id));
-    setSelectedPhotoId(null); setSelectedTextId(null); setSelectedConnId(null);
+    if (shiftKey) {
+      // shift+clique: entra/sai da multi-seleção sem desmarcar os demais
+      setSelectedIds(prev => {
+        const next = new Set(prev);
+        if (selectedId && !next.has(selectedId)) next.add(selectedId);
+        if (next.has(id)) next.delete(id); else next.add(id);
+        setSelectedId(next.has(id) ? id : (next.values().next().value ?? null));
+        return next;
+      });
+      setSelectedPhotoId(null); setSelectedTextId(null); setSelectedConnId(null); setSelectedGroupId(null);
+      return;
+    }
+    const wasSelected = selectedId === id && selectedIds.size <= 1;
+    setSelectedId(wasSelected ? null : id);
+    setSelectedIds(wasSelected ? new Set() : new Set([id]));
+    setSelectedPhotoId(null); setSelectedTextId(null); setSelectedConnId(null); setSelectedGroupId(null);
   };
 
-  const clientToMm = (clientX: number, clientY: number): Point | null => {
+  const clientToMm = (clientX: number, clientY: number, applySnap = true): Point | null => {
     if (!svgRef.current) return null;
     const rect = svgRef.current.getBoundingClientRect();
-    const pxToMm = PAPER.widthMm / rect.width;
-    const x = (clientX - rect.left) * pxToMm;
-    const y = (clientY - rect.top) * pxToMm;
-    return snap ? { x: snapToGrid(x), y: snapToGrid(y) } : { x, y };
+    const vb = viewBoxRef.current;
+    const pxToMm = vb.w / rect.width;
+    const x = vb.x + (clientX - rect.left) * pxToMm;
+    const y = vb.y + (clientY - rect.top) * pxToMm;
+    return applySnap && snap ? { x: snapToGrid(x), y: snapToGrid(y) } : { x, y };
   };
 
   // Ponto mais próximo sobre alguma linha existente, dentro do raio de
@@ -316,6 +449,21 @@ export function DiagramEditor({
     return linePoint ? { kind: 'point', at: linePoint } : null;
   };
 
+  // Mousedown em área vazia: espaço (ou botão do meio) segurado = pan;
+  // senão, fora do modo de ligar, inicia o retângulo de multi-seleção.
+  const marqueeJustFinishedRef = useRef(false);
+  const handleCanvasMouseDown = (e: React.MouseEvent<SVGSVGElement>) => {
+    if (e.button === 1 || spaceHeldRef.current) {
+      e.preventDefault();
+      dragRef.current = { type: 'pan', startX: e.clientX, startY: e.clientY, origVb: viewBoxRef.current, moved: false };
+      return;
+    }
+    if (e.button !== 0 || linkMode) return;
+    const pt = clientToMm(e.clientX, e.clientY, false);
+    if (!pt) return;
+    dragRef.current = { type: 'marquee', startX: e.clientX, startY: e.clientY, startMm: pt, moved: false };
+  };
+
   // Clique em área vazia do canvas: fora do modo de ligar, desmarca tudo. No
   // modo de ligar: sem origem ainda, só inicia se o clique acertar um
   // componente ou uma linha existente (nunca um ponto solto); com origem já
@@ -323,6 +471,7 @@ export function DiagramEditor({
   // (derivação, se for numa linha); longe dos dois, vira só mais um ponto de
   // dobra do traço (o desenho do meio do caminho continua livre).
   const handleCanvasClick = (e: React.MouseEvent<SVGSVGElement>) => {
+    if (marqueeJustFinishedRef.current) { marqueeJustFinishedRef.current = false; return; }
     if (!linkMode) { clearSelection(); return; }
     const pt = clientToMm(e.clientX, e.clientY);
     if (!pt) return;
@@ -344,18 +493,12 @@ export function DiagramEditor({
 
   const rotateSelected = () => {
     if (!selectedId) return;
+    snapshot();
     setPlacements(prev => prev.map(p => (p.id === selectedId ? { ...p, rotation: (p.rotation + 90) % 360 } : p)));
   };
 
-  const handleEditSymbolText = (p: PlacedSymbol) => {
-    const newLabel = window.prompt('Nome do componente:', p.label);
-    if (newLabel === null) return;
-    const legendRaw = window.prompt('Legenda (uma linha por item; pode usar tags do projeto entre chaves, ex.: {potencia_total}):', p.legend.join('\n'));
-    const legend = legendRaw === null ? p.legend : legendRaw.split('\n').map(s => s.trim()).filter(Boolean);
-    setPlacements(prev => prev.map(x => (x.id === p.id ? { ...x, label: newLabel, legend } : x)));
-  };
-
   const removeConnection = (id: string) => {
+    snapshot();
     setConnections(prev => prev.filter(c => c.id !== id));
     if (selectedConnId === id) setSelectedConnId(null);
   };
@@ -364,8 +507,8 @@ export function DiagramEditor({
     if (linkMode) return; // deixa propagar pro clique de canvas (cria ponto/derivação ali)
     e.preventDefault();
     e.stopPropagation();
+    clearSelection();
     setSelectedConnId(connId);
-    setSelectedId(null); setSelectedPhotoId(null); setSelectedTextId(null);
     const conn = connections.find(c => c.id === connId);
     if (!conn) return;
     let seedWaypoints = conn.waypoints ?? [];
@@ -380,12 +523,14 @@ export function DiagramEditor({
       origFromAt: conn.from.kind === 'point' ? conn.from.at : null,
       origToAt: conn.to.kind === 'point' ? conn.to.at : null,
       moved: false,
+      preState: currentStateRef.current,
     };
   };
 
   // Duplo-clique no meio de um trecho cria um novo ponto de dobra ali.
   const handleConnDoubleClick = (connId: string, index: number, at: Point) => {
     if (linkMode) return;
+    snapshot();
     setConnections(prev => prev.map(c => {
       if (c.id !== connId) return c;
       const waypoints = [...(c.waypoints ?? [])];
@@ -401,11 +546,12 @@ export function DiagramEditor({
     e.preventDefault();
     e.stopPropagation();
     setSelectedConnId(connId);
-    dragRef.current = { type: 'waypoint', connId, index, startX: e.clientX, startY: e.clientY, origX: at.x, origY: at.y, moved: false };
+    dragRef.current = { type: 'waypoint', connId, index, startX: e.clientX, startY: e.clientY, origX: at.x, origY: at.y, moved: false, preState: currentStateRef.current };
   };
 
   const removeWaypoint = (connId: string, index: number) => {
     if (linkMode) return;
+    snapshot();
     setConnections(prev => prev.map(c => {
       if (c.id !== connId) return c;
       const waypoints = [...(c.waypoints ?? [])];
@@ -422,7 +568,7 @@ export function DiagramEditor({
     e.preventDefault();
     e.stopPropagation();
     setSelectedConnId(connId);
-    dragRef.current = { type: 'endpoint', connId, which, startX: e.clientX, startY: e.clientY, origX: at.x, origY: at.y, lastX: at.x, lastY: at.y, moved: false };
+    dragRef.current = { type: 'endpoint', connId, which, startX: e.clientX, startY: e.clientY, origX: at.x, origY: at.y, lastX: at.x, lastY: at.y, moved: false, preState: currentStateRef.current };
   };
 
   // ── Componentes adicionados livremente (não vêm do cadastro do projeto) ──
@@ -432,6 +578,7 @@ export function DiagramEditor({
   const isManualSymbol = (id: string) => id.startsWith('manual-');
 
   const addComponent = (kind: ComponentKind) => {
+    snapshot();
     const manualCount = placements.length - json.components.length;
     const sameKindCount = placements.filter(p => p.kind === kind).length;
     const col = manualCount % 5;
@@ -444,54 +591,134 @@ export function DiagramEditor({
       rotation: 0, scale: 1,
     };
     setPlacements(prev => [...prev, newSymbol]);
+    clearSelection();
     setSelectedId(id);
-    setSelectedPhotoId(null); setSelectedTextId(null); setSelectedConnId(null);
+    setSelectedIds(new Set([id]));
   };
 
   const removeSelected = () => {
     if (selectedGroupId) {
+      snapshot();
       setGroups(prev => prev.filter(g => g.id !== selectedGroupId));
       setSelectedGroupId(null);
       return;
     }
     if (selectedConnId) {
+      snapshot();
       setConnections(prev => prev.filter(c => c.id !== selectedConnId));
       setSelectedConnId(null);
       return;
     }
     if (selectedTextId) {
+      snapshot();
       setTexts(prev => prev.filter(t => t.id !== selectedTextId));
       setSelectedTextId(null);
       return;
     }
     if (selectedPhotoId) {
+      snapshot();
       setPhotos(prev => prev.filter(ph => ph.id !== selectedPhotoId));
       setSelectedPhotoId(null);
       return;
     }
-    if (selectedId && isManualSymbol(selectedId)) {
-      const id = selectedId;
-      setPlacements(prev => prev.filter(p => p.id !== id));
+    // símbolos: remove todos os MANUAIS da multi-seleção (os do cadastro do projeto ficam)
+    const ids = selectedIds.size > 0 ? selectedIds : (selectedId ? new Set([selectedId]) : new Set<string>());
+    const removable = [...ids].filter(isManualSymbol);
+    if (removable.length > 0) {
+      snapshot();
+      const removeSet = new Set(removable);
+      setPlacements(prev => prev.filter(p => !removeSet.has(p.id)));
       setConnections(prev => prev.filter(c =>
-        !(c.from.kind === 'symbol' && c.from.id === id) && !(c.to.kind === 'symbol' && c.to.id === id)
+        !(c.from.kind === 'symbol' && removeSet.has(c.from.id)) && !(c.to.kind === 'symbol' && removeSet.has(c.to.id))
       ));
       setSelectedId(null);
+      setSelectedIds(new Set());
     }
   };
 
-  const canRemoveSelected = !!selectedGroupId || !!selectedConnId || !!selectedTextId || !!selectedPhotoId || (!!selectedId && isManualSymbol(selectedId));
+  const canRemoveSelected = !!selectedGroupId || !!selectedConnId || !!selectedTextId || !!selectedPhotoId
+    || [...(selectedIds.size > 0 ? selectedIds : (selectedId ? [selectedId] : []))].some(isManualSymbol);
 
-  // Esc cancela uma ligação em andamento; Delete/Backspace remove o que estiver selecionado.
+  // Duplicar os símbolos selecionados (Ctrl+D / botão) — só os manuais podem
+  // ser removidos depois, mas duplicar qualquer um vira sempre um "manual-".
+  const duplicateSelected = () => {
+    const ids = selectedIds.size > 0 ? selectedIds : (selectedId ? new Set([selectedId]) : new Set<string>());
+    const originals = placements.filter(p => ids.has(p.id));
+    if (originals.length === 0) return;
+    snapshot();
+    const copies: PlacedSymbol[] = originals.map((p, i) => ({
+      ...p,
+      id: `manual-${p.kind}-${Date.now()}-${i}`,
+      x: p.x + 8, y: p.y + 8,
+    }));
+    setPlacements(prev => [...prev, ...copies]);
+    setSelectedIds(new Set(copies.map(c => c.id)));
+    setSelectedId(copies[copies.length - 1].id);
+  };
+
+  // Teclado: Esc cancela ligação; Delete remove; Ctrl+Z/Ctrl+Shift+Z (ou
+  // Ctrl+Y) desfaz/refaz; Ctrl+D duplica; espaço segurado = pan.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+      if (e.key === ' ') { spaceHeldRef.current = true; return; }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) redo(); else undo();
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(); return; }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd') { e.preventDefault(); duplicateSelected(); return; }
       if (e.key === 'Escape' && linkMode && linkFrom) { setLinkFrom(null); setDrawnWaypoints([]); return; }
       if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); removeSelected(); }
     };
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.key === ' ') spaceHeldRef.current = false;
+    };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [linkMode, linkFrom, selectedConnId, selectedTextId, selectedPhotoId, selectedId, selectedGroupId]);
+    window.addEventListener('keyup', onKeyUp);
+    return () => { window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', onKeyUp); };
+  });
+
+  // Zoom com a roda do mouse, centrado no cursor. Listener nativo com
+  // passive:false — o onWheel do React não deixa dar preventDefault confiável.
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const rect = svg.getBoundingClientRect();
+      const vb = viewBoxRef.current;
+      const pxToMm = vb.w / rect.width;
+      const mmX = vb.x + (e.clientX - rect.left) * pxToMm;
+      const mmY = vb.y + (e.clientY - rect.top) * pxToMm;
+      const factor = e.deltaY > 0 ? 1.15 : 1 / 1.15;
+      const newW = Math.max(30, Math.min(PAPER.widthMm, vb.w * factor));
+      const newH = newW * (PAPER.heightMm / PAPER.widthMm);
+      // mantém o ponto sob o cursor parado durante o zoom
+      const fx = (mmX - vb.x) / vb.w, fy = (mmY - vb.y) / vb.h;
+      const nx = Math.max(0, Math.min(PAPER.widthMm - newW, mmX - fx * newW));
+      const ny = Math.max(0, Math.min(PAPER.heightMm - newH, mmY - fy * newH));
+      setViewBox({ x: nx, y: ny, w: newW, h: newH });
+    };
+    svg.addEventListener('wheel', onWheel, { passive: false });
+    return () => svg.removeEventListener('wheel', onWheel);
+  }, [loaded]);
+
+  const zoomFit = () => setViewBox({ x: 0, y: 0, w: PAPER.widthMm, h: PAPER.heightMm });
+  const zoomStep = (dir: 1 | -1) => {
+    const vb = viewBoxRef.current;
+    const factor = dir > 0 ? 1 / 1.3 : 1.3;
+    const newW = Math.max(30, Math.min(PAPER.widthMm, vb.w * factor));
+    const newH = newW * (PAPER.heightMm / PAPER.widthMm);
+    const cx = vb.x + vb.w / 2, cy = vb.y + vb.h / 2;
+    setViewBox({
+      x: Math.max(0, Math.min(PAPER.widthMm - newW, cx - newW / 2)),
+      y: Math.max(0, Math.min(PAPER.heightMm - newH, cy - newH / 2)),
+      w: newW, h: newH,
+    });
+  };
 
   // ── Tags do projeto (mesmo catálogo dos templates .docx) ─────────────────
   const insertTag = (key: string) => {
@@ -529,9 +756,10 @@ export function DiagramEditor({
         const wMm = 70;
         const hMm = wMm * (ch / cw);
         const id = `photo-${Date.now()}`;
+        snapshot();
         setPhotos(prev => [...prev, { id, href, x: START_X, y: CENTER_Y - hMm / 2, w: wMm, h: hMm }]);
+        clearSelection();
         setSelectedPhotoId(id);
-        setSelectedId(null); setSelectedTextId(null); setSelectedConnId(null);
       };
       img.src = reader.result as string;
     };
@@ -541,59 +769,53 @@ export function DiagramEditor({
   const handlePhotoMouseDown = (e: React.MouseEvent, ph: PlacedPhoto) => {
     e.preventDefault();
     e.stopPropagation();
+    clearSelection();
     setSelectedPhotoId(ph.id);
-    setSelectedId(null); setSelectedTextId(null); setSelectedConnId(null);
-    dragRef.current = { type: 'photo', id: ph.id, startX: e.clientX, startY: e.clientY, origX: ph.x, origY: ph.y, moved: false };
+    dragRef.current = { type: 'photo', id: ph.id, startX: e.clientX, startY: e.clientY, origX: ph.x, origY: ph.y, moved: false, preState: currentStateRef.current };
   };
 
   const handlePhotoResizeMouseDown = (e: React.MouseEvent, ph: PlacedPhoto) => {
     e.preventDefault();
     e.stopPropagation();
-    dragRef.current = { type: 'photo-resize', id: ph.id, startX: e.clientX, startY: e.clientY, origW: ph.w, origH: ph.h, moved: false };
+    dragRef.current = { type: 'photo-resize', id: ph.id, startX: e.clientX, startY: e.clientY, origW: ph.w, origH: ph.h, moved: false, preState: currentStateRef.current };
   };
 
   const removePhoto = (id: string) => {
+    snapshot();
     setPhotos(prev => prev.filter(p => p.id !== id));
     if (selectedPhotoId === id) setSelectedPhotoId(null);
   };
 
   // ── Textos soltos ─────────────────────────────────────────────────────────
   const handleAddText = () => {
-    const value = window.prompt('Texto (pode usar tags do projeto entre chaves, ex.: {nome_titular}):', '');
-    if (!value) return;
+    snapshot();
     const id = `manual-text-${Date.now()}`;
-    setTexts(prev => [...prev, { id, value, x: START_X, y: CENTER_Y - 30, size: 3.2 }]);
-    setSelectedTextId(id);
-    setSelectedId(null); setSelectedPhotoId(null); setSelectedConnId(null);
-  };
-
-  const handleEditText = (t: PlacedText) => {
-    const value = window.prompt('Editar texto:', t.value);
-    if (value === null) return;
-    setTexts(prev => prev.map(x => (x.id === t.id ? { ...x, value } : x)));
+    setTexts(prev => [...prev, { id, value: 'Texto', x: START_X, y: CENTER_Y - 30, size: 3.2 }]);
+    clearSelection();
+    setSelectedTextId(id); // o painel de propriedades abre já com o campo pra digitar
   };
 
   const handleTextMouseDown = (e: React.MouseEvent, t: PlacedText) => {
     e.preventDefault();
     e.stopPropagation();
+    clearSelection();
     setSelectedTextId(t.id);
-    setSelectedId(null); setSelectedPhotoId(null); setSelectedConnId(null);
-    dragRef.current = { type: 'text', id: t.id, startX: e.clientX, startY: e.clientY, origX: t.x, origY: t.y, moved: false };
+    dragRef.current = { type: 'text', id: t.id, startX: e.clientX, startY: e.clientY, origX: t.x, origY: t.y, moved: false, preState: currentStateRef.current };
   };
 
   const removeText = (id: string) => {
+    snapshot();
     setTexts(prev => prev.filter(t => t.id !== id));
     if (selectedTextId === id) setSelectedTextId(null);
   };
 
   // ── Caixas de agrupamento ─────────────────────────────────────────────────
   const handleAddGroup = () => {
-    const title = window.prompt('Título do grupo (ex.: QG – Sistema Fotovoltaico):', '');
-    if (!title) return;
+    snapshot();
     const id = `group-${Date.now()}`;
-    setGroups(prev => [...prev, { id, title, x: START_X, y: CENTER_Y - 25, w: 80, h: 50 }]);
+    setGroups(prev => [...prev, { id, title: 'Grupo', x: START_X, y: CENTER_Y - 25, w: 80, h: 50 }]);
     clearSelection();
-    setSelectedGroupId(id);
+    setSelectedGroupId(id); // título edita no painel de propriedades
   };
 
   const handleGroupMouseDown = (e: React.MouseEvent, g: PlacedGroup) => {
@@ -602,29 +824,18 @@ export function DiagramEditor({
     e.stopPropagation();
     clearSelection();
     setSelectedGroupId(g.id);
-    dragRef.current = { type: 'group', id: g.id, startX: e.clientX, startY: e.clientY, origX: g.x, origY: g.y, moved: false };
+    dragRef.current = { type: 'group', id: g.id, startX: e.clientX, startY: e.clientY, origX: g.x, origY: g.y, moved: false, preState: currentStateRef.current };
   };
 
   const handleGroupResizeMouseDown = (e: React.MouseEvent, g: PlacedGroup) => {
     e.preventDefault();
     e.stopPropagation();
-    dragRef.current = { type: 'group-resize', id: g.id, startX: e.clientX, startY: e.clientY, origW: g.w, origH: g.h, moved: false };
-  };
-
-  const handleEditGroupTitle = (g: PlacedGroup) => {
-    const title = window.prompt('Título do grupo:', g.title);
-    if (title === null) return;
-    setGroups(prev => prev.map(x => (x.id === g.id ? { ...x, title } : x)));
-  };
-
-  const handleEditConnectionLabel = (conn: ManualConnection) => {
-    const label = window.prompt('Rótulo do condutor (ex.: 2#6mm² + #6mm²; vazio remove):', conn.label ?? '');
-    if (label === null) return;
-    setConnections(prev => prev.map(c => (c.id === conn.id ? { ...c, label: label.trim() || undefined } : c)));
+    dragRef.current = { type: 'group-resize', id: g.id, startX: e.clientX, startY: e.clientY, origW: g.w, origH: g.h, moved: false, preState: currentStateRef.current };
   };
 
   const resetLayout = () => {
     if (!confirm(resetConfirmMessage)) return;
+    snapshot();
     setPlacements(initialPlacement(json));
     setConnections(initialConnections(json));
     setPhotos([]);
@@ -663,6 +874,7 @@ export function DiagramEditor({
   const regularPhotos = photos.filter(p => !p.underlay);
   const removeUnderlay = () => {
     if (!confirm('Remover o PDF original do fundo? Ele não sai no PDF/SVG exportado, é só referência do editor.')) return;
+    snapshot();
     setPhotos(prev => prev.filter(p => !p.underlay));
   };
 
@@ -698,24 +910,28 @@ export function DiagramEditor({
         </button>
 
         <button
-          onClick={() => {
-            if (selectedId) { handleEditSymbolText(byId.get(selectedId)!); return; }
-            if (selectedConnId) {
-              const conn = connections.find(c => c.id === selectedConnId);
-              if (conn) handleEditConnectionLabel(conn);
-              return;
-            }
-            if (selectedGroupId) {
-              const g = groups.find(x => x.id === selectedGroupId);
-              if (g) handleEditGroupTitle(g);
-            }
-          }}
-          disabled={!selectedId && !selectedConnId && !selectedGroupId}
-          style={{ ...btnStyle(), color: (selectedId || selectedConnId || selectedGroupId) ? '#333' : '#bbb', cursor: (selectedId || selectedConnId || selectedGroupId) ? 'pointer' : 'not-allowed' }}
-          title={selectedConnId ? 'Editar rótulo do condutor (ex.: bitola)' : selectedGroupId ? 'Editar título do grupo' : 'Editar nome/legenda do componente'}
+          onClick={undo}
+          disabled={historyRef.current.undo.length === 0}
+          title="Desfazer (Ctrl+Z)"
+          style={{ ...btnStyle(), color: historyRef.current.undo.length ? '#333' : '#bbb', cursor: historyRef.current.undo.length ? 'pointer' : 'not-allowed' }}
         >
-          <Pencil size={13} /> Editar texto
+          <Undo2 size={13} /> Desfazer
         </button>
+        <button
+          onClick={redo}
+          disabled={historyRef.current.redo.length === 0}
+          title="Refazer (Ctrl+Shift+Z ou Ctrl+Y)"
+          style={{ ...btnStyle(), color: historyRef.current.redo.length ? '#333' : '#bbb', cursor: historyRef.current.redo.length ? 'pointer' : 'not-allowed' }}
+        >
+          <Redo2 size={13} /> Refazer
+        </button>
+
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 2, border: '1px solid #E0E0E0', borderRadius: 8, padding: 2 }} title="Zoom: roda do mouse (no cursor); segure espaço e arraste pra mover a vista">
+          <button onClick={() => zoomStep(1)} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: '4px 7px', display: 'flex' }} title="Aproximar"><ZoomIn size={13} /></button>
+          <button onClick={() => zoomStep(-1)} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: '4px 7px', display: 'flex' }} title="Afastar"><ZoomOut size={13} /></button>
+          <button onClick={zoomFit} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: '4px 7px', display: 'flex' }} title="Ver a folha inteira"><Maximize size={13} /></button>
+          <span style={{ fontSize: 10.5, color: '#888', padding: '0 5px', minWidth: 34, textAlign: 'center' }}>{Math.round((PAPER.widthMm / viewBox.w) * 100)}%</span>
+        </div>
 
         <button onClick={() => setSheetPanelOpen(o => !o)} style={btnStyle(sheetPanelOpen)}>
           <FileText size={13} /> Dados da folha
@@ -843,13 +1059,15 @@ export function DiagramEditor({
         </button>
       </div>
 
-      {/* Canvas */}
-      <div style={{ background: '#F4F4F4', borderRadius: 12, padding: 20, display: 'flex', justifyContent: 'center', overflowX: 'auto' }}>
+      {/* Canvas + painel de propriedades */}
+      <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+      <div style={{ background: '#F4F4F4', borderRadius: 12, padding: 20, display: 'flex', justifyContent: 'center', overflowX: 'auto', flex: 1, minWidth: 0 }}>
         <svg
           ref={svgRef}
-          viewBox={`0 0 ${PAPER.widthMm} ${PAPER.heightMm}`}
+          viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.w} ${viewBox.h}`}
           style={{ width: 900, maxWidth: '100%', background: '#fff', boxShadow: '0 2px 12px rgba(0,0,0,0.12)', flexShrink: 0, cursor: linkMode ? 'crosshair' : 'default' }}
           onClick={handleCanvasClick}
+          onMouseDown={handleCanvasMouseDown}
         >
           {/* Moldura, cabeçalho, carimbo e legenda automática — camada estática */}
           <g dangerouslySetInnerHTML={{ __html: furnitureSvg }} />
@@ -918,14 +1136,12 @@ export function DiagramEditor({
                   pointerEvents={linkMode ? 'none' : 'stroke'}
                   onMouseDown={e => handleGroupMouseDown(e, g)}
                   onClick={e => e.stopPropagation()}
-                  onDoubleClick={e => { e.stopPropagation(); handleEditGroupTitle(g); }}
                   style={{ cursor: linkMode ? 'crosshair' : 'grab' }}
                 />
                 <text
                   x={g.x + 2} y={g.y - 1.4} fontSize={2.6} fontWeight="bold" fill={isSelected ? '#2B8CFF' : '#555'}
                   onMouseDown={e => handleGroupMouseDown(e, g)}
                   onClick={e => e.stopPropagation()}
-                  onDoubleClick={e => { e.stopPropagation(); handleEditGroupTitle(g); }}
                   style={{ cursor: linkMode ? 'crosshair' : 'grab' }}
                 >
                   {resolveProjectTags(g.title, values)}
@@ -951,7 +1167,6 @@ export function DiagramEditor({
                   x={t.x} y={t.y} fontSize={t.size} fill="#333"
                   onMouseDown={e => handleTextMouseDown(e, t)}
                   onClick={e => e.stopPropagation()}
-                  onDoubleClick={e => { e.stopPropagation(); handleEditText(t); }}
                   style={{ cursor: 'grab' }}
                 >
                   {resolveProjectTags(t.value, values)}
@@ -1002,9 +1217,8 @@ export function DiagramEditor({
                   return (
                     <text
                       x={at.x} y={at.y} fontSize={2.2} textAnchor={anchor} fill="#333"
-                      onDoubleClick={e => { e.stopPropagation(); handleEditConnectionLabel(conn); }}
-                      onClick={e => e.stopPropagation()}
-                      style={{ cursor: 'text' }}
+                      onClick={e => { e.stopPropagation(); clearSelection(); setSelectedConnId(conn.id); }}
+                      style={{ cursor: 'pointer' }}
                     >
                       {resolveProjectTags(conn.label, values)}
                     </text>
@@ -1065,7 +1279,7 @@ export function DiagramEditor({
 
           {/* Símbolos — arrastáveis, giráveis, redimensionáveis, clicáveis */}
           {placements.map(p => {
-            const isSelected = selectedId === p.id;
+            const isSelected = selectedId === p.id || selectedIds.has(p.id);
             const isLinkFrom = linkFrom?.kind === 'symbol' && linkFrom.id === p.id;
             const inner = (SYMBOL_DEFS[p.kind] ?? []).map((prim, i) => (
               <g key={i} dangerouslySetInnerHTML={{ __html: primitiveToSvg(prim, '#1A1A1A', 0.35) }} />
@@ -1077,7 +1291,6 @@ export function DiagramEditor({
                   transform={blockTransform({ at: { x: p.x, y: p.y }, rotation: p.rotation, scale: p.scale })}
                   onMouseDown={e => handleSymbolMouseDown(e, p)}
                   onClick={e => e.stopPropagation()}
-                  onDoubleClick={e => { e.stopPropagation(); handleEditSymbolText(p); }}
                   style={{ cursor: linkMode ? 'crosshair' : 'grab' }}
                 >
                   {/* área de clique invisível: sem isto, símbolos com fill="none" só respondem
@@ -1106,7 +1319,148 @@ export function DiagramEditor({
               </g>
             );
           })}
+
+          {/* Retângulo de multi-seleção em andamento */}
+          {marquee && (
+            <rect
+              x={Math.min(marquee.x1, marquee.x2)} y={Math.min(marquee.y1, marquee.y2)}
+              width={Math.abs(marquee.x2 - marquee.x1)} height={Math.abs(marquee.y2 - marquee.y1)}
+              fill="#2B8CFF" fillOpacity={0.08} stroke="#2B8CFF" strokeWidth={0.3} strokeDasharray="1.5,1"
+              pointerEvents="none"
+            />
+          )}
         </svg>
+      </div>
+
+      {/* Painel de propriedades — contextual à seleção atual */}
+      {(() => {
+        const sel = selectedId ? byId.get(selectedId) : null;
+        const selConn = selectedConnId ? connections.find(c => c.id === selectedConnId) : null;
+        const selGroup = selectedGroupId ? groups.find(g => g.id === selectedGroupId) : null;
+        const selText = selectedTextId ? texts.find(t => t.id === selectedTextId) : null;
+        const showPanel = !!sel || selectedIds.size > 1 || !!selConn || !!selGroup || !!selText;
+        if (!showPanel) return null;
+        const fieldStyle: React.CSSProperties = { width: '100%', padding: '6px 8px', borderRadius: 7, border: '1px solid #DDD', fontSize: 12, boxSizing: 'border-box' };
+        const labelStyle: React.CSSProperties = { fontSize: 10.5, fontWeight: 700, color: '#888', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 3, display: 'block' };
+        return (
+          <div style={{ width: 240, flexShrink: 0, background: '#fff', border: '1px solid #E8E8E8', borderRadius: 12, padding: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {selectedIds.size > 1 ? (
+              <>
+                <p style={{ fontSize: 13, fontWeight: 700, color: '#1A1A1A', margin: 0 }}>{selectedIds.size} componentes selecionados</p>
+                <button onClick={duplicateSelected} style={{ ...btnStyle(), justifyContent: 'center' }}>
+                  <Copy size={13} /> Duplicar (Ctrl+D)
+                </button>
+                <button onClick={removeSelected} disabled={!canRemoveSelected} style={{ ...btnStyle(), justifyContent: 'center', color: canRemoveSelected ? '#A32D2D' : '#ccc' }}>
+                  <Trash2 size={13} /> Remover manuais
+                </button>
+                <p style={{ fontSize: 10.5, color: '#999', margin: 0 }}>Arraste qualquer um pra mover o conjunto inteiro. Shift+clique tira/põe da seleção.</p>
+              </>
+            ) : sel ? (
+              <>
+                <p style={{ fontSize: 13, fontWeight: 700, color: '#1A1A1A', margin: 0 }}>{KIND_LABEL[sel.kind]}</p>
+                <div>
+                  <label style={labelStyle}>Nome</label>
+                  <input
+                    value={sel.label} onFocus={snapshot} style={fieldStyle}
+                    onChange={e => setPlacements(prev => prev.map(p => (p.id === sel.id ? { ...p, label: e.target.value } : p)))}
+                  />
+                </div>
+                <div>
+                  <label style={labelStyle}>Legenda (uma linha por item, aceita {'{tags}'})</label>
+                  <textarea
+                    value={sel.legend.join('\n')} onFocus={snapshot} rows={3} style={{ ...fieldStyle, resize: 'vertical' }}
+                    onChange={e => {
+                      const legend = e.target.value.split('\n');
+                      setPlacements(prev => prev.map(p => (p.id === sel.id ? { ...p, legend } : p)));
+                    }}
+                  />
+                </div>
+                <div>
+                  <label style={labelStyle}>Tamanho ({sel.scale.toFixed(1)}×)</label>
+                  <input
+                    type="range" min={0.4} max={3} step={0.1} value={sel.scale} style={{ width: '100%' }}
+                    onMouseDown={snapshot}
+                    onChange={e => {
+                      const scale = Number(e.target.value);
+                      setPlacements(prev => prev.map(p => (p.id === sel.id ? { ...p, scale } : p)));
+                    }}
+                  />
+                </div>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button onClick={rotateSelected} style={{ ...btnStyle(), flex: 1, justifyContent: 'center' }} title="Girar 90°">
+                    <RotateCw size={13} /> {sel.rotation}°
+                  </button>
+                  <button onClick={duplicateSelected} style={{ ...btnStyle(), flex: 1, justifyContent: 'center' }} title="Duplicar (Ctrl+D)">
+                    <Copy size={13} />
+                  </button>
+                </div>
+                {isManualSymbol(sel.id) && (
+                  <button onClick={removeSelected} style={{ ...btnStyle(), justifyContent: 'center', color: '#A32D2D' }}>
+                    <Trash2 size={13} /> Remover
+                  </button>
+                )}
+              </>
+            ) : selConn ? (
+              <>
+                <p style={{ fontSize: 13, fontWeight: 700, color: '#1A1A1A', margin: 0 }}>Ligação</p>
+                <p style={{ fontSize: 11.5, color: '#777', margin: 0 }}>{labelOfEndpoint(selConn.from)} → {labelOfEndpoint(selConn.to)}</p>
+                <div>
+                  <label style={labelStyle}>Bitola / especificação do condutor</label>
+                  <input
+                    value={selConn.label ?? ''} onFocus={snapshot} placeholder="Ex.: 2#6mm² + #6mm²" style={fieldStyle}
+                    onChange={e => {
+                      const label = e.target.value;
+                      setConnections(prev => prev.map(c => (c.id === selConn.id ? { ...c, label: label || undefined } : c)));
+                    }}
+                  />
+                </div>
+                <p style={{ fontSize: 10.5, color: '#999', margin: 0 }}>Duplo-clique num trecho cria ponto de dobra; arraste os pontos pra moldar o traço.</p>
+                <button onClick={removeSelected} style={{ ...btnStyle(), justifyContent: 'center', color: '#A32D2D' }}>
+                  <Trash2 size={13} /> Remover ligação
+                </button>
+              </>
+            ) : selGroup ? (
+              <>
+                <p style={{ fontSize: 13, fontWeight: 700, color: '#1A1A1A', margin: 0 }}>Grupo</p>
+                <div>
+                  <label style={labelStyle}>Título</label>
+                  <input
+                    value={selGroup.title} onFocus={snapshot} style={fieldStyle}
+                    onChange={e => setGroups(prev => prev.map(g => (g.id === selGroup.id ? { ...g, title: e.target.value } : g)))}
+                  />
+                </div>
+                <button onClick={removeSelected} style={{ ...btnStyle(), justifyContent: 'center', color: '#A32D2D' }}>
+                  <Trash2 size={13} /> Remover grupo
+                </button>
+              </>
+            ) : selText ? (
+              <>
+                <p style={{ fontSize: 13, fontWeight: 700, color: '#1A1A1A', margin: 0 }}>Texto</p>
+                <div>
+                  <label style={labelStyle}>Conteúdo (aceita {'{tags}'})</label>
+                  <textarea
+                    value={selText.value} onFocus={snapshot} rows={3} autoFocus style={{ ...fieldStyle, resize: 'vertical' }}
+                    onChange={e => setTexts(prev => prev.map(t => (t.id === selText.id ? { ...t, value: e.target.value } : t)))}
+                  />
+                </div>
+                <div>
+                  <label style={labelStyle}>Tamanho da fonte (mm)</label>
+                  <input
+                    type="number" min={1.5} max={10} step={0.2} value={selText.size} onFocus={snapshot} style={fieldStyle}
+                    onChange={e => {
+                      const size = Math.max(1.5, Math.min(10, Number(e.target.value) || 3.2));
+                      setTexts(prev => prev.map(t => (t.id === selText.id ? { ...t, size } : t)));
+                    }}
+                  />
+                </div>
+                <button onClick={removeSelected} style={{ ...btnStyle(), justifyContent: 'center', color: '#A32D2D' }}>
+                  <Trash2 size={13} /> Remover texto
+                </button>
+              </>
+            ) : null}
+          </div>
+        );
+      })()}
       </div>
 
       {/* Ligações — lista com remoção */}

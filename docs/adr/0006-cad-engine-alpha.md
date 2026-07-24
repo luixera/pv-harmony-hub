@@ -498,11 +498,43 @@ Esta atualização cobre A e C.
   reconhecimento. Privacidade: o underlay reproduz o documento original
   dentro do editor (restrito à GD Manager); nunca vai pro arquivo exportado.
 
-### O que fica pras Fases B e D (aprovadas, ainda não construídas)
-B: undo/redo, zoom/pan, painel de propriedades no lugar de `window.prompt`,
-multi-seleção. D: importar template no modal do projeto (dropdown + sugestão
-por concessionária) e diagrama do projeto persistido no banco em vez de
-`localStorage`. Fase E (futura, não aprovada em detalhe): componentes em
-série desenhados "no fio" (condutor contínuo atravessando
+### Fase B — UX de editor de verdade (entregue na mesma rodada)
+- **Undo/redo** (Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y + botões): histórico de até
+  50 snapshots do `DiagramSceneState`. Detalhe importante: arrastos capturam
+  o estado pré-arrasto de forma **preguiçosa** (`preState` no dragRef, só
+  vira passo de desfazer no primeiro movimento real) — snapshot no mousedown
+  encheria o Ctrl+Z de passos vazios a cada clique de seleção.
+- **Zoom/pan**: viewBox do SVG como estado de janela; roda do mouse (zoom no
+  cursor, listener nativo `passive:false`), espaço+arrastar ou botão do meio
+  (pan), botões +/−/folha inteira. Toda conversão px→mm passou a considerar
+  o zoom.
+- **Painel de propriedades** contextual à direita do canvas — substituiu
+  TODOS os `window.prompt` (nome/legenda do componente, bitola da ligação,
+  título do grupo, conteúdo/tamanho do texto), com snapshot de undo no focus
+  de cada campo.
+- **Multi-seleção**: retângulo de seleção em área vazia + shift+clique;
+  arrasto em conjunto; Delete nos manuais; **Ctrl+D duplica** (duplicata
+  nasce sempre `manual-`, mesmo vinda de um componente do cadastro).
+
+### Fase D — fechar o ciclo (entregue na mesma rodada)
+- **`project_diagrams`** (tabela nova, RLS idêntica a `diagram_templates`):
+  o diagrama do projeto saiu do `localStorage` (por navegador — editava no
+  escritório, sumia em casa) pro banco, com autosave debounced silencioso.
+  Migração suave: sem linha no banco, o `localStorage` antigo é lido como
+  ponto de partida e persiste no banco na primeira edição.
+- **Importar modelo no projeto** (o elo pendente desde a 6ª rodada — a
+  decisão de UX foi tomada aqui: dropdown manual + modelos da mesma
+  concessionária do projeto marcados como sugeridos e listados primeiro; o
+  casamento paramétrico do §17.3 fica pro futuro). Aplicar copia
+  `template.scene_data` pro projeto (o modelo nunca é alterado); as tags do
+  modelo resolvem com os dados do projeto. **Cena de modelo é detectada por
+  derivação, sem flag persistida**: modelos começam vazios, então TODO id de
+  componente de modelo tem prefixo `manual-` — se o diagrama salvo só tem
+  ids `manual-`, o `reconcile()` não semeia a cadeia fixa do cadastro (o
+  modelo é o diagrama inteiro); "Restaurar automático" volta pra cadeia e
+  sai do modo modelo naturalmente.
+
+### Fase E (futura, não aprovada em detalhe)
+Componentes em série desenhados "no fio" (condutor contínuo atravessando
 disjuntor/fusível/chave) e portas CC/CA no inversor — o último degrau
 visual, exige refactor do modelo de cena.

@@ -1,5 +1,5 @@
-import { useMemo } from 'react';
-import { FlaskConical } from 'lucide-react';
+import { useMemo, useRef, useState } from 'react';
+import { FlaskConical, LayoutTemplate, Loader2 } from 'lucide-react';
 import { ProjectWithDetails } from '@/hooks/useProjects';
 import { buildTechnicalJsonFromProject } from '@/utils/cadEngine/buildTechnicalJson';
 import {
@@ -9,22 +9,27 @@ import {
 import { Point } from '@/utils/cadEngine/types';
 import { buildProjectValues } from '@/utils/projectValues';
 import { DiagramEditor } from '@/components/diagrams/DiagramEditor';
+import { useProjectDiagram, useSaveProjectDiagram } from '@/hooks/useProjectDiagram';
+import { useDiagramTemplates } from '@/hooks/useDiagramTemplates';
 
 /**
- * Diagrama Unifilar do projeto — canvas interativo (arrastar, girar,
- * redimensionar, ligar com derivações/linhas soltas, adicionar componentes,
- * fotos e textos) sobre o `DiagramEditor` compartilhado (ver
- * `src/components/diagrams/DiagramEditor.tsx`). Aqui só entra o que é
- * específico do contexto "dentro do modal de um projeto":
+ * Diagrama Unifilar do projeto — o `DiagramEditor` compartilhado alimentado
+ * pelos dados do PROJETO real. Aqui só entra o que é específico do contexto
+ * "dentro do modal de um projeto":
  *
- * - Monta o JSON técnico e os valores de tag a partir do PROJETO real
- *   (`buildTechnicalJsonFromProject`/`buildProjectValues`).
- * - Persiste em `localStorage` por projeto — edição feita aqui é local a
- *   este navegador e NÃO afeta nenhum template salvo no motor de templates
- *   (aba própria, `/admin/diagram-templates`, restrita por enquanto à GD
- *   Manager — ver `useDiagramEngineAccess`).
- * - Reconcilia com os 5 componentes do cadastro do projeto a cada troca de
- *   equipamento (ver `reconcile()` abaixo).
+ * - Monta o JSON técnico e os valores de tag (`buildTechnicalJsonFromProject`
+ *   / `buildProjectValues`) — as tags {chave} de legendas/carimbo resolvem
+ *   com os dados DESTE projeto.
+ * - Persiste em `project_diagrams` (banco, autosave debounced) — o mesmo
+ *   diagrama aparece pra equipe toda, em qualquer máquina. Diagramas antigos
+ *   salvos em `localStorage` são lidos uma última vez como ponto de partida
+ *   e migram pro banco na primeira edição.
+ * - **Importa um modelo** do motor de templates: o diagrama do projeto passa
+ *   a ser uma CÓPIA do modelo (editar aqui nunca altera o modelo). Modelos da
+ *   mesma concessionária do projeto aparecem como sugeridos.
+ * - Reconcilia com os 5 componentes do cadastro a cada troca de equipamento
+ *   (ver `reconcile()`), EXCETO quando o diagrama veio de um modelo — um
+ *   modelo é uma cena completa própria, sem a cadeia fixa do cadastro.
  */
 
 const STORAGE_PREFIX = 'unifilar-layout:';
@@ -40,29 +45,43 @@ interface SavedLayout {
 
 /** Diagramas salvos antes das ligações virarem `ConnectionEndpoint` gravavam
  *  `from`/`to` como string (id do componente) direto, sem o envelope
- *  `{kind,...}`. Migra na leitura para não quebrar diagramas já salvos no
- *  navegador do usuário. */
+ *  `{kind,...}`. Migra na leitura para não quebrar diagramas já salvos. */
 function migrateConnection(raw: unknown): ManualConnection {
-  const c = raw as { id: string; from: unknown; to: unknown; waypoints?: Point[] };
+  const c = raw as { id: string; from: unknown; to: unknown; waypoints?: Point[]; label?: string };
   const toEndpoint = (e: unknown): ConnectionEndpoint =>
     typeof e === 'string' ? { kind: 'symbol', id: e } : (e as ConnectionEndpoint);
-  return { id: c.id, from: toEndpoint(c.from), to: toEndpoint(c.to), waypoints: c.waypoints };
+  return { id: c.id, from: toEndpoint(c.from), to: toEndpoint(c.to), waypoints: c.waypoints, label: c.label };
+}
+
+/** Cena que veio de um modelo: todos os componentes têm id `manual-` (modelos
+ *  começam vazios, todo símbolo é adicionado pela paleta). Um diagrama normal
+ *  de projeto sempre contém os ids fixos do cadastro (PV-01, INV-01, ...). */
+function isTemplateScene(saved: SavedLayout): boolean {
+  return saved.placements.length > 0 && saved.placements.every(p => p.id.startsWith('manual-'));
 }
 
 /**
  * Funde o estado salvo com os componentes atuais do projeto. Os componentes
- * derivados do projeto (`json.components`, ids fixos tipo `PV-01`) são
- * resincronizados a cada troca de equipamento — só posição/rotação/escala
- * editadas sobrevivem, e um componente removido do cadastro some do layout.
- * Componentes adicionados manualmente pelo usuário (prefixo `manual-`, ex.:
- * um DPS avulso) não têm origem no projeto — não dá para diferenciá-los "pela
- * ausência no cadastro atual" (um componente real removido do cadastro cairia
- * no mesmo caso), por isso o prefixo do id é o que decide, e eles sobrevivem
- * sempre. Fotos e textos são sempre avulsos — passam direto.
+ * derivados do projeto (ids fixos tipo `PV-01`) são resincronizados a cada
+ * troca de equipamento; componentes com prefixo `manual-` sobrevivem sempre.
+ * Cena vinda de um MODELO (só `manual-`) passa direto, sem semear a cadeia
+ * fixa — o modelo é o diagrama inteiro.
  */
 function reconcile(json: ReturnType<typeof buildTechnicalJsonFromProject>, saved: SavedLayout | null): DiagramSceneState {
   const fresh = initialPlacement(json);
   if (!saved) return { placements: fresh, connections: initialConnections(json), photos: [], texts: [], groups: [] };
+
+  if (isTemplateScene(saved)) {
+    const byId = new Map(saved.placements.map(p => [p.id, { ...p, scale: p.scale ?? 1 }]));
+    const connections = (saved.connections ?? [])
+      .map(migrateConnection)
+      .filter(c => isConnectionResolvable(c, byId));
+    return {
+      placements: [...byId.values()], connections,
+      photos: saved.photos ?? [], texts: saved.texts ?? [],
+      groups: saved.groups ?? [], sheet: saved.sheet,
+    };
+  }
 
   const reconciledProject = fresh.map(f => {
     const s = saved.placements.find(p => p.id === f.id);
@@ -85,55 +104,119 @@ function reconcile(json: ReturnType<typeof buildTechnicalJsonFromProject>, saved
   };
 }
 
-function loadInitialState(project: ProjectWithDetails, json: ReturnType<typeof buildTechnicalJsonFromProject>): DiagramSceneState {
-  const storageKey = `${STORAGE_PREFIX}${project.id}`;
-  let saved: SavedLayout | null = null;
+/** Último recurso: layout salvo no localStorage (formato antigo, por navegador). */
+function loadLegacyLocalState(projectId: string): SavedLayout | null {
   try {
-    const raw = localStorage.getItem(storageKey);
-    if (raw) saved = JSON.parse(raw);
-  } catch { /* estado salvo corrompido — ignora e recomeça */ }
-  return reconcile(json, saved);
+    const raw = localStorage.getItem(`${STORAGE_PREFIX}${projectId}`);
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
 }
 
 export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
   const json = useMemo(() => buildTechnicalJsonFromProject(project), [project]);
   const values = useMemo(() => buildProjectValues(project), [project]);
-  const initialState = useMemo(() => loadInitialState(project, json), [project, json]);
-  const storageKey = `${STORAGE_PREFIX}${project.id}`;
+  const { data: dbScene, isLoading } = useProjectDiagram(project.id);
+  const saveDiagram = useSaveProjectDiagram();
+  const { data: templates = [] } = useDiagramTemplates();
 
+  // Aplicar um modelo troca o estado inicial inteiro — o `stateKey` versionado
+  // força o DiagramEditor a reseedar com a cena do modelo.
+  const [applied, setApplied] = useState<{ v: number; state: DiagramSceneState } | null>(null);
+  const [templatePick, setTemplatePick] = useState('');
+
+  const initialState = useMemo(() => {
+    if (applied) return applied.state;
+    const saved = (dbScene as SavedLayout | null) ?? loadLegacyLocalState(project.id);
+    return reconcile(json, saved);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- dbScene só importa na carga; edições seguem via onStateChange
+  }, [project.id, json, dbScene, applied]);
+
+  const debounceRef = useRef<number | null>(null);
   const handleStateChange = (state: DiagramSceneState) => {
-    try { localStorage.setItem(storageKey, JSON.stringify(state)); } catch { /* storage cheio/bloqueado — não é crítico */ }
+    if (debounceRef.current) window.clearTimeout(debounceRef.current);
+    debounceRef.current = window.setTimeout(() => {
+      saveDiagram.mutate({ projectId: project.id, sceneData: state });
+    }, 800);
   };
 
+  const applyTemplate = () => {
+    const t = templates.find(x => x.id === templatePick);
+    if (!t) return;
+    if (!confirm(`Aplicar o modelo "${t.name}" a este projeto? O diagrama atual deste projeto será substituído (o modelo em si não é alterado).`)) return;
+    setApplied(prev => ({ v: (prev?.v ?? 0) + 1, state: t.scene_data }));
+    setTemplatePick('');
+  };
+
+  // Modelos da mesma concessionária primeiro, marcados como sugeridos.
+  const sortedTemplates = useMemo(() => {
+    const suggested = templates.filter(t => t.concessionaire_id && t.concessionaire_id === project.concessionaire_id);
+    const rest = templates.filter(t => !suggested.includes(t));
+    return { suggested, rest };
+  }, [templates, project.concessionaire_id]);
+
+  if (isLoading) {
+    return <div style={{ padding: 60, textAlign: 'center' }}><Loader2 size={22} className="animate-spin" style={{ color: '#F5A800' }} /></div>;
+  }
+
   const banner = (
-    <div style={{
-      display: 'flex', alignItems: 'center', gap: 8, background: '#FFF7E6',
-      border: '1px solid #FDE4A8', borderRadius: 10, padding: '10px 14px', marginBottom: 16,
-    }}>
-      <FlaskConical size={15} style={{ color: '#854F0B', flexShrink: 0 }} />
-      <p style={{ fontSize: 12, color: '#854F0B', margin: 0 }}>
-        <strong>Alpha interno.</strong> Arraste símbolos, fotos e textos; puxe o
-        quadrado azul no canto do símbolo selecionado pra redimensionar. Nas linhas: clique
-        para selecionar e arraste pra mover o traço inteiro, duplo-clique adiciona um ponto de
-        dobra, Delete remove a selecionada. Para ligar: clique na origem (um componente ou uma
-        linha existente, pra criar uma derivação) e depois clique no destino (outro componente
-        ou outra linha) — uma ligação sempre termina em algo, nunca fica solta no vazio. A
-        edição aqui é só deste navegador — não sincroniza entre dispositivos e não altera
-        nenhum modelo salvo no motor de templates.
-      </p>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 8, background: '#FFF7E6',
+        border: '1px solid #FDE4A8', borderRadius: 10, padding: '10px 14px',
+      }}>
+        <FlaskConical size={15} style={{ color: '#854F0B', flexShrink: 0 }} />
+        <p style={{ fontSize: 12, color: '#854F0B', margin: 0, flex: 1, minWidth: 240 }}>
+          <strong>Alpha interno.</strong> O diagrama deste projeto é salvo automaticamente no
+          sistema (visível pra equipe toda). Selecione qualquer elemento pra editar no painel ao
+          lado; Ctrl+Z desfaz; roda do mouse dá zoom; espaço + arrastar move a vista.
+        </p>
+        {templates.length > 0 && (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}>
+            <LayoutTemplate size={13} style={{ color: '#854F0B' }} />
+            <select
+              value={templatePick}
+              onChange={e => setTemplatePick(e.target.value)}
+              style={{ padding: '5px 8px', borderRadius: 7, border: '1px solid #E0C88A', fontSize: 12, background: '#fff', maxWidth: 220 }}
+            >
+              <option value="">Importar modelo…</option>
+              {sortedTemplates.suggested.length > 0 && (
+                <optgroup label="Sugeridos (mesma concessionária)">
+                  {sortedTemplates.suggested.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </optgroup>
+              )}
+              {sortedTemplates.rest.length > 0 && (
+                <optgroup label={sortedTemplates.suggested.length > 0 ? 'Outros modelos' : 'Modelos'}>
+                  {sortedTemplates.rest.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </optgroup>
+              )}
+            </select>
+            <button
+              onClick={applyTemplate}
+              disabled={!templatePick}
+              style={{
+                padding: '5px 10px', borderRadius: 7, border: 'none', fontSize: 12, fontWeight: 700,
+                background: templatePick ? '#F5A800' : '#EEE', color: templatePick ? '#1A1A1A' : '#AAA',
+                cursor: templatePick ? 'pointer' : 'not-allowed',
+              }}
+            >
+              Aplicar
+            </button>
+          </span>
+        )}
+      </div>
     </div>
   );
 
   return (
     <DiagramEditor
-      stateKey={project.id}
+      stateKey={`${project.id}:${applied?.v ?? 0}`}
       json={json}
       initialState={initialState}
       tagValues={values}
       onStateChange={handleStateChange}
       downloadBaseName={project.code}
       banner={banner}
-      resetConfirmMessage="Restaurar o layout automático? Posições, ligações, componentes, fotos e textos adicionados manualmente neste projeto serão perdidos (só neste navegador)."
+      resetConfirmMessage="Restaurar o layout automático? O diagrama atual deste projeto (incluindo um modelo aplicado) será substituído pela cadeia padrão do cadastro."
     />
   );
 }
