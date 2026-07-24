@@ -9,11 +9,14 @@
 ## Tarefas de produto em aberto (do backlog de sessão)
 - **Diagrama unifilar — evoluir do alpha**: hoje tem edição manual completa —
   arrastar de qualquer ponto do símbolo, girar, **redimensionar**, ligar com
-  derivações e linhas soltas (`ConnectionEndpoint` symbol/point), selecionar
-  e arrastar uma linha inteira como bloco, excluir com Delete, 6 símbolos
-  (disjuntor corrigido, DPS novo), componentes/fotos/**textos** adicionáveis
-  livremente (só visual, sem tocar no cadastro do projeto), texto e legenda
-  com **tags do projeto** (mesmo catálogo dos templates .docx). Layout salvo
+  derivações e linhas soltas (`ConnectionEndpoint` symbol/point) que **grudam
+  pixel-a-pixel** no componente/linha mais perto (`CONNECTION_INSET` +
+  `findNearestSymbol`/`nearestPointOnPolyline`, corrigido depois de um print
+  do usuário mostrando gap numa derivação), selecionar e arrastar uma linha
+  inteira como bloco, excluir com Delete, 6 símbolos (disjuntor corrigido,
+  DPS novo), componentes/fotos/**textos** adicionáveis livremente (só visual,
+  sem tocar no cadastro do projeto), texto e legenda com **tags do projeto**
+  (mesmo catálogo dos templates .docx). Layout salvo
   só em `localStorage`, só master/GD Manager — ver
   [modules/diagrams](../modules/diagrams/overview.md) e
   [ADR 0006](../adr/0006-cad-engine-alpha.md). **Combinado com o usuário**: a

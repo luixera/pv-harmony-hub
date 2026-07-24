@@ -1,5 +1,5 @@
 import { ComponentKind, Point, Scene, TechnicalJsonMvp } from './types';
-import { SYMBOL_BBOX, SYMBOL_DEFS } from './symbols';
+import { CONNECTION_INSET, SYMBOL_BBOX, SYMBOL_DEFS } from './symbols';
 import { CENTER_Y, drawFrameAndHeader, drawTitleBlock, LEGEND_LINE_H, PITCH_X, START_X } from './paper';
 import { resolveProjectTags } from '@/utils/projectValues';
 
@@ -108,16 +108,54 @@ export function blockCenter(p: PlacedSymbol): Point {
 /**
  * Ponto de saída/entrada do condutor na borda do símbolo, na direção do
  * outro extremo — mantém a linha "encostando" no símbolo em vez de cruzá-lo,
- * mesmo depois de girar, mover ou redimensionar.
+ * mesmo depois de girar, mover ou redimensionar. Recua pelo `CONNECTION_INSET`
+ * do tipo do símbolo: sem isso, o ponto cairia na borda "vazia" da caixa
+ * (24×20mm) em vez da ponta real do traço/círculo desenhado — cada símbolo
+ * tem uma margem própria (ex.: o medidor é um círculo de raio 8, 4mm menor
+ * que a caixa).
  */
 function edgePoint(from: PlacedSymbol, towards: Point): Point {
   const c = blockCenter(from);
   const dx = towards.x - c.x, dy = towards.y - c.y;
-  const hw = (SYMBOL_BBOX.w * from.scale) / 2, hh = (SYMBOL_BBOX.h * from.scale) / 2;
+  const inset = CONNECTION_INSET[from.kind] * from.scale;
+  const hw = (SYMBOL_BBOX.w * from.scale) / 2 - inset, hh = (SYMBOL_BBOX.h * from.scale) / 2 - inset;
   if (Math.abs(dx) >= Math.abs(dy)) {
     return { x: c.x + Math.sign(dx || 1) * hw, y: c.y };
   }
   return { x: c.x, y: c.y + Math.sign(dy || 1) * hh };
+}
+
+export const SNAP_RADIUS = 6; // mm — clicar/soltar perto o bastante de um componente ou linha "gruda" nele
+
+/** Componente cuja caixa (já considerando escala) está mais perto do ponto, dentro do raio de captura. */
+export function findNearestSymbol(pt: Point, placements: PlacedSymbol[], radius = SNAP_RADIUS): PlacedSymbol | null {
+  let best: PlacedSymbol | null = null;
+  let bestDist = radius;
+  for (const p of placements) {
+    const hw = (SYMBOL_BBOX.w * p.scale) / 2, hh = (SYMBOL_BBOX.h * p.scale) / 2;
+    const cx = p.x + hw, cy = p.y + hh;
+    // distância até a borda da caixa (0 se o ponto já estiver dentro dela)
+    const dx = Math.max(Math.abs(pt.x - cx) - hw, 0);
+    const dy = Math.max(Math.abs(pt.y - cy) - hh, 0);
+    const dist = Math.hypot(dx, dy);
+    if (dist < bestDist) { bestDist = dist; best = p; }
+  }
+  return best;
+}
+
+/** Ponto mais próximo sobre uma polilinha, e a distância até ele. */
+export function nearestPointOnPolyline(pt: Point, pts: Point[]): { point: Point; dist: number } | null {
+  let best: { point: Point; dist: number } | null = null;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i], b = pts[i + 1];
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const len2 = dx * dx + dy * dy;
+    const t = len2 === 0 ? 0 : Math.max(0, Math.min(1, ((pt.x - a.x) * dx + (pt.y - a.y) * dy) / len2));
+    const point = { x: a.x + t * dx, y: a.y + t * dy };
+    const dist = Math.hypot(pt.x - point.x, pt.y - point.y);
+    if (!best || dist < best.dist) best = { point, dist };
+  }
+  return best;
 }
 
 /** Resolve uma ponta de ligação para um ponto "de referência" (centro do bloco, ou o próprio ponto fixo). */

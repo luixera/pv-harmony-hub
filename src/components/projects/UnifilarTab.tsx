@@ -7,8 +7,9 @@ import { ProjectWithDetails } from '@/hooks/useProjects';
 import { buildTechnicalJsonFromProject } from '@/utils/cadEngine/buildTechnicalJson';
 import {
   ConnectionEndpoint, ManualConnection, PlacedPhoto, PlacedSymbol, PlacedText,
-  blockCenter, buildSceneFromPlacement, computeConnectorPoints, initialConnections,
-  initialPlacement, isConnectionResolvable, snapToGrid,
+  blockCenter, buildSceneFromPlacement, computeConnectorPoints, findNearestSymbol,
+  initialConnections, initialPlacement, isConnectionResolvable, nearestPointOnPolyline,
+  SNAP_RADIUS, snapToGrid,
 } from '@/utils/cadEngine/editableLayout';
 import { ComponentKind, Point } from '@/utils/cadEngine/types';
 import { sceneToSvgInner, primitiveToSvg, blockTransform } from '@/utils/cadEngine/exportSvg';
@@ -142,6 +143,11 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
   }, [placements, connections, photos, texts, storageKey]);
 
   const byId = useMemo(() => new Map(placements.map(p => [p.id, p])), [placements]);
+  // Espelha `placements` num ref pra ler a versão mais recente dentro do
+  // listener de mouseup persistente (que só resubscreve quando `snap` muda —
+  // ler `placements` direto ali arriscaria pegar uma versão desatualizada).
+  const placementsRef = useRef(placements);
+  useEffect(() => { placementsRef.current = placements; }, [placements]);
   const scene = useMemo(
     () => buildSceneFromPlacement(json, placements, connections, photos, texts, values),
     [json, placements, connections, photos, texts, values],
@@ -153,7 +159,7 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
     | { type: 'symbol'; id: string; startX: number; startY: number; origX: number; origY: number; moved: boolean }
     | { type: 'symbol-resize'; id: string; startX: number; startY: number; origScale: number; moved: boolean }
     | { type: 'waypoint'; connId: string; index: number; startX: number; startY: number; origX: number; origY: number; moved: boolean }
-    | { type: 'endpoint'; connId: string; which: 'from' | 'to'; startX: number; startY: number; origX: number; origY: number; moved: boolean }
+    | { type: 'endpoint'; connId: string; which: 'from' | 'to'; startX: number; startY: number; origX: number; origY: number; lastX: number; lastY: number; moved: boolean }
     | { type: 'conn-move'; connId: string; startX: number; startY: number; origWaypoints: Point[]; origFromAt: Point | null; origToAt: Point | null; moved: boolean }
     | { type: 'photo'; id: string; startX: number; startY: number; origX: number; origY: number; moved: boolean }
     | { type: 'photo-resize'; id: string; startX: number; startY: number; origW: number; origH: number; moved: boolean }
@@ -190,6 +196,7 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
       } else if (drag.type === 'endpoint') {
         let nx = drag.origX + dx, ny = drag.origY + dy;
         if (snap) { nx = snapToGrid(nx); ny = snapToGrid(ny); }
+        drag.lastX = nx; drag.lastY = ny;
         setConnections(prev => prev.map(c => {
           if (c.id !== drag.connId) return c;
           const pt: ConnectionEndpoint = { kind: 'point', at: { x: nx, y: ny } };
@@ -222,6 +229,18 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
       dragRef.current = null;
       if (!drag) return;
       if (drag.type === 'symbol' && !drag.moved) handleSymbolClick(drag.id); // arrasto não ocorreu → foi um clique
+      if (drag.type === 'endpoint' && drag.moved) {
+        // Soltou uma ponta solta perto de um componente: gruda nele em vez de
+        // deixar um ponto quase-tocando (o pixel tem que encostar de verdade).
+        const near = findNearestSymbol({ x: drag.lastX, y: drag.lastY }, placementsRef.current);
+        if (near) {
+          setConnections(prev => prev.map(c => {
+            if (c.id !== drag.connId) return c;
+            const pt: ConnectionEndpoint = { kind: 'symbol', id: near.id };
+            return drag.which === 'from' ? { ...c, from: pt } : { ...c, to: pt };
+          }));
+        }
+      }
     };
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
@@ -271,6 +290,23 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
     return snap ? { x: snapToGrid(x), y: snapToGrid(y) } : { x, y };
   };
 
+  // Resolve um clique cru no canvas pra uma ponta de ligação "colada" de
+  // verdade: perto de um componente vira aquele componente (pixel-perfeito
+  // via edgePoint); perto de uma linha existente vira o ponto exato sobre
+  // ela (derivação); senão, o ponto cru mesmo (linha solta).
+  const resolveClickEndpoint = (pt: Point): ConnectionEndpoint => {
+    const symbol = findNearestSymbol(pt, placements);
+    if (symbol) return { kind: 'symbol', id: symbol.id };
+    let bestLine: { point: Point; dist: number } | null = null;
+    for (const conn of connections) {
+      if (!isConnectionResolvable(conn, byId)) continue;
+      const pts = computeConnectorPoints(conn.from, conn.to, byId, conn.waypoints);
+      const found = nearestPointOnPolyline(pt, pts);
+      if (found && found.dist <= SNAP_RADIUS && (!bestLine || found.dist < bestLine.dist)) bestLine = found;
+    }
+    return { kind: 'point', at: bestLine ? bestLine.point : pt };
+  };
+
   // Clique em área vazia do canvas: fora do modo de ligar, desmarca tudo.
   // No modo de ligar, cada clique vira o ponto de partida (se ainda não
   // houver origem) ou mais um ponto do traço — é como se cria uma derivação
@@ -279,18 +315,19 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
     if (!linkMode) { clearSelection(); return; }
     const pt = clientToMm(e.clientX, e.clientY);
     if (!pt) return;
-    if (!linkFrom) { setLinkFrom({ kind: 'point', at: pt }); setDrawnWaypoints([]); return; }
+    if (!linkFrom) { setLinkFrom(resolveClickEndpoint(pt)); setDrawnWaypoints([]); return; }
     setDrawnWaypoints(prev => [...prev, pt]);
   };
 
-  // Termina a ligação em andamento no último ponto clicado (vira uma ponta solta
-  // — útil tanto pra derivação que não encosta em componente quanto pra linha livre).
+  // Termina a ligação em andamento no último ponto clicado — gruda em
+  // componente/linha perto o bastante (ver resolveClickEndpoint), senão vira
+  // uma ponta solta de verdade (derivação sem componente, ou linha livre).
   const finishLinkHere = () => {
     if (!linkFrom || drawnWaypoints.length === 0) return;
     const last = drawnWaypoints[drawnWaypoints.length - 1];
     const mid = drawnWaypoints.slice(0, -1);
     setConnections(prev => [...prev, {
-      id: `manual-${Date.now()}`, from: linkFrom, to: { kind: 'point', at: last },
+      id: `manual-${Date.now()}`, from: linkFrom, to: resolveClickEndpoint(last),
       waypoints: mid.length ? mid : undefined,
     }]);
     setLinkFrom(null);
@@ -375,7 +412,7 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
     e.preventDefault();
     e.stopPropagation();
     setSelectedConnId(connId);
-    dragRef.current = { type: 'endpoint', connId, which, startX: e.clientX, startY: e.clientY, origX: at.x, origY: at.y, moved: false };
+    dragRef.current = { type: 'endpoint', connId, which, startX: e.clientX, startY: e.clientY, origX: at.x, origY: at.y, lastX: at.x, lastY: at.y, moved: false };
   };
 
   // ── Componentes adicionados livremente (não vêm do cadastro do projeto) ──

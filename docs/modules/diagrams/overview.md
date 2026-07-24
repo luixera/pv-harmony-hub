@@ -41,11 +41,11 @@ usuário: útil mais cedo, e o motor automático continua no roadmap):
 
 ## Arquivos
 - `src/utils/cadEngine/types.ts` — `TechnicalJsonMvp` + Scene IR (subconjunto de D1; `BlockInstance.rotation`; `Primitive` inclui `image`; `LayerId` inclui `PHOTO`).
-- `src/utils/cadEngine/symbols.ts` — definições geométricas dos 6 símbolos + `KIND_LABEL` (nome curto por tipo, usado na paleta "Adicionar").
+- `src/utils/cadEngine/symbols.ts` — definições geométricas dos 6 símbolos + `KIND_LABEL` (nome curto por tipo, usado na paleta "Adicionar") + `CONNECTION_INSET` (recuo em mm entre a caixa e a ponta real do traço de cada símbolo — usado por `edgePoint()`).
 - `src/utils/cadEngine/paper.ts` — constantes de papel/margem + moldura/carimbo (compartilhado entre o layout fixo e o editável).
 - `src/utils/cadEngine/buildTechnicalJson.ts` — projeto → JSON técnico (reaproveita `buildProjectValues`).
 - `src/utils/cadEngine/layout.ts` — JSON técnico → `Scene` com layout fixo (posição inicial, antes de qualquer edição).
-- `src/utils/cadEngine/editableLayout.ts` — `PlacedSymbol` (com `scale`), `ManualConnection` (`from`/`to` são `ConnectionEndpoint` — `{kind:'symbol',id}` ou `{kind:'point',at}` —, mais `waypoints?: Point[]`), `PlacedPhoto`, `PlacedText`, `orthogonalPath`, `computeConnectorPoints` (aceita qualquer combinação de pontas symbol/point), `isConnectionResolvable`, `blockCenter` (considera a escala), `snapToGrid`, `buildSceneFromPlacement` (a `Scene` a partir do estado editado + fotos + textos, resolvendo tags via `tagValues`).
+- `src/utils/cadEngine/editableLayout.ts` — `PlacedSymbol` (com `scale`), `ManualConnection` (`from`/`to` são `ConnectionEndpoint` — `{kind:'symbol',id}` ou `{kind:'point',at}` —, mais `waypoints?: Point[]`), `PlacedPhoto`, `PlacedText`, `orthogonalPath`, `computeConnectorPoints` (aceita qualquer combinação de pontas symbol/point; `edgePoint()` interno recua pelo `CONNECTION_INSET`), `isConnectionResolvable`, `blockCenter` (considera a escala), `findNearestSymbol`/`nearestPointOnPolyline`/`SNAP_RADIUS` (snapping de clique/soltura pra componente ou linha perto o bastante), `snapToGrid`, `buildSceneFromPlacement` (a `Scene` a partir do estado editado + fotos + textos, resolvendo tags via `tagValues`).
 - `src/utils/cadEngine/exportSvg.ts` / `exportPdf.ts` — `Scene` → SVG / PDF, com suporte a `rotation`/`scale` do bloco (PDF transforma os pontos manualmente — escala em torno do centro, depois gira, mesma ordem em ambos; SVG usa `transform="...rotate()...scale()..."` nativo via `blockTransform()`, reaproveitado ao vivo pelo canvas) e à primitiva `image` (SVG: `<image href>`; PDF: `doc.addImage`, formato detectado pelo prefixo do data URL). PDF via `jspdf`, já usado em `resumoPdf.ts` — nenhuma dependência nova.
 - `src/utils/projectValues.ts` — `resolveProjectTags(texto, values)`: substitui `{chave}` usando o mesmo catálogo `TEMPLATE_VARIABLES`/`buildProjectValues` dos templates .docx; tag desconhecida fica como está.
 - `src/components/projects/UnifilarTab.tsx` — canvas SVG interativo (arrastar/girar/redimensionar/ligar-e-desenhar-com-derivação/selecionar-e-arrastar-linha-inteira/adicionar componente, foto ou texto) + botões de download.
@@ -101,6 +101,33 @@ Depois de criada, a linha inteira tem três formas de edição:
   duplo-clique num ponto de dobra remove.
 - **Excluir**: com a ligação selecionada, tecla Delete/Backspace, botão
   "Remover selecionado" na barra, ou o ícone de lixeira na lista "Ligações".
+
+## Alinhamento pixel-a-pixel (ligações e componentes)
+Dois problemas distintos faziam linha e componente não "encostarem" de
+verdade um no outro:
+1. **`edgePoint()` mirava a borda vazia da caixa (24×20mm), não a ponta real
+   do traço do símbolo.** Cada símbolo tem uma margem própria entre a caixa e
+   onde o desenho de fato termina (ex.: o medidor é um círculo de raio 8
+   centrado no meio — a borda real fica a 4mm da caixa, não 0). `CONNECTION_INSET`
+   (`symbols.ts`) guarda esse recuo por tipo de símbolo (2mm nos traços dos
+   demais, 4mm no medidor e na rede — calibrado olhando a geometria de cada
+   um), e `edgePoint()` subtrai antes de calcular onde o condutor encosta.
+   Sem isso, **toda** ligação símbolo↔condutor da cadeia tinha um gap de
+   2–4mm, não só a derivação que apareceu no print do usuário — só ficava
+   mais visível nela por causa do ângulo reto e dos marcadores de ponta.
+2. **Pontas soltas (`{kind:'point'}`) não grudavam em nada perto delas.** Ao
+   terminar uma ligação perto de um componente sem acertar exatamente sua
+   área de clique, ou ao clicar perto de uma linha existente pra criar uma
+   derivação, o ponto ficava exatamente onde o mouse soltou — podendo ficar a
+   alguns mm de distância visível. Agora `resolveClickEndpoint()`
+   (`UnifilarTab.tsx`) resolve todo clique de "iniciar"/"terminar aqui" uma
+   ligação: perto o bastante (6mm, `SNAP_RADIUS`) de um componente vira aquele
+   componente (`findNearestSymbol`, ligação pixel-perfeita via `edgePoint()`
+   corrigido); perto de uma linha existente sem símbolo vira o ponto exato
+   projetado sobre ela (`nearestPointOnPolyline`), não o clique cru. **Soltar**
+   uma ponta arrastada perto de um componente (ver "Ligar / desenhar linha"
+   acima) também gruda nele — dá pra corrigir uma ligação já salva sem
+   apagar e refazer, só arrastando a pontinha azul até dentro do símbolo.
 
 ## Redimensionar componentes
 Com um símbolo selecionado, um quadrado azul aparece no canto — arrastar
@@ -188,6 +215,12 @@ flowchart LR
   derivação não a acompanha automaticamente (fica visualmente desencostada).
 - Alça de redimensionar dos símbolos não acompanha a rotação (fica sempre no
   canto "não girado"); o redimensionamento em si funciona normalmente.
+- O recuo de alinhamento (`CONNECTION_INSET`) e o snapping de clique só valem
+  para ligações **criadas ou arrastadas depois** dessa correção — uma linha
+  já salva com uma ponta solta perto (mas não grudada) de um componente
+  continua com o gap até o usuário arrastar aquela pontinha pra dentro do
+  símbolo (ela gruda sozinha ao soltar) ou apagar/refazer a ligação. Não há
+  migração automática retroativa.
 - Sem exportador DXF, sem `DiagramTemplate` (salvar/aplicar layout em outro
   projeto).
 - Layout persiste só em `localStorage` deste navegador — não sincroniza entre

@@ -144,3 +144,40 @@ Além disso, sem pergunta separada (interpretação direta do pedido):
   extraído como `blockTransform()` em `exportSvg.ts` e reaproveitado ao vivo
   pelo canvas) — os dois foram comparados numericamente ponto a ponto antes
   do commit para garantir que exportam exatamente o que a tela mostra.
+
+## Atualização (5ª rodada) — pixels precisam se encontrar
+Print do usuário mostrando um gap visível entre a linha de derivação e o
+símbolo do DPS: "OS PIXELS DEVEM SE ENCONTRAR AO LIGAR LINHAS E COMPONENTES
+UNS AOS OUTROS". Investigando, achei **dois** problemas, não um:
+
+1. **`edgePoint()` mirava a borda vazia da caixa de 24×20mm, não a ponta real
+   do traço desenhado do símbolo.** Cada símbolo tem uma margem própria entre
+   a caixa e onde o desenho de fato acaba (ex.: o medidor é um círculo de
+   raio 8 centrado no meio — a borda real do círculo fica a 4mm da caixa, não
+   0mm; os demais símbolos usam stubs com ~2mm de recuo). Isso significava
+   que **toda** ligação símbolo↔condutor da fatia inteira tinha um gap de
+   2–4mm — não só a derivação do print, só ficava mais óbvio nela por causa
+   do ângulo reto e dos marcadores de ponta desenhados por cima. Corrigido com
+   `CONNECTION_INSET` (`symbols.ts`, um recuo por tipo de símbolo, calibrado
+   olhando a geometria de cada um), subtraído em `edgePoint()`.
+2. **Pontas soltas (`{kind:'point'}`, da 4ª rodada) não grudavam em nada
+   perto delas.** Terminar uma derivação perto de um componente sem acertar
+   sua área de clique exata deixava a ponta como um ponto flutuante — nunca
+   formalmente ligado ao símbolo, então mesmo com o `edgePoint()` corrigido
+   não tinha efeito ali (a ligação não referenciava o símbolo, só um ponto
+   fixo). Corrigido com snapping por proximidade: `findNearestSymbol()` /
+   `nearestPointOnPolyline()` (`editableLayout.ts`, raio de captura
+   `SNAP_RADIUS = 6mm`) resolvem todo clique de iniciar/terminar uma ligação
+   — perto de um componente vira aquele componente de verdade (ligação
+   pixel-perfeita via `edgePoint()`), perto de uma linha existente sem
+   símbolo vira o ponto exato projetado sobre ela, e **soltar** uma ponta já
+   existente perto de um componente também gruda nela (dá pra corrigir uma
+   ligação já salva só arrastando, sem apagar/refazer).
+
+Verificado com um teste headless (`node`) comparando as coordenadas exatas
+esperadas (ex.: disjuntor→medidor devia encostar em x=22/x=54, não x=24/x=50)
+antes do commit — as duas correções batem com os valores calculados à mão.
+Diagramas já salvos com uma ponta solta não-grudada continuam com o gap até
+o usuário arrastar a pontinha pra dentro do símbolo ou refazer a ligação —
+não há migração retroativa automática (ver limitações em
+`docs/modules/diagrams/overview.md`).

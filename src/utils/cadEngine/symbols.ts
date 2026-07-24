@@ -26,6 +26,23 @@ export const KIND_LABEL: Record<ComponentKind, string> = {
   dps: 'DPS',
 };
 
+/**
+ * Recuo (mm) entre a borda da caixa (bbox 24×20) e onde o traço visual do
+ * símbolo realmente termina — cada símbolo abaixo foi desenhado com uma
+ * margem própria (ex.: o medidor é um círculo de raio 8 centrado em (12,10),
+ * então sua borda real fica a 4mm da caixa; os demais usam stubs a 2mm).
+ * `edgePoint()` (editableLayout.ts) subtrai isso pra o condutor encostar
+ * exatamente na ponta do traço do símbolo, não numa borda "vazia" da caixa.
+ */
+export const CONNECTION_INSET: Record<ComponentKind, number> = {
+  'pv-array': 2,
+  inverter: 2,
+  breaker: 2,
+  meter: 4,
+  'utility-grid': 4,
+  dps: 2,
+};
+
 export const SYMBOL_DEFS: Record<ComponentKind, Primitive[]> = {
   'pv-array': [
     { kind: 'rect', x: 2, y: 3, w: W - 4, h: H - 6 },
