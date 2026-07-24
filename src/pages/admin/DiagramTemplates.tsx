@@ -218,6 +218,7 @@ export default function DiagramTemplates() {
         ...revised,
         photos: current.photos,
         texts: current.texts,
+        shapes: current.shapes,
         sheet: current.sheet,
       };
       await updateTemplate.mutateAsync({ id: selected.id, sceneData: newState, silent: true });

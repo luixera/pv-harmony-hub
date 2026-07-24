@@ -65,6 +65,26 @@ export interface PlacedGroup {
   y: number;
   w: number;
   h: number;
+  /** Traço da caixa — `dashed` (padrão, retrocompatível) ou `solid`. */
+  style?: 'dashed' | 'solid';
+  /** true: arrastar a caixa arrasta junto os símbolos/textos/pontos de dobra dentro dela. */
+  moveContents?: boolean;
+}
+
+/**
+ * Figura de anotação livre (seção, destaque, divisória, seta) — camada
+ * visual, sem efeito elétrico. `rect`/`ellipse` usam x/y/w/h como caixa;
+ * `divider`/`arrow` são uma LINHA de (x,y) a (x+w,y+h) — w/h podem ser
+ * negativos (direção).
+ */
+export interface PlacedShape {
+  id: string;
+  shape: 'rect' | 'ellipse' | 'divider' | 'arrow';
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  dashed?: boolean;
 }
 
 /** Foto solta no diagrama (ex.: local, fachada, padrão de entrada) — não é um `ComponentKind`. */
@@ -106,6 +126,8 @@ export interface DiagramSceneState {
   texts: PlacedText[];
   /** Caixas de agrupamento — opcional porque diagramas salvos antes desta versão não têm o campo. */
   groups?: PlacedGroup[];
+  /** Figuras de anotação (retângulo/elipse/divisória/seta) — idem, opcional por retrocompatibilidade. */
+  shapes?: PlacedShape[];
   /** Campos editáveis da folha (resp. técnico/ART/revisão do carimbo + legenda lig./desl.). */
   sheet?: SheetOptions;
 }
@@ -346,6 +368,64 @@ export function orthogonalPath(a: Point, b: Point): Point[] {
   return [a, { x: midX, y: a.y }, { x: midX, y: b.y }, b];
 }
 
+/** Encaixa um ponto no eixo H/V em relação ao ponto anterior — o desenho de
+ *  linha "anda em esquadro" por padrão (Shift segurado libera o ângulo). */
+export function orthoSnapPoint(prev: Point, pt: Point): Point {
+  return Math.abs(pt.x - prev.x) >= Math.abs(pt.y - prev.y)
+    ? { x: pt.x, y: prev.y }
+    : { x: prev.x, y: pt.y };
+}
+
+interface ObstacleRect { x: number; y: number; w: number; h: number }
+
+/** Um segmento H/V "limpa" o retângulo (com folga)? Como os segmentos dos
+ *  candidatos são sempre ortogonais, o teste de caixa-contra-caixa é exato. */
+function segmentClearsRect(a: Point, b: Point, r: ObstacleRect, margin: number): boolean {
+  const x0 = Math.min(a.x, b.x), x1 = Math.max(a.x, b.x);
+  const y0 = Math.min(a.y, b.y), y1 = Math.max(a.y, b.y);
+  return !(x0 < r.x + r.w + margin && x1 > r.x - margin && y0 < r.y + r.h + margin && y1 > r.y - margin);
+}
+
+function pathClear(pts: Point[], obstacles: ObstacleRect[], margin = 1.5): boolean {
+  for (let i = 0; i < pts.length - 1; i++) {
+    for (const r of obstacles) {
+      if (!segmentClearsRect(pts[i], pts[i + 1], r, margin)) return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Roteamento ortogonal com DESVIO de obstáculo: tenta uma família de rotas
+ * H-V-H / V-H-V (o "corredor" do meio varrido do centro pra fora) e L
+ * simples, e devolve a primeira que não atravessa nenhum símbolo. Sem rota
+ * limpa (diagrama congestionado), cai no Z clássico do `orthogonalPath` —
+ * o comportamento antigo, nunca pior que ele.
+ */
+export function routeAvoidingObstacles(a: Point, b: Point, obstacles: ObstacleRect[]): Point[] {
+  const dedupe = (pts: Point[]) =>
+    pts.filter((p, i) => i === 0 || Math.abs(p.x - pts[i - 1].x) > 0.01 || Math.abs(p.y - pts[i - 1].y) > 0.01);
+  const candidates: Point[][] = [];
+  if (Math.abs(a.y - b.y) < 0.01 || Math.abs(a.x - b.x) < 0.01) candidates.push([a, b]); // reta direta
+  const offsets = [0, -5, 5, -10, 10, -15, 15, -20, 20, -30, 30, -40, 40, -50, 50];
+  const baseX = (a.x + b.x) / 2;
+  for (const o of offsets) {
+    const midX = baseX + o;
+    candidates.push(dedupe([a, { x: midX, y: a.y }, { x: midX, y: b.y }, b]));
+  }
+  const baseY = (a.y + b.y) / 2;
+  for (const o of offsets) {
+    const midY = baseY + o;
+    candidates.push(dedupe([a, { x: a.x, y: midY }, { x: b.x, y: midY }, b]));
+  }
+  candidates.push(dedupe([a, { x: b.x, y: a.y }, b]));
+  candidates.push(dedupe([a, { x: a.x, y: b.y }, b]));
+  for (const c of candidates) {
+    if (c.length >= 2 && pathClear(c, obstacles)) return c;
+  }
+  return orthogonalPath(a, b);
+}
+
 /** Centro do bloco, em coordenadas de página, dado o canto superior-esquerdo — já considera a escala. */
 export function blockCenter(p: PlacedSymbol): Point {
   return { x: p.x + (SYMBOL_BBOX.w * p.scale) / 2, y: p.y + (SYMBOL_BBOX.h * p.scale) / 2 };
@@ -510,6 +590,10 @@ export function computeAllConnectionPoints(
   const resolved = new Map<string, Point[]>();
   const visiting = new Set<string>();
   const failed = new Set<string>();
+  // caixas dos símbolos (já escaladas) — obstáculos do roteamento automático
+  const rects = [...byId.values()].map(p => ({
+    id: p.id, x: p.x, y: p.y, w: SYMBOL_BBOX.w * p.scale, h: SYMBOL_BBOX.h * p.scale,
+  }));
 
   const portOf = (kind: ComponentKind, portId: string): SymbolPort | null =>
     (SYMBOL_PORTS[kind] ?? []).find(p => p.id === portId) ?? null;
@@ -552,7 +636,16 @@ export function computeAllConnectionPoints(
       const pa = endpointPoint(conn.from, wps[0] ?? toAnchor);
       const pb = endpointPoint(conn.to, wps[wps.length - 1] ?? fromAnchor);
       if (!pa || !pb) { failed.add(id); return null; }
-      const pts = wps.length === 0 ? orthogonalPath(pa, pb) : [pa, ...wps, pb];
+      let pts: Point[];
+      if (wps.length === 0) {
+        // roteamento automático desvia dos símbolos — menos os das próprias pontas
+        const excluded = new Set(
+          [conn.from, conn.to].flatMap(e => (e.kind === 'symbol' || e.kind === 'port' ? [e.id] : [])),
+        );
+        pts = routeAvoidingObstacles(pa, pb, rects.filter(r => !excluded.has(r.id)));
+      } else {
+        pts = [pa, ...wps, pb];
+      }
       resolved.set(id, pts);
       return pts;
     } finally {
@@ -605,6 +698,39 @@ export function detachDerivations(
       const to = fix(c.to, 'to');
       return from === c.from && to === c.to ? c : { ...c, from, to };
     });
+}
+
+/**
+ * Primitivas de uma figura de anotação — compartilhadas entre o canvas ao
+ * vivo e o export (mesma geometria nos dois). A seta ganha a ponta como
+ * duas linhas curtas a ±150° da direção.
+ */
+export function shapePrimitives(sh: PlacedShape): import('./types').Primitive[] {
+  if (sh.shape === 'rect') {
+    const x = Math.min(sh.x, sh.x + sh.w), y = Math.min(sh.y, sh.y + sh.h);
+    return [{ kind: 'rect', x, y, w: Math.abs(sh.w), h: Math.abs(sh.h), dashed: sh.dashed }];
+  }
+  if (sh.shape === 'ellipse') {
+    return [{
+      kind: 'ellipse',
+      center: { x: sh.x + sh.w / 2, y: sh.y + sh.h / 2 },
+      rx: Math.abs(sh.w) / 2, ry: Math.abs(sh.h) / 2, dashed: sh.dashed,
+    }];
+  }
+  const a = { x: sh.x, y: sh.y };
+  const b = { x: sh.x + sh.w, y: sh.y + sh.h };
+  const prims: import('./types').Primitive[] = [{ kind: 'line', a, b, dashed: sh.dashed }];
+  if (sh.shape === 'arrow') {
+    const ang = Math.atan2(b.y - a.y, b.x - a.x);
+    const HEAD = 2.5, SPREAD = Math.PI / 6;
+    for (const s of [-1, 1]) {
+      prims.push({
+        kind: 'line', a: b,
+        b: { x: b.x - HEAD * Math.cos(ang + s * SPREAD), y: b.y - HEAD * Math.sin(ang + s * SPREAD) },
+      });
+    }
+  }
+  return prims;
 }
 
 /** Tipos de componente efetivamente usados, na ordem de primeira aparição — alimenta a tabela de legenda. */
@@ -681,11 +807,17 @@ export function buildSceneFromPlacement(
   }
 
   for (const g of groups) {
-    scene.shapes.push({ layer: 'GROUP_BOX', geometry: { kind: 'rect', x: g.x, y: g.y, w: g.w, h: g.h, dashed: true } });
+    scene.shapes.push({ layer: 'GROUP_BOX', geometry: { kind: 'rect', x: g.x, y: g.y, w: g.w, h: g.h, dashed: g.style !== 'solid' } });
     scene.shapes.push({
       layer: 'GROUP_BOX',
       geometry: { kind: 'text', at: { x: g.x + 2, y: g.y - 1.4 }, value: resolve(g.title), size: 2.6, anchor: 'start', weight: 'bold' },
     });
+  }
+
+  for (const sh of state.shapes ?? []) {
+    for (const prim of shapePrimitives(sh)) {
+      scene.shapes.push({ layer: 'ANNOTATION', geometry: prim });
+    }
   }
 
   const byId = new Map(placements.map(p => [p.id, p]));

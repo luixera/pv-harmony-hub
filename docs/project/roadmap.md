@@ -39,7 +39,14 @@
   (`diagram-review`, Opus + adaptive thinking): 2ª passada automática na
   importação + botão "Revisão do engenheiro" no editor de modelos — compara
   o original com o redesenho (imagem + JSON) usando checklist de engenharia
-  e devolve o diagrama corrigido + notas. Próximos: casamento automático de modelo
+  e devolve o diagrama corrigido + notas. **12ª rodada: motor dinâmico em 4
+  fases** — (1) conexões vivas: portas nomeadas por símbolo, derivação
+  formal que acompanha a linha-mãe, nós de junção (•); (2) desenho
+  inteligente: encaixe ortogonal com prévia elástica, roteamento com desvio
+  de símbolos, guias de alinhamento, arrastar segmento individual; (3)
+  figuras de anotação (retângulo/elipse/divisória/seta), grupos com estilo
+  e "arrastar conteúdo junto", frente/trás; (4) modos Selecionar×Ligar +
+  menu de contexto. Próximos: casamento automático de modelo
   por critério paramétrico; calibrar prompt/símbolos com mais unifilares
   reais; liberar pra todos os tenants (RLS pronto); componentes em série
   desenhados "no fio" + portas CC/CA no inversor (Fase E, refactor visual

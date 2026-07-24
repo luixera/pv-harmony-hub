@@ -5,6 +5,22 @@ Registro de decisões de produto/UX (não arquiteturais — essas ficam em
 
 ## Log
 
+- **Diagrama unifilar — motor de conexões vivas em 4 fases** (12ª rodada):
+  o usuário pediu que o motor ficasse "dinâmico como precisamos, inclusive
+  com o desenho de linhas, ligação entre os componentes, entre as próprias
+  linhas e figuras para determinar seções", com o plano completo
+  apresentado antes de implementar (aprovado: "pode fazer"). As 4 fases:
+  (1) conexões vivas — portas nomeadas na geometria de cada símbolo,
+  derivação FORMAL que acompanha a linha-mãe (a antiga era ponto fixo que
+  ficava pra trás) com nó de junção (•) como nos unifilares reais, remoção
+  nunca apaga derivações em cascata; (2) desenho em esquadro com Shift pra
+  liberar, prévia elástica, rotas automáticas desviando de símbolos, guias
+  de alinhamento magenta, arrastar um segmento só; (3) figuras de anotação
+  (retângulo/elipse/divisória/seta), grupo com traço sólido/tracejado e
+  "arrastar conteúdo junto", frente/trás pra figuras e fotos; (4) modos
+  Selecionar×Ligar explícitos e menu de contexto no botão direito.
+  Diagramas já salvos continuam abrindo sem migração. Ver
+  [ADR 0006](../adr/0006-cad-engine-alpha.md). (jul/2026)
 - **Diagrama unifilar — "agente engenheiro" virou 2ª passada de revisão por
   IA** (11ª rodada): o usuário, ainda insatisfeito com a fidelidade da
   importação nativa, sugeriu "um agente de IA com características de

@@ -574,3 +574,52 @@ E um JPEG do nosso redesenho (`sceneToJpegDataUrl`) lado a lado, coisa que a
 - `notes[]` (o que o revisor corrigiu) aparece num banner âmbar, chaveado
   pelo id do modelo — a importação seta notas e troca de tela no mesmo lote,
   e um reset por `useEffect` na troca apagaria as notas recém-criadas.
+
+## Atualização (12ª rodada) — motor de conexões vivas + desenho inteligente (4 fases)
+
+**Contexto**: o usuário avaliou que o editor "ainda não está dinâmico como
+precisamos, inclusive com o desenho de linhas, ligação entre os
+componentes, entre as próprias linhas e figuras para determinar seções".
+Plano de 4 fases apresentado por escrito e aprovado ("pode fazer").
+
+**Fase 1 — conexões vivas** (a fundação; o resto seria cosmético sem ela):
+- `ConnectionEndpoint` ganhou dois tipos novos: `port` (porta NOMEADA da
+  geometria do símbolo — `SYMBOL_PORTS`, calibrada por tipo: CC/CA do
+  inversor, entrada/saída, topo do DPS) e `line` (derivação FORMAL —
+  `{connId, t}`, nasce da fração `t` do traçado da linha-mãe). A decisão
+  central: a derivação deixa de ser um ponto fixo coincidente (que ficava
+  pra trás quando a mãe movia) e vira um vínculo vivo. O nó preto (•) de
+  junção aparece no canvas E no export (primitiva `circle` ganhou `filled`).
+- `computeAllConnectionPoints` resolve todos os condutores de uma vez, em
+  ordem de dependência, com detecção de ciclo (A↔B deriva um do outro →
+  nenhuma resolve, nada trava) — única fonte de geometria pro canvas e pros
+  exportadores. Grudar uma ponta numa linha que depende dela é bloqueado na
+  soltura (`connectionDependsOn`).
+- Remoção NUNCA apaga derivações em cascata: viram ponto fixo na posição
+  atual (`detachDerivations`). Pontas `point` legadas seguem funcionando
+  sem migração; reconectar grava o vínculo novo.
+
+**Fase 2 — desenho de linha inteligente**:
+- Encaixe ortogonal no desenho (Shift libera) + prévia elástica do trecho.
+- `routeAvoidingObstacles`: rotas automáticas desviam de símbolos (família
+  H-V-H/V-H-V com corredor varrido do centro pra fora; fallback = o Z
+  antigo, nunca pior). Decisão: NÃO usar A*/grid — a família de candidatos
+  cobre os casos reais de unifilar com custo e código muito menores.
+- Guias de alinhamento magenta por centro de símbolo (±1,2mm, ganham do
+  snap de grade) e arrasto de segmento individual (linha selecionada +
+  trecho interno, perpendicular, mantendo esquadro).
+
+**Fase 3 — figuras e seções**:
+- `PlacedShape` (rect/ellipse/divider/arrow) na camada nova `ANNOTATION`;
+  IR ganhou a primitiva `ellipse`; `shapePrimitives()` é a geometria única
+  de canvas e export (a seta desenha a ponta como 2 traços a ±30°).
+- Grupos: estilo tracejado/sólido + `moveContents` (arrastar a caixa leva
+  símbolos/textos/figuras/pontos de dobra que estavam dentro).
+- Z-order por ordem de array (frente/trás) pra figuras e fotos.
+
+**Fase 4 — UX de manipulação**:
+- Modos "Selecionar × Ligar" como controle segmentado; Esc em dois passos
+  (cancela ligação → sai do modo).
+- Menu de contexto (botão direito) por tipo de elemento — implementação
+  própria em div fixa (não Radix DropdownMenu: o alvo é SVG e a posição é
+  o ponto do clique, não um trigger).

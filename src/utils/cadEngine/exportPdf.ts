@@ -32,9 +32,11 @@ const LAYER_RGB: Record<LayerId, [number, number, number]> = {
   TEXT_LABEL: [51, 51, 51],
   PHOTO: [0, 0, 0],
   GROUP_BOX: [122, 122, 122],
+  ANNOTATION: [68, 68, 68],
 };
 const LAYER_WIDTH: Record<LayerId, number> = {
   FRAME: 0.5, TITLE_BLOCK: 0.3, SYMBOLS: 0.35, CONDUCTOR_AC: 0.4, TEXT_LABEL: 0.2, PHOTO: 0, GROUP_BOX: 0.3,
+  ANNOTATION: 0.3,
 };
 
 const DASH_MM = [2, 1.4]; // mesmo padrão de tracejado do exportador SVG
@@ -59,7 +61,7 @@ function drawPrimitive(
   doc.setDrawColor(...rgb);
   doc.setTextColor(...rgb);
   doc.setLineWidth(lineWidth);
-  const dashed = (p.kind === 'line' || p.kind === 'rect') && p.dashed;
+  const dashed = (p.kind === 'line' || p.kind === 'rect' || p.kind === 'ellipse') && p.dashed;
   if (dashed) doc.setLineDashPattern(DASH_MM, 0);
   const R = (pt: Point) => rotatePoint(scalePoint(pt, scale, rotCenter.x, rotCenter.y), rotDeg, rotCenter.x, rotCenter.y);
   switch (p.kind) {
@@ -96,6 +98,11 @@ function drawPrimitive(
       } else {
         doc.circle(c.x + dx, c.y + dy, p.radius * scale);
       }
+      break;
+    }
+    case 'ellipse': {
+      const c = R(p.center);
+      doc.ellipse(c.x + dx, c.y + dy, p.rx * scale, p.ry * scale);
       break;
     }
     case 'text': {

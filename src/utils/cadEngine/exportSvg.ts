@@ -11,9 +11,11 @@ const LAYER_COLOR: Record<LayerId, string> = {
   TEXT_LABEL: '#333333',
   PHOTO: 'transparent',
   GROUP_BOX: '#7A7A7A',
+  ANNOTATION: '#444444',
 };
 const LAYER_WIDTH: Record<LayerId, number> = {
   FRAME: 0.5, TITLE_BLOCK: 0.3, SYMBOLS: 0.35, CONDUCTOR_AC: 0.4, TEXT_LABEL: 0, PHOTO: 0, GROUP_BOX: 0.3,
+  ANNOTATION: 0.3,
 };
 
 function pts(points: Point[]): string {
@@ -33,6 +35,8 @@ export function primitiveToSvg(p: Primitive, color: string, strokeWidth: number)
     case 'circle':
       // `filled`: nó de junção de derivação (o ponto preto onde um condutor nasce de outro)
       return `<circle cx="${p.center.x}" cy="${p.center.y}" r="${p.radius}" fill="${p.filled ? color : 'none'}" stroke="${color}" stroke-width="${strokeWidth}" />`;
+    case 'ellipse':
+      return `<ellipse cx="${p.center.x}" cy="${p.center.y}" rx="${p.rx}" ry="${p.ry}" fill="none" stroke="${color}" stroke-width="${strokeWidth}"${p.dashed ? ` stroke-dasharray="${DASH}"` : ''} />`;
     case 'text': {
       const weight = p.weight === 'bold' ? 'bold' : 'normal';
       return `<text x="${p.at.x}" y="${p.at.y}" font-size="${p.size}" text-anchor="${p.anchor}" font-weight="${weight}" font-family="Arial, sans-serif" fill="${color}">${escapeXml(p.value)}</text>`;

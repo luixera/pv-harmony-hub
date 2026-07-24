@@ -40,6 +40,7 @@ interface SavedLayout {
   photos?: DiagramSceneState['photos'];
   texts?: DiagramSceneState['texts'];
   groups?: DiagramSceneState['groups'];
+  shapes?: DiagramSceneState['shapes'];
   sheet?: DiagramSceneState['sheet'];
 }
 
@@ -79,7 +80,7 @@ function reconcile(json: ReturnType<typeof buildTechnicalJsonFromProject>, saved
     return {
       placements: [...byId.values()], connections,
       photos: saved.photos ?? [], texts: saved.texts ?? [],
-      groups: saved.groups ?? [], sheet: saved.sheet,
+      groups: saved.groups ?? [], shapes: saved.shapes ?? [], sheet: saved.sheet,
     };
   }
 
@@ -100,7 +101,7 @@ function reconcile(json: ReturnType<typeof buildTechnicalJsonFromProject>, saved
   return {
     placements, connections,
     photos: saved.photos ?? [], texts: saved.texts ?? [],
-    groups: saved.groups ?? [], sheet: saved.sheet,
+    groups: saved.groups ?? [], shapes: saved.shapes ?? [], sheet: saved.sheet,
   };
 }
 

@@ -3,13 +3,14 @@ import {
   Loader2, Download, FileImage, RotateCw, Link2, Trash2, RefreshCw,
   Image as ImageIcon, Plus, Type, BoxSelect, FileText,
   Undo2, Redo2, ZoomIn, ZoomOut, Maximize, Copy,
+  Square, Circle as CircleIcon, Minus, MoveUpRight, BringToFront, SendToBack, MousePointer2,
 } from 'lucide-react';
 import {
-  ConnectionEndpoint, DiagramSceneState, ManualConnection, PlacedGroup, PlacedPhoto, PlacedSymbol, PlacedText,
-  SheetOptions, blockCenter, buildSceneFromPlacement, buildSheetFurnitureScene, computeAllConnectionPoints,
-  connectionDependsOn, connectionLabelPosition, detachDerivations, findNearestPort, findNearestSymbol,
-  initialConnections, initialPlacement, nearestPointOnPolyline, pointAtT, portPagePosition,
-  SNAP_RADIUS, snapToGrid, usedKindsOf,
+  ConnectionEndpoint, DiagramSceneState, ManualConnection, PlacedGroup, PlacedPhoto, PlacedShape, PlacedSymbol,
+  PlacedText, SheetOptions, blockCenter, buildSceneFromPlacement, buildSheetFurnitureScene,
+  computeAllConnectionPoints, connectionDependsOn, connectionLabelPosition, detachDerivations, findNearestPort,
+  findNearestSymbol, initialConnections, initialPlacement, nearestPointOnPolyline, orthoSnapPoint, pointAtT,
+  portPagePosition, shapePrimitives, SNAP_RADIUS, snapToGrid, usedKindsOf,
 } from '@/utils/cadEngine/editableLayout';
 import { ComponentKind, Point, TechnicalJsonMvp } from '@/utils/cadEngine/types';
 import { sceneToSvgInner, primitiveToSvg, blockTransform } from '@/utils/cadEngine/exportSvg';
@@ -69,6 +70,7 @@ export function DiagramEditor({
   const [photos, setPhotos] = useState<PlacedPhoto[]>([]);
   const [texts, setTexts] = useState<PlacedText[]>([]);
   const [groups, setGroups] = useState<PlacedGroup[]>([]);
+  const [shapes, setShapes] = useState<PlacedShape[]>([]);
   const [sheet, setSheet] = useState<SheetOptions>({});
   const [loaded, setLoaded] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -78,6 +80,7 @@ export function DiagramEditor({
   const [selectedTextId, setSelectedTextId] = useState<string | null>(null);
   const [selectedConnId, setSelectedConnId] = useState<string | null>(null);
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
+  const [selectedShapeId, setSelectedShapeId] = useState<string | null>(null);
   const [linkMode, setLinkMode] = useState(false);
   const [linkFrom, setLinkFrom] = useState<ConnectionEndpoint | null>(null);
   const [drawnWaypoints, setDrawnWaypoints] = useState<Point[]>([]);
@@ -89,10 +92,17 @@ export function DiagramEditor({
   const [viewBox, setViewBox] = useState({ x: 0, y: 0, w: PAPER.widthMm, h: PAPER.heightMm });
   const [marquee, setMarquee] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
   const [historyTick, setHistoryTick] = useState(0); // só pra reabilitar/desabilitar os botões desfazer/refazer
+  /** Guias de alinhamento (linha magenta) — aparecem quando um símbolo arrastado alinha com o centro de outro. */
+  const [guides, setGuides] = useState<{ x?: number; y?: number } | null>(null);
+  /** Prévia elástica do desenho de linha: onde o cursor está agora (já com encaixe ortogonal). */
+  const [hoverPt, setHoverPt] = useState<Point | null>(null);
+  /** Menu de contexto (botão direito) — posição em px da janela + o alvo clicado. */
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; kind: 'symbol' | 'conn' | 'group' | 'shape' | 'photo' | 'text'; id: string } | null>(null);
 
   const clearSelection = () => {
     setSelectedId(null); setSelectedIds(new Set());
     setSelectedPhotoId(null); setSelectedTextId(null); setSelectedConnId(null); setSelectedGroupId(null);
+    setSelectedShapeId(null);
   };
 
   // ── Desfazer/refazer ──────────────────────────────────────────────────────
@@ -100,7 +110,7 @@ export function DiagramEditor({
   // que muda o desenho (não a cada mousemove) — o estado é pequeno o
   // suficiente (fotos são a exceção; ainda ok pra ~50 passos).
   const HISTORY_MAX = 50;
-  const currentStateRef = useRef<DiagramSceneState>({ placements: [], connections: [], photos: [], texts: [], groups: [], sheet: {} });
+  const currentStateRef = useRef<DiagramSceneState>({ placements: [], connections: [], photos: [], texts: [], groups: [], shapes: [], sheet: {} });
   const historyRef = useRef<{ undo: DiagramSceneState[]; redo: DiagramSceneState[] }>({ undo: [], redo: [] });
   const snapshot = () => {
     historyRef.current.undo.push(currentStateRef.current);
@@ -114,6 +124,7 @@ export function DiagramEditor({
     setPhotos(s.photos);
     setTexts(s.texts);
     setGroups(s.groups ?? []);
+    setShapes(s.shapes ?? []);
     setSheet(s.sheet ?? {});
     clearSelection();
   };
@@ -139,6 +150,7 @@ export function DiagramEditor({
     setPhotos(initialState.photos);
     setTexts(initialState.texts);
     setGroups(initialState.groups ?? []); // diagramas salvos antes dos grupos não têm o campo
+    setShapes(initialState.shapes ?? []);
     setSheet(initialState.sheet ?? {});
     clearSelection();
     setLinkMode(false);
@@ -151,7 +163,7 @@ export function DiagramEditor({
     currentStateRef.current = {
       placements: initialState.placements, connections: initialState.connections,
       photos: initialState.photos, texts: initialState.texts,
-      groups: initialState.groups ?? [], sheet: initialState.sheet ?? {},
+      groups: initialState.groups ?? [], shapes: initialState.shapes ?? [], sheet: initialState.sheet ?? {},
     };
     setLoaded(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- só reage à troca de documento
@@ -160,11 +172,11 @@ export function DiagramEditor({
   // Notifica o dono (localStorage por projeto, ou o motor de templates) a cada mudança.
   useEffect(() => {
     if (!loaded) return;
-    const state: DiagramSceneState = { placements, connections, photos, texts, groups, sheet };
+    const state: DiagramSceneState = { placements, connections, photos, texts, groups, shapes, sheet };
     currentStateRef.current = state; // espelho pro desfazer/refazer (snapshot lê daqui)
     onStateChange(state);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- onStateChange não entra: reagimos à mudança de estado, não à identidade da função
-  }, [placements, connections, photos, texts, groups, sheet, loaded]);
+  }, [placements, connections, photos, texts, groups, shapes, sheet, loaded]);
 
   const byId = useMemo(() => new Map(placements.map(p => [p.id, p])), [placements]);
   // Espelha `placements`/`connections` num ref pra ler a versão mais recente
@@ -176,8 +188,8 @@ export function DiagramEditor({
   const connectionsRef = useRef(connections);
   useEffect(() => { connectionsRef.current = connections; }, [connections]);
   const scene = useMemo(
-    () => buildSceneFromPlacement(json, { placements, connections, photos, texts, groups, sheet }, values),
-    [json, placements, connections, photos, texts, groups, sheet, values],
+    () => buildSceneFromPlacement(json, { placements, connections, photos, texts, groups, shapes, sheet }, values),
+    [json, placements, connections, photos, texts, groups, shapes, sheet, values],
   );
   // Geometria de TODOS os condutores, resolvida em ordem de dependência
   // (derivações formais depois das linhas-mãe) — a mesma fonte usada pelo
@@ -196,6 +208,7 @@ export function DiagramEditor({
   const viewBoxRef = useRef(viewBox);
   useEffect(() => { viewBoxRef.current = viewBox; }, [viewBox]);
   const spaceHeldRef = useRef(false);
+  const shiftHeldRef = useRef(false); // Shift segurado libera o ângulo livre no desenho de linha
   type DragState =
     | { type: 'symbol'; id: string; startX: number; startY: number; origX: number; origY: number; moved: boolean; origPositions?: Record<string, { x: number; y: number }> }
     | { type: 'symbol-resize'; id: string; startX: number; startY: number; origScale: number; moved: boolean }
@@ -207,8 +220,11 @@ export function DiagramEditor({
     | { type: 'photo'; id: string; startX: number; startY: number; origX: number; origY: number; moved: boolean }
     | { type: 'photo-resize'; id: string; startX: number; startY: number; origW: number; origH: number; moved: boolean }
     | { type: 'text'; id: string; startX: number; startY: number; origX: number; origY: number; moved: boolean }
-    | { type: 'group'; id: string; startX: number; startY: number; origX: number; origY: number; moved: boolean }
-    | { type: 'group-resize'; id: string; startX: number; startY: number; origW: number; origH: number; moved: boolean };
+    | { type: 'group'; id: string; startX: number; startY: number; origX: number; origY: number; moved: boolean; contained?: { symbols: Record<string, { x: number; y: number }>; texts: Record<string, { x: number; y: number }>; shapes: Record<string, { x: number; y: number }>; waypointsByConn: Record<string, Point[]> } }
+    | { type: 'group-resize'; id: string; startX: number; startY: number; origW: number; origH: number; moved: boolean }
+    | { type: 'segment-shift'; connId: string; index: number; horizontal: boolean; startX: number; startY: number; origWaypoints: Point[]; moved: boolean }
+    | { type: 'shape'; id: string; startX: number; startY: number; origX: number; origY: number; moved: boolean }
+    | { type: 'shape-resize'; id: string; startX: number; startY: number; origW: number; origH: number; moved: boolean };
   // `preState`: estado capturado no mousedown — só vira passo de desfazer se o
   // arrasto realmente mover (evita poluir o histórico com cliques de seleção).
   const dragRef = useRef<(DragState & { preState?: DiagramSceneState }) | null>(null);
@@ -256,7 +272,44 @@ export function DiagramEditor({
         } else {
           let nx = drag.origX + dx, ny = drag.origY + dy;
           if (snap) { nx = snapToGrid(nx); ny = snapToGrid(ny); }
+          // guias de alinhamento: centro alinhado com o centro de outro
+          // símbolo (tolerância 1.2mm) gruda e mostra a linha magenta —
+          // ganha do snap de grade (centros de símbolos escalados podem
+          // cair fora da grade)
+          const me = placementsRef.current.find(p => p.id === drag.id);
+          let guideX: number | undefined, guideY: number | undefined;
+          if (me) {
+            const w = SYMBOL_BBOX.w * me.scale, h = SYMBOL_BBOX.h * me.scale;
+            const GUIDE_TOL = 1.2;
+            for (const o of placementsRef.current) {
+              if (o.id === drag.id) continue;
+              const ocx = o.x + (SYMBOL_BBOX.w * o.scale) / 2;
+              const ocy = o.y + (SYMBOL_BBOX.h * o.scale) / 2;
+              if (guideX === undefined && Math.abs(nx + w / 2 - ocx) < GUIDE_TOL) { nx = ocx - w / 2; guideX = ocx; }
+              if (guideY === undefined && Math.abs(ny + h / 2 - ocy) < GUIDE_TOL) { ny = ocy - h / 2; guideY = ocy; }
+              if (guideX !== undefined && guideY !== undefined) break;
+            }
+          }
+          setGuides(guideX !== undefined || guideY !== undefined ? { x: guideX, y: guideY } : null);
           setPlacements(prev => prev.map(p => (p.id === drag.id ? { ...p, x: nx, y: ny } : p)));
+        }
+      } else if (drag.type === 'segment-shift') {
+        // desloca SÓ o segmento arrastado, perpendicular à direção dele,
+        // mantendo a ortogonalidade (os dois pontos de dobra das pontas do
+        // trecho andam juntos)
+        const wps = drag.origWaypoints.map(p => ({ ...p }));
+        const i = drag.index - 1; // full[index] = waypoints[index-1]
+        if (i >= 0 && i + 1 < wps.length) {
+          if (drag.horizontal) {
+            let ny = wps[i].y + dy;
+            if (snap) ny = snapToGrid(ny);
+            wps[i].y = ny; wps[i + 1].y = ny;
+          } else {
+            let nx = wps[i].x + dx;
+            if (snap) nx = snapToGrid(nx);
+            wps[i].x = nx; wps[i + 1].x = nx;
+          }
+          setConnections(prev => prev.map(c => (c.id === drag.connId ? { ...c, waypoints: wps } : c)));
         }
       } else if (drag.type === 'symbol-resize') {
         const deltaScale = dx / SYMBOL_BBOX.w; // cada W mm arrastados = +1x de escala
@@ -303,7 +356,36 @@ export function DiagramEditor({
       } else if (drag.type === 'group') {
         let nx = drag.origX + dx, ny = drag.origY + dy;
         if (snap) { nx = snapToGrid(nx); ny = snapToGrid(ny); }
+        const gdx = nx - drag.origX, gdy = ny - drag.origY;
         setGroups(prev => prev.map(g => (g.id === drag.id ? { ...g, x: nx, y: ny } : g)));
+        // "mover conteúdo junto": símbolos/textos/figuras/pontos de dobra que
+        // estavam dentro da caixa no início do arrasto andam com ela
+        if (drag.contained) {
+          const c = drag.contained;
+          setPlacements(prev => prev.map(p => (c.symbols[p.id] ? { ...p, x: c.symbols[p.id].x + gdx, y: c.symbols[p.id].y + gdy } : p)));
+          setTexts(prev => prev.map(t => (c.texts[t.id] ? { ...t, x: c.texts[t.id].x + gdx, y: c.texts[t.id].y + gdy } : t)));
+          setShapes(prev => prev.map(s => (c.shapes[s.id] ? { ...s, x: c.shapes[s.id].x + gdx, y: c.shapes[s.id].y + gdy } : s)));
+          setConnections(prev => prev.map(conn => {
+            const orig = c.waypointsByConn[conn.id];
+            if (!orig) return conn;
+            return { ...conn, waypoints: orig.map(p => ({ x: p.x + gdx, y: p.y + gdy })) };
+          }));
+        }
+      } else if (drag.type === 'shape') {
+        let nx = drag.origX + dx, ny = drag.origY + dy;
+        if (snap) { nx = snapToGrid(nx); ny = snapToGrid(ny); }
+        setShapes(prev => prev.map(s => (s.id === drag.id ? { ...s, x: nx, y: ny } : s)));
+      } else if (drag.type === 'shape-resize') {
+        let nw = drag.origW + dx, nh = drag.origH + dy;
+        if (snap) { nw = snapToGrid(nw); nh = snapToGrid(nh); }
+        setShapes(prev => prev.map(s => {
+          if (s.id !== drag.id) return s;
+          // caixa (rect/elipse) tem tamanho mínimo; linha (divisória/seta) é livre, inclusive negativa
+          if (s.shape === 'rect' || s.shape === 'ellipse') {
+            return { ...s, w: Math.max(5, nw), h: Math.max(5, nh) };
+          }
+          return { ...s, w: nw, h: nh };
+        }));
       } else if (drag.type === 'group-resize') {
         let nw = Math.max(20, drag.origW + dx), nh = Math.max(15, drag.origH + dy);
         if (snap) { nw = snapToGrid(nw); nh = snapToGrid(nh); }
@@ -313,6 +395,7 @@ export function DiagramEditor({
     const onUp = (e: MouseEvent) => {
       const drag = dragRef.current;
       dragRef.current = null;
+      setGuides(null);
       if (!drag) return;
       if (drag.type === 'marquee') {
         setMarquee(null);
@@ -418,6 +501,38 @@ export function DiagramEditor({
     setSelectedPhotoId(null); setSelectedTextId(null); setSelectedConnId(null); setSelectedGroupId(null);
   };
 
+  // Botão direito num elemento: seleciona e abre o menu de contexto ali.
+  const openCtxMenu = (e: React.MouseEvent, kind: NonNullable<typeof ctxMenu>['kind'], id: string) => {
+    if (linkMode) return;
+    e.preventDefault();
+    e.stopPropagation();
+    clearSelection();
+    if (kind === 'symbol') { setSelectedId(id); setSelectedIds(new Set([id])); }
+    else if (kind === 'conn') setSelectedConnId(id);
+    else if (kind === 'group') setSelectedGroupId(id);
+    else if (kind === 'shape') setSelectedShapeId(id);
+    else if (kind === 'photo') setSelectedPhotoId(id);
+    else setSelectedTextId(id);
+    setCtxMenu({ x: e.clientX, y: e.clientY, kind, id });
+  };
+
+  // Onde uma ponta de ligação "está" na tela agora — usado pela prévia do
+  // desenho e pelo encaixe ortogonal do próximo ponto.
+  const endpointDisplayPoint = (ep: ConnectionEndpoint): Point | null => {
+    if (ep.kind === 'point') return ep.at;
+    if (ep.kind === 'line') {
+      const pts = allConnPoints.get(ep.connId);
+      return pts ? pointAtT(pts, ep.t) : null;
+    }
+    const sym = byId.get(ep.id);
+    if (!sym) return null;
+    if (ep.kind === 'port') {
+      const port = (SYMBOL_PORTS[sym.kind] ?? []).find(p => p.id === ep.port);
+      if (port) return portPagePosition(sym, port);
+    }
+    return blockCenter(sym);
+  };
+
   // Clique direto numa bolinha de porta (visíveis no modo ligar): a ponta
   // vira a PORTA específica, não o componente com lado automático.
   const handlePortClick = (symbolId: string, portId: string) => {
@@ -518,7 +633,25 @@ export function DiagramEditor({
       finishLink(resolved);
       return;
     }
-    setDrawnWaypoints(prev => [...prev, pt]);
+    // ponto de dobra novo: por padrão anda em esquadro (H/V) em relação ao
+    // ponto anterior — Shift segurado libera o ângulo livre
+    const prev = drawnWaypoints[drawnWaypoints.length - 1] ?? (linkFrom ? endpointDisplayPoint(linkFrom) : null);
+    const snapped = prev && !shiftHeldRef.current ? orthoSnapPoint(prev, pt) : pt;
+    setDrawnWaypoints(prevWps => [...prevWps, snapped]);
+  };
+
+  // Prévia elástica do desenho de linha: acompanha o cursor com o mesmo
+  // encaixe ortogonal que o clique aplicaria — o usuário vê o trecho antes
+  // de clicar.
+  const handleCanvasMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
+    if (!linkMode || !linkFrom) {
+      if (hoverPt) setHoverPt(null);
+      return;
+    }
+    const pt = clientToMm(e.clientX, e.clientY);
+    if (!pt) return;
+    const prev = drawnWaypoints[drawnWaypoints.length - 1] ?? endpointDisplayPoint(linkFrom);
+    setHoverPt(prev && !shiftHeldRef.current ? orthoSnapPoint(prev, pt) : pt);
   };
 
   const rotateSelected = () => {
@@ -534,19 +667,36 @@ export function DiagramEditor({
     if (selectedConnId === id) setSelectedConnId(null);
   };
 
-  const handleConnMouseDown = (e: React.MouseEvent, connId: string) => {
+  const handleConnMouseDown = (e: React.MouseEvent, connId: string, segIndex?: number) => {
     if (linkMode) return; // deixa propagar pro clique de canvas (cria ponto/derivação ali)
     e.preventDefault();
     e.stopPropagation();
-    clearSelection();
-    setSelectedConnId(connId);
     const conn = connections.find(c => c.id === connId);
     if (!conn) return;
+    const full = allConnPoints.get(conn.id) ?? [];
     let seedWaypoints = conn.waypoints ?? [];
-    if (seedWaypoints.length === 0) {
-      const full = allConnPoints.get(conn.id) ?? [];
-      seedWaypoints = full.slice(1, -1);
+    if (seedWaypoints.length === 0) seedWaypoints = full.slice(1, -1);
+
+    // Ligação JÁ selecionada + trecho interno (as duas pontas do trecho são
+    // pontos de dobra): arrasta SÓ aquele segmento, perpendicular, mantendo
+    // o esquadro. Primeiro clique (ou trecho de ponta) continua movendo a
+    // linha inteira.
+    if (selectedConnId === connId && segIndex !== undefined && segIndex >= 1 && segIndex <= full.length - 3) {
+      const a = full[segIndex], b = full[segIndex + 1];
+      const horizontal = Math.abs(b.y - a.y) <= Math.abs(b.x - a.x);
+      // materializa os pontos de dobra semeados no estado — o arrasto age sobre eles
+      setConnections(prev => prev.map(c => (c.id === connId ? { ...c, waypoints: seedWaypoints } : c)));
+      dragRef.current = {
+        type: 'segment-shift', connId, index: segIndex, horizontal,
+        startX: e.clientX, startY: e.clientY,
+        origWaypoints: seedWaypoints, moved: false,
+        preState: currentStateRef.current,
+      };
+      return;
     }
+
+    clearSelection();
+    setSelectedConnId(connId);
     dragRef.current = {
       type: 'conn-move', connId,
       startX: e.clientX, startY: e.clientY,
@@ -630,6 +780,12 @@ export function DiagramEditor({
   };
 
   const removeSelected = () => {
+    if (selectedShapeId) {
+      snapshot();
+      setShapes(prev => prev.filter(s => s.id !== selectedShapeId));
+      setSelectedShapeId(null);
+      return;
+    }
     if (selectedGroupId) {
       snapshot();
       setGroups(prev => prev.filter(g => g.id !== selectedGroupId));
@@ -672,6 +828,7 @@ export function DiagramEditor({
   };
 
   const canRemoveSelected = !!selectedGroupId || !!selectedConnId || !!selectedTextId || !!selectedPhotoId
+    || !!selectedShapeId
     || [...(selectedIds.size > 0 ? selectedIds : (selectedId ? [selectedId] : []))].some(isManualSymbol);
 
   // Duplicar os símbolos selecionados (Ctrl+D / botão) — só os manuais podem
@@ -698,6 +855,7 @@ export function DiagramEditor({
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA') return;
       if (e.key === ' ') { spaceHeldRef.current = true; return; }
+      if (e.key === 'Shift') { shiftHeldRef.current = true; return; }
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
         e.preventDefault();
         if (e.shiftKey) redo(); else undo();
@@ -705,11 +863,20 @@ export function DiagramEditor({
       }
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(); return; }
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd') { e.preventDefault(); duplicateSelected(); return; }
-      if (e.key === 'Escape' && linkMode && linkFrom) { setLinkFrom(null); setDrawnWaypoints([]); return; }
+      if (e.key === 'Escape') {
+        if (ctxMenu) { setCtxMenu(null); return; }
+        if (linkMode) {
+          // 1º Esc cancela a ligação em andamento; 2º sai do modo Ligar
+          if (linkFrom) { setLinkFrom(null); setDrawnWaypoints([]); }
+          else { setLinkMode(false); setHoverPt(null); }
+          return;
+        }
+      }
       if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); removeSelected(); }
     };
     const onKeyUp = (e: KeyboardEvent) => {
       if (e.key === ' ') spaceHeldRef.current = false;
+      if (e.key === 'Shift') shiftHeldRef.current = false;
     };
     window.addEventListener('keydown', onKey);
     window.addEventListener('keyup', onKeyUp);
@@ -859,7 +1026,73 @@ export function DiagramEditor({
     e.stopPropagation();
     clearSelection();
     setSelectedGroupId(g.id);
-    dragRef.current = { type: 'group', id: g.id, startX: e.clientX, startY: e.clientY, origX: g.x, origY: g.y, moved: false, preState: currentStateRef.current };
+    // "mover conteúdo junto": captura o que está DENTRO da caixa agora
+    let contained: Extract<DragState, { type: 'group' }>['contained'];
+    if (g.moveContents) {
+      const inside = (x: number, y: number) => x >= g.x && x <= g.x + g.w && y >= g.y && y <= g.y + g.h;
+      const symbols: Record<string, { x: number; y: number }> = {};
+      for (const p of placements) {
+        const cx = p.x + (SYMBOL_BBOX.w * p.scale) / 2, cy = p.y + (SYMBOL_BBOX.h * p.scale) / 2;
+        if (inside(cx, cy)) symbols[p.id] = { x: p.x, y: p.y };
+      }
+      const textsIn: Record<string, { x: number; y: number }> = {};
+      for (const t of texts) if (inside(t.x, t.y)) textsIn[t.id] = { x: t.x, y: t.y };
+      const shapesIn: Record<string, { x: number; y: number }> = {};
+      for (const s of shapes) if (inside(s.x, s.y)) shapesIn[s.id] = { x: s.x, y: s.y };
+      const waypointsByConn: Record<string, Point[]> = {};
+      for (const conn of connections) {
+        if ((conn.waypoints ?? []).some(p => inside(p.x, p.y))) waypointsByConn[conn.id] = (conn.waypoints ?? []).map(p => ({ ...p }));
+      }
+      contained = { symbols, texts: textsIn, shapes: shapesIn, waypointsByConn };
+    }
+    dragRef.current = { type: 'group', id: g.id, startX: e.clientX, startY: e.clientY, origX: g.x, origY: g.y, moved: false, contained, preState: currentStateRef.current };
+  };
+
+  // ── Figuras de anotação (retângulo/elipse/divisória/seta) ─────────────────
+  const addShape = (shape: PlacedShape['shape']) => {
+    snapshot();
+    const id = `shape-${Date.now()}`;
+    const base = shape === 'divider'
+      ? { w: 60, h: 0 }
+      : shape === 'arrow' ? { w: 30, h: -15 } : { w: 45, h: 30 };
+    setShapes(prev => [...prev, { id, shape, x: START_X + 20, y: CENTER_Y - 15, ...base, dashed: shape === 'rect' }]);
+    clearSelection();
+    setSelectedShapeId(id);
+  };
+
+  const handleShapeMouseDown = (e: React.MouseEvent, s: PlacedShape) => {
+    if (linkMode) return;
+    e.preventDefault();
+    e.stopPropagation();
+    clearSelection();
+    setSelectedShapeId(s.id);
+    dragRef.current = { type: 'shape', id: s.id, startX: e.clientX, startY: e.clientY, origX: s.x, origY: s.y, moved: false, preState: currentStateRef.current };
+  };
+
+  const handleShapeResizeMouseDown = (e: React.MouseEvent, s: PlacedShape) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragRef.current = { type: 'shape-resize', id: s.id, startX: e.clientX, startY: e.clientY, origW: s.w, origH: s.h, moved: false, preState: currentStateRef.current };
+  };
+
+  /** Trazer pra frente / enviar pra trás (ordem do array = ordem de desenho). */
+  const reorderShape = (id: string, dir: 'front' | 'back') => {
+    snapshot();
+    setShapes(prev => {
+      const item = prev.find(s => s.id === id);
+      if (!item) return prev;
+      const rest = prev.filter(s => s.id !== id);
+      return dir === 'front' ? [...rest, item] : [item, ...rest];
+    });
+  };
+  const reorderPhoto = (id: string, dir: 'front' | 'back') => {
+    snapshot();
+    setPhotos(prev => {
+      const item = prev.find(p => p.id === id);
+      if (!item) return prev;
+      const rest = prev.filter(p => p.id !== id);
+      return dir === 'front' ? [...rest, item] : [item, ...rest];
+    });
   };
 
   const handleGroupResizeMouseDown = (e: React.MouseEvent, g: PlacedGroup) => {
@@ -876,6 +1109,7 @@ export function DiagramEditor({
     setPhotos([]);
     setTexts([]);
     setGroups([]);
+    setShapes([]);
     // `sheet` (resp. técnico/ART/revisão) sobrevive ao reset — é metadado da
     // folha digitado pelo usuário, não parte do layout.
     clearSelection();
@@ -939,15 +1173,30 @@ export function DiagramEditor({
 
       {/* Barra de ferramentas */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
-        <button
-          onClick={() => { setLinkMode(m => !m); setLinkFrom(null); setDrawnWaypoints([]); clearSelection(); }}
-          style={btnStyle(linkMode)}
-        >
-          <Link2 size={13} />
-          {linkMode
-            ? (linkFrom ? `Ligando ${labelOfEndpoint(linkFrom)} a… (${drawnWaypoints.length} pontos, Esc cancela)` : 'Clique num componente ou numa linha existente')
-            : 'Ligar / desenhar linha'}
-        </button>
+        {/* Modos de ferramenta: Selecionar × Ligar (Esc volta pra Selecionar) */}
+        <div style={{ display: 'inline-flex', border: '1px solid #E0E0E0', borderRadius: 8, padding: 2, gap: 2 }}>
+          <button
+            onClick={() => { setLinkMode(false); setLinkFrom(null); setDrawnWaypoints([]); setHoverPt(null); }}
+            style={{ ...btnStyle(!linkMode), border: 'none', padding: '5px 10px' }}
+            title="Selecionar/mover (Esc)"
+          >
+            <MousePointer2 size={13} /> Selecionar
+          </button>
+          <button
+            onClick={() => { setLinkMode(true); setLinkFrom(null); setDrawnWaypoints([]); clearSelection(); }}
+            style={{ ...btnStyle(linkMode), border: 'none', padding: '5px 10px' }}
+            title="Ligar / desenhar linha — clique em portas, componentes ou linhas; Shift libera o ângulo"
+          >
+            <Link2 size={13} /> Ligar
+          </button>
+        </div>
+        {linkMode && (
+          <span style={{ fontSize: 11.5, color: '#2B8CFF', fontWeight: 600 }}>
+            {linkFrom
+              ? `Ligando ${labelOfEndpoint(linkFrom)} a… (${drawnWaypoints.length} ponto(s) — Esc cancela)`
+              : 'Clique numa porta, componente ou linha'}
+          </span>
+        )}
 
         <button onClick={rotateSelected} disabled={!selectedId} style={{ ...btnStyle(), color: selectedId ? '#333' : '#bbb', cursor: selectedId ? 'pointer' : 'not-allowed' }}>
           <RotateCw size={13} /> {selectedId ? `Girar ${labelOf(selectedId)}` : 'Girar (selecione um símbolo)'}
@@ -1101,6 +1350,21 @@ export function DiagramEditor({
         >
           <BoxSelect size={11} /> Grupo
         </button>
+        {([
+          ['rect', 'Retângulo', Square, 'Retângulo de anotação (sólido ou tracejado)'],
+          ['ellipse', 'Elipse', CircleIcon, 'Elipse/círculo de destaque'],
+          ['divider', 'Divisória', Minus, 'Linha divisória de seção'],
+          ['arrow', 'Seta', MoveUpRight, 'Seta de anotação'],
+        ] as const).map(([shape, label, Icon, title]) => (
+          <button
+            key={shape}
+            onClick={() => addShape(shape)}
+            title={title}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 10px', borderRadius: 999, border: '1px solid #E0E0E0', background: '#fff', color: '#333', fontSize: 11.5, fontWeight: 600, cursor: 'pointer' }}
+          >
+            <Icon size={11} /> {label}
+          </button>
+        ))}
       </div>
 
       {/* Canvas + painel de propriedades */}
@@ -1112,6 +1376,9 @@ export function DiagramEditor({
           style={{ width: 900, maxWidth: '100%', background: '#fff', boxShadow: '0 2px 12px rgba(0,0,0,0.12)', flexShrink: 0, cursor: linkMode ? 'crosshair' : 'default' }}
           onClick={handleCanvasClick}
           onMouseDown={handleCanvasMouseDown}
+          onMouseMove={handleCanvasMouseMove}
+          onMouseLeave={() => setHoverPt(null)}
+          onContextMenu={e => { e.preventDefault(); setCtxMenu(null); }}
         >
           {/* Moldura, cabeçalho, carimbo e legenda automática — camada estática */}
           <g dangerouslySetInnerHTML={{ __html: furnitureSvg }} />
@@ -1136,6 +1403,7 @@ export function DiagramEditor({
                   preserveAspectRatio="none"
                   onMouseDown={e => handlePhotoMouseDown(e, ph)}
                   onClick={e => e.stopPropagation()}
+                  onContextMenu={e => openCtxMenu(e, 'photo', ph.id)}
                   style={{ cursor: 'grab' }}
                 />
                 {isSelected && (
@@ -1170,7 +1438,8 @@ export function DiagramEditor({
                 <rect
                   x={g.x} y={g.y} width={g.w} height={g.h}
                   fill="none" stroke={isSelected ? '#2B8CFF' : '#7A7A7A'}
-                  strokeWidth={isSelected ? 0.5 : 0.3} strokeDasharray="2,1.4"
+                  strokeWidth={isSelected ? 0.5 : 0.3}
+                  strokeDasharray={g.style === 'solid' ? undefined : '2,1.4'}
                   pointerEvents="none"
                 />
                 {/* borda invisível mais grossa: área de clique da caixa (o miolo fica livre pros símbolos dentro dela) */}
@@ -1180,6 +1449,7 @@ export function DiagramEditor({
                   pointerEvents={linkMode ? 'none' : 'stroke'}
                   onMouseDown={e => handleGroupMouseDown(e, g)}
                   onClick={e => e.stopPropagation()}
+                  onContextMenu={e => openCtxMenu(e, 'group', g.id)}
                   style={{ cursor: linkMode ? 'crosshair' : 'grab' }}
                 />
                 <text
@@ -1202,6 +1472,52 @@ export function DiagramEditor({
             );
           })}
 
+          {/* Figuras de anotação — mesma geometria do export (shapePrimitives) */}
+          {shapes.map(s => {
+            const isSelected = selectedShapeId === s.id;
+            const prims = shapePrimitives(s);
+            const isLine = s.shape === 'divider' || s.shape === 'arrow';
+            const bx = Math.min(s.x, s.x + s.w), by = Math.min(s.y, s.y + s.h);
+            const bw = Math.abs(s.w), bh = Math.abs(s.h);
+            return (
+              <g key={s.id}>
+                {prims.map((prim, i) => (
+                  <g key={i} dangerouslySetInnerHTML={{ __html: primitiveToSvg(prim, isSelected ? '#2B8CFF' : '#444444', 0.3) }} />
+                ))}
+                {/* área de clique: linha grossa invisível (divisória/seta) ou borda da caixa (rect/elipse) */}
+                {isLine ? (
+                  <line
+                    x1={s.x} y1={s.y} x2={s.x + s.w} y2={s.y + s.h}
+                    stroke="transparent" strokeWidth={3}
+                    pointerEvents={linkMode ? 'none' : 'stroke'}
+                    style={{ cursor: linkMode ? 'crosshair' : 'grab' }}
+                    onMouseDown={e => handleShapeMouseDown(e, s)}
+                    onClick={e => e.stopPropagation()}
+                    onContextMenu={e => openCtxMenu(e, 'shape', s.id)}
+                  />
+                ) : (
+                  <rect
+                    x={bx} y={by} width={bw} height={bh}
+                    fill="none" stroke="transparent" strokeWidth={3}
+                    pointerEvents={linkMode ? 'none' : 'stroke'}
+                    style={{ cursor: linkMode ? 'crosshair' : 'grab' }}
+                    onMouseDown={e => handleShapeMouseDown(e, s)}
+                    onClick={e => e.stopPropagation()}
+                    onContextMenu={e => openCtxMenu(e, 'shape', s.id)}
+                  />
+                )}
+                {isSelected && (
+                  <rect
+                    x={s.x + s.w - 1.5} y={s.y + s.h - 1.5} width={3} height={3}
+                    fill="#2B8CFF" style={{ cursor: isLine ? 'move' : 'nwse-resize' }}
+                    onMouseDown={e => handleShapeResizeMouseDown(e, s)}
+                    onClick={e => e.stopPropagation()}
+                  />
+                )}
+              </g>
+            );
+          })}
+
           {/* Textos soltos */}
           {texts.map(t => {
             const isSelected = selectedTextId === t.id;
@@ -1211,6 +1527,7 @@ export function DiagramEditor({
                   x={t.x} y={t.y} fontSize={t.size} fill="#333"
                   onMouseDown={e => handleTextMouseDown(e, t)}
                   onClick={e => e.stopPropagation()}
+                  onContextMenu={e => openCtxMenu(e, 'text', t.id)}
                   style={{ cursor: 'grab' }}
                 >
                   {resolveProjectTags(t.value, values)}
@@ -1247,11 +1564,14 @@ export function DiagramEditor({
               return blockCenter(sym);
             })();
             if (!start) return null;
-            const pts = [start, ...drawnWaypoints].map(p => `${p.x},${p.y}`).join(' ');
+            // prévia elástica: o trecho até o cursor (já em esquadro) aparece antes do clique
+            const previewPts = [start, ...drawnWaypoints, ...(hoverPt ? [hoverPt] : [])];
+            const pts = previewPts.map(p => `${p.x},${p.y}`).join(' ');
             return (
-              <g>
+              <g pointerEvents="none">
                 <polyline points={pts} fill="none" stroke="#2B8CFF" strokeWidth={0.35} strokeDasharray="1.5,1" />
                 {drawnWaypoints.map((p, i) => <circle key={i} cx={p.x} cy={p.y} r={1} fill="#2B8CFF" />)}
+                {hoverPt && <circle cx={hoverPt.x} cy={hoverPt.y} r={0.8} fill="none" stroke="#2B8CFF" strokeWidth={0.3} />}
               </g>
             );
           })()}
@@ -1282,18 +1602,24 @@ export function DiagramEditor({
                     </text>
                   );
                 })()}
-                {/* trecho invisível mais grosso — alvo de clique maior para selecionar/arrastar/duplo-clique */}
+                {/* trecho invisível mais grosso — alvo de clique maior para selecionar/arrastar/duplo-clique.
+                    Com a ligação já selecionada, trecho interno arrasta SÓ o segmento (cursor ⇕/⇔). */}
                 {routePoints.slice(0, -1).map((p, i) => {
                   const q = routePoints[i + 1];
                   const mid = { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 };
+                  const innerShiftable = isSelected && i >= 1 && i <= routePoints.length - 3;
+                  const segCursor = linkMode ? 'crosshair'
+                    : innerShiftable ? (Math.abs(q.y - p.y) <= Math.abs(q.x - p.x) ? 'ns-resize' : 'ew-resize')
+                    : 'grab';
                   return (
                     <line
                       key={i}
                       x1={p.x} y1={p.y} x2={q.x} y2={q.y}
                       stroke="transparent" strokeWidth={2.5}
-                      style={{ cursor: linkMode ? 'crosshair' : 'grab' }}
-                      onMouseDown={e => handleConnMouseDown(e, conn.id)}
+                      style={{ cursor: segCursor }}
+                      onMouseDown={e => handleConnMouseDown(e, conn.id, i)}
                       onClick={e => e.stopPropagation()}
+                      onContextMenu={e => openCtxMenu(e, 'conn', conn.id)}
                       onDoubleClick={e => { e.stopPropagation(); handleConnDoubleClick(conn.id, i, mid); }}
                     />
                   );
@@ -1353,6 +1679,7 @@ export function DiagramEditor({
                   transform={blockTransform({ at: { x: p.x, y: p.y }, rotation: p.rotation, scale: p.scale })}
                   onMouseDown={e => handleSymbolMouseDown(e, p)}
                   onClick={e => e.stopPropagation()}
+                  onContextMenu={e => openCtxMenu(e, 'symbol', p.id)}
                   style={{ cursor: linkMode ? 'crosshair' : 'grab' }}
                 >
                   {/* área de clique invisível: sem isto, símbolos com fill="none" só respondem
@@ -1402,6 +1729,14 @@ export function DiagramEditor({
             );
           }))}
 
+          {/* Guias de alinhamento — linha magenta quando o símbolo arrastado alinha com o centro de outro */}
+          {guides?.x !== undefined && (
+            <line x1={guides.x} y1={0} x2={guides.x} y2={PAPER.heightMm} stroke="#E0329B" strokeWidth={0.25} strokeDasharray="2,1.4" pointerEvents="none" />
+          )}
+          {guides?.y !== undefined && (
+            <line x1={0} y1={guides.y} x2={PAPER.widthMm} y2={guides.y} stroke="#E0329B" strokeWidth={0.25} strokeDasharray="2,1.4" pointerEvents="none" />
+          )}
+
           {/* Retângulo de multi-seleção em andamento */}
           {marquee && (
             <rect
@@ -1420,7 +1755,9 @@ export function DiagramEditor({
         const selConn = selectedConnId ? connections.find(c => c.id === selectedConnId) : null;
         const selGroup = selectedGroupId ? groups.find(g => g.id === selectedGroupId) : null;
         const selText = selectedTextId ? texts.find(t => t.id === selectedTextId) : null;
-        const showPanel = !!sel || selectedIds.size > 1 || !!selConn || !!selGroup || !!selText;
+        const selShape = selectedShapeId ? shapes.find(s => s.id === selectedShapeId) : null;
+        const selPhoto = selectedPhotoId ? photos.find(p => p.id === selectedPhotoId && !p.underlay) : null;
+        const showPanel = !!sel || selectedIds.size > 1 || !!selConn || !!selGroup || !!selText || !!selShape || !!selPhoto;
         if (!showPanel) return null;
         const fieldStyle: React.CSSProperties = { width: '100%', padding: '6px 8px', borderRadius: 7, border: '1px solid #DDD', fontSize: 12, boxSizing: 'border-box' };
         const labelStyle: React.CSSProperties = { fontSize: 10.5, fontWeight: 700, color: '#888', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 3, display: 'block' };
@@ -1511,8 +1848,79 @@ export function DiagramEditor({
                     onChange={e => setGroups(prev => prev.map(g => (g.id === selGroup.id ? { ...g, title: e.target.value } : g)))}
                   />
                 </div>
+                <div>
+                  <label style={labelStyle}>Traço da caixa</label>
+                  <select
+                    value={selGroup.style ?? 'dashed'} style={fieldStyle}
+                    onChange={e => {
+                      snapshot();
+                      const style = e.target.value as 'dashed' | 'solid';
+                      setGroups(prev => prev.map(g => (g.id === selGroup.id ? { ...g, style } : g)));
+                    }}
+                  >
+                    <option value="dashed">Tracejado</option>
+                    <option value="solid">Sólido</option>
+                  </select>
+                </div>
+                <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#555', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={selGroup.moveContents ?? false}
+                    onChange={e => {
+                      snapshot();
+                      const moveContents = e.target.checked;
+                      setGroups(prev => prev.map(g => (g.id === selGroup.id ? { ...g, moveContents } : g)));
+                    }}
+                  />
+                  Arrastar conteúdo junto
+                </label>
                 <button onClick={removeSelected} style={{ ...btnStyle(), justifyContent: 'center', color: '#A32D2D' }}>
                   <Trash2 size={13} /> Remover grupo
+                </button>
+              </>
+            ) : selShape ? (
+              <>
+                <p style={{ fontSize: 13, fontWeight: 700, color: '#1A1A1A', margin: 0 }}>
+                  {selShape.shape === 'rect' ? 'Retângulo' : selShape.shape === 'ellipse' ? 'Elipse' : selShape.shape === 'divider' ? 'Divisória' : 'Seta'}
+                </p>
+                <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#555', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={selShape.dashed ?? false}
+                    onChange={e => {
+                      snapshot();
+                      const dashed = e.target.checked;
+                      setShapes(prev => prev.map(s => (s.id === selShape.id ? { ...s, dashed } : s)));
+                    }}
+                  />
+                  Tracejado
+                </label>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button onClick={() => reorderShape(selShape.id, 'front')} style={{ ...btnStyle(), flex: 1, justifyContent: 'center' }} title="Trazer pra frente">
+                    <BringToFront size={13} />
+                  </button>
+                  <button onClick={() => reorderShape(selShape.id, 'back')} style={{ ...btnStyle(), flex: 1, justifyContent: 'center' }} title="Enviar pra trás">
+                    <SendToBack size={13} />
+                  </button>
+                </div>
+                <p style={{ fontSize: 10.5, color: '#999', margin: 0 }}>Arraste pra mover; o quadrado azul redimensiona{selShape.shape === 'divider' || selShape.shape === 'arrow' ? ' a ponta' : ''}.</p>
+                <button onClick={removeSelected} style={{ ...btnStyle(), justifyContent: 'center', color: '#A32D2D' }}>
+                  <Trash2 size={13} /> Remover figura
+                </button>
+              </>
+            ) : selPhoto ? (
+              <>
+                <p style={{ fontSize: 13, fontWeight: 700, color: '#1A1A1A', margin: 0 }}>Foto</p>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button onClick={() => reorderPhoto(selPhoto.id, 'front')} style={{ ...btnStyle(), flex: 1, justifyContent: 'center' }} title="Trazer pra frente">
+                    <BringToFront size={13} />
+                  </button>
+                  <button onClick={() => reorderPhoto(selPhoto.id, 'back')} style={{ ...btnStyle(), flex: 1, justifyContent: 'center' }} title="Enviar pra trás">
+                    <SendToBack size={13} />
+                  </button>
+                </div>
+                <button onClick={() => removePhoto(selPhoto.id)} style={{ ...btnStyle(), justifyContent: 'center', color: '#A32D2D' }}>
+                  <Trash2 size={13} /> Remover foto
                 </button>
               </>
             ) : selText ? (
@@ -1544,6 +1952,63 @@ export function DiagramEditor({
         );
       })()}
       </div>
+
+      {/* Menu de contexto (botão direito) */}
+      {ctxMenu && (() => {
+        const close = () => setCtxMenu(null);
+        const item = (label: string, action: () => void, danger = false, disabled = false) => (
+          <button
+            key={label}
+            disabled={disabled}
+            onClick={() => { if (disabled) return; action(); close(); }}
+            style={{
+              display: 'block', width: '100%', textAlign: 'left', padding: '7px 12px', border: 'none',
+              background: 'none', borderRadius: 7, fontSize: 12.5, cursor: disabled ? 'not-allowed' : 'pointer',
+              color: disabled ? '#bbb' : danger ? '#A32D2D' : '#333',
+            }}
+            onMouseEnter={e => { if (!disabled) (e.target as HTMLElement).style.background = '#F4F4F4'; }}
+            onMouseLeave={e => { (e.target as HTMLElement).style.background = 'none'; }}
+          >
+            {label}
+          </button>
+        );
+        const items: React.ReactNode[] = [];
+        if (ctxMenu.kind === 'symbol') {
+          items.push(item('Girar 90°', rotateSelected));
+          items.push(item('Duplicar (Ctrl+D)', duplicateSelected));
+          items.push(item('Remover', removeSelected, true, !isManualSymbol(ctxMenu.id)));
+        } else if (ctxMenu.kind === 'conn') {
+          items.push(item('Remover ligação', () => removeConnection(ctxMenu.id), true));
+        } else if (ctxMenu.kind === 'group') {
+          items.push(item('Remover grupo', removeSelected, true));
+        } else if (ctxMenu.kind === 'shape') {
+          items.push(item('Trazer pra frente', () => reorderShape(ctxMenu.id, 'front')));
+          items.push(item('Enviar pra trás', () => reorderShape(ctxMenu.id, 'back')));
+          items.push(item('Remover figura', removeSelected, true));
+        } else if (ctxMenu.kind === 'photo') {
+          items.push(item('Trazer pra frente', () => reorderPhoto(ctxMenu.id, 'front')));
+          items.push(item('Enviar pra trás', () => reorderPhoto(ctxMenu.id, 'back')));
+          items.push(item('Remover foto', () => removePhoto(ctxMenu.id), true));
+        } else {
+          items.push(item('Remover texto', () => removeText(ctxMenu.id), true));
+        }
+        return (
+          <>
+            <div
+              style={{ position: 'fixed', inset: 0, zIndex: 60 }}
+              onClick={close}
+              onContextMenu={e => { e.preventDefault(); close(); }}
+            />
+            <div style={{
+              position: 'fixed', left: Math.min(ctxMenu.x, window.innerWidth - 190), top: Math.min(ctxMenu.y, window.innerHeight - 40 * items.length - 16),
+              zIndex: 61, background: '#fff', border: '1px solid #E4E4E4', borderRadius: 10,
+              boxShadow: '0 8px 28px rgba(0,0,0,0.16)', padding: 4, minWidth: 176,
+            }}>
+              {items}
+            </div>
+          </>
+        );
+      })()}
 
       {/* Ligações — lista com remoção */}
       {connections.length > 0 && (

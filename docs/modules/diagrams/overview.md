@@ -211,6 +211,43 @@ As notas aparecem num banner âmbar no editor (chaveadas pelo id do modelo,
 pra sobreviver à troca de tela da importação). Cota: `_kind:
 'diagram_review'` (o `kind` de `ai_usage_log` é texto livre, sem migração).
 
+## Desenho de linha inteligente (12ª rodada)
+- **Encaixe ortogonal**: o desenho de linha "anda em esquadro" — cada ponto
+  de dobra novo gruda em H/V em relação ao anterior (`orthoSnapPoint`);
+  **Shift segurado libera o ângulo livre**. Uma **prévia elástica**
+  acompanha o cursor com o mesmo encaixe antes do clique.
+- **Roteamento com desvio de obstáculo** (`routeAvoidingObstacles`): linhas
+  SEM pontos de dobra manuais deixaram de atravessar símbolos — o roteador
+  tenta uma família de rotas H-V-H/V-H-V (corredor do meio varrido do
+  centro pra fora) e usa a primeira limpa; sem rota limpa, cai no Z clássico
+  (nunca pior que antes). Os símbolos das próprias pontas não contam como
+  obstáculo.
+- **Guias de alinhamento**: arrastando um símbolo, quando o centro dele
+  alinha (±1,2mm) com o centro de outro, ele gruda e uma linha magenta
+  tracejada atravessa a folha — estilo Figma/PowerPoint.
+- **Arrastar um segmento**: com a ligação JÁ selecionada, arrastar um trecho
+  interno desloca só aquele segmento, perpendicular (cursor ⇕/⇔), mantendo
+  o esquadro; o primeiro clique/arrasto continua movendo a linha inteira.
+
+## Figuras e seções (12ª rodada)
+- **Paleta de figuras** (`PlacedShape`, camada `ANNOTATION`): retângulo
+  (sólido/tracejado), elipse, linha divisória e seta — anotação visual, sem
+  efeito elétrico, idêntica no canvas e no SVG/PDF (`shapePrimitives` é a
+  fonte única da geometria; a IR ganhou a primitiva `ellipse`).
+- **Grupos com estilo**: traço tracejado (padrão) ou sólido, e a opção
+  **"arrastar conteúdo junto"** (`moveContents`) — mover a caixa move os
+  símbolos/textos/figuras/pontos de dobra que estavam dentro dela.
+- **Ordem visual**: "trazer pra frente / enviar pra trás" pra figuras e
+  fotos (ordem do array = ordem de desenho).
+
+## UX de manipulação (12ª rodada)
+- **Modos de ferramenta**: controle segmentado "Selecionar × Ligar" na
+  barra (era um botão de liga/desliga pouco visível); Esc cancela a ligação
+  em andamento e, apertado de novo, volta pra Selecionar.
+- **Menu de contexto** (botão direito) em qualquer elemento do canvas:
+  girar/duplicar/remover (símbolo), remover ligação, frente/trás/remover
+  (figura e foto), remover grupo/texto.
+
 ## UX do editor
 - **Desfazer/refazer** (Ctrl+Z / Ctrl+Shift+Z ou Ctrl+Y, e botões na barra):
   histórico de até 50 snapshots do `DiagramSceneState`. Snapshot é tirado no
