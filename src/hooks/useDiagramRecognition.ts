@@ -6,6 +6,8 @@ export interface RecognizedComponent {
   id: string;
   kind: ComponentKind;
   label: string;
+  stage?: number;
+  branch?: boolean;
 }
 
 export interface RecognizedConnection {
@@ -31,9 +33,12 @@ function fileToBase64(file: File): Promise<string> {
 /**
  * Reconhecimento automático de diagrama unifilar a partir de um PDF/imagem
  * enviado (edge function `diagram-recognize`, mesmo mecanismo do Claudinho —
- * IA de visão, não um parser determinístico). Devolve só topologia (quais
- * componentes existem e como se ligam) — a cena inicial ainda precisa ser
- * revisada no editor (ver `buildSceneFromRecognition`).
+ * IA de visão, não um parser determinístico). Devolve topologia aproximada:
+ * quais componentes existem, em que ponto do fluxo principal cada um fica
+ * (`stage`) e se é uma derivação (`branch`) — nunca posição/rotação exata em
+ * mm. A cena inicial (`buildSceneFromRecognition`/`layoutFromRecognition`)
+ * já sai parecida com um unifilar de verdade (fileira principal + derivações
+ * empilhadas), mas ainda precisa de revisão no editor.
  */
 export function useDiagramRecognition() {
   return useMutation({

@@ -1,4 +1,4 @@
-import { ComponentKind, ComponentNode, ConnectionEdge, Point, Scene, TechnicalJsonMvp } from './types';
+import { ComponentKind, ConnectionEdge, Point, Scene, TechnicalJsonMvp } from './types';
 import { CONNECTION_INSET, SYMBOL_BBOX, SYMBOL_DEFS } from './symbols';
 import { CENTER_Y, drawFrameAndHeader, drawTitleBlock, LEGEND_LINE_H, PITCH_X, START_X } from './paper';
 import { resolveProjectTags } from '@/utils/projectValues';
@@ -101,23 +101,61 @@ export function initialConnections(json: Pick<TechnicalJsonMvp, 'connections'>):
   }));
 }
 
+export interface RecognizedComponentInput {
+  id: string;
+  kind: ComponentKind;
+  label: string;
+  /** Posição no fluxo principal (0 = geração, crescente até a rede) — vem da IA de reconhecimento. */
+  stage?: number;
+  /** true = deriva do condutor principal (DPS, aterramento...), não fica em série nele. */
+  branch?: boolean;
+}
+
+/**
+ * Posiciona os componentes reconhecidos por IA usando `stage`/`branch`
+ * (edge function `diagram-recognize`): componentes de um mesmo `stage` que
+ * NÃO são derivação (`branch: false`) ficam na fileira principal (mesmo `x`
+ * de `initialPlacement`); os que são derivação (`branch: true`) empilham
+ * abaixo da fileira, no `x` do próprio `stage` — a mesma convenção visual já
+ * usada quando o usuário arrasta um DPS/aterramento manualmente pra baixo da
+ * linha principal (esses símbolos já são desenhados pra conectar "por
+ * cima"). Ainda não é pixel-perfeito (a IA erra posição/rotação exata), mas
+ * já se parece com um unifilar de verdade em vez de uma fileira única —
+ * revisão manual no editor continua necessária.
+ */
+export function layoutFromRecognition(components: RecognizedComponentInput[]): PlacedSymbol[] {
+  const mainY = CENTER_Y - SYMBOL_BBOX.h / 2;
+  const branchGapY = SYMBOL_BBOX.h + 8;
+  const branchCountByStage = new Map<number, number>();
+  return components.map(c => {
+    const stage = Number.isFinite(c.stage) ? Math.max(0, Math.trunc(c.stage as number)) : 0;
+    const x = START_X + stage * PITCH_X;
+    if (!c.branch) {
+      return { id: c.id, kind: c.kind, label: c.label, legend: [], x, y: mainY, rotation: 0, scale: 1 };
+    }
+    const n = (branchCountByStage.get(stage) ?? 0) + 1;
+    branchCountByStage.set(stage, n);
+    return { id: c.id, kind: c.kind, label: c.label, legend: [], x, y: mainY + branchGapY * n, rotation: 0, scale: 1 };
+  });
+}
+
 /**
  * Monta uma cena a partir do resultado do reconhecimento automático por IA
- * (edge function `diagram-recognize`, ver `useDiagramRecognition`): mesma
- * fileira inicial do layout manual comum (`initialPlacement`/`initialConnections`)
- * — o reconhecimento só identifica QUAIS componentes existem e COMO se ligam,
- * não posições/rotações precisas (isso fica pro usuário ajustar no editor,
- * arrastando — não há coordenadas confiáveis o bastante vindas da IA pra
- * pular essa revisão).
+ * (edge function `diagram-recognize`, ver `useDiagramRecognition`) — usa
+ * `layoutFromRecognition` (fileira principal + derivações empilhadas por
+ * `stage`) em vez do posicionamento em fileira única de `initialPlacement`.
+ * A IA só identifica topologia aproximada (quais componentes existem, onde
+ * mais ou menos cada um fica na sequência, como se ligam), nunca posição ou
+ * rotação exata — revisão manual no editor continua necessária depois de
+ * importar.
  */
 export function buildSceneFromRecognition(
-  components: { id: string; kind: ComponentKind; label: string }[],
+  components: RecognizedComponentInput[],
   connections: { from: string; to: string }[],
 ): DiagramSceneState {
-  const nodes: ComponentNode[] = components.map(c => ({ id: c.id, kind: c.kind, label: c.label, legend: [] }));
   const edges: ConnectionEdge[] = connections.map((c, i) => ({ id: `rec-${i}`, from: c.from, to: c.to }));
   return {
-    placements: initialPlacement({ components: nodes }),
+    placements: layoutFromRecognition(components),
     connections: initialConnections({ connections: edges }),
     photos: [],
     texts: [],

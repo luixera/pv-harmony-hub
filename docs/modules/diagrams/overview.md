@@ -60,7 +60,7 @@ usuário: útil mais cedo, e o motor automático continua no roadmap):
 - `src/utils/cadEngine/paper.ts` — constantes de papel/margem + moldura/carimbo (compartilhado entre o layout fixo e o editável).
 - `src/utils/cadEngine/buildTechnicalJson.ts` — projeto → JSON técnico (reaproveita `buildProjectValues`).
 - `src/utils/cadEngine/layout.ts` — JSON técnico → `Scene` com layout fixo (posição inicial, antes de qualquer edição).
-- `src/utils/cadEngine/editableLayout.ts` — `PlacedSymbol` (com `scale`), `ManualConnection` (`from`/`to` são `ConnectionEndpoint` — `{kind:'symbol',id}` ou `{kind:'point',at}` —, mais `waypoints?: Point[]`), `PlacedPhoto`, `PlacedText`, `orthogonalPath`, `computeConnectorPoints` (aceita qualquer combinação de pontas symbol/point; `edgePoint()` interno recua pelo `CONNECTION_INSET`), `isConnectionResolvable`, `blockCenter` (considera a escala), `findNearestSymbol`/`nearestPointOnPolyline`/`SNAP_RADIUS` (snapping de clique/soltura pra componente ou linha perto o bastante), `snapToGrid`, `buildSceneFromPlacement` (a `Scene` a partir do estado editado + fotos + textos, resolvendo tags via `tagValues`), `buildSceneFromRecognition` (resultado da IA de reconhecimento → `DiagramSceneState`, reaproveitando `initialPlacement`/`initialConnections` — mesma fileira inicial de qualquer diagrama novo).
+- `src/utils/cadEngine/editableLayout.ts` — `PlacedSymbol` (com `scale`), `ManualConnection` (`from`/`to` são `ConnectionEndpoint` — `{kind:'symbol',id}` ou `{kind:'point',at}` —, mais `waypoints?: Point[]`), `PlacedPhoto`, `PlacedText`, `orthogonalPath`, `computeConnectorPoints` (aceita qualquer combinação de pontas symbol/point; `edgePoint()` interno recua pelo `CONNECTION_INSET`), `isConnectionResolvable`, `blockCenter` (considera a escala), `findNearestSymbol`/`nearestPointOnPolyline`/`SNAP_RADIUS` (snapping de clique/soltura pra componente ou linha perto o bastante), `snapToGrid`, `buildSceneFromPlacement` (a `Scene` a partir do estado editado + fotos + textos, resolvendo tags via `tagValues`), `buildSceneFromRecognition`/`layoutFromRecognition` (resultado da IA de reconhecimento → `DiagramSceneState`: fileira principal por `stage` + derivações `branch` empilhadas na mesma coluna, ver "Reconhecimento automático a partir de PDF" abaixo).
 - `src/utils/cadEngine/exportSvg.ts` / `exportPdf.ts` — `Scene` → SVG / PDF, com suporte a `rotation`/`scale` do bloco (PDF transforma os pontos manualmente — escala em torno do centro, depois gira, mesma ordem em ambos; SVG usa `transform="...rotate()...scale()..."` nativo via `blockTransform()`, reaproveitado ao vivo pelo canvas) e à primitiva `image` (SVG: `<image href>`; PDF: `doc.addImage`, formato detectado pelo prefixo do data URL). PDF via `jspdf`, já usado em `resumoPdf.ts` — nenhuma dependência nova.
 - `src/utils/projectValues.ts` — `resolveProjectTags(texto, values)`: substitui `{chave}` usando o mesmo catálogo `TEMPLATE_VARIABLES`/`buildProjectValues` dos templates .docx; tag desconhecida fica como está. `buildSampleValues()` (já existia, reaproveitado) gera dados fictícios pra prévia dos modelos.
 - `src/components/diagrams/DiagramEditor.tsx` — canvas SVG interativo compartilhado (arrastar/girar/redimensionar/ligar-e-desenhar-com-derivação/selecionar-e-arrastar-linha-inteira/adicionar componente, foto ou texto) + botões de download. Não sabe de onde vêm os dados nem pra onde vão — recebe `json`/`initialState`/`tagValues` e devolve cada mudança via `onStateChange`; quem chama decide onde persistir.
@@ -124,24 +124,44 @@ Botão "Importar de PDF" na lista de modelos (`/admin/diagram-templates`): o
 usuário sobe um PDF (ou foto) de um diagrama unifilar já aprovado, a edge
 function `diagram-recognize` chama a IA de visão (Anthropic, mesmo mecanismo
 do Claudinho — `claudinho-verifica`) com o vocabulário fechado dos 12
-`ComponentKind` existentes e devolve **só topologia**: quais componentes
-existem (`kind` + rótulo) e como se ligam entre si, nunca posição/rotação
-exata (a IA não é confiável o bastante pra isso, e não vale a pena fingir que
-é — ver "Por que só topologia" abaixo). O front (`buildSceneFromRecognition`)
-usa essa lista pra criar um novo `diagram_template`, já com a mesma fileira
-inicial de qualquer diagrama novo (`initialPlacement`/`initialConnections`),
-e abre direto no editor com um aviso roxo: **"reconhecido automaticamente,
-revise antes de usar"**. Dados pessoais do documento (titular, endereço, ART,
-CPF/CNPJ) são explicitamente instruídos a ficar de fora da resposta — a IA só
-devolve tipo/rótulo de componente e conexão, nunca texto livre do documento.
+`ComponentKind` existentes e devolve, por componente: `kind`, rótulo,
+**`stage`** (posição inteira no fluxo principal, 0 = geração, crescente até a
+rede) e **`branch`** (`true` = derivação — DPS, aterramento — que não fica em
+série no condutor principal), além das `connections` entre os ids. Nunca
+posição/rotação exata em mm — só essa topologia aproximada (ver "Por que só
+topologia" abaixo). `layoutFromRecognition` (`editableLayout.ts`) usa
+`stage`/`branch` pra montar uma cena que já se parece com um unifilar de
+verdade: componentes `branch: false` do mesmo `stage` ficam na fileira
+principal (mesmo `x`), os `branch: true` empilham abaixo, na mesma coluna —
+bem mais próximo do pedido original ("o PDF é redesenhado no editor") do que
+uma fileira única. O template é criado **num único insert já com essa cena**
+(`useCreateDiagramTemplate` aceita `sceneData` opcional) — antes era
+criar-vazio-depois-atualizar em duas chamadas, e uma falha na segunda deixava
+um modelo órfão e vazio pra trás (bug real, aconteceu na primeira tentativa
+real de importação; corrigido). Abre direto no editor com um aviso roxo:
+**"reconhecido automaticamente, revise antes de usar"**. Dados pessoais do
+documento (titular, endereço, ART, CPF/CNPJ) são explicitamente instruídos a
+ficar de fora da resposta — a IA só devolve tipo/rótulo de componente e
+conexão, nunca texto livre do documento.
 
-**Por que só topologia, sem posição/rotação/coordenadas:** pedir à IA
-coordenadas em mm alinhadas à nossa página teria uma taxa de erro alta demais
-pra ser útil (LLMs de visão são bons em "o que tem aqui" e "o que conecta com
-o quê", ruins em coordenada pixel-perfeita) — e o editor manual já existe e é
-bom o bastante pra reposicionar rápido. Reaproveitar `initialPlacement` em vez
-de inventar um layout novo pro caso "vindo da IA" também mantém uma única
-implementação de posicionamento inicial pra manter.
+**Por que só topologia (+ stage/branch), sem posição/rotação/coordenadas em
+mm:** pedir à IA coordenadas exatas alinhadas à nossa página teria uma taxa
+de erro alta demais pra ser útil (LLMs de visão são bons em "o que tem aqui",
+"onde mais ou menos fica no fluxo" e "o que conecta com o quê", ruins em
+coordenada pixel-perfeita) — o editor manual já existe e é bom o bastante pra
+ajustar posição fina depois. `stage`/`branch` é o meio-termo: estrutura
+suficiente pra sair parecido com o diagrama real sem depender da IA acertar
+geometria exata.
+
+**Robustez contra resposta da IA fora do esperado:** `KIND_ALIASES` (edge
+function) normaliza variações comuns que a IA às vezes usa em vez do `kind`
+exato (inglês, sinônimo, plural — ex. `"circuit-breaker"` → `breaker`) antes
+de validar contra o vocabulário — sem isso, uma resposta quase-certa vira "0
+componentes reconhecidos" só por uma string ligeiramente diferente. A edge
+function também loga (server-side, `console.log`) a lista bruta de `kind`
+devolvida pela IA a cada chamada, e o texto bruto quando zero componentes
+sobrevivem à validação — sem esse log, um caso de "reconheceu 0" fica sem
+diagnóstico (foi exatamente o que dificultou investigar o primeiro caso real).
 
 Cota de uso: mesma função `consume_ai_quota` do Claudinho (`_kind:
 'diagram_recognize'`), registrada em `ai_usage_log` — hoje sem efeito prático
@@ -342,12 +362,13 @@ flowchart LR
   não importa nenhum — falta o elo final (ver "Motor de templates" acima) e
   o casamento automático por critério (§17.3 da proposta) nunca foi
   implementado.
-- **Reconhecimento automático de PDF só identifica topologia** (quais
-  componentes existem e como se ligam) — nunca posição, rotação ou
-  quantidade exata de itens repetidos com confiança total; todo modelo
-  importado precisa de revisão manual no editor antes de ser considerado
-  pronto (ver "Reconhecimento automático a partir de PDF" acima). Sem
-  memória entre importações — cada PDF é analisado do zero, não aprende com
+- **Reconhecimento automático de PDF não é pixel-perfeito** — identifica
+  componentes, posição aproximada no fluxo (`stage`) e derivações (`branch`),
+  mas nunca coordenada/rotação exata em mm, nem confiança total em
+  quantidade de itens repetidos; todo modelo importado precisa de revisão
+  manual no editor antes de ser considerado pronto (ver "Reconhecimento
+  automático a partir de PDF" acima). Sem memória entre importações — cada
+  PDF é analisado do zero, não aprende com
   correções feitas em importações anteriores.
 - Layout do projeto persiste só em `localStorage` deste navegador — não
   sincroniza entre quem usa o sistema, e some se o navegador for trocado ou

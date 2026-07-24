@@ -16,6 +16,8 @@ interface RecognizedComponent {
   id: string
   kind: string
   label: string
+  stage?: number
+  branch?: boolean
 }
 
 interface RecognizedConnection {
@@ -55,23 +57,30 @@ function buildPrompt(): string {
   return `Você é um especialista em leitura de diagramas unifilares de sistemas fotovoltaicos.
 
 Analise o diagrama unifilar enviado (PDF ou imagem) e identifique cada componente elétrico
-desenhado e como eles se conectam entre si (fluxo do arranjo fotovoltaico até a rede da
-concessionária, incluindo derivações de proteção como DPS/aterramento/chaves).
+desenhado, ONDE ele fica na sequência do fluxo elétrico, e como eles se conectam entre si.
 
 VOCABULÁRIO DE COMPONENTES — use OBRIGATORIAMENTE apenas estes "kind" (nunca invente um novo):
 ${KIND_CATALOG}
+
+Para cada componente, além do tipo, informe:
+- "stage": um número inteiro (0, 1, 2, 3...) representando a posição dele no fluxo principal da
+  geração (0) até a rede da concessionária (o maior número) — componentes em SEQUÊNCIA no
+  condutor principal (arranjo FV → chave → inversor → proteções → medidor → rede) recebem
+  números crescentes; um componente em derivação (DPS, aterramento) recebe o MESMO "stage" do
+  ponto do condutor principal de onde ele deriva.
+- "branch": true se o componente NÃO fica no condutor principal (é uma derivação — DPS,
+  aterramento, ou qualquer proteção que sai do condutor principal em vez de estar em série nele);
+  false se ele está em série no fluxo principal.
 
 REGRAS:
 1. Ignore textos que não sejam de um componente do diagrama em si (título, carimbo, planta de
    localização, dados do titular, coordenadas, ART, endereço, CPF/CNPJ, nomes de pessoas — não
    inclua NADA disso na resposta, mesmo que apareça no documento).
 2. Cada componente ganha um "id" curto e único (ex.: "c1", "c2", ...).
-3. "label" é um rótulo curto em português do componente (ex.: "Módulos FV", "Inversor",
-   "Disjuntor CA", "Medidor Bidirecional") — pode reaproveitar o texto do diagrama quando fizer
-   sentido, mas sem dados pessoais.
+3. "label" é um rótulo curto em português do componente — pode reaproveitar o texto do diagrama
+   quando fizer sentido, mas sem dados pessoais.
 4. "connections" liga os "id" dos componentes na direção do fluxo elétrico (da geração para a
-   rede); um componente em derivação (DPS, aterramento) conecta ao ponto do condutor principal
-   mais próximo dele.
+   rede); um componente em derivação conecta ao componente do condutor principal mais próximo.
 5. Se não conseguir identificar um componente com confiança, prefira OMITIR a inventar.
 6. Se algo no diagrama não corresponder a nenhum "kind" do vocabulário, não o inclua na resposta
    e explique em "warnings" (texto curto, sem dados pessoais).
@@ -79,14 +88,44 @@ REGRAS:
 Retorne APENAS JSON válido, sem markdown, no formato exato:
 {
   "components": [
-    { "id": "c1", "kind": "pv-array", "label": "Módulos FV" },
-    { "id": "c2", "kind": "inverter", "label": "Inversor" }
+    { "id": "c1", "kind": "pv-array", "label": "Módulos FV", "stage": 0, "branch": false },
+    { "id": "c2", "kind": "inverter", "label": "Inversor", "stage": 1, "branch": false },
+    { "id": "c3", "kind": "dps", "label": "DPS CA", "stage": 1, "branch": true }
   ],
   "connections": [
-    { "from": "c1", "to": "c2" }
+    { "from": "c1", "to": "c2" },
+    { "from": "c2", "to": "c3" }
   ],
   "warnings": []
 }`
+}
+
+/**
+ * Variações comuns que a IA às vezes usa em vez do "kind" exato do
+ * vocabulário (plural, inglês, sinônimo) — normalizadas antes de validar
+ * contra `VALID_KINDS`, pra uma resposta quase-certa não virar "0
+ * componentes reconhecidos" só por causa de uma string ligeiramente
+ * diferente.
+ */
+const KIND_ALIASES: Record<string, string> = {
+  'solar-array': 'pv-array', 'solar-panel': 'pv-array', 'pv-panel': 'pv-array', 'module-array': 'pv-array',
+  'photovoltaic-array': 'pv-array', 'array': 'pv-array', 'modules': 'pv-array', 'painel-solar': 'pv-array',
+  'circuit-breaker': 'breaker', 'breaker-bipolar': 'breaker', 'disjuntor': 'breaker', 'disjuntor-bipolar': 'breaker',
+  'circuit-breaker-tripolar': 'breaker-tripolar', 'disjuntor-tripolar': 'breaker-tripolar',
+  'dc-disconnect': 'dc-switch', 'disconnect-switch': 'dc-switch', 'chave-cc': 'dc-switch', 'switch': 'dc-switch',
+  'energy-meter': 'meter', 'meter-conventional': 'meter', 'medidor': 'meter',
+  'bidirectional-meter': 'meter-bidirectional', 'meter-bidirecional': 'meter-bidirectional', 'medidor-bidirecional': 'meter-bidirectional',
+  'grid': 'utility-grid', 'utility': 'utility-grid', 'power-grid': 'utility-grid', 'rede': 'utility-grid',
+  'surge-protector': 'dps', 'surge-protection': 'dps', 'spd': 'dps',
+  'fuse-box': 'fuse', 'fusivel': 'fuse',
+  'earth': 'ground', 'earthing': 'ground', 'grounding': 'ground', 'aterramento': 'ground', 'bep': 'ground',
+  'distribution-board': 'distribution-panel', 'panel': 'distribution-panel', 'quadro': 'distribution-panel',
+  'quadro-de-distribuicao': 'distribution-panel',
+}
+function normalizeKind(kind: unknown): string {
+  if (typeof kind !== 'string') return ''
+  const k = kind.trim().toLowerCase()
+  return KIND_ALIASES[k] ?? k
 }
 
 function buildContentBlock(doc: RecognizeRequest) {
@@ -195,20 +234,26 @@ Deno.serve(async (req) => {
       })
     }
 
-    // Sanitiza: só aceita componentes com "kind" do vocabulário conhecido e
-    // conexões cujas duas pontas existam entre os componentes aceitos.
+    // Sanitiza: só aceita componentes com "kind" do vocabulário conhecido (com
+    // normalização de sinônimos/variações, ver KIND_ALIASES) e conexões cujas
+    // duas pontas existam entre os componentes aceitos.
     const warnings: string[] = Array.isArray(parsed.warnings) ? parsed.warnings.filter((w: unknown) => typeof w === 'string') : []
     const rawComponents: RecognizedComponent[] = Array.isArray(parsed.components) ? parsed.components : []
-    const components = rawComponents.filter((c) => {
-      const ok = c && typeof c.id === 'string' && typeof c.label === 'string' && VALID_KINDS.has(c.kind)
-      if (!ok) warnings.push(`Componente ignorado (tipo não reconhecido): ${c?.kind ?? '?'}`)
-      return ok
-    })
+    console.log(`diagram-recognize: IA devolveu ${rawComponents.length} componente(s) bruto(s), kinds:`, rawComponents.map((c) => c?.kind))
+    const components = rawComponents.reduce<RecognizedComponent[]>((acc, c) => {
+      const kind = normalizeKind(c?.kind)
+      const ok = !!c && typeof c.id === 'string' && typeof c.label === 'string' && VALID_KINDS.has(kind)
+      if (!ok) { warnings.push(`Componente ignorado (tipo não reconhecido): ${c?.kind ?? '?'}`); return acc }
+      const stage = Number.isFinite(c.stage) ? c.stage : 0
+      acc.push({ ...c, kind, stage, branch: c.branch === true })
+      return acc
+    }, [])
     const ids = new Set(components.map((c) => c.id))
     const rawConnections: RecognizedConnection[] = Array.isArray(parsed.connections) ? parsed.connections : []
     const connections = rawConnections.filter((c) => c && ids.has(c.from) && ids.has(c.to) && c.from !== c.to)
 
     if (components.length === 0) {
+      console.log('diagram-recognize: 0 componentes válidos após normalização — resposta bruta:', rawText.slice(0, 2000))
       return new Response(JSON.stringify({ ok: false, error: 'Nenhum componente reconhecido no diagrama enviado' }), {
         status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })

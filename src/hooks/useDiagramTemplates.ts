@@ -54,7 +54,7 @@ export function useCreateDiagramTemplate() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (input: { name: string; description?: string; concessionaireId?: string }) => {
+    mutationFn: async (input: { name: string; description?: string; concessionaireId?: string; sceneData?: DiagramSceneState }) => {
       const { data, error } = await supabase
         .from('diagram_templates' as never)
         .insert({
@@ -62,7 +62,7 @@ export function useCreateDiagramTemplate() {
           name: input.name,
           description: input.description || null,
           concessionaire_id: input.concessionaireId || null,
-          scene_data: EMPTY_SCENE,
+          scene_data: input.sceneData ?? EMPTY_SCENE,
           created_by: user?.id,
         } as never)
         .select()

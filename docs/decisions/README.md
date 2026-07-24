@@ -5,6 +5,21 @@ Registro de decisões de produto/UX (não arquiteturais — essas ficam em
 
 ## Log
 
+- **Diagrama unifilar — reconhecimento de PDF ganha stage/branch (fileira
+  principal + derivações) em vez de fileira única** (9ª rodada, mesmo mês):
+  a primeira importação real ficou aquém do esperado ("falhou
+  vergonhosamente"); perguntado, o usuário esclareceu que o objetivo é o PDF
+  "ser redesenhado no editor" pra não precisar montar do zero — decisão da
+  8ª rodada (só topologia, sem nenhuma noção de posição) ficou curta demais.
+  Resolvido sem tentar coordenada mm exata (continua fora de alcance
+  confiável pra IA de visão): a IA passou a informar `stage` (posição no
+  fluxo principal) e `branch` (é derivação?) por componente, e o layout
+  inicial usa isso pra já sair parecido com um unifilar de verdade. De
+  quebra, corrigido um bug real (2 chamadas separadas create+update podiam
+  deixar um modelo órfão vazio se a segunda falhasse — virou 1 insert
+  atômico) e adicionada normalização de sinônimos de `kind` pra reduzir o
+  risco de uma resposta boa da IA virar "0 componentes" por uma diferença de
+  string. Ver [ADR 0006](../adr/0006-cad-engine-alpha.md). (jul/2026)
 - **Diagrama unifilar — reconhecimento de PDF só reconhece topologia, símbolos
   recalibrados por um 2º diagrama real** (8ª rodada, mesmo mês): pedido do
   usuário pra "ir pro próximo nível" (reconhecimento automático, adiado desde

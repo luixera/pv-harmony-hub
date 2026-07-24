@@ -82,8 +82,9 @@ export default function DiagramTemplates() {
     try {
       const result = await recognizeDiagram.mutateAsync(importFile);
       const sceneData = buildSceneFromRecognition(result.components, result.connections);
-      const created = await createTemplate.mutateAsync({ name: importName.trim() });
-      await updateTemplate.mutateAsync({ id: created.id, sceneData, silent: true });
+      // insert único, já com a cena reconhecida — evita um 2º passo (update) que,
+      // se falhar, deixaria um modelo órfão criado vazio (bug real corrigido aqui)
+      const created = await createTemplate.mutateAsync({ name: importName.trim(), sceneData });
       setImportOpen(false);
       setImportName(''); setImportFile(null);
       setImportWarnings(result.warnings.length > 0 ? result.warnings : []);

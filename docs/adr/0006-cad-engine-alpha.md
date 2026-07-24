@@ -365,3 +365,83 @@ rótulo de bitola (`2#6mm²`) que também apareciam na legenda **não** viraram
 funcionalidade nova — são convenção de estilo de linha/anotação de texto,
 não um componente discreto, e o texto livre já cobre a bitola; ver
 "Limitações" em `docs/modules/diagrams/overview.md`.
+
+## Atualização (9ª rodada) — a primeira importação real falhou vazia; stage/branch em vez de fileira única
+A primeira tentativa real de "Importar de PDF" (mesmo diagrama ENEL da 8ª
+rodada, reenviado pelo usuário) criou um modelo vazio — "a importação de
+diagramas falhou vergonhosamente". Perguntei antes de tentar corrigir (o
+usuário pediu explicitamente pra eu perguntar em caso de dúvida): o que
+"aparecer" deveria significar. Resposta: **"o PDF é redesenhado no editor,
+para que o usuário não precise construir um modelo específico do zero em um
+editor limitado"** — ou seja, o design da 8ª rodada (só topologia, fileira
+única) ficou aquém do esperado; o pedido real sempre foi um resultado que já
+pareça com o diagrama de verdade, não só uma lista de peças na ordem
+errada.
+
+### Investigação do "vazio" (antes de mudar qualquer coisa)
+Consultei os logs do Supabase em vez de assumir a causa:
+- `ai_usage_log`: 1 chamada registrada (cota consumida, então passou da
+  checagem de auth).
+- Logs de invocação da edge function: `POST 200`, 7.8s — sem erro HTTP.
+- Logs de runtime: nenhum `console.error` no meio da execução (só
+  boot/shutdown) — ou seja, nem o parse do JSON da IA nem a chamada à API
+  Claude falharam visivelmente.
+- O `diagram_templates` criado (`scene_data`) estava **exatamente**
+  `{placements:[],connections:[],photos:[],texts:[]}` — o `EMPTY_SCENE`
+  default de `useCreateDiagramTemplate`, não um resultado parcial.
+
+Isso apontava pra um de dois caminhos: a IA devolveu `kind`s fora do
+vocabulário daquela vez (não-determinismo do modelo) e meu próprio código
+zerou tudo silenciosamente, OU o `updateTemplate` (2º passo, depois do
+`createTemplate`) falhou e deixou o registro no estado default do 1º passo.
+Pra decidir, implantei uma edge function de diagnóstico temporária
+(`diagram-recognize-debug`, sem auth, sem alterar a função real) e reenviei
+o MESMO PDF real via `curl`: a resposta bruta da IA veio **limpa**, com os
+12 componentes certos, todos com `kind` válido — o que aponta pro segundo
+caminho como mais provável (falha no `updateTemplate`, deixando o registro
+já criado pelo `createTemplate` no `EMPTY_SCENE` default) mais do que pra
+uma resposta ruim da IA daquela vez. Não dá pra provar retroativamente qual
+dos dois foi exatamente — por isso as duas causas foram endereçadas, não só
+uma.
+
+### Fix 1 — elimina a corrida create-depois-update
+`useCreateDiagramTemplate` passou a aceitar `sceneData` opcional no insert;
+`handleImport` (`DiagramTemplates.tsx`) monta a cena reconhecida ANTES de
+criar o modelo e insere tudo numa única chamada — não existe mais uma janela
+onde o modelo já existe no banco com uma cena vazia esperando um 2º passo
+que pode falhar. Se a criação falhar agora, não sobra nada órfão.
+
+### Fix 2 — normalização de `kind` + log de diagnóstico
+`KIND_ALIASES` (`diagram-recognize/index.ts`) mapeia variações comuns que a
+IA pode usar em vez do `kind` exato (inglês, sinônimo, plural) antes de
+validar contra o vocabulário — não elimina 100% o risco de uma resposta com
+tipos desconhecidos, mas reduz bastante a chance de uma resposta quase-certa
+virar "0 componentes". A função também loga (server-side) a lista bruta de
+`kind` a cada chamada, e o texto bruto da IA quando zero sobrevivem à
+validação — sem isso, diagnosticar um caso futuro exigiria reproduzir tudo
+de novo com uma função de debug, como desta vez.
+
+### Fix 3 (o pedido real) — `stage`/`branch` em vez de fileira única
+O prompt passou a pedir, por componente, `stage` (posição inteira no fluxo
+principal — 0 na geração, crescente até a rede) e `branch` (`true` = é uma
+derivação, não fica em série no condutor principal). `layoutFromRecognition`
+(`editableLayout.ts`, nova) usa isso pra montar a cena: componentes
+`branch: false` do mesmo `stage` ficam na fileira principal (mesmo `x` —
+mesma lógica de espaçamento de `initialPlacement`); `branch: true` empilham
+abaixo, no mesmo `x` do seu `stage` (a mesma convenção visual que DPS/
+aterramento já usam quando o usuário os arrasta manualmente pra baixo da
+linha — esses símbolos já são desenhados pra conectar "por cima"). Testado
+de novo com o mesmo PDF real via a função de debug antes de decidir: saiu
+com 10 componentes, `stage` 0–5, `branch` corretamente marcando DPS/
+aterramento/quadro como derivação — resultado visualmente muito mais perto
+de "redesenhado" do que a fileira única da 8ª rodada. Decisão deliberada:
+não pedir coordenada mm exata (continua fora de alcance confiável pra uma
+IA de visão), só estrutura suficiente pra já sair parecido, com o editor
+manual cobrindo o ajuste fino.
+
+### Limpeza
+Modelo "ENEL" vazio (órfão do bug) excluído do banco. A função de debug foi
+substituída por um stub que só devolve 410 (não há como excluir uma edge
+function via MCP) — não deveria ter ficado exposta sem auth chamando a API
+paga da Anthropic; se sobrar tempo depois, excluir de vez pelo painel do
+Supabase.

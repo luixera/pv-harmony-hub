@@ -25,8 +25,10 @@
   por papel (admin/staff) em vez de só master, ainda restrito à GD Manager
   (`tenants.is_library`), e agora também **"Importar de PDF"** —
   reconhecimento automático via IA de visão (`diagram-recognize`, mesmo
-  padrão do Claudinho) que identifica componentes/ligações (só topologia,
-  não posição/rotação) e monta um modelo inicial pra revisão — ver
+  padrão do Claudinho) que identifica componentes/ligações e a posição
+  aproximada de cada um no fluxo (`stage`/`branch` — fileira principal +
+  derivações empilhadas, nunca coordenada exata) e monta um modelo inicial
+  pra revisão — ver
   [modules/diagrams](../modules/diagrams/overview.md) e
   [ADR 0006](../adr/0006-cad-engine-alpha.md). Próximos passos, em ordem
   sugerida: (1) **importar um modelo salvo dentro do modal do projeto** —
