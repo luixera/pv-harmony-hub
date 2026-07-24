@@ -9,9 +9,11 @@
 ## Tarefas de produto em aberto (do backlog de sessão)
 - **Diagrama unifilar — evoluir do alpha**: hoje tem edição manual completa —
   arrastar de qualquer ponto do símbolo, girar, **redimensionar**, ligar com
-  derivações e linhas soltas (`ConnectionEndpoint` symbol/point) que **grudam
-  pixel-a-pixel** no componente/linha mais perto (`CONNECTION_INSET` +
-  `findNearestSymbol`/`nearestPointOnPolyline`), selecionar e arrastar uma
+  derivações (`ConnectionEndpoint` symbol/point — uma linha sempre termina
+  num componente ou em cima de outra linha, nunca solta no vazio, por pedido
+  do usuário) que **grudam pixel-a-pixel** no componente/linha mais perto
+  (`CONNECTION_INSET` + `findNearestSymbol`/`nearestPointOnPolyline`),
+  selecionar e arrastar uma
   linha inteira como bloco, excluir com Delete, 9 símbolos (disjuntor
   corrigido, DPS/fusível/aterramento/quadro de distribuição novos),
   componentes/fotos/textos adicionáveis livremente (só visual, sem tocar no

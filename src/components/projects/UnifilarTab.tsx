@@ -109,11 +109,11 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
         <strong>Alpha interno.</strong> Arraste símbolos, fotos e textos; puxe o
         quadrado azul no canto do símbolo selecionado pra redimensionar. Nas linhas: clique
         para selecionar e arraste pra mover o traço inteiro, duplo-clique adiciona um ponto de
-        dobra, Delete remove a selecionada. Para ligar: clique na origem (um componente ou um
-        ponto/linha existente, pra criar uma derivação) e depois no destino — ou clique vários
-        pontos e use "Terminar aqui" pra fechar numa ponta solta (linha livre). A edição aqui é
-        só deste navegador — não sincroniza entre dispositivos e não altera nenhum modelo salvo
-        no motor de templates.
+        dobra, Delete remove a selecionada. Para ligar: clique na origem (um componente ou uma
+        linha existente, pra criar uma derivação) e depois clique no destino (outro componente
+        ou outra linha) — uma ligação sempre termina em algo, nunca fica solta no vazio. A
+        edição aqui é só deste navegador — não sincroniza entre dispositivos e não altera
+        nenhum modelo salvo no motor de templates.
       </p>
     </div>
   );

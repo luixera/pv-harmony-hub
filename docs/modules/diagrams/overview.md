@@ -130,34 +130,42 @@ Ambos são **só visuais**: não criam nem alteram nenhum registro de
 ícone na foto) o que foi adicionado manualmente — os 5 componentes do
 cadastro do projeto são sempre exibidos.
 
-## Ligar / desenhar linha (com derivações e linhas soltas)
-Um único modo cobre criação direta, desenho manual, derivação e linha livre.
-A origem e o destino de uma ligação (`ConnectionEndpoint`) podem ser um
-**componente** ou um **ponto fixo** — o segundo é o que viabiliza derivação e
-linha solta, sem precisar de um segundo tipo de entidade:
+## Ligar / desenhar linha (só componente-a-componente ou com derivação)
+Uma ligação **sempre** termina em algo real — um componente ou outra linha —,
+nunca fica solta no vazio (decisão explícita do usuário: "não deixe que as
+linhas possam ser desenhadas livremente, mas sim, conectando componentes uns
+aos outros ou em outras linhas"). A origem e o destino
+(`ConnectionEndpoint`) podem ser um **componente** (`{kind:'symbol'}`) ou um
+**ponto sobre outra linha existente** (`{kind:'point', at}`, uma derivação —
+não há uma referência formal "esta ligação deriva da outra" guardada, é só o
+mesmo ponto no espaço, coincidente o bastante pra parecer e funcionar como
+uma derivação). Não existe uma terceira opção de "ponto solto sem ligação a
+nada".
 
-- Clique num componente → origem/destino é aquele componente (`{kind:'symbol'}`).
-- Clique em qualquer outro lugar do canvas — vazio **ou em cima de uma linha
-  já existente** — → vira um ponto fixo (`{kind:'point', at}`) na coordenada
-  exata do clique. Clicar em cima de uma linha existente, visualmente, cria
-  uma **derivação** (ramal em Y/T) dali; não há uma referência formal "esta
-  ligação deriva da outra" guardada — é só o mesmo ponto no espaço, coincidente
-  o bastante para parecer (e funcionar como) uma derivação.
-- Clique no componente de destino → fecha a ligação ali. Clique em "Terminar
-  aqui" (aparece com a ligação em andamento) → fecha no último ponto clicado,
-  como ponta solta — é como se cria uma **linha totalmente livre** (as duas
-  pontas soltas) ou uma derivação que não encosta em nenhum componente.
-- Esc cancela a ligação em andamento a qualquer momento.
+- Clique num componente → origem/destino é aquele componente.
+- Clique em cima de uma linha existente (dentro do raio de captura,
+  `SNAP_RADIUS = 6mm`) → origem/destino é o ponto exato sobre ela (derivação).
+- Clique **sem estar perto de nenhum dos dois**: se ainda não tem origem
+  escolhida, o clique não faz nada (não há como começar uma ligação do
+  nada); se já tem origem, vira só mais um ponto de dobra do traço — o meio
+  do caminho continua livre pra desenhar por onde quiser, só as **pontas**
+  são obrigadas a estar em algo.
+- Clicar de novo na própria origem cancela a ligação em andamento (mesmo
+  clicando por perto, não exatamente nela). Esc também cancela a qualquer
+  momento.
 
 Depois de criada, a linha inteira tem três formas de edição:
 - **Selecionar**: clique em qualquer trecho do traço (fica destacada em azul).
 - **Mover como bloco**: arraste um trecho selecionado ou não — desloca todos
-  os pontos de dobra (e as pontas soltas, se houver) juntos, mantendo o
+  os pontos de dobra (e as pontas em derivação, se houver) juntos, mantendo o
   formato. Se a linha ainda não tinha pontos de dobra, o primeiro arrasto
   "semeia" com o roteamento automático atual antes de mover.
 - **Ponto a ponto**: duplo-clique no meio de um trecho cria um novo ponto de
-  dobra ali; arrastar um ponto de dobra (ou uma ponta solta) move só ele;
-  duplo-clique num ponto de dobra remove.
+  dobra ali; arrastar um ponto de dobra (ou uma ponta em derivação) move só
+  ele — ao soltar, a ponta em derivação gruda de novo em componente/linha
+  perto o bastante, ou volta pro lugar original se não achar nenhum (nunca
+  fica solta no vazio, ver "Alinhamento pixel-a-pixel" abaixo); duplo-clique
+  num ponto de dobra remove.
 - **Excluir**: com a ligação selecionada, tecla Delete/Backspace, botão
   "Remover selecionado" na barra, ou o ícone de lixeira na lista "Ligações".
 
@@ -174,19 +182,24 @@ verdade um no outro:
    Sem isso, **toda** ligação símbolo↔condutor da cadeia tinha um gap de
    2–4mm, não só a derivação que apareceu no print do usuário — só ficava
    mais visível nela por causa do ângulo reto e dos marcadores de ponta.
-2. **Pontas soltas (`{kind:'point'}`) não grudavam em nada perto delas.** Ao
-   terminar uma ligação perto de um componente sem acertar exatamente sua
-   área de clique, ou ao clicar perto de uma linha existente pra criar uma
-   derivação, o ponto ficava exatamente onde o mouse soltou — podendo ficar a
-   alguns mm de distância visível. Agora `resolveClickEndpoint()`
-   (`UnifilarTab.tsx`) resolve todo clique de "iniciar"/"terminar aqui" uma
-   ligação: perto o bastante (6mm, `SNAP_RADIUS`) de um componente vira aquele
+2. **Pontas em derivação não grudavam em nada perto delas.** Ao terminar uma
+   ligação perto de um componente sem acertar exatamente sua área de clique,
+   ou perto de uma linha existente pra criar uma derivação, o ponto ficava
+   exatamente onde o mouse clicou/soltou — podendo ficar a alguns mm de
+   distância visível (ou, antes da regra de "sempre terminar em algo" acima,
+   virar uma ponta solta de verdade). Agora `resolveClickEndpoint()`
+   (`DiagramEditor.tsx`) resolve todo clique de iniciar/fechar uma ligação:
+   perto o bastante (6mm, `SNAP_RADIUS`) de um componente vira aquele
    componente (`findNearestSymbol`, ligação pixel-perfeita via `edgePoint()`
    corrigido); perto de uma linha existente sem símbolo vira o ponto exato
-   projetado sobre ela (`nearestPointOnPolyline`), não o clique cru. **Soltar**
-   uma ponta arrastada perto de um componente (ver "Ligar / desenhar linha"
-   acima) também gruda nele — dá pra corrigir uma ligação já salva sem
-   apagar e refazer, só arrastando a pontinha azul até dentro do símbolo.
+   projetado sobre ela (`nearestPointOnPolyline`), não o clique cru; longe
+   dos dois, o clique simplesmente não conta como ponta válida (ver seção
+   acima). **Soltar** uma ponta arrastada perto de um componente ou de outra
+   linha (não ela mesma) também gruda nela; se soltar longe dos dois, o
+   arrasto é desfeito e a ponta volta pra posição original — nunca fica no
+   vazio. Dá pra corrigir uma derivação mal-encostada só arrastando a
+   pontinha azul até dentro do símbolo ou em cima de outra linha, sem apagar
+   e refazer a ligação.
 
 ## Redimensionar componentes
 Com um símbolo selecionado, um quadrado azul aparece no canto — arrastar
@@ -216,7 +229,7 @@ quebra o texto).
 
 ## Persistência
 O layout editado (posições, rotações, escalas, ligações — incluindo
-derivações/linhas soltas —, componentes extras, fotos e textos) é salvo em
+derivações —, componentes extras, fotos e textos) é salvo em
 **`localStorage`**, por projeto (`unifilar-layout:{projectId}`) — **só neste
 navegador**, não sincroniza entre dispositivos/usuários e não é um
 `DiagramTemplate` reutilizável. Ao reabrir a aba, o estado salvo é
@@ -280,6 +293,12 @@ flowchart LR
   continua com o gap até o usuário arrastar aquela pontinha pra dentro do
   símbolo (ela gruda sozinha ao soltar) ou apagar/refazer a ligação. Não há
   migração automática retroativa.
+- **Pontas realmente soltas (sem ligar a nada) só existem em diagramas
+  salvos ANTES da regra "sempre termina em algo"** (linha totalmente livre
+  foi removida por pedido do usuário — ver ADR 0006). Diagramas antigos com
+  esse tipo de ponta continuam funcionando como estavam (nada quebra), mas
+  arrastar essa ponta agora sempre resolve pra um componente/linha perto ou
+  volta pro lugar original — não dá mais pra deixá-la solta de novo.
 - Sem exportador DXF.
 - `DiagramTemplate` (motor de templates) é **MVP manual**: monta/salva
   modelos numa aba própria, mas o modal do projeto ainda não importa nenhum

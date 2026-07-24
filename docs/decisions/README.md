@@ -5,6 +5,17 @@ Registro de decisões de produto/UX (não arquiteturais — essas ficam em
 
 ## Log
 
+- **Diagrama unifilar — linhas nunca ficam soltas no vazio** (7ª rodada):
+  reversão parcial da decisão da 4ª rodada. Pedido direto: "não deixe que as
+  linhas possam ser desenhadas livremente, mas sim, conectando componentes
+  uns aos outros ou em outras linhas". A "linha totalmente livre" (as duas
+  pontas soltas, sem ligar a nada) foi removida — uma ligação agora sempre
+  termina num componente ou em cima de outra linha (derivação). O botão
+  "Terminar aqui" (que fechava a ligação num ponto cru) foi removido junto —
+  clicar numa linha durante o desenho já fecha ali. Arrastar uma ligação já
+  existente pro vazio também deixou de ser possível: volta pro lugar se não
+  achar componente/linha perto. Ver [ADR 0006](../adr/0006-cad-engine-alpha.md).
+  (jul/2026)
 - **Diagrama unifilar — alpha só para master/GD Manager**: começar com uma
   fatia vertical dentro do app (sem monorepo, sem dependência nova) em vez do
   motor completo da proposta de arquitetura. Duas correções de rota no mesmo

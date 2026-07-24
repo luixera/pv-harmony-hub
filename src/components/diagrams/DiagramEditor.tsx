@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Loader2, Download, FileImage, RotateCw, Link2, Trash2, RefreshCw,
-  Image as ImageIcon, Plus, Pencil, Type, Check,
+  Image as ImageIcon, Plus, Pencil, Type,
 } from 'lucide-react';
 import {
   ConnectionEndpoint, DiagramSceneState, ManualConnection, PlacedPhoto, PlacedSymbol, PlacedText,
@@ -19,7 +19,8 @@ import { sanitizeFileName } from '@/lib/utils';
 
 /**
  * Canvas SVG interativo do CAD Engine — arrastar, girar, redimensionar,
- * ligar (com desenho manual do traço, derivações e linhas soltas) e
+ * ligar (com desenho manual do traço e derivações — uma linha sempre termina
+ * num componente ou em cima de outra linha, nunca solta no vazio) e
  * adicionar componentes/fotos/textos avulsos. Extraído de `UnifilarTab.tsx`
  * pra ser reaproveitado tanto por projeto (aba dentro do modal, com os 5
  * componentes do cadastro + persistência em localStorage) quanto pelo motor
@@ -102,11 +103,14 @@ export function DiagramEditor({
   }, [placements, connections, photos, texts, loaded]);
 
   const byId = useMemo(() => new Map(placements.map(p => [p.id, p])), [placements]);
-  // Espelha `placements` num ref pra ler a versão mais recente dentro do
-  // listener de mouseup persistente (que só resubscreve quando `snap` muda —
-  // ler `placements` direto ali arriscaria pegar uma versão desatualizada).
+  // Espelha `placements`/`connections` num ref pra ler a versão mais recente
+  // dentro do listener de mouseup persistente (que só resubscreve quando
+  // `snap` muda — ler o estado direto ali arriscaria pegar uma versão
+  // desatualizada).
   const placementsRef = useRef(placements);
   useEffect(() => { placementsRef.current = placements; }, [placements]);
+  const connectionsRef = useRef(connections);
+  useEffect(() => { connectionsRef.current = connections; }, [connections]);
   const scene = useMemo(
     () => buildSceneFromPlacement(json, placements, connections, photos, texts, values),
     [json, placements, connections, photos, texts, values],
@@ -189,16 +193,23 @@ export function DiagramEditor({
       if (!drag) return;
       if (drag.type === 'symbol' && !drag.moved) handleSymbolClick(drag.id); // arrasto não ocorreu → foi um clique
       if (drag.type === 'endpoint' && drag.moved) {
-        // Soltou uma ponta solta perto de um componente: gruda nele em vez de
-        // deixar um ponto quase-tocando (o pixel tem que encostar de verdade).
-        const near = findNearestSymbol({ x: drag.lastX, y: drag.lastY }, placementsRef.current);
-        if (near) {
-          setConnections(prev => prev.map(c => {
-            if (c.id !== drag.connId) return c;
-            const pt: ConnectionEndpoint = { kind: 'symbol', id: near.id };
-            return drag.which === 'from' ? { ...c, from: pt } : { ...c, to: pt };
-          }));
-        }
+        // Uma ponta só pode ficar num componente ou em cima de outra linha —
+        // nunca solta no vazio. Perto de um componente, gruda nele; senão,
+        // perto de outra linha (que não seja ela mesma), gruda no ponto
+        // exato sobre ela; se não achar nenhum dos dois, desfaz o arrasto e
+        // volta pra posição original (não deixa soltar no vazio).
+        const dropPt = { x: drag.lastX, y: drag.lastY };
+        const nearSymbol = findNearestSymbol(dropPt, placementsRef.current);
+        const idsNow = new Map(placementsRef.current.map(p => [p.id, p]));
+        const nearLine = nearSymbol ? null : nearestLinePoint(dropPt, connectionsRef.current, idsNow, drag.connId);
+        const resolved: ConnectionEndpoint | null = nearSymbol
+          ? { kind: 'symbol', id: nearSymbol.id }
+          : nearLine ? { kind: 'point', at: nearLine } : null;
+        setConnections(prev => prev.map(c => {
+          if (c.id !== drag.connId) return c;
+          const pt: ConnectionEndpoint = resolved ?? { kind: 'point', at: { x: drag.origX, y: drag.origY } };
+          return drag.which === 'from' ? { ...c, from: pt } : { ...c, to: pt };
+        }));
       }
     };
     window.addEventListener('mousemove', onMove);
@@ -249,48 +260,60 @@ export function DiagramEditor({
     return snap ? { x: snapToGrid(x), y: snapToGrid(y) } : { x, y };
   };
 
-  // Resolve um clique cru no canvas pra uma ponta de ligação "colada" de
-  // verdade: perto de um componente vira aquele componente (pixel-perfeito
-  // via edgePoint); perto de uma linha existente vira o ponto exato sobre
-  // ela (derivação); senão, o ponto cru mesmo (linha solta).
-  const resolveClickEndpoint = (pt: Point): ConnectionEndpoint => {
-    const symbol = findNearestSymbol(pt, placements);
-    if (symbol) return { kind: 'symbol', id: symbol.id };
-    let bestLine: { point: Point; dist: number } | null = null;
-    for (const conn of connections) {
-      if (!isConnectionResolvable(conn, byId)) continue;
-      const pts = computeConnectorPoints(conn.from, conn.to, byId, conn.waypoints);
+  // Ponto mais próximo sobre alguma linha existente, dentro do raio de
+  // captura — `excludeConnId` ignora a própria linha (usado ao arrastar a
+  // ponta de uma ligação, senão ela sempre "acerta" a si mesma).
+  const nearestLinePoint = (
+    pt: Point, conns: ManualConnection[], ids: Map<string, PlacedSymbol>, excludeConnId?: string,
+  ): Point | null => {
+    let best: { point: Point; dist: number } | null = null;
+    for (const conn of conns) {
+      if (conn.id === excludeConnId) continue;
+      if (!isConnectionResolvable(conn, ids)) continue;
+      const pts = computeConnectorPoints(conn.from, conn.to, ids, conn.waypoints);
       const found = nearestPointOnPolyline(pt, pts);
-      if (found && found.dist <= SNAP_RADIUS && (!bestLine || found.dist < bestLine.dist)) bestLine = found;
+      if (found && found.dist <= SNAP_RADIUS && (!best || found.dist < best.dist)) best = found;
     }
-    return { kind: 'point', at: bestLine ? bestLine.point : pt };
+    return best ? best.point : null;
   };
 
-  // Clique em área vazia do canvas: fora do modo de ligar, desmarca tudo.
-  // No modo de ligar, cada clique vira o ponto de partida (se ainda não
-  // houver origem) ou mais um ponto do traço — é como se cria uma derivação
-  // (clicando em cima de uma linha existente) ou uma linha totalmente solta.
+  // Resolve um clique cru no canvas pra uma ponta de ligação de verdade:
+  // linhas só podem conectar componentes entre si ou a outras linhas — nunca
+  // ficam soltas no vazio. Perto de um componente vira aquele componente
+  // (pixel-perfeito via edgePoint); perto de uma linha existente vira o ponto
+  // exato sobre ela (derivação); longe dos dois, `null` (não é um lugar
+  // válido pra iniciar/terminar uma ligação).
+  const resolveClickEndpoint = (pt: Point): ConnectionEndpoint | null => {
+    const symbol = findNearestSymbol(pt, placements);
+    if (symbol) return { kind: 'symbol', id: symbol.id };
+    const linePoint = nearestLinePoint(pt, connections, byId);
+    return linePoint ? { kind: 'point', at: linePoint } : null;
+  };
+
+  // Clique em área vazia do canvas: fora do modo de ligar, desmarca tudo. No
+  // modo de ligar: sem origem ainda, só inicia se o clique acertar um
+  // componente ou uma linha existente (nunca um ponto solto); com origem já
+  // escolhida, um clique perto de um componente/linha FECHA a ligação ali
+  // (derivação, se for numa linha); longe dos dois, vira só mais um ponto de
+  // dobra do traço (o desenho do meio do caminho continua livre).
   const handleCanvasClick = (e: React.MouseEvent<SVGSVGElement>) => {
     if (!linkMode) { clearSelection(); return; }
     const pt = clientToMm(e.clientX, e.clientY);
     if (!pt) return;
-    if (!linkFrom) { setLinkFrom(resolveClickEndpoint(pt)); setDrawnWaypoints([]); return; }
+    const resolved = resolveClickEndpoint(pt);
+    if (!linkFrom) {
+      if (resolved) { setLinkFrom(resolved); setDrawnWaypoints([]); }
+      return;
+    }
+    if (resolved) {
+      if (resolved.kind === 'symbol' && linkFrom.kind === 'symbol' && linkFrom.id === resolved.id) {
+        setLinkFrom(null); setDrawnWaypoints([]); // clicou de novo na própria origem: cancela
+        return;
+      }
+      finishLink(resolved);
+      return;
+    }
     setDrawnWaypoints(prev => [...prev, pt]);
-  };
-
-  // Termina a ligação em andamento no último ponto clicado — gruda em
-  // componente/linha perto o bastante (ver resolveClickEndpoint), senão vira
-  // uma ponta solta de verdade (derivação sem componente, ou linha livre).
-  const finishLinkHere = () => {
-    if (!linkFrom || drawnWaypoints.length === 0) return;
-    const last = drawnWaypoints[drawnWaypoints.length - 1];
-    const mid = drawnWaypoints.slice(0, -1);
-    setConnections(prev => [...prev, {
-      id: `manual-${Date.now()}`, from: linkFrom, to: resolveClickEndpoint(last),
-      waypoints: mid.length ? mid : undefined,
-    }]);
-    setLinkFrom(null);
-    setDrawnWaypoints([]);
   };
 
   const rotateSelected = () => {
@@ -365,7 +388,9 @@ export function DiagramEditor({
     }));
   };
 
-  // Arrastar uma ponta "solta" (derivação ou linha livre) de uma ligação.
+  // Arrastar uma ponta em derivação (ponto sobre outra linha) de uma
+  // ligação — solta no fim do arrasto, gruda de novo em componente/linha
+  // (ver onUp acima) ou volta pro lugar se não achar nenhum dos dois perto.
   const handleEndpointMouseDown = (e: React.MouseEvent, connId: string, which: 'from' | 'to', at: Point) => {
     if (linkMode) return;
     e.preventDefault();
@@ -571,7 +596,6 @@ export function DiagramEditor({
     border: active ? 'none' : '1px solid #E0E0E0', background: active ? '#2B8CFF' : '#fff',
     color: active ? '#fff' : '#333', fontSize: 12, fontWeight: 600, cursor: 'pointer',
   });
-  const canFinishHere = linkMode && !!linkFrom && drawnWaypoints.length > 0;
   const canInsertTag = !!selectedTextId || !!selectedId;
 
   return (
@@ -586,15 +610,9 @@ export function DiagramEditor({
         >
           <Link2 size={13} />
           {linkMode
-            ? (linkFrom ? `Ligando ${labelOfEndpoint(linkFrom)} a… (${drawnWaypoints.length} pontos, Esc cancela)` : 'Clique na origem (componente, linha ou canvas)')
+            ? (linkFrom ? `Ligando ${labelOfEndpoint(linkFrom)} a… (${drawnWaypoints.length} pontos, Esc cancela)` : 'Clique num componente ou numa linha existente')
             : 'Ligar / desenhar linha'}
         </button>
-
-        {canFinishHere && (
-          <button onClick={finishLinkHere} style={btnStyle(true)}>
-            <Check size={13} /> Terminar aqui
-          </button>
-        )}
 
         <button onClick={rotateSelected} disabled={!selectedId} style={{ ...btnStyle(), color: selectedId ? '#333' : '#bbb', cursor: selectedId ? 'pointer' : 'not-allowed' }}>
           <RotateCw size={13} /> {selectedId ? `Girar ${labelOf(selectedId)}` : 'Girar (selecione um símbolo)'}

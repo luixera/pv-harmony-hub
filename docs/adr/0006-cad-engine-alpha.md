@@ -251,3 +251,43 @@ dados (`DiagramSceneState`), então tecnicamente é um `initialState` diferente
 em vez do resultado de `reconcile()`, mas falta decidir com o usuário *como*
 ele escolhe qual modelo importar (manual, por concessionária, por critério
 paramétrico) antes de construir essa tela. Ver roadmap.
+
+## Atualização (7ª rodada) — linhas nunca ficam soltas no vazio
+Pedido direto: "não deixe que as linhas possam ser desenhadas livremente,
+mas sim, conectando componentes um ao outros ou em outras linhas". A ponta
+solta genuína (`{kind:'point'}` sem estar perto de nenhum componente/linha),
+introduzida na 4ª rodada como "linha totalmente livre", foi removida —
+uma ligação agora **sempre** termina em algo real.
+
+`resolveClickEndpoint()` (`DiagramEditor.tsx`) deixou de ter fallback pro
+clique cru: retorna `ConnectionEndpoint | null` — símbolo perto, ponto sobre
+outra linha perto, ou `null` (não é lugar válido pra ponta nenhuma). Isso
+muda o fluxo de `handleCanvasClick`:
+- Sem origem escolhida ainda: só inicia a ligação se o clique acertar
+  componente/linha; clique no vazio não faz nada (antes, virava o começo de
+  uma linha livre).
+- Com origem escolhida: clique perto de componente/linha **fecha** a
+  ligação ali (inclusive criando uma derivação, se for numa linha); clique
+  longe dos dois vira só mais um ponto de dobra do traço em andamento — o
+  meio do caminho continua livre pra desenhar, só as pontas são obrigadas.
+
+O botão "Terminar aqui" (que fechava a ligação no ponto cru, criando a
+ponta solta) deixou de fazer sentido e foi removido — fechar numa linha
+agora é só clicar nela durante o desenho, sem precisar de um botão à parte.
+
+Fechado também um buraco que sobrava: **arrastar** a ponta de uma ligação já
+existente até o vazio ainda deixava um ponto solto (só o clique de
+criação tinha a regra nova, não o arrasto). Agora o `onUp` do arrasto de
+ponta (`type: 'endpoint'`) checa componente perto, senão linha perto
+(excluindo a própria ligação sendo arrastada, senão ela sempre "acerta" a si
+mesma — via `nearestLinePoint(..., excludeConnId)`), senão **desfaz o
+arrasto e volta pra posição original**. Precisou de um `connectionsRef`
+(mesmo padrão do `placementsRef` já existente) pra ler o estado atual de
+conexões dentro do listener de `mouseup` persistente sem risco de closure
+desatualizada.
+
+Diagramas salvos antes desta correção que já tinham uma ponta genuinamente
+solta continuam funcionando como estão — não há migração retroativa — mas
+arrastar essa ponta agora sempre resolve pra algo ou volta pro lugar, nunca
+mais fica solta de novo (ver limitações em
+`docs/modules/diagrams/overview.md`).
