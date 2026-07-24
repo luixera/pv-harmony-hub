@@ -238,6 +238,19 @@ Deno.serve(async (req) => {
     }
 
     const claudeData = await claudeResp.json()
+
+    // Completa o lançamento de uso com os tokens reais — alimenta o extrato
+    // de IA do console master (best-effort: falha não afeta a revisão).
+    if (quota?.log_id && claudeData?.usage) {
+      const { error: usageErr } = await userClient.rpc('update_ai_usage_tokens', {
+        _log_id: quota.log_id,
+        _model: 'claude-opus-4-8',
+        _input_tokens: claudeData.usage.input_tokens ?? null,
+        _output_tokens: claudeData.usage.output_tokens ?? null,
+      })
+      if (usageErr) console.error('update_ai_usage_tokens:', usageErr)
+    }
+
     if (claudeData.stop_reason === 'refusal') {
       return new Response(JSON.stringify({ ok: false, error: 'A revisão foi recusada pelos filtros do modelo' }), {
         status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },

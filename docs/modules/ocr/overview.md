@@ -27,7 +27,11 @@
 - **RN-OCR-03** — Credenciais Gmail ficam por tenant em `agent_config`; a view
   `agent_config_safe` usa `security_invoker=true` (não vaza credenciais).
 - **RN-OCR-04** — Consumo de IA é limitado por plano (`ai_usage_log`,
-  `consume_ai_quota`).
+  `consume_ai_quota`). Desde jul/2026, `consume_ai_quota` devolve `log_id` e
+  cada edge function de IA completa o lançamento com o modelo e os tokens
+  reais da resposta (`update_ai_usage_tokens`, best-effort) — é a base do
+  extrato "Agentes de IA" no console master (ver
+  [modules/reports](../reports/overview.md) / console `/painel`).
 - **RN-OCR-05** — Nome do titular no documento de identidade: em **RG/CNH** o
   titular é o campo **"NOME"** (o portador), **nunca a FILIAÇÃO** (pai/mãe); em
   **Cartão CNPJ** é a **razão social**. O prompt (`claudinho-verifica`,

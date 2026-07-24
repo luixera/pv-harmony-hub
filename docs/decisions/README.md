@@ -5,6 +5,17 @@ Registro de decisões de produto/UX (não arquiteturais — essas ficam em
 
 ## Log
 
+- **Console master — extrato "Agentes de IA" com saldo local** (jul/2026):
+  pedido do usuário: "um extrato de uso dos agentes que já temos... saldo
+  atual e outras informações... para que a gente não deixe a conta sem
+  saldo e se programe para sempre reabastecer". Decisão: a API da Anthropic
+  não expõe o saldo da conta, então o saldo é um **livro-caixa local** — o
+  master lança cada recarga comprada (USD) e o sistema desconta o custo de
+  cada chamada calculado dos **tokens reais** (as edge functions passaram a
+  registrar modelo + input/output tokens em `ai_usage_log`; chamadas
+  antigas sem tokens entram por estimativa média por tipo). A tela mostra
+  saldo, gasto do mês, projeção de "quantos dias o saldo aguenta" no ritmo
+  do mês e alerta âmbar/vermelho pra programar a recarga. (jul/2026)
 - **Diagrama unifilar — motor de conexões vivas em 4 fases** (12ª rodada):
   o usuário pediu que o motor ficasse "dinâmico como precisamos, inclusive
   com o desenho de linhas, ligação entre os componentes, entre as próprias

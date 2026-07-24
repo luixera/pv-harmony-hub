@@ -71,6 +71,13 @@ flowchart TD
   RPCs `SECURITY DEFINER` gated por `is_master`. O master **não** enxerga dados
   de tenants no painel comum — as políticas de isolamento não têm bypass de
   master (decisão de segurança). Ver [security.md](security.md).
+  Seções do console: Visão geral, Tenants, Acessos, Uso da plataforma,
+  Financeiro, **Agentes de IA** (extrato de uso: saldo estimado em USD =
+  recargas lançadas − custo por tokens reais de cada chamada; quebra por
+  agente/tenant/dia; alerta de reabastecimento; RPCs `console_ai_usage`,
+  `console_ai_add_credit`, `console_ai_delete_credit`; tabela
+  `ai_credit_entries` sem policies — acesso só via essas RPCs) e
+  Monitoramento.
 
 ## Comunicação entre módulos
 

@@ -52,6 +52,10 @@
   desenhados "no fio" + portas CC/CA no inversor (Fase E, refactor visual
   final); motor de layout automático; exportador DXF; BESS/múltiplos
   inversores oficiais no cadastro.
+- **Extrato "Agentes de IA" no console master** ✅ (jul/2026): saldo estimado
+  (recargas lançadas − custo por tokens reais), gasto por agente/tenant/dia,
+  projeção de duração do saldo e alerta de reabastecimento. Futuro possível:
+  puxar custo oficial da Admin API da Anthropic em vez do cálculo local.
 - **Templates de outras concessionárias em .pdf/.xls**: hoje o motor só aceita
   `.docx`. Avaliar suporte a PDF com formulário (AcroForm) e a `.xlsx`.
 - **Catálogo de equipamentos no formulário público**: o combobox não aparece no

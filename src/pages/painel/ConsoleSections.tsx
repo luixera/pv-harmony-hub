@@ -1,7 +1,12 @@
-import { useQuery } from '@tanstack/react-query';
+import { useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
 import { ResponsiveContainer, LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
-import { Loader2, Building2, Users, DollarSign, FolderOpen, Activity, MapPin, Cpu, FileText, Package } from 'lucide-react';
+import {
+  Loader2, Building2, Users, DollarSign, FolderOpen, Activity, MapPin, Cpu, FileText, Package,
+  Bot, Wallet, Trash2, Plus, AlertTriangle,
+} from 'lucide-react';
 
 export const GOLD = '#F5A800';
 const money = (cents: number) => `R$ ${((cents ?? 0) / 100).toLocaleString('pt-BR', { minimumFractionDigits: 0 })}`;
@@ -165,6 +170,184 @@ export function FinanceSection() {
     </div>
   );
 }
+
+// ── Agentes de IA (extrato de uso + saldo) ──────────────────────────────────
+const KIND_NAMES: Record<string, string> = {
+  claudinho_analyze: 'Claudinho — análise de documentos',
+  claudinho_compare: 'Claudinho — comparação',
+  diagram_recognize: 'Unifilar — reconhecimento de PDF',
+  diagram_review: 'Unifilar — engenheiro revisor',
+};
+const usd = (v: number) => `US$ ${(v ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+interface AiUsage {
+  credits_usd: number;
+  spend_total_usd: number;
+  spend_month_usd: number;
+  calls_month: number;
+  calls_total: number;
+  calls_without_tokens: number;
+  by_kind: { kind: string; calls: number; cost_usd: number }[];
+  by_tenant: { tenant: string; calls: number; cost_usd: number }[];
+  by_day: { day: string; cost_usd: number; calls: number }[];
+  credit_entries: { id: string; amount_usd: number; note: string | null; created_at: string }[];
+}
+
+export function AiSection() {
+  const qc = useQueryClient();
+  const { data, isLoading } = useQuery({
+    queryKey: ['console-ai-usage'],
+    queryFn: async (): Promise<AiUsage> => {
+      const { data, error } = await supabase.rpc('console_ai_usage' as never);
+      if (error) throw error;
+      return data as unknown as AiUsage;
+    },
+    staleTime: 30_000,
+  });
+  const [amount, setAmount] = useState('');
+  const [note, setNote] = useState('');
+
+  const addCredit = useMutation({
+    mutationFn: async () => {
+      const value = Number(amount.replace(',', '.'));
+      if (!Number.isFinite(value) || value === 0) throw new Error('Informe o valor da recarga em dólares');
+      const { error } = await supabase.rpc('console_ai_add_credit' as never, { _amount_usd: value, _note: note.trim() || null } as never);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success('Recarga lançada');
+      setAmount(''); setNote('');
+      qc.invalidateQueries({ queryKey: ['console-ai-usage'] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const deleteCredit = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.rpc('console_ai_delete_credit' as never, { _id: id } as never);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['console-ai-usage'] }),
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  if (isLoading || !data) return <Loading />;
+
+  const balance = (data.credits_usd ?? 0) - (data.spend_total_usd ?? 0);
+  // ritmo do mês corrente projeta quantos dias o saldo ainda aguenta
+  const dayOfMonth = new Date().getDate();
+  const dailyRate = dayOfMonth > 0 ? (data.spend_month_usd ?? 0) / dayOfMonth : 0;
+  const daysLeft = dailyRate > 0 ? Math.floor(balance / dailyRate) : null;
+  const level: 'ok' | 'warn' | 'danger' = balance <= 10 || (daysLeft !== null && daysLeft <= 7) ? 'danger'
+    : balance <= 25 || (daysLeft !== null && daysLeft <= 15) ? 'warn' : 'ok';
+
+  return (
+    <div style={{ maxWidth: 1080, margin: '0 auto' }}>
+      <SectionTitle>Agentes de IA</SectionTitle>
+
+      {level !== 'ok' && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14, padding: '10px 14px', borderRadius: 10,
+          background: level === 'danger' ? 'rgba(214,69,56,0.12)' : 'rgba(245,168,0,0.10)',
+          border: `1px solid ${level === 'danger' ? 'rgba(214,69,56,0.4)' : 'rgba(245,168,0,0.35)'}`,
+        }}>
+          <AlertTriangle size={16} style={{ color: level === 'danger' ? '#E06A5E' : GOLD, flexShrink: 0 }} />
+          <p style={{ fontSize: 12.5, color: level === 'danger' ? '#E8938A' : '#E5C36A', margin: 0 }}>
+            <strong>{level === 'danger' ? 'Saldo crítico' : 'Saldo baixando'}:</strong>{' '}
+            {usd(balance)} restantes{daysLeft !== null ? ` — no ritmo deste mês, acabam em ~${daysLeft} dia(s)` : ''}.
+            Programe a recarga na Anthropic e lance o valor aqui embaixo.
+          </p>
+        </div>
+      )}
+
+      <div style={{ ...grid(170), marginBottom: 14 }}>
+        <Kpi icon={Wallet} label="Saldo estimado" value={usd(balance)} hint={`recargas ${usd(data.credits_usd)} − gasto ${usd(data.spend_total_usd)}`} />
+        <Kpi icon={DollarSign} label="Gasto no mês" value={usd(data.spend_month_usd)} hint={daysLeft !== null ? `~${usd(dailyRate)}/dia` : undefined} />
+        <Kpi icon={Bot} label="Chamadas no mês" value={String(data.calls_month)} hint={`${data.calls_total} desde o início`} />
+        <Kpi icon={Activity} label="Duração do saldo" value={daysLeft !== null ? `~${daysLeft} dias` : '—'} hint="no ritmo do mês atual" />
+      </div>
+
+      <div style={{ marginBottom: 14 }}>
+        <ChartBox title="Custo por dia (30 dias, US$)">
+          <BarChart data={(data.by_day ?? []).map(d => ({ ...d, d: dayShort(d.day) }))}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#222" />
+            <XAxis dataKey="d" tick={{ fontSize: 10, fill: '#777' }} interval={4} />
+            <YAxis tick={{ fontSize: 10, fill: '#777' }} />
+            <Tooltip {...tt} />
+            <Bar dataKey="cost_usd" fill={GOLD} radius={[3, 3, 0, 0]} />
+          </BarChart>
+        </ChartBox>
+      </div>
+
+      <div style={{ ...grid(300), marginBottom: 14 }}>
+        <TableCard title="Por agente (30d)" icon={Bot} cols={['Agente', 'Chamadas', 'Custo']}
+          rows={(data.by_kind ?? []).map(k => [KIND_NAMES[k.kind] ?? k.kind, String(k.calls), usd(k.cost_usd)])} />
+        <TableCard title="Por tenant (30d)" icon={Building2} cols={['Tenant', 'Chamadas', 'Custo']}
+          rows={(data.by_tenant ?? []).map(t => [t.tenant ?? '—', String(t.calls), usd(t.cost_usd)])} />
+      </div>
+
+      {/* Lançar recarga + extrato do livro */}
+      <div style={{ ...card, marginBottom: 14 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#ccc', fontSize: 13, fontWeight: 600, marginBottom: 10 }}>
+          <Wallet size={15} style={{ color: GOLD }} /> Lançar recarga de créditos
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <input
+            value={amount} onChange={e => setAmount(e.target.value)} placeholder="Valor em US$ (ex.: 50)"
+            style={{ width: 160, padding: '9px 11px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.12)', background: '#0E0E14', color: '#fff', fontSize: 13, outline: 'none' }}
+          />
+          <input
+            value={note} onChange={e => setNote(e.target.value)} placeholder="Observação (opcional)"
+            style={{ flex: 1, minWidth: 180, padding: '9px 11px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.12)', background: '#0E0E14', color: '#fff', fontSize: 13, outline: 'none' }}
+          />
+          <button
+            onClick={() => addCredit.mutate()} disabled={addCredit.isPending}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 16px', borderRadius: 8, border: 'none', background: GOLD, color: '#1A1A1A', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}
+          >
+            {addCredit.isPending ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />} Lançar
+          </button>
+        </div>
+        <p style={{ fontSize: 11, color: '#777', margin: '8px 0 0' }}>
+          Lance aqui cada compra de créditos feita no console da Anthropic (valor em dólares). Ajustes negativos também valem (ex.: −10 pra corrigir).
+        </p>
+      </div>
+
+      <div style={card}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#ccc', fontSize: 13, fontWeight: 600, marginBottom: 10 }}>
+          <FileText size={15} style={{ color: GOLD }} /> Extrato de recargas
+        </div>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead><tr>{['Data', 'Valor', 'Observação', ''].map((c, i) => <th key={i} style={{ textAlign: 'left', fontSize: 11, color: '#777', fontWeight: 600, padding: '4px 8px', borderBottom: '1px solid #222' }}>{c}</th>)}</tr></thead>
+          <tbody>
+            {(data.credit_entries ?? []).length === 0 && <tr><td colSpan={4} style={{ padding: 16, textAlign: 'center', color: '#666', fontSize: 12 }}>Nenhuma recarga lançada ainda — lance a primeira acima pro saldo fazer sentido</td></tr>}
+            {(data.credit_entries ?? []).map(e => (
+              <tr key={e.id}>
+                <td style={tdStyle}>{new Date(e.created_at).toLocaleDateString('pt-BR')}</td>
+                <td style={{ ...tdStyle, color: e.amount_usd < 0 ? '#E06A5E' : '#7BC97F', fontWeight: 600 }}>{usd(e.amount_usd)}</td>
+                <td style={tdStyle}>{e.note ?? '—'}</td>
+                <td style={{ ...tdStyle, textAlign: 'right' }}>
+                  <button
+                    onClick={() => { if (confirm('Excluir este lançamento?')) deleteCredit.mutate(e.id); }}
+                    style={{ border: 'none', background: 'none', color: '#E06A5E', cursor: 'pointer', display: 'inline-flex' }}
+                    title="Excluir lançamento"
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <p style={{ fontSize: 11, color: '#666', margin: '12px 0 0' }}>
+        O custo é calculado dos tokens reais de cada chamada (registrados desde jul/2026); as{' '}
+        {data.calls_without_tokens} chamada(s) antigas sem tokens entram por estimativa média.
+        O saldo é uma estimativa local — confira o valor exato no console da Anthropic.
+      </p>
+    </div>
+  );
+}
+const tdStyle: React.CSSProperties = { fontSize: 12, color: '#ddd', padding: '6px 8px', borderBottom: '1px solid #1a1a22', whiteSpace: 'nowrap' };
 
 // ── Tabela genérica ─────────────────────────────────────────────────────────
 function TableCard({ title, icon: Icon, cols, rows }: { title: string; icon: React.ElementType; cols: string[]; rows: string[][] }) {
