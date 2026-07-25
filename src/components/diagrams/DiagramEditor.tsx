@@ -10,8 +10,8 @@ import {
   PlacedShape, PlacedSymbol, PlacedText, SheetOptions, blockCenter, buildSceneFromPlacement, buildSheetFurnitureScene,
   computeAllConnectionPoints, connectionDependsOn, connectionLabelPosition, detachDerivations, findNearestPort,
   findLineSnapPoint, findNearestSymbol, healConnectionsThrough, initialConnections, initialPlacement,
-  nearestPointOnPolyline, orthogonalPath, orthoSnapPoint, pointAtT, portPagePosition, SERIES_KINDS,
-  shapePrimitives, SNAP_RADIUS, snapToGrid, splitConnectionAtSymbol, usedConductorsOf, usedKindsOf,
+  nearestPointOnPolyline, orthogonalPath, orthoSnapPoint, pointAtT, portPagePosition, segmentDragPlan,
+  SERIES_KINDS, shapePrimitives, SNAP_RADIUS, snapToGrid, splitConnectionAtSymbol, usedConductorsOf, usedKindsOf,
 } from '@/utils/cadEngine/editableLayout';
 import { ComponentKind, Point, TechnicalJsonMvp } from '@/utils/cadEngine/types';
 import { CONDUCTOR_COLOR, sceneToSvgInner, primitiveToSvg, blockTransform } from '@/utils/cadEngine/exportSvg';
@@ -102,6 +102,10 @@ export function DiagramEditor({
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; kind: 'symbol' | 'conn' | 'group' | 'shape' | 'photo' | 'text'; id: string } | null>(null);
   /** Símbolo sob o mouse — só ele mostra as bolinhas de porta (menos ruído visual). */
   const [hoveredSymbolId, setHoveredSymbolId] = useState<string | null>(null);
+  /** Ligação sob o mouse — mostra as alças de ponta (esticar) mesmo sem selecionar. */
+  const [hoveredConnId, setHoveredConnId] = useState<string | null>(null);
+  /** Ponto de encaixe sob a ponta que está sendo esticada (direção pra interligar). */
+  const [stretchSnap, setStretchSnap] = useState<Point | null>(null);
   /** Arrastar-pra-ligar (modo Selecionar): elástico da porta de origem até o cursor. */
   const [linkDragPreview, setLinkDragPreview] = useState<{ fromPt: Point; cur: Point; snap?: Point } | null>(null);
   /** Onde a ligação vai GRUDAR (final de linha/interseção) — mostrado antes do clique/soltura. */
@@ -230,7 +234,7 @@ export function DiagramEditor({
     | { type: 'text'; id: string; startX: number; startY: number; origX: number; origY: number; moved: boolean }
     | { type: 'group'; id: string; startX: number; startY: number; origX: number; origY: number; moved: boolean; contained?: { symbols: Record<string, { x: number; y: number }>; texts: Record<string, { x: number; y: number }>; shapes: Record<string, { x: number; y: number }>; waypointsByConn: Record<string, Point[]> } }
     | { type: 'group-resize'; id: string; startX: number; startY: number; origW: number; origH: number; moved: boolean }
-    | { type: 'segment-shift'; connId: string; index: number; horizontal: boolean; startX: number; startY: number; origWaypoints: Point[]; moved: boolean }
+    | { type: 'segment-shift'; connId: string; axis: 'x' | 'y'; moveIdx: number[]; baseWaypoints: Point[]; startX: number; startY: number; moved: boolean }
     | { type: 'shape'; id: string; startX: number; startY: number; origX: number; origY: number; moved: boolean }
     | { type: 'shape-resize'; id: string; startX: number; startY: number; origW: number; origH: number; moved: boolean }
     | { type: 'link-drag'; from: ConnectionEndpoint; fromPt: Point; startX: number; startY: number; lastX: number; lastY: number; moved: boolean };
@@ -314,23 +318,19 @@ export function DiagramEditor({
         const snap = findLineSnapPoint({ x: mmX, y: mmY }, connectionsRef.current, allPtsNow);
         setLinkDragPreview(prev => (prev ? { ...prev, cur: { x: mmX, y: mmY }, snap: snap?.point } : prev));
       } else if (drag.type === 'segment-shift') {
-        // desloca SÓ o segmento arrastado, perpendicular à direção dele,
-        // mantendo a ortogonalidade (os dois pontos de dobra das pontas do
-        // trecho andam juntos)
-        const wps = drag.origWaypoints.map(p => ({ ...p }));
-        const i = drag.index - 1; // full[index] = waypoints[index-1]
-        if (i >= 0 && i + 1 < wps.length) {
-          if (drag.horizontal) {
-            let ny = wps[i].y + dy;
-            if (snap) ny = snapToGrid(ny);
-            wps[i].y = ny; wps[i + 1].y = ny;
-          } else {
-            let nx = wps[i].x + dx;
-            if (snap) nx = snapToGrid(nx);
-            wps[i].x = nx; wps[i + 1].x = nx;
-          }
-          setConnections(prev => prev.map(c => (c.id === drag.connId ? { ...c, waypoints: wps } : c)));
+        if (!drag.moved) return; // clique sem arrasto = só seleciona; não materializa dobras
+        // arrasta SÓ este segmento, perpendicular à direção dele, mantendo o
+        // esquadro — os pontos de dobra que limitam o trecho andam juntos; as
+        // pontas reais (from/to) ficam paradas
+        const wps = drag.baseWaypoints.map(p => ({ ...p }));
+        const axis = drag.axis;
+        const delta = axis === 'y' ? dy : dx;
+        for (const idx of drag.moveIdx) {
+          let v = drag.baseWaypoints[idx][axis] + delta;
+          if (snap) v = snapToGrid(v);
+          wps[idx] = { ...wps[idx], [axis]: v };
         }
+        setConnections(prev => prev.map(c => (c.id === drag.connId ? { ...c, waypoints: wps } : c)));
       } else if (drag.type === 'symbol-resize') {
         const deltaScale = dx / SYMBOL_BBOX.w; // cada W mm arrastados = +1x de escala
         const newScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, drag.origScale + deltaScale));
@@ -348,6 +348,14 @@ export function DiagramEditor({
         let nx = drag.origX + dx, ny = drag.origY + dy;
         if (snap) { nx = snapToGrid(nx); ny = snapToGrid(ny); }
         drag.lastX = nx; drag.lastY = ny;
+        // marcador de encaixe: mostra pra ONDE a ponta vai grudar (porta →
+        // componente → final/interseção/corpo de outra linha) — a "direção"
+        // que facilita a interligação enquanto estica
+        const idsNow = new Map(placementsRef.current.map(p => [p.id, p]));
+        const nearPort = findNearestPort({ x: nx, y: ny }, placementsRef.current);
+        const nearSym = nearPort ? null : findNearestSymbol({ x: nx, y: ny }, placementsRef.current);
+        const nearLn = (nearPort || nearSym) ? null : nearestLineHit({ x: nx, y: ny }, connectionsRef.current, idsNow, drag.connId);
+        setStretchSnap(nearPort ? nearPort.at : nearSym ? blockCenter(nearSym) : nearLn ? nearLn.point : null);
         setConnections(prev => prev.map(c => {
           if (c.id !== drag.connId) return c;
           const pt: ConnectionEndpoint = { kind: 'point', at: { x: nx, y: ny } };
@@ -416,6 +424,7 @@ export function DiagramEditor({
       const drag = dragRef.current;
       dragRef.current = null;
       setGuides(null);
+      setStretchSnap(null);
       if (!drag) return;
       if (drag.type === 'marquee') {
         setMarquee(null);
@@ -813,31 +822,36 @@ export function DiagramEditor({
     e.preventDefault();
     e.stopPropagation();
     const conn = connections.find(c => c.id === connId);
+    if (!conn || segIndex === undefined) return;
+    const full = allConnPoints.get(conn.id) ?? [];
+    if (full.length < 2) return;
+
+    // Arrastar um TRECHO move só aquele trecho (individual, perpendicular,
+    // esquadro) — sem precisar selecionar antes. A linha inteira só se move
+    // pela alça ✛ (ver handleWholeLineMouseDown). Clique sem arrastar =
+    // só seleciona.
+    setSelectedConnId(connId);
+    setSelectedId(null); setSelectedIds(new Set());
+    setSelectedPhotoId(null); setSelectedTextId(null); setSelectedGroupId(null); setSelectedShapeId(null);
+    const seg = segmentDragPlan(full, segIndex);
+    dragRef.current = {
+      type: 'segment-shift', connId, axis: seg.axis, moveIdx: seg.moveIdx,
+      baseWaypoints: seg.waypoints, startX: e.clientX, startY: e.clientY, moved: false,
+      preState: currentStateRef.current,
+    };
+  };
+
+  // Alça ✛ de mover a linha INTEIRA como bloco — só aparece quando a ligação
+  // está selecionada (ação deliberada, pedido do usuário: "seleciono a linha
+  // toda, aí sim movimento").
+  const handleWholeLineMouseDown = (e: React.MouseEvent, connId: string) => {
+    if (linkMode) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const conn = connections.find(c => c.id === connId);
     if (!conn) return;
     const full = allConnPoints.get(conn.id) ?? [];
-    let seedWaypoints = conn.waypoints ?? [];
-    if (seedWaypoints.length === 0) seedWaypoints = full.slice(1, -1);
-
-    // Ligação JÁ selecionada + trecho interno (as duas pontas do trecho são
-    // pontos de dobra): arrasta SÓ aquele segmento, perpendicular, mantendo
-    // o esquadro. Primeiro clique (ou trecho de ponta) continua movendo a
-    // linha inteira.
-    if (selectedConnId === connId && segIndex !== undefined && segIndex >= 1 && segIndex <= full.length - 3) {
-      const a = full[segIndex], b = full[segIndex + 1];
-      const horizontal = Math.abs(b.y - a.y) <= Math.abs(b.x - a.x);
-      // materializa os pontos de dobra semeados no estado — o arrasto age sobre eles
-      setConnections(prev => prev.map(c => (c.id === connId ? { ...c, waypoints: seedWaypoints } : c)));
-      dragRef.current = {
-        type: 'segment-shift', connId, index: segIndex, horizontal,
-        startX: e.clientX, startY: e.clientY,
-        origWaypoints: seedWaypoints, moved: false,
-        preState: currentStateRef.current,
-      };
-      return;
-    }
-
-    clearSelection();
-    setSelectedConnId(connId);
+    const seedWaypoints = (conn.waypoints ?? []).length ? conn.waypoints! : full.slice(1, -1);
     dragRef.current = {
       type: 'conn-move', connId,
       startX: e.clientX, startY: e.clientY,
@@ -1795,15 +1809,14 @@ export function DiagramEditor({
                     </text>
                   );
                 })()}
-                {/* trecho invisível mais grosso — alvo de clique maior para selecionar/arrastar/duplo-clique.
-                    Com a ligação já selecionada, trecho interno arrasta SÓ o segmento (cursor ⇕/⇔). */}
+                {/* trecho invisível mais grosso — alvo de clique/arrasto/duplo-clique.
+                    Arrastar move SÓ este trecho (individual, perpendicular); o
+                    cursor ⇕/⇔ indica o eixo. Selecionar é um clique sem arrastar. */}
                 {routePoints.slice(0, -1).map((p, i) => {
                   const q = routePoints[i + 1];
                   const mid = { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 };
-                  const innerShiftable = isSelected && i >= 1 && i <= routePoints.length - 3;
-                  const segCursor = linkMode ? 'crosshair'
-                    : innerShiftable ? (Math.abs(q.y - p.y) <= Math.abs(q.x - p.x) ? 'ns-resize' : 'ew-resize')
-                    : 'grab';
+                  const segHorizontal = Math.abs(q.y - p.y) <= Math.abs(q.x - p.x);
+                  const segCursor = linkMode ? 'crosshair' : segHorizontal ? 'ns-resize' : 'ew-resize';
                   return (
                     <line
                       key={i}
@@ -1812,6 +1825,8 @@ export function DiagramEditor({
                       style={{ cursor: segCursor }}
                       onMouseDown={e => handleConnMouseDown(e, conn.id, i)}
                       onClick={e => e.stopPropagation()}
+                      onMouseEnter={() => setHoveredConnId(conn.id)}
+                      onMouseLeave={() => setHoveredConnId(prev => (prev === conn.id ? null : prev))}
                       onContextMenu={e => openCtxMenu(e, 'conn', conn.id)}
                       onDoubleClick={e => { e.stopPropagation(); handleConnDoubleClick(conn.id, i, mid); }}
                     />
@@ -1829,14 +1844,34 @@ export function DiagramEditor({
                     onDoubleClick={e => { e.stopPropagation(); removeWaypoint(conn.id, i); }}
                   />
                 ))}
+                {/* alça ✛ de mover a LINHA INTEIRA — só quando selecionada */}
+                {isSelected && !linkMode && (() => {
+                  const g = pointAtT(routePoints, 0.5);
+                  return (
+                    <g
+                      transform={`translate(${g.x},${g.y})`}
+                      style={{ cursor: 'move' }}
+                      onMouseDown={e => handleWholeLineMouseDown(e, conn.id)}
+                      onClick={e => e.stopPropagation()}
+                    >
+                      <circle cx={0} cy={0} r={2.2} fill="#fff" stroke="#2B8CFF" strokeWidth={0.4} />
+                      <line x1={-1.1} y1={0} x2={1.1} y2={0} stroke="#2B8CFF" strokeWidth={0.4} />
+                      <line x1={0} y1={-1.1} x2={0} y2={1.1} stroke="#2B8CFF" strokeWidth={0.4} />
+                      <title>Mover a linha inteira</title>
+                    </g>
+                  );
+                })()}
+                {/* pontas de esticar/reconectar — pontos livres e derivações, visíveis
+                    ao passar o mouse OU com a linha selecionada (pontas em símbolo/porta
+                    ficam presas, sem alça) */}
                 {(['from', 'to'] as const).map(which => {
                   const ep = conn[which];
                   if (ep.kind === 'symbol' || ep.kind === 'port') return null;
+                  const showHandle = isSelected || hoveredConnId === conn.id;
+                  if (!showHandle && ep.kind === 'point') return null;
                   const at = which === 'from' ? routePoints[0] : routePoints[routePoints.length - 1];
-                  // ponto fixo legado: quadradinho azul só com a ligação selecionada (menos ruído)
-                  if (ep.kind === 'point' && !isSelected) return null;
-                  // derivação FORMAL: nó (•) de junção — parte do desenho, sempre visível e arrastável
                   return ep.kind === 'line' ? (
+                    // derivação FORMAL: nó (•) de junção — parte do desenho, sempre visível
                     <circle
                       key={which}
                       cx={at.x} cy={at.y} r={1.1} fill={condColor} stroke="#fff" strokeWidth={0.25}
@@ -1847,13 +1882,15 @@ export function DiagramEditor({
                       <title>Derivação — nasce desta linha e a acompanha; arraste pra reconectar</title>
                     </circle>
                   ) : (
-                    <rect
-                      key={which}
-                      x={at.x - 1} y={at.y - 1} width={2} height={2} fill="#2B8CFF"
-                      style={{ cursor: linkMode ? 'crosshair' : 'move' }}
-                      onMouseDown={e => handleEndpointMouseDown(e, conn.id, which, at, ep)}
-                      onClick={e => e.stopPropagation()}
-                    />
+                    // ponta LIVRE: alça de esticar (anel + ponto), maior e clara
+                    <g key={which} style={{ cursor: linkMode ? 'crosshair' : 'move' }}
+                       onMouseDown={e => handleEndpointMouseDown(e, conn.id, which, at, ep)}
+                       onMouseEnter={() => setHoveredConnId(conn.id)}
+                       onClick={e => e.stopPropagation()}>
+                      <circle cx={at.x} cy={at.y} r={1.7} fill="#fff" stroke="#2B8CFF" strokeWidth={0.4} />
+                      <circle cx={at.x} cy={at.y} r={0.7} fill="#2B8CFF" />
+                      <title>Ponta livre — arraste pra esticar ou pra grudar num componente/linha</title>
+                    </g>
                   );
                 })}
               </g>
@@ -1950,9 +1987,10 @@ export function DiagramEditor({
             );
           })()}
 
-          {/* Indicador de encaixe: final de linha / interseção onde a ligação vai grudar */}
+          {/* Indicador de encaixe: onde a ligação vai grudar — no Traçar (snapHint),
+              no arrastar-da-porta (linkDragPreview.snap) e ao esticar uma ponta (stretchSnap) */}
           {(() => {
-            const at = linkDragPreview?.snap ?? (linkMode ? snapHint : null);
+            const at = stretchSnap ?? linkDragPreview?.snap ?? (linkMode ? snapHint : null);
             if (!at) return null;
             return (
               <g pointerEvents="none">
@@ -2087,7 +2125,10 @@ export function DiagramEditor({
                     }}
                   />
                 </div>
-                <p style={{ fontSize: 10.5, color: '#999', margin: 0 }}>Duplo-clique num trecho cria ponto de dobra; arraste os pontos pra moldar o traço.</p>
+                <p style={{ fontSize: 10.5, color: '#999', margin: 0 }}>
+                  Arraste um <strong>trecho</strong> pra mover só ele (perpendicular). A alça <strong>✛</strong> move a linha inteira.
+                  As <strong>pontas</strong> (anel azul) esticam e grudam num componente/linha. Duplo-clique num trecho cria dobra.
+                </p>
                 <button onClick={removeSelected} style={{ ...btnStyle(), justifyContent: 'center', color: '#A32D2D' }}>
                   <Trash2 size={13} /> Remover ligação
                 </button>

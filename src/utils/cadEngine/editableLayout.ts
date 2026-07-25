@@ -662,6 +662,31 @@ export function computeAllConnectionPoints(
   return resolved;
 }
 
+/**
+ * Plano pra arrastar UM trecho de um condutor individualmente: dado o traçado
+ * completo `full` e o índice do trecho `k` (entre full[k] e full[k+1]),
+ * devolve os pontos de dobra base (materializando o traçado atual e inserindo
+ * uma dobra na PONTA quando o trecho toca uma, pra a ponta ficar parada), os
+ * índices que se movem perpendicular e o eixo do movimento. É o que faz cada
+ * trecho ser editável "individual até as duas dobras" em vez da linha andar
+ * como bloco.
+ */
+export function segmentDragPlan(full: Point[], k: number): { waypoints: Point[]; moveIdx: number[]; axis: 'x' | 'y' } {
+  const n = full.length - 1;
+  const interior = full.slice(1, n).map(p => ({ ...p }));
+  const firstIsEnd = k === 0;
+  const lastIsEnd = k + 1 === n;
+  let wps = interior;
+  const shift = firstIsEnd ? 1 : 0;
+  if (firstIsEnd) wps = [{ ...full[0] }, ...wps];
+  const li = firstIsEnd ? 0 : (k - 1) + shift;
+  let ri: number;
+  if (lastIsEnd) { wps = [...wps, { ...full[n] }]; ri = wps.length - 1; }
+  else ri = k + shift;
+  const axis: 'x' | 'y' = Math.abs(full[k].y - full[k + 1].y) <= Math.abs(full[k].x - full[k + 1].x) ? 'y' : 'x';
+  return { waypoints: wps, moveIdx: [...new Set([li, ri])], axis };
+}
+
 /** Interseção de dois segmentos, se cruzarem de verdade (paralelos → null). */
 function segmentIntersection(a1: Point, a2: Point, b1: Point, b2: Point): Point | null {
   const d1x = a2.x - a1.x, d1y = a2.y - a1.y;

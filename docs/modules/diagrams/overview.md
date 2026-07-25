@@ -308,6 +308,24 @@ nada é criado). O alvo de arrasto é maior que a bolinha visível (r 2,6mm
 vs 1,1mm). O modo "Ligar" virou **"Traçar"** — ferramenta secundária só
 pra desenhar o caminho ponto a ponto.
 
+**Manipulação de segmentos individuais + esticar** (feedback: "a linha
+forma um bloco; quero trechos individuais até as duas interseções; e esticar
+com direção"). O modelo de arrasto de linha foi INVERTIDO:
+- **Arrastar um trecho move SÓ aquele trecho** (perpendicular, esquadro),
+  por padrão, sem pré-selecionar — o cursor ⇕/⇔ indica o eixo.
+  `segmentDragPlan(full, k)` (editableLayout) materializa o traçado como
+  pontos de dobra e, quando o trecho toca uma PONTA real, insere uma dobra
+  ali pra a ponta ficar parada enquanto o trecho desliza (vale até pra uma
+  linha de 1 trecho só, que vira um Z). Clique sem arrastar só seleciona.
+- **Mover a linha inteira** deixou de acontecer ao arrastar o corpo — agora
+  só pela **alça ✛** no meio da linha, visível quando ela está selecionada
+  (ação deliberada, `handleWholeLineMouseDown` → `conn-move`).
+- **Esticar as pontas**: pontas livres (e derivações) ganham uma alça de
+  anel maior, visível ao passar o mouse na linha OU com ela selecionada;
+  arrastar estica e, ao aproximar de porta/componente/linha, um **marcador
+  dourado** mostra onde vai grudar (a "direção" pra interligar). Pontas
+  presas em símbolo/porta continuam sem alça (não se esticam).
+
 **Encaixe em finais de linha e interseções** (pedido em seguida): além de
 porta/componente/corpo da linha, o Traçar e o arrastar-da-porta grudam em
 **pontas de linha** (t=0/1 — a derivação acompanha a ponta se a linha
