@@ -308,6 +308,15 @@ nada é criado). O alvo de arrasto é maior que a bolinha visível (r 2,6mm
 vs 1,1mm). O modo "Ligar" virou **"Traçar"** — ferramenta secundária só
 pra desenhar o caminho ponto a ponto.
 
+**Encaixe em finais de linha e interseções** (pedido em seguida): além de
+porta/componente/corpo da linha, o Traçar e o arrastar-da-porta grudam em
+**pontas de linha** (t=0/1 — a derivação acompanha a ponta se a linha
+mudar) e em **cruzamentos de duas linhas** (`findLineSnapPoint`, prioridade
+sobre o corpo do traço). Um marcador dourado mostra ONDE vai grudar antes
+do clique/soltura. O soltar-no-fio (componente em série) continua mirando
+só o corpo do traço — encaixar um disjuntor exatamente numa ponta criaria
+uma metade degenerada.
+
 **Redução de ruído visual** (a causa dos "pequenos círculos"):
 - Portas: só no símbolo sob o mouse (antes: todos os símbolos no modo ligar).
 - Alças de ponto de dobra: só na ligação selecionada (antes: todas, sempre).

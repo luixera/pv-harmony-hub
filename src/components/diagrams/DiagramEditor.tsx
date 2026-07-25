@@ -9,9 +9,9 @@ import {
   autoArrange, ConductorType, ConnectionEndpoint, DiagramSceneState, ManualConnection, PlacedGroup, PlacedPhoto,
   PlacedShape, PlacedSymbol, PlacedText, SheetOptions, blockCenter, buildSceneFromPlacement, buildSheetFurnitureScene,
   computeAllConnectionPoints, connectionDependsOn, connectionLabelPosition, detachDerivations, findNearestPort,
-  findNearestSymbol, healConnectionsThrough, initialConnections, initialPlacement, nearestPointOnPolyline,
-  orthogonalPath, orthoSnapPoint, pointAtT, portPagePosition, SERIES_KINDS, shapePrimitives, SNAP_RADIUS,
-  snapToGrid, splitConnectionAtSymbol, usedConductorsOf, usedKindsOf,
+  findLineSnapPoint, findNearestSymbol, healConnectionsThrough, initialConnections, initialPlacement,
+  nearestPointOnPolyline, orthogonalPath, orthoSnapPoint, pointAtT, portPagePosition, SERIES_KINDS,
+  shapePrimitives, SNAP_RADIUS, snapToGrid, splitConnectionAtSymbol, usedConductorsOf, usedKindsOf,
 } from '@/utils/cadEngine/editableLayout';
 import { ComponentKind, Point, TechnicalJsonMvp } from '@/utils/cadEngine/types';
 import { CONDUCTOR_COLOR, sceneToSvgInner, primitiveToSvg, blockTransform } from '@/utils/cadEngine/exportSvg';
@@ -103,7 +103,9 @@ export function DiagramEditor({
   /** Símbolo sob o mouse — só ele mostra as bolinhas de porta (menos ruído visual). */
   const [hoveredSymbolId, setHoveredSymbolId] = useState<string | null>(null);
   /** Arrastar-pra-ligar (modo Selecionar): elástico da porta de origem até o cursor. */
-  const [linkDragPreview, setLinkDragPreview] = useState<{ fromPt: Point; cur: Point } | null>(null);
+  const [linkDragPreview, setLinkDragPreview] = useState<{ fromPt: Point; cur: Point; snap?: Point } | null>(null);
+  /** Onde a ligação vai GRUDAR (final de linha/interseção) — mostrado antes do clique/soltura. */
+  const [snapHint, setSnapHint] = useState<Point | null>(null);
 
   const clearSelection = () => {
     setSelectedId(null); setSelectedIds(new Set());
@@ -301,12 +303,16 @@ export function DiagramEditor({
           setPlacements(prev => prev.map(p => (p.id === drag.id ? { ...p, x: nx, y: ny } : p)));
         }
       } else if (drag.type === 'link-drag') {
-        // elástico da porta de origem até o cursor (em mm da folha)
+        // elástico da porta de origem até o cursor (em mm da folha) + indicador
+        // de encaixe em final de linha/interseção
         const vb = viewBoxRef.current;
         const mmX = vb.x + (e.clientX - rect.left) * pxToMm;
         const mmY = vb.y + (e.clientY - rect.top) * pxToMm;
         drag.lastX = mmX; drag.lastY = mmY;
-        setLinkDragPreview(prev => (prev ? { ...prev, cur: { x: mmX, y: mmY } } : prev));
+        const idsNow = new Map(placementsRef.current.map(p => [p.id, p]));
+        const allPtsNow = computeAllConnectionPoints(connectionsRef.current, idsNow);
+        const snap = findLineSnapPoint({ x: mmX, y: mmY }, connectionsRef.current, allPtsNow);
+        setLinkDragPreview(prev => (prev ? { ...prev, cur: { x: mmX, y: mmY }, snap: snap?.point } : prev));
       } else if (drag.type === 'segment-shift') {
         // desloca SÓ o segmento arrastado, perpendicular à direção dele,
         // mantendo a ortogonalidade (os dois pontos de dobra das pontas do
@@ -466,7 +472,7 @@ export function DiagramEditor({
         if (sym && SERIES_KINDS.has(sym.kind)) {
           const center = { x: sym.x + (SYMBOL_BBOX.w * sym.scale) / 2, y: sym.y + (SYMBOL_BBOX.h * sym.scale) / 2 };
           const idsNow = new Map(placementsRef.current.map(p => [p.id, p]));
-          const hit = nearestLineHit(center, connectionsRef.current, idsNow);
+          const hit = nearestLineHit(center, connectionsRef.current, idsNow, undefined, false); // só o corpo do traço
           const refsSym = (ep: ConnectionEndpoint) => (ep.kind === 'symbol' || ep.kind === 'port') && ep.id === sym.id;
           const hitConn = hit ? connectionsRef.current.find(c => c.id === hit.connId) : null;
           if (hit && hitConn && !refsSym(hitConn.from) && !refsSym(hitConn.to)) {
@@ -649,12 +655,22 @@ export function DiagramEditor({
   // duas sumiriam da tela).
   const nearestLineHit = (
     pt: Point, conns: ManualConnection[], ids: Map<string, PlacedSymbol>, excludeConnId?: string,
+    includeSnaps = true,
   ): { connId: string; t: number; point: Point } | null => {
     const allPts = computeAllConnectionPoints(conns, ids);
     const byConnId = new Map(conns.map(c => [c.id, c]));
+    const excluded = excludeConnId
+      ? new Set(conns.filter(c => connectionDependsOn(c, excludeConnId, byConnId)).map(c => c.id))
+      : undefined;
+    // finais de linha e interseções são alvos mais específicos que o corpo —
+    // têm prioridade (desligável: o soltar-no-fio só quer o corpo do traço)
+    if (includeSnaps) {
+      const snap = findLineSnapPoint(pt, conns, allPts, excluded);
+      if (snap) return { connId: snap.connId, t: snap.t, point: snap.point };
+    }
     let best: { connId: string; t: number; point: Point; dist: number } | null = null;
     for (const conn of conns) {
-      if (excludeConnId && connectionDependsOn(conn, excludeConnId, byConnId)) continue;
+      if (excluded?.has(conn.id)) continue;
       const pts = allPts.get(conn.id);
       if (!pts) continue;
       const found = nearestPointOnPolyline(pt, pts);
@@ -729,7 +745,17 @@ export function DiagramEditor({
   // encaixe ortogonal que o clique aplicaria — o usuário vê o trecho antes
   // de clicar.
   const handleCanvasMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
-    if (!linkMode || !linkFrom) {
+    if (!linkMode) {
+      if (hoverPt) setHoverPt(null);
+      if (snapHint) setSnapHint(null);
+      return;
+    }
+    const raw = clientToMm(e.clientX, e.clientY, false);
+    if (!raw) return;
+    // indicador de encaixe: final de linha ou interseção perto do cursor
+    const snap = findLineSnapPoint(raw, connections, allConnPoints);
+    setSnapHint(snap ? snap.point : null);
+    if (!linkFrom) {
       if (hoverPt) setHoverPt(null);
       return;
     }
@@ -1881,6 +1907,18 @@ export function DiagramEditor({
               <g pointerEvents="none">
                 <polyline points={pts} fill="none" stroke="#2B8CFF" strokeWidth={0.4} strokeDasharray="1.5,1" />
                 <circle cx={linkDragPreview.cur.x} cy={linkDragPreview.cur.y} r={1} fill="none" stroke="#2B8CFF" strokeWidth={0.35} />
+              </g>
+            );
+          })()}
+
+          {/* Indicador de encaixe: final de linha / interseção onde a ligação vai grudar */}
+          {(() => {
+            const at = linkDragPreview?.snap ?? (linkMode ? snapHint : null);
+            if (!at) return null;
+            return (
+              <g pointerEvents="none">
+                <circle cx={at.x} cy={at.y} r={1.6} fill="none" stroke="#F5A800" strokeWidth={0.45} />
+                <circle cx={at.x} cy={at.y} r={0.5} fill="#F5A800" />
               </g>
             );
           })()}

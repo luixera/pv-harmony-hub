@@ -662,6 +662,60 @@ export function computeAllConnectionPoints(
   return resolved;
 }
 
+/** Interseção de dois segmentos, se cruzarem de verdade (paralelos → null). */
+function segmentIntersection(a1: Point, a2: Point, b1: Point, b2: Point): Point | null {
+  const d1x = a2.x - a1.x, d1y = a2.y - a1.y;
+  const d2x = b2.x - b1.x, d2y = b2.y - b1.y;
+  const denom = d1x * d2y - d1y * d2x;
+  if (Math.abs(denom) < 1e-9) return null;
+  const t = ((b1.x - a1.x) * d2y - (b1.y - a1.y) * d2x) / denom;
+  const u = ((b1.x - a1.x) * d1y - (b1.y - a1.y) * d1x) / denom;
+  if (t < 0 || t > 1 || u < 0 || u > 1) return null;
+  return { x: a1.x + t * d1x, y: a1.y + t * d1y };
+}
+
+/**
+ * Ponto de ENCAIXE especial sobre as linhas: finais de linha (t=0/1) e
+ * interseções entre duas linhas — alvos mais específicos que o corpo do
+ * traço, com prioridade sobre a derivação em ponto qualquer. Devolve o
+ * `t` na linha escolhida (a derivação formal continua "viva": final de
+ * linha acompanha a ponta, interseção acompanha o traçado).
+ */
+export function findLineSnapPoint(
+  pt: Point,
+  connections: ManualConnection[],
+  allPts: Map<string, Point[]>,
+  excludeIds?: Set<string>,
+  radius = SNAP_RADIUS,
+): { connId: string; t: number; point: Point; snap: 'end' | 'intersection' } | null {
+  const usable = connections.filter(c => !excludeIds?.has(c.id) && allPts.has(c.id));
+  let best: { connId: string; t: number; point: Point; snap: 'end' | 'intersection'; dist: number } | null = null;
+  const consider = (connId: string, point: Point, snap: 'end' | 'intersection') => {
+    const dist = Math.hypot(pt.x - point.x, pt.y - point.y);
+    if (dist > radius || (best && dist >= best.dist)) return;
+    const onLine = nearestPointOnPolyline(point, allPts.get(connId)!);
+    best = { connId, t: onLine?.t ?? 0, point, snap, dist };
+  };
+  for (const c of usable) {
+    const pts = allPts.get(c.id)!;
+    consider(c.id, pts[0], 'end');
+    consider(c.id, pts[pts.length - 1], 'end');
+  }
+  for (let i = 0; i < usable.length; i++) {
+    const pa = allPts.get(usable[i].id)!;
+    for (let j = i + 1; j < usable.length; j++) {
+      const pb = allPts.get(usable[j].id)!;
+      for (let si = 0; si < pa.length - 1; si++) {
+        for (let sj = 0; sj < pb.length - 1; sj++) {
+          const x = segmentIntersection(pa[si], pa[si + 1], pb[sj], pb[sj + 1]);
+          if (x) consider(usable[i].id, x, 'intersection');
+        }
+      }
+    }
+  }
+  return best;
+}
+
 /** `conn` depende (direta ou indiretamente, via derivação formal) de `targetId`?
  *  Usado pra impedir ciclos ao grudar a ponta de uma linha em outra. */
 export function connectionDependsOn(
