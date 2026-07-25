@@ -17,6 +17,7 @@ import {
 import { useDiagramRecognition } from '@/hooks/useDiagramRecognition';
 import { useDiagramReview } from '@/hooks/useDiagramReview';
 import { DiagramEditor } from '@/components/diagrams/DiagramEditor';
+import { EngineeringRulesTab } from '@/pages/admin/EngineeringRules';
 import {
   buildSceneFromPlacement, buildSceneFromRecognition, DiagramSceneState, sceneStateToRecognitionInput,
 } from '@/utils/cadEngine/editableLayout';
@@ -55,6 +56,8 @@ export default function DiagramTemplates() {
   const reviewDiagram = useDiagramReview();
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  /** Aba da página: modelos de diagrama × regras de engenharia. */
+  const [tab, setTab] = useState<'templates' | 'rules'>('templates');
   const [createOpen, setCreateOpen] = useState(false);
   const [newName, setNewName] = useState('');
   const [newDescription, setNewDescription] = useState('');
@@ -340,28 +343,51 @@ export default function DiagramTemplates() {
     );
   }
 
-  // ── Lista de modelos ──────────────────────────────────────────────────────
+  // ── Lista de modelos / Regras de Engenharia ──────────────────────────────
   return (
     <MainLayout>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
         <div>
           <h1 style={{ fontSize: 22, fontWeight: 700, color: '#1A1A1A', display: 'flex', alignItems: 'center', gap: 8 }}>
-            <LayoutTemplate size={20} style={{ color: '#F5A800' }} /> Modelos de Diagrama Unifilar
+            <LayoutTemplate size={20} style={{ color: '#F5A800' }} /> Motor de Templates
           </h1>
           <p style={{ fontSize: 13, color: '#666', marginTop: 2 }}>
-            Monte modelos reutilizáveis aqui; no projeto, é só importar o modelo pronto em vez de montar do zero.
+            {tab === 'rules'
+              ? 'As regras de dimensionamento que orientam as sugestões automáticas do motor de engenharia.'
+              : 'Monte modelos reutilizáveis aqui; no projeto, é só importar o modelo pronto em vez de montar do zero.'}
           </p>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <Button variant="outline" onClick={() => setImportOpen(true)}>
-            <FileUp className="w-4 h-4 mr-1" /> Importar de PDF
-          </Button>
-          <Button onClick={() => setCreateOpen(true)} style={{ background: '#F5A800', color: '#1A1A1A' }}>
-            <Plus className="w-4 h-4 mr-1" /> Novo modelo
-          </Button>
-        </div>
+        {tab === 'templates' && (
+          <div style={{ display: 'flex', gap: 8 }}>
+            <Button variant="outline" onClick={() => setImportOpen(true)}>
+              <FileUp className="w-4 h-4 mr-1" /> Importar de PDF
+            </Button>
+            <Button onClick={() => setCreateOpen(true)} style={{ background: '#F5A800', color: '#1A1A1A' }}>
+              <Plus className="w-4 h-4 mr-1" /> Novo modelo
+            </Button>
+          </div>
+        )}
       </div>
 
+      {/* Abas: Modelos × Regras de Engenharia */}
+      <div style={{ display: 'inline-flex', border: '1px solid #E0E0E0', borderRadius: 9, padding: 3, gap: 3, margin: '12px 0 0' }}>
+        {([['templates', 'Modelos de Diagrama'], ['rules', 'Regras de Engenharia']] as const).map(([key, label]) => (
+          <button
+            key={key}
+            onClick={() => setTab(key)}
+            style={{
+              padding: '6px 14px', borderRadius: 7, border: 'none', fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
+              background: tab === key ? '#F5A800' : 'transparent', color: tab === key ? '#1A1A1A' : '#777',
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'rules' && <div style={{ marginTop: 16 }}><EngineeringRulesTab /></div>}
+
+      {tab === 'templates' && (<>
       <div style={{
         display: 'flex', alignItems: 'center', gap: 8, background: '#FFF7E6',
         border: '1px solid #FDE4A8', borderRadius: 10, padding: '10px 14px', margin: '16px 0',
@@ -475,6 +501,7 @@ export default function DiagramTemplates() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      </>)}
     </MainLayout>
   );
 }

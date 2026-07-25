@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import { FlaskConical, LayoutTemplate, Loader2 } from 'lucide-react';
+import { AlertTriangle, FlaskConical, LayoutTemplate, Lightbulb, Loader2 } from 'lucide-react';
 import { ProjectWithDetails } from '@/hooks/useProjects';
 import { buildTechnicalJsonFromProject } from '@/utils/cadEngine/buildTechnicalJson';
 import {
@@ -11,6 +11,10 @@ import { buildProjectValues } from '@/utils/projectValues';
 import { DiagramEditor } from '@/components/diagrams/DiagramEditor';
 import { useProjectDiagram, useSaveProjectDiagram } from '@/hooks/useProjectDiagram';
 import { useDiagramTemplates } from '@/hooks/useDiagramTemplates';
+import { useEngineeringRuleMap } from '@/hooks/useEngineeringRules';
+import {
+  ProjectArrangementOption, suggestProjectArrangement,
+} from '@/utils/engineering/rulesEngine';
 
 /**
  * Diagrama Unifilar do projeto — o `DiagramEditor` compartilhado alimentado
@@ -142,6 +146,50 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
 
   const projectInverters = Math.max(1, Number(project.equipment?.inverter_quantity ?? 1) || 1);
 
+  // ── Sugestões do Motor de Engenharia (Rules Engine, Fase 1) ──────────────
+  const { ruleMap } = useEngineeringRuleMap();
+  const [suggestOpen, setSuggestOpen] = useState(false);
+  const engineResult = useMemo(() => {
+    if (!suggestOpen || ruleMap.size === 0) return null;
+    const e = project.equipment;
+    const totalModules = Math.max(0, Number(e?.module_quantity ?? 0) || 0);
+    const powerKw = Number(e?.inverter_power ?? 0) || undefined;
+    return suggestProjectArrangement({
+      totalModules,
+      moduleSpecs: { powerW: Number(e?.module_power ?? 0) || undefined },
+      // um item por inversor físico (specs repetidas; datasheet completo
+      // virá do catálogo — sem ele, o motor usa as regras-fallback e avisa)
+      inverters: Array.from({ length: projectInverters }, () => ({ powerKw })),
+    }, ruleMap);
+  }, [suggestOpen, ruleMap, project.equipment, projectInverters]);
+
+  /** "Usar esta": gera o diagrama automático com o arranjo escolhido nas legendas. */
+  const applySuggestion = (opt: ProjectArrangementOption) => {
+    if (!confirm(`Usar "${opt.title}" (${opt.summary})? O diagrama atual será substituído pela cadeia automática com este arranjo.`)) return;
+    let state: DiagramSceneState = {
+      placements: initialPlacement(json),
+      connections: initialConnections(json),
+      photos: [], texts: [], groups: [],
+    };
+    if (projectInverters > 1) {
+      const multiplied = multiplyInverterBranches(state, projectInverters);
+      if (multiplied) state = multiplied;
+    }
+    // grava o arranjo escolhido nas legendas dos arranjos FV (ramal i → inversor i)
+    let pvIdx = 0;
+    state = {
+      ...state,
+      placements: state.placements.map(p => {
+        if (p.kind !== 'pv-array') return p;
+        const arr = opt.perInverter[Math.min(pvIdx++, opt.perInverter.length - 1)];
+        const legend = [arr.label, arr.operatingVoltageV ? `~${arr.operatingVoltageV}V de operação` : ''].filter(Boolean);
+        return { ...p, legend };
+      }),
+    };
+    setApplied(prev => ({ v: (prev?.v ?? 0) + 1, state }));
+    setSuggestOpen(false);
+  };
+
   const applyTemplate = () => {
     const t = templates.find(x => x.id === templatePick);
     if (!t) return;
@@ -180,6 +228,73 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
 
   const banner = (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
+      {/* Sugestões do Motor de Engenharia — arranjos prontos pra escolher em 1 clique */}
+      <div style={{
+        display: 'flex', flexDirection: 'column', gap: 8, background: '#F3FAF4',
+        border: '1px solid #BEE3C8', borderRadius: 10, padding: '10px 14px',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Lightbulb size={15} style={{ color: '#2D7A3A', flexShrink: 0 }} />
+          <p style={{ fontSize: 12, color: '#2D7A3A', margin: 0, flex: 1 }}>
+            <strong>Motor de engenharia:</strong> sugestões automáticas de arranjo de strings
+            pra este projeto, seguindo as Regras de Engenharia.
+          </p>
+          <button
+            onClick={() => setSuggestOpen(o => !o)}
+            style={{
+              padding: '5px 12px', borderRadius: 7, fontSize: 12, fontWeight: 700,
+              border: '1px solid #2D7A3A', cursor: 'pointer',
+              background: suggestOpen ? '#2D7A3A' : '#fff', color: suggestOpen ? '#fff' : '#2D7A3A',
+            }}
+          >
+            {suggestOpen ? 'Fechar' : 'Ver sugestões'}
+          </button>
+        </div>
+        {suggestOpen && engineResult && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {engineResult.alerts.map((a, i) => (
+              <div key={i} style={{
+                display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 11.5, borderRadius: 8, padding: '7px 10px',
+                background: a.severity === 'warning' ? '#FFF7E6' : '#EAF3FF',
+                color: a.severity === 'warning' ? '#854F0B' : '#1D4ED8',
+                border: `1px solid ${a.severity === 'warning' ? '#FDE4A8' : '#BFDBFE'}`,
+              }}>
+                <AlertTriangle size={13} style={{ flexShrink: 0, marginTop: 1 }} />
+                <span>
+                  {a.message}{a.suggestion ? <> <strong>{a.suggestion}</strong></> : null}
+                  {a.source ? <span style={{ opacity: 0.7 }}> ({a.source})</span> : null}
+                </span>
+              </div>
+            ))}
+            {engineResult.options.map(opt => (
+              <div key={opt.id} style={{
+                display: 'flex', alignItems: 'center', gap: 10, background: '#fff',
+                border: '1px solid #DDEEE2', borderRadius: 8, padding: '9px 12px', flexWrap: 'wrap',
+              }}>
+                <div style={{ flex: 1, minWidth: 220 }}>
+                  <p style={{ fontSize: 12.5, fontWeight: 700, color: '#1A1A1A', margin: 0 }}>{opt.title}: {opt.summary}</p>
+                  {opt.perInverter.map((arr, i) => (
+                    <p key={i} style={{ fontSize: 11, color: '#666', margin: '2px 0 0' }}>
+                      {opt.perInverter.length > 1 ? `INV ${String(i + 1).padStart(2, '0')} — ` : ''}{arr.explanation}
+                    </p>
+                  ))}
+                </div>
+                <button
+                  onClick={() => applySuggestion(opt)}
+                  style={{ padding: '6px 14px', borderRadius: 7, border: 'none', background: '#2D7A3A', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}
+                >
+                  Usar esta
+                </button>
+              </div>
+            ))}
+            {engineResult.options.length === 0 && !engineResult.alerts.some(a => a.code === 'missing_data') && (
+              <p style={{ fontSize: 11.5, color: '#854F0B', margin: 0 }}>
+                Nenhum arranjo válido — veja os avisos acima e ajuste o projeto ou as Regras de Engenharia.
+              </p>
+            )}
+          </div>
+        )}
+      </div>
       <div style={{
         display: 'flex', alignItems: 'center', gap: 8, background: '#FFF7E6',
         border: '1px solid #FDE4A8', borderRadius: 10, padding: '10px 14px',

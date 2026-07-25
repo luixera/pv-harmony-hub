@@ -57,6 +57,16 @@
   concessionárias; liberar pra todos os tenants (RLS pronto — decisão de
   produto pendente); motor de layout automático completo; BESS/múltiplos
   inversores oficiais no cadastro.
+- **Motor de Engenharia (Rules Engine)** 🟡 Fase 1 ✅ (jul/2026): regras de
+  dimensionamento centralizadas no banco (12 grupos, editáveis com
+  histórico na aba "Regras de Engenharia"), motor puro que sugere arranjos
+  de strings/distribuição entre inversores/DC-AC com ≥2 opções explicadas e
+  alertas que nunca bloqueiam, painel "Usar esta" no projeto gerando o
+  diagrama. **Fase 2**: queda de tensão/cabos/proteções/aterramento →
+  memoriais e lista de materiais; form de tech_specs na tela Equipamentos.
+  **Fase 3**: microinversores completos, checklist, assistente. Ver
+  [modules/engineering](../modules/engineering/overview.md) e
+  [ADR 0007](../adr/0007-engineering-rules-engine.md).
 - **Extrato "Agentes de IA" no console master** ✅ (jul/2026): saldo estimado
   (recargas lançadas − custo por tokens reais), gasto por agente/tenant/dia,
   projeção de duração do saldo e alerta de reabastecimento. Futuro possível:

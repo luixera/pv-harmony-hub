@@ -5,6 +5,20 @@ Registro de decisões de produto/UX (não arquiteturais — essas ficam em
 
 ## Log
 
+- **Motor de Engenharia (Engineering Rules Engine) — Fase 1** (jul/2026):
+  pedido detalhado do usuário ("antes de criar me fale o que vai fazer...
+  o objetivo é ser prático, sem complicação, para que alguém com baixo
+  conhecimento de engenharia possa atuar"), plano apresentado e aprovado
+  ("pode seguir"). Decisões de produto: regras 100% no banco (nada fixo em
+  código), editáveis na aba "Regras de Engenharia" do Motor de Templates
+  com histórico automático; o motor NUNCA desenha e NUNCA bloqueia (só
+  alertas âmbar com sugestão de correção); sempre ≥2 sugestões quando há
+  mais de uma opção válida, explicadas em português simples com a fonte
+  (NBR/fabricante/interna); no projeto, o painel verde "Motor de
+  engenharia" mostra as opções e "Usar esta" já gera o diagrama. Validado
+  com os exemplos do briefing (120 módulos → 6×20 e 5×24; 240 módulos em
+  2×75kW → 120+120 e 118+122). Ver
+  [ADR 0007](../adr/0007-engineering-rules-engine.md). (jul/2026)
 - **Diagrama unifilar — desenho livre de linhas de volta (reversão da 7ª
   rodada, a pedido)** (jul/2026): "além de não precisar conectar uma linha
   até outro componente para desenhá-la, quero poder desenhá-la livremente".
