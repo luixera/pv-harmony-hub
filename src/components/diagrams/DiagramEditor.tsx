@@ -10,8 +10,8 @@ import {
   PlacedShape, PlacedSymbol, PlacedText, SheetOptions, blockCenter, buildSceneFromPlacement, buildSheetFurnitureScene,
   computeAllConnectionPoints, connectionDependsOn, connectionLabelPosition, detachDerivations, findNearestPort,
   findNearestSymbol, healConnectionsThrough, initialConnections, initialPlacement, nearestPointOnPolyline,
-  orthoSnapPoint, pointAtT, portPagePosition, SERIES_KINDS, shapePrimitives, SNAP_RADIUS, snapToGrid,
-  splitConnectionAtSymbol, usedConductorsOf, usedKindsOf,
+  orthogonalPath, orthoSnapPoint, pointAtT, portPagePosition, SERIES_KINDS, shapePrimitives, SNAP_RADIUS,
+  snapToGrid, splitConnectionAtSymbol, usedConductorsOf, usedKindsOf,
 } from '@/utils/cadEngine/editableLayout';
 import { ComponentKind, Point, TechnicalJsonMvp } from '@/utils/cadEngine/types';
 import { CONDUCTOR_COLOR, sceneToSvgInner, primitiveToSvg, blockTransform } from '@/utils/cadEngine/exportSvg';
@@ -100,6 +100,10 @@ export function DiagramEditor({
   const [hoverPt, setHoverPt] = useState<Point | null>(null);
   /** Menu de contexto (botão direito) — posição em px da janela + o alvo clicado. */
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; kind: 'symbol' | 'conn' | 'group' | 'shape' | 'photo' | 'text'; id: string } | null>(null);
+  /** Símbolo sob o mouse — só ele mostra as bolinhas de porta (menos ruído visual). */
+  const [hoveredSymbolId, setHoveredSymbolId] = useState<string | null>(null);
+  /** Arrastar-pra-ligar (modo Selecionar): elástico da porta de origem até o cursor. */
+  const [linkDragPreview, setLinkDragPreview] = useState<{ fromPt: Point; cur: Point } | null>(null);
 
   const clearSelection = () => {
     setSelectedId(null); setSelectedIds(new Set());
@@ -226,7 +230,8 @@ export function DiagramEditor({
     | { type: 'group-resize'; id: string; startX: number; startY: number; origW: number; origH: number; moved: boolean }
     | { type: 'segment-shift'; connId: string; index: number; horizontal: boolean; startX: number; startY: number; origWaypoints: Point[]; moved: boolean }
     | { type: 'shape'; id: string; startX: number; startY: number; origX: number; origY: number; moved: boolean }
-    | { type: 'shape-resize'; id: string; startX: number; startY: number; origW: number; origH: number; moved: boolean };
+    | { type: 'shape-resize'; id: string; startX: number; startY: number; origW: number; origH: number; moved: boolean }
+    | { type: 'link-drag'; from: ConnectionEndpoint; fromPt: Point; startX: number; startY: number; lastX: number; lastY: number; moved: boolean };
   // `preState`: estado capturado no mousedown — só vira passo de desfazer se o
   // arrasto realmente mover (evita poluir o histórico com cliques de seleção).
   const dragRef = useRef<(DragState & { preState?: DiagramSceneState }) | null>(null);
@@ -295,6 +300,13 @@ export function DiagramEditor({
           setGuides(guideX !== undefined || guideY !== undefined ? { x: guideX, y: guideY } : null);
           setPlacements(prev => prev.map(p => (p.id === drag.id ? { ...p, x: nx, y: ny } : p)));
         }
+      } else if (drag.type === 'link-drag') {
+        // elástico da porta de origem até o cursor (em mm da folha)
+        const vb = viewBoxRef.current;
+        const mmX = vb.x + (e.clientX - rect.left) * pxToMm;
+        const mmY = vb.y + (e.clientY - rect.top) * pxToMm;
+        drag.lastX = mmX; drag.lastY = mmY;
+        setLinkDragPreview(prev => (prev ? { ...prev, cur: { x: mmX, y: mmY } } : prev));
       } else if (drag.type === 'segment-shift') {
         // desloca SÓ o segmento arrastado, perpendicular à direção dele,
         // mantendo a ortogonalidade (os dois pontos de dobra das pontas do
@@ -417,6 +429,32 @@ export function DiagramEditor({
           setSelectedId(inside.length > 0 ? inside[inside.length - 1].id : null);
           setSelectedPhotoId(null); setSelectedTextId(null); setSelectedConnId(null); setSelectedGroupId(null);
           marqueeJustFinishedRef.current = true; // o click que vem em seguida não deve limpar a seleção recém-feita
+        }
+        return;
+      }
+      if (drag.type === 'link-drag') {
+        // arrastar-pra-ligar: soltou → resolve o destino (porta → componente →
+        // linha) e cria a ligação; soltou no vazio ou sem mover → nada
+        setLinkDragPreview(null);
+        if (!drag.moved) return;
+        const dropPt = { x: drag.lastX, y: drag.lastY };
+        const idsNow = new Map(placementsRef.current.map(p => [p.id, p]));
+        const nearPort = findNearestPort(dropPt, placementsRef.current);
+        const nearSymbol = nearPort ? null : findNearestSymbol(dropPt, placementsRef.current);
+        const nearLine = (nearPort || nearSymbol) ? null : nearestLineHit(dropPt, connectionsRef.current, idsNow);
+        let resolved: ConnectionEndpoint | null = nearPort
+          ? { kind: 'port', id: nearPort.symbolId, port: nearPort.portId }
+          : nearSymbol
+            ? { kind: 'symbol', id: nearSymbol.id }
+            : nearLine ? { kind: 'line', connId: nearLine.connId, t: nearLine.t } : null;
+        // um componente não liga nele mesmo
+        const fromId = drag.from.kind === 'symbol' || drag.from.kind === 'port' ? drag.from.id : null;
+        const resolvedId = resolved && (resolved.kind === 'symbol' || resolved.kind === 'port') ? resolved.id : null;
+        if (resolved && fromId && resolvedId === fromId) resolved = null;
+        if (resolved) {
+          snapshot();
+          const to = resolved;
+          setConnections(prev => [...prev, { id: `manual-${Date.now()}`, from: drag.from, to }]);
         }
         return;
       }
@@ -562,8 +600,26 @@ export function DiagramEditor({
     return blockCenter(sym);
   };
 
-  // Clique direto numa bolinha de porta (visíveis no modo ligar): a ponta
-  // vira a PORTA específica, não o componente com lado automático.
+  // Arrastar-pra-ligar (modo Selecionar): mousedown numa bolinha de porta
+  // inicia o elástico; soltar em porta/componente/linha cria a ligação —
+  // sem precisar entrar no modo Ligar.
+  const handlePortMouseDown = (e: React.MouseEvent, symbolId: string, portId: string, at: Point) => {
+    if (linkMode) return; // no modo Ligar quem manda é o clique
+    e.preventDefault();
+    e.stopPropagation();
+    dragRef.current = {
+      type: 'link-drag',
+      from: { kind: 'port', id: symbolId, port: portId },
+      fromPt: at,
+      startX: e.clientX, startY: e.clientY,
+      lastX: at.x, lastY: at.y,
+      moved: false,
+    };
+    setLinkDragPreview({ fromPt: at, cur: at });
+  };
+
+  // Clique direto numa bolinha de porta (modo Ligar): a ponta vira a PORTA
+  // específica, não o componente com lado automático.
   const handlePortClick = (symbolId: string, portId: string) => {
     if (!linkMode) return;
     const ep: ConnectionEndpoint = { kind: 'port', id: symbolId, port: portId };
@@ -1237,16 +1293,21 @@ export function DiagramEditor({
           <button
             onClick={() => { setLinkMode(true); setLinkFrom(null); setDrawnWaypoints([]); clearSelection(); }}
             style={{ ...btnStyle(linkMode), border: 'none', padding: '5px 10px' }}
-            title="Ligar / desenhar linha — clique em portas, componentes ou linhas; Shift libera o ângulo"
+            title="Traçado manual ponto a ponto (avançado). Pra ligar rápido nem precisa: no modo Selecionar, passe o mouse num componente e ARRASTE de uma bolinha de porta até o destino."
           >
-            <Link2 size={13} /> Ligar
+            <Link2 size={13} /> Traçar
           </button>
         </div>
+        {!linkMode && (
+          <span style={{ fontSize: 11, color: '#999' }}>
+            Ligar: passe o mouse num componente e <strong>arraste da bolinha de porta</strong> até o destino
+          </span>
+        )}
         {linkMode && (
           <span style={{ fontSize: 11.5, color: '#2B8CFF', fontWeight: 600 }}>
             {linkFrom
-              ? `Ligando ${labelOfEndpoint(linkFrom)} a… (${drawnWaypoints.length} ponto(s) — Esc cancela)`
-              : 'Clique numa porta, componente ou linha'}
+              ? `Traçando de ${labelOfEndpoint(linkFrom)}… cada clique dobra o traço; termine numa porta, componente ou linha (Esc cancela)`
+              : 'Traçado manual: clique numa porta, componente ou linha pra começar'}
           </span>
         )}
 
@@ -1634,8 +1695,7 @@ export function DiagramEditor({
             return (
               <g pointerEvents="none">
                 <polyline points={pts} fill="none" stroke="#2B8CFF" strokeWidth={0.35} strokeDasharray="1.5,1" />
-                {drawnWaypoints.map((p, i) => <circle key={i} cx={p.x} cy={p.y} r={1} fill="#2B8CFF" />)}
-                {hoverPt && <circle cx={hoverPt.x} cy={hoverPt.y} r={0.8} fill="none" stroke="#2B8CFF" strokeWidth={0.3} />}
+                {drawnWaypoints.map((p, i) => <circle key={i} cx={p.x} cy={p.y} r={0.7} fill="#2B8CFF" />)}
               </g>
             );
           })()}
@@ -1692,7 +1752,8 @@ export function DiagramEditor({
                     />
                   );
                 })}
-                {waypoints.map((wp, i) => (
+                {/* alças dos pontos de dobra: SÓ na ligação selecionada (senão a tela vira uma constelação de bolinhas) */}
+                {isSelected && waypoints.map((wp, i) => (
                   <circle
                     key={i}
                     cx={wp.x} cy={wp.y} r={1.3}
@@ -1707,8 +1768,9 @@ export function DiagramEditor({
                   const ep = conn[which];
                   if (ep.kind === 'symbol' || ep.kind === 'port') return null;
                   const at = which === 'from' ? routePoints[0] : routePoints[routePoints.length - 1];
-                  // derivação FORMAL: nó preto (•) de junção, arrastável; ponto
-                  // fixo legado: quadradinho azul, também arrastável
+                  // ponto fixo legado: quadradinho azul só com a ligação selecionada (menos ruído)
+                  if (ep.kind === 'point' && !isSelected) return null;
+                  // derivação FORMAL: nó (•) de junção — parte do desenho, sempre visível e arrastável
                   return ep.kind === 'line' ? (
                     <circle
                       key={which}
@@ -1748,6 +1810,8 @@ export function DiagramEditor({
                   onMouseDown={e => handleSymbolMouseDown(e, p)}
                   onClick={e => e.stopPropagation()}
                   onContextMenu={e => openCtxMenu(e, 'symbol', p.id)}
+                  onMouseEnter={() => setHoveredSymbolId(p.id)}
+                  onMouseLeave={() => setHoveredSymbolId(prev => (prev === p.id ? null : prev))}
                   style={{ cursor: linkMode ? 'crosshair' : 'grab' }}
                 >
                   {/* área de clique invisível: sem isto, símbolos com fill="none" só respondem
@@ -1777,25 +1841,49 @@ export function DiagramEditor({
             );
           })}
 
-          {/* Portas de conexão — visíveis no modo ligar: clicar numa gruda a
-              ligação naquele ponto específico da geometria (ex.: lado CA do
-              inversor), em vez do lado automático */}
-          {linkMode && placements.map(p => (SYMBOL_PORTS[p.kind] ?? []).map(port => {
-            const at = portPagePosition(p, port);
-            const isOrigin = linkFrom?.kind === 'port' && linkFrom.id === p.id && linkFrom.port === port.id;
+          {/* Portas de conexão — SÓ no símbolo sob o mouse (e na origem de uma
+              ligação em andamento), pra não encher a tela de bolinhas. No modo
+              Selecionar, ARRASTAR de uma porta cria a ligação ao soltar no
+              destino; no modo Ligar, clicar escolhe a porta exata. */}
+          {placements.map(p => {
+            const isLinkOrigin = linkMode && !!linkFrom && (linkFrom.kind === 'symbol' || linkFrom.kind === 'port') && linkFrom.id === p.id;
+            const showPorts = hoveredSymbolId === p.id || isLinkOrigin;
+            if (!showPorts) return null;
+            return (SYMBOL_PORTS[p.kind] ?? []).map(port => {
+              const at = portPagePosition(p, port);
+              const isOrigin = linkMode && linkFrom?.kind === 'port' && linkFrom.id === p.id && linkFrom.port === port.id;
+              return (
+                <g key={`${p.id}:${port.id}`}>
+                  <circle
+                    cx={at.x} cy={at.y} r={1.1}
+                    fill={isOrigin ? '#F5A800' : '#fff'} stroke={isOrigin ? '#F5A800' : '#2B8CFF'} strokeWidth={0.35}
+                    pointerEvents="none"
+                  />
+                  {/* alvo de clique/arrasto maior que a bolinha visível */}
+                  <circle
+                    cx={at.x} cy={at.y} r={2.6} fill="transparent"
+                    style={{ cursor: 'crosshair' }}
+                    onMouseDown={e => handlePortMouseDown(e, p.id, port.id, at)}
+                    onMouseEnter={() => setHoveredSymbolId(p.id)}
+                    onClick={e => { e.stopPropagation(); handlePortClick(p.id, port.id); }}
+                  >
+                    <title>{`${p.label} · ${port.name} — arraste pra ligar`}</title>
+                  </circle>
+                </g>
+              );
+            });
+          })}
+
+          {/* Elástico do arrastar-pra-ligar */}
+          {linkDragPreview && (() => {
+            const pts = orthogonalPath(linkDragPreview.fromPt, linkDragPreview.cur).map(p => `${p.x},${p.y}`).join(' ');
             return (
-              <g key={`${p.id}:${port.id}`}>
-                <circle
-                  cx={at.x} cy={at.y} r={1.1}
-                  fill={isOrigin ? '#F5A800' : '#fff'} stroke={isOrigin ? '#F5A800' : '#2B8CFF'} strokeWidth={0.35}
-                  style={{ cursor: 'crosshair' }}
-                  onClick={e => { e.stopPropagation(); handlePortClick(p.id, port.id); }}
-                >
-                  <title>{`${p.label} · ${port.name}`}</title>
-                </circle>
+              <g pointerEvents="none">
+                <polyline points={pts} fill="none" stroke="#2B8CFF" strokeWidth={0.4} strokeDasharray="1.5,1" />
+                <circle cx={linkDragPreview.cur.x} cy={linkDragPreview.cur.y} r={1} fill="none" stroke="#2B8CFF" strokeWidth={0.35} />
               </g>
             );
-          }))}
+          })()}
 
           {/* Guias de alinhamento — linha magenta quando o símbolo arrastado alinha com o centro de outro */}
           {guides?.x !== undefined && (

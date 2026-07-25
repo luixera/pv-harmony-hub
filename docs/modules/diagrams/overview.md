@@ -297,8 +297,26 @@ lições recentes (últimas 40, dedup, top 10) e as injetam no prompt
 Best-effort nos dois lados (falha em gravar/ler lição nunca quebra a
 importação).
 
+## Arrastar-pra-ligar (13ª rodada, feedback direto de UX)
+O usuário reportou que "trabalhar com as linhas" estava difícil (cliques
+demais, "pequenos círculos" por toda parte). O gesto PRIMÁRIO de ligar
+passou a ser o padrão de mercado (Figma/draw.io/n8n), **sem modo nenhum**:
+no Selecionar, passar o mouse num componente mostra as portas dele —
+**arrastar de uma porta** abre um elástico tracejado e **soltar** numa
+porta/componente/linha cria a ligação (solto no vazio = nada acontece,
+nada é criado). O alvo de arrasto é maior que a bolinha visível (r 2,6mm
+vs 1,1mm). O modo "Ligar" virou **"Traçar"** — ferramenta secundária só
+pra desenhar o caminho ponto a ponto.
+
+**Redução de ruído visual** (a causa dos "pequenos círculos"):
+- Portas: só no símbolo sob o mouse (antes: todos os símbolos no modo ligar).
+- Alças de ponto de dobra: só na ligação selecionada (antes: todas, sempre).
+- Alça de ponta fixa (quadradinho azul): só na ligação selecionada.
+- Anel acompanhando o cursor: removido.
+- O nó (•) de derivação formal continua sempre visível — é parte do desenho.
+
 ## UX de manipulação (12ª rodada)
-- **Modos de ferramenta**: controle segmentado "Selecionar × Ligar" na
+- **Modos de ferramenta**: controle segmentado "Selecionar × Traçar" na
   barra (era um botão de liga/desliga pouco visível); Esc cancela a ligação
   em andamento e, apertado de novo, volta pra Selecionar.
 - **Menu de contexto** (botão direito) em qualquer elemento do canvas:
