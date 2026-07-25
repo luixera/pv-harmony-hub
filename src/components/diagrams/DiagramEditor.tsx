@@ -493,12 +493,10 @@ export function DiagramEditor({
         }
       }
       if (drag.type === 'endpoint' && drag.moved) {
-        // Uma ponta só pode ficar numa porta, num componente ou em cima de
-        // outra linha — nunca solta no vazio. Do alvo mais específico pro
-        // mais genérico: porta nomeada → componente (lado automático) →
-        // derivação FORMAL sobre outra linha (com vínculo vivo). Se não
-        // achar nenhum dos três, desfaz o arrasto e volta pra posição/âncora
-        // original.
+        // Soltura de ponta: perto de um alvo, gruda nele (porta nomeada →
+        // componente → final/interseção/corpo de outra linha, vínculo vivo);
+        // longe de tudo, a ponta FICA SOLTA onde soltou (desenho livre —
+        // pedido do usuário; antes o arrasto era desfeito).
         const dropPt = { x: drag.lastX, y: drag.lastY };
         const idsNow = new Map(placementsRef.current.map(p => [p.id, p]));
         const nearPort = findNearestPort(dropPt, placementsRef.current);
@@ -511,7 +509,7 @@ export function DiagramEditor({
             : nearLine ? { kind: 'line', connId: nearLine.connId, t: nearLine.t } : null;
         setConnections(prev => prev.map(c => {
           if (c.id !== drag.connId) return c;
-          const pt: ConnectionEndpoint = resolved ?? drag.origEndpoint;
+          const pt: ConnectionEndpoint = resolved ?? { kind: 'point', at: dropPt };
           return drag.which === 'from' ? { ...c, from: pt } : { ...c, to: pt };
         }));
       }
@@ -710,20 +708,22 @@ export function DiagramEditor({
     dragRef.current = { type: 'marquee', startX: e.clientX, startY: e.clientY, startMm: pt, moved: false };
   };
 
-  // Clique em área vazia do canvas: fora do modo de ligar, desmarca tudo. No
-  // modo de ligar: sem origem ainda, só inicia se o clique acertar um
-  // componente ou uma linha existente (nunca um ponto solto); com origem já
-  // escolhida, um clique perto de um componente/linha FECHA a ligação ali
-  // (derivação, se for numa linha); longe dos dois, vira só mais um ponto de
-  // dobra do traço (o desenho do meio do caminho continua livre).
+  // Clique no canvas em modo Traçar — desenho LIVRE com encaixe inteligente:
+  // - sem origem ainda: começa onde clicar — num alvo (porta/componente/
+  //   linha/final/interseção, com prioridade) ou num PONTO LIVRE no vazio;
+  // - com origem: clique perto de um alvo FECHA a ligação ali; no vazio,
+  //   vira ponto de dobra (em esquadro; Shift libera o ângulo). Pra terminar
+  //   SOLTA no vazio: duplo-clique ou Enter.
   const handleCanvasClick = (e: React.MouseEvent<SVGSVGElement>) => {
     if (marqueeJustFinishedRef.current) { marqueeJustFinishedRef.current = false; return; }
     if (!linkMode) { clearSelection(); return; }
+    if (e.detail > 1) return; // 2º clique de um duplo-clique: quem decide é o onDoubleClick
     const pt = clientToMm(e.clientX, e.clientY);
     if (!pt) return;
     const resolved = resolveClickEndpoint(pt);
     if (!linkFrom) {
-      if (resolved) { setLinkFrom(resolved); setDrawnWaypoints([]); }
+      setLinkFrom(resolved ?? { kind: 'point', at: pt });
+      setDrawnWaypoints([]);
       return;
     }
     if (resolved) {
@@ -739,6 +739,36 @@ export function DiagramEditor({
     const prev = drawnWaypoints[drawnWaypoints.length - 1] ?? (linkFrom ? endpointDisplayPoint(linkFrom) : null);
     const snapped = prev && !shiftHeldRef.current ? orthoSnapPoint(prev, pt) : pt;
     setDrawnWaypoints(prevWps => [...prevWps, snapped]);
+  };
+
+  // Termina a linha SOLTA no ponto dado (sem alvo) — desenho livre.
+  const finishLinkFree = (end: Point, waypoints: Point[]) => {
+    if (!linkFrom) return;
+    snapshot();
+    setConnections(prev => [...prev, {
+      id: `manual-${Date.now()}`,
+      from: linkFrom,
+      to: { kind: 'point', at: end },
+      waypoints: waypoints.length ? waypoints : undefined,
+    }]);
+    setLinkFrom(null);
+    setDrawnWaypoints([]);
+  };
+
+  // Duplo-clique no vazio (modo Traçar): encerra a linha ali mesmo, solta.
+  const handleCanvasDoubleClick = (e: React.MouseEvent<SVGSVGElement>) => {
+    if (!linkMode || !linkFrom) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const pt = clientToMm(e.clientX, e.clientY);
+    if (!pt) return;
+    // o 1º clique do duplo pode ter acabado de virar ponto de dobra aqui — desfaz
+    const wps = [...drawnWaypoints];
+    const last = wps[wps.length - 1];
+    if (last && Math.hypot(last.x - pt.x, last.y - pt.y) < 3) wps.pop();
+    const prev = wps[wps.length - 1] ?? endpointDisplayPoint(linkFrom);
+    const end = prev && !shiftHeldRef.current ? orthoSnapPoint(prev, pt) : pt;
+    finishLinkFree(end, wps);
   };
 
   // Prévia elástica do desenho de linha: acompanha o cursor com o mesmo
@@ -982,6 +1012,14 @@ export function DiagramEditor({
       }
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(); return; }
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd') { e.preventDefault(); duplicateSelected(); return; }
+      if (e.key === 'Enter' && linkMode && linkFrom && drawnWaypoints.length > 0) {
+        // encerra a linha SOLTA no último ponto de dobra desenhado
+        e.preventDefault();
+        const wps = [...drawnWaypoints];
+        const end = wps.pop()!;
+        finishLinkFree(end, wps);
+        return;
+      }
       if (e.key === 'Escape') {
         if (ctxMenu) { setCtxMenu(null); return; }
         if (linkMode) {
@@ -1319,7 +1357,7 @@ export function DiagramEditor({
           <button
             onClick={() => { setLinkMode(true); setLinkFrom(null); setDrawnWaypoints([]); clearSelection(); }}
             style={{ ...btnStyle(linkMode), border: 'none', padding: '5px 10px' }}
-            title="Traçado manual ponto a ponto (avançado). Pra ligar rápido nem precisa: no modo Selecionar, passe o mouse num componente e ARRASTE de uma bolinha de porta até o destino."
+            title="Traçado manual livre: clique pra começar (em alvo ou no vazio), cada clique dobra o traço, duplo-clique/Enter termina solto, clique num alvo conecta. Pra ligar rápido: no Selecionar, arraste de uma bolinha de porta."
           >
             <Link2 size={13} /> Traçar
           </button>
@@ -1332,8 +1370,8 @@ export function DiagramEditor({
         {linkMode && (
           <span style={{ fontSize: 11.5, color: '#2B8CFF', fontWeight: 600 }}>
             {linkFrom
-              ? `Traçando de ${labelOfEndpoint(linkFrom)}… cada clique dobra o traço; termine numa porta, componente ou linha (Esc cancela)`
-              : 'Traçado manual: clique numa porta, componente ou linha pra começar'}
+              ? `Traçando de ${labelOfEndpoint(linkFrom)}… clique dobra o traço · clique num alvo conecta · duplo-clique/Enter termina solto · Esc cancela`
+              : 'Clique pra começar — numa porta/componente/linha (conecta) ou no vazio (linha livre)'}
           </span>
         )}
 
@@ -1526,6 +1564,7 @@ export function DiagramEditor({
           viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.w} ${viewBox.h}`}
           style={{ width: 900, maxWidth: '100%', background: '#fff', boxShadow: '0 2px 12px rgba(0,0,0,0.12)', flexShrink: 0, cursor: linkMode ? 'crosshair' : 'default' }}
           onClick={handleCanvasClick}
+          onDoubleClick={handleCanvasDoubleClick}
           onMouseDown={handleCanvasMouseDown}
           onMouseMove={handleCanvasMouseMove}
           onMouseLeave={() => setHoverPt(null)}

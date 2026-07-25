@@ -5,6 +5,17 @@ Registro de decisões de produto/UX (não arquiteturais — essas ficam em
 
 ## Log
 
+- **Diagrama unifilar — desenho livre de linhas de volta (reversão da 7ª
+  rodada, a pedido)** (jul/2026): "além de não precisar conectar uma linha
+  até outro componente para desenhá-la, quero poder desenhá-la livremente".
+  A regra "linha sempre termina em algo" (que também tinha vindo de pedido
+  direto, na 7ª rodada) foi relaxada no Traçar: começa em qualquer lugar
+  (inclusive interseção de linhas, com nó de junção), duplo-clique/Enter
+  termina a linha solta, arrastar uma ponta pro vazio a deixa lá. Os
+  encaixes inteligentes (porta/componente/final/interseção/corpo) continuam
+  com prioridade quando o cursor está perto — liberdade e precisão
+  convivem. O arrastar-da-porta segue exigindo alvo (anti-lixo acidental).
+  Ver [ADR 0006](../adr/0006-cad-engine-alpha.md). (jul/2026)
 - **Diagrama unifilar — 13ª rodada: Fase E, Organizar, DXF, paramétrico e
   aprendizado** (jul/2026): dos próximos passos propostos, o usuário
   escolheu "1, 3, 4, 5 e 6 (porém ainda não libere para os tenants)" — o

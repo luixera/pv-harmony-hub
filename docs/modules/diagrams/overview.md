@@ -430,11 +430,17 @@ encosta) **não apaga em cascata** as derivações que nasciam dela: cada uma
 vira ponto fixo na posição atual (`detachDerivations`) — nada some da tela
 sem o usuário pedir.
 
-Uma ligação **sempre** termina em algo real — porta, componente ou outra
-linha —, nunca fica solta no vazio (decisão explícita do usuário: "não
-deixe que as linhas possam ser desenhadas livremente, mas sim, conectando
-componentes uns aos outros ou em outras linhas"). Não existe a opção de
-"ponto solto sem ligação a nada".
+**Desenho livre (13ª rodada — REVERSÃO parcial a pedido do usuário)**: a
+regra da 7ª rodada ("linha sempre termina em algo") foi relaxada — o
+usuário pediu explicitamente pra "poder desenhá-la livremente", p.ex. um
+ramal saindo de uma interseção e terminando solto. No Traçar: o 1º clique
+começa em qualquer lugar (alvo OU vazio = ponta livre `{kind:'point'}`);
+**duplo-clique ou Enter termina a linha solta**; clicar num alvo continua
+conectando. Arrastar uma ponta pro vazio agora a deixa lá (antes o arrasto
+era desfeito). Os ENCAIXES continuam com prioridade quando o cursor está
+perto (porta → componente → final de linha → interseção → corpo) — desenhar
+livre e conectar com precisão convivem. O arrastar-da-porta segue exigindo
+alvo (soltar no vazio = cancela): criar linha solta é papel do Traçar.
 
 - Clique num componente → origem/destino é aquele componente.
 - Clique em cima de uma linha existente (dentro do raio de captura,
