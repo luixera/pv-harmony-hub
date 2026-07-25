@@ -240,6 +240,63 @@ pra sobreviver à troca de tela da importação). Cota: `_kind:
 - **Ordem visual**: "trazer pra frente / enviar pra trás" pra figuras e
   fotos (ordem do array = ordem de desenho).
 
+## Fase E — componente no fio + condutores com identidade (13ª rodada)
+- **Tipos de condutor** (`ManualConnection.conductor`): CA (vermelho, padrão
+  e retrocompatível — campo ausente), CC (azul) e aterramento (verde
+  tracejado). Escolhido no painel de propriedades da ligação; camadas novas
+  `CONDUCTOR_DC`/`CONDUCTOR_GROUND` na IR (canvas, SVG, PDF e DXF idênticos).
+  A legenda automática ganha as linhas de condutor quando há mais de um tipo
+  em uso.
+- **Soltar no fio**: arrastar um componente em série (`SERIES_KINDS`:
+  disjuntores, chave CC, fusível, quadro) e soltar em cima de uma linha
+  DIVIDE a ligação em duas (`splitConnectionAtSymbol`): origem → porta
+  `entrada`, porta `saida` → destino; bitola e tipo de condutor preservados,
+  o componente assenta centrado no ponto e gira pra acompanhar o trecho
+  (vertical → 90°). A 1ª metade herda o id da ligação original (derivações
+  formais continuam penduradas).
+- **Refazer o fio**: remover um componente em série com exatamente 1 entrada
+  e 1 saída funde as duas ligações de volta numa só
+  (`healConnectionsThrough`) — o inverso do soltar-no-fio.
+
+## Organizar (13ª rodada)
+Botão "Organizar" (`autoArrange`): clusteriza os centros por Y (fileiras) e
+X (colunas), alinha cada cluster na média, uniformiza o espaçamento de
+fileiras longas (3+, quando o passo comporta) e limpa os pontos de dobra —
+todos os condutores re-roteiam com desvio de obstáculo. Puramente
+geométrico (não cria/remove/religa nada) e desfazível com Ctrl+Z.
+
+## Exportador DXF (13ª rodada)
+`exportDxf.ts` (`sceneToDxf`): Scene → DXF R12/AC1009 (abre em AutoCAD,
+QCAD, LibreCAD). Uma LAYER do DXF por camada da Scene com cor ACI própria
+(condutores CA=vermelho/CC=azul/terra=verde; símbolos; carimbo...), Y
+invertido (DXF é Y-up), unidade em mm, tracejado via linetype DASHED,
+elipse aproximada por polilinha, blocos achatados com a mesma matemática do
+`blockTransform`. **Fotos/underlay ficam de fora** (raster não entra).
+Botão "Baixar DXF" ao lado do SVG/PDF.
+
+## Template paramétrico (13ª rodada)
+- **Casamento automático**: o dropdown "Importar modelo…" do projeto ranqueia
+  por score — mesma concessionária (2 pts) + nº de inversores desenhados no
+  modelo compatível com o projeto (1 pt; `inverterCountOf` derivado do
+  próprio `scene_data`, sem coluna nova). Score > 0 = "Sugeridos pra este
+  projeto", melhor primeiro, com "(N inv.)" no nome.
+- **Multiplicar ramal FV** (`multiplyInverterBranches`): ao aplicar um
+  modelo de 1 inversor num projeto com N > 1, o sistema oferece replicar o
+  subgrafo a montante do inversor (módulos, chave CC, proteções) N-1 vezes,
+  empilhado abaixo, com cada inversor clonado ligando NO MESMO barramento a
+  jusante (como nos unifilares reais). Topologia fora do padrão → aplica o
+  modelo como está e avisa.
+
+## Reconhecimento que aprende (13ª rodada)
+Tabela **`diagram_ai_lessons`** (RLS por tenant + admin/staff): cada
+correção que o engenheiro revisor faz (`notes`) vira uma "lição" gravada.
+Nas próximas importações, `diagram-recognize` e `diagram-review` buscam as
+lições recentes (últimas 40, dedup, top 10) e as injetam no prompt
+("APRENDIZADO DE IMPORTAÇÕES ANTERIORES — não repita estes erros"). O loop
+é automático: quanto mais importações revisadas, melhor a 1ª passada fica.
+Best-effort nos dois lados (falha em gravar/ler lição nunca quebra a
+importação).
+
 ## UX de manipulação (12ª rodada)
 - **Modos de ferramenta**: controle segmentado "Selecionar × Ligar" na
   barra (era um botão de liga/desliga pouco visível); Esc cancela a ligação

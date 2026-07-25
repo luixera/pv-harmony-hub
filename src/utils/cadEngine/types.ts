@@ -53,7 +53,7 @@ export interface Point { x: number; y: number }
 
 export type Primitive =
   | { kind: 'line'; a: Point; b: Point; dashed?: boolean }
-  | { kind: 'polyline'; points: Point[] }
+  | { kind: 'polyline'; points: Point[]; dashed?: boolean }
   | { kind: 'rect'; x: number; y: number; w: number; h: number; dashed?: boolean }
   | { kind: 'circle'; center: Point; radius: number; filled?: boolean }
   | { kind: 'ellipse'; center: Point; rx: number; ry: number; dashed?: boolean }
@@ -61,8 +61,8 @@ export type Primitive =
   | { kind: 'image'; at: Point; w: number; h: number; href: string };
 
 export type LayerId =
-  | 'FRAME' | 'TITLE_BLOCK' | 'SYMBOLS' | 'CONDUCTOR_AC' | 'TEXT_LABEL' | 'PHOTO' | 'GROUP_BOX'
-  | 'ANNOTATION';
+  | 'FRAME' | 'TITLE_BLOCK' | 'SYMBOLS' | 'CONDUCTOR_AC' | 'CONDUCTOR_DC' | 'CONDUCTOR_GROUND'
+  | 'TEXT_LABEL' | 'PHOTO' | 'GROUP_BOX' | 'ANNOTATION';
 
 export interface ShapeNode {
   layer: LayerId;

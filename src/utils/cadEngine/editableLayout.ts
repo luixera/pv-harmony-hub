@@ -46,6 +46,9 @@ export type ConnectionEndpoint =
   | { kind: 'line'; connId: string; t: number }
   | { kind: 'point'; at: Point };
 
+/** Tipo elétrico do condutor — muda cor (e traço, no terra) no canvas e nos exports. */
+export type ConductorType = 'ac' | 'dc' | 'ground';
+
 export interface ManualConnection {
   id: string;
   from: ConnectionEndpoint;
@@ -54,6 +57,8 @@ export interface ManualConnection {
   waypoints?: Point[];
   /** Rótulo do condutor (ex.: bitola "2#6mm² + #6mm²"), desenhado junto ao trecho mais longo. Aceita tags. */
   label?: string;
+  /** Tipo do condutor — ausente = 'ac' (retrocompatível com diagramas salvos). */
+  conductor?: ConductorType;
 }
 
 /** Caixa de agrupamento (ex.: "QG – Sistema Fotovoltaico", "MEDIÇÃO E DISJUNTOR GERAL")
@@ -733,6 +738,250 @@ export function shapePrimitives(sh: PlacedShape): import('./types').Primitive[] 
   return prims;
 }
 
+/**
+ * TEMPLATE PARAMÉTRICO — multiplica o ramal FV pelo nº de inversores do
+ * projeto. Válido quando o desenho tem EXATAMENTE 1 inversor e o projeto
+ * tem N > 1: o subgrafo a montante do inversor (módulos, chave CC, DPS CC...
+ * tudo que alimenta ele) é clonado N-1 vezes, empilhado abaixo do original,
+ * e cada inversor clonado liga NO MESMO ponto a jusante do original (o
+ * barramento CA/QG continua único, como nos unifilares reais de múltiplos
+ * inversores). Topologia fora desse caso → devolve `null` (quem chama mantém
+ * a cena original e avisa).
+ */
+export function multiplyInverterBranches(state: DiagramSceneState, targetCount: number): DiagramSceneState | null {
+  if (targetCount < 2) return null;
+  const inverters = state.placements.filter(p => p.kind === 'inverter');
+  if (inverters.length !== 1) return null;
+  const inv = inverters[0];
+
+  const symIdOf = (e: ConnectionEndpoint): string | null =>
+    e.kind === 'symbol' || e.kind === 'port' ? e.id : null;
+
+  // subgrafo a montante: BFS pelos predecessores (conexões que TERMINAM em cada nó)
+  const upstream = new Set<string>([inv.id]);
+  let frontier = [inv.id];
+  while (frontier.length > 0) {
+    const next: string[] = [];
+    for (const conn of state.connections) {
+      const to = symIdOf(conn.to);
+      const from = symIdOf(conn.from);
+      if (to && frontier.includes(to) && from && !upstream.has(from)) {
+        upstream.add(from);
+        next.push(from);
+      }
+    }
+    frontier = next;
+  }
+  const branchSyms = state.placements.filter(p => upstream.has(p.id));
+  if (branchSyms.length < 2) return null; // inversor sem nada a montante: não há ramal pra clonar
+
+  // altura do ramal → passo vertical dos clones
+  const minY = Math.min(...branchSyms.map(p => p.y));
+  const maxY = Math.max(...branchSyms.map(p => p.y + SYMBOL_BBOX.h * p.scale));
+  const stepY = snapToGrid(maxY - minY + 12);
+
+  const placements = [...state.placements];
+  const connections = [...state.connections];
+  for (let i = 1; i < targetCount; i++) {
+    const idMap = new Map<string, string>();
+    for (const p of branchSyms) {
+      const cloneId = `manual-${p.kind}-param${i}-${p.id.replace(/[^a-z0-9]/gi, '').slice(-8)}`;
+      idMap.set(p.id, cloneId);
+      placements.push({
+        ...p, id: cloneId, y: p.y + stepY * i,
+        label: p.kind === 'inverter' ? `${p.label} ${i + 1}` : p.label,
+      });
+    }
+    const remap = (e: ConnectionEndpoint): ConnectionEndpoint => {
+      const sid = symIdOf(e);
+      if (!sid || !idMap.has(sid)) return e;
+      return e.kind === 'port'
+        ? { kind: 'port', id: idMap.get(sid)!, port: e.port }
+        : { kind: 'symbol', id: idMap.get(sid)! };
+    };
+    for (const conn of state.connections) {
+      const fromId = symIdOf(conn.from);
+      const toId = symIdOf(conn.to);
+      const fromIn = !!fromId && upstream.has(fromId);
+      const toIn = !!toId && upstream.has(toId);
+      // interna ao ramal: clona inteira (com pontos de dobra deslocados);
+      // saída do inversor pro resto: clona só remapeando a origem (junta no
+      // mesmo barramento); qualquer outra fica só no original
+      if (fromIn && toIn) {
+        connections.push({
+          ...conn,
+          id: `${conn.id}-param${i}`,
+          from: remap(conn.from),
+          to: remap(conn.to),
+          waypoints: conn.waypoints?.map(p => ({ x: p.x, y: p.y + stepY * i })),
+        });
+      } else if (fromIn && !toIn && fromId === inv.id) {
+        connections.push({
+          ...conn,
+          id: `${conn.id}-param${i}`,
+          from: remap(conn.from),
+          waypoints: undefined, // re-roteia sozinha até o barramento
+        });
+      }
+    }
+  }
+  // o inversor original também ganha numeração quando vira "1 de N"
+  const renamed = placements.map(p => (p.id === inv.id ? { ...p, label: `${p.label} 1` } : p));
+  return { ...state, placements: renamed, connections };
+}
+
+/** Nº de inversores desenhados numa cena — usado no casamento paramétrico de modelos. */
+export function inverterCountOf(state: DiagramSceneState): number {
+  return state.placements.filter(p => p.kind === 'inverter').length;
+}
+
+/**
+ * "Organizar": arruma um diagrama bagunçado num clique — alinha fileiras
+ * (centros com Y próximo → mesma altura) e colunas (X próximo → mesmo eixo),
+ * uniformiza o espaçamento de fileiras longas e limpa os pontos de dobra
+ * manuais pra todos os condutores re-rotearem com desvio de obstáculo.
+ * Puramente geométrico: não cria, remove nem religa nada.
+ */
+export function autoArrange(state: DiagramSceneState): DiagramSceneState {
+  if (state.placements.length === 0) return state;
+  const placements = state.placements.map(p => ({ ...p }));
+  const center = (p: PlacedSymbol) => ({
+    x: p.x + (SYMBOL_BBOX.w * p.scale) / 2,
+    y: p.y + (SYMBOL_BBOX.h * p.scale) / 2,
+  });
+  const ROW_TOL = 15; // mm — centros a menos disso na vertical = mesma fileira
+  const COL_TOL = 12;
+
+  // fileiras: clusteriza por Y e alinha cada uma na média
+  const rows: { members: PlacedSymbol[]; sumY: number }[] = [];
+  for (const p of [...placements].sort((a, b) => center(a).y - center(b).y)) {
+    const cy = center(p).y;
+    const row = rows.find(r => Math.abs(r.sumY / r.members.length - cy) <= ROW_TOL);
+    if (row) { row.members.push(p); row.sumY += cy; }
+    else rows.push({ members: [p], sumY: cy });
+  }
+  for (const r of rows) {
+    const avgY = snapToGrid(r.sumY / r.members.length);
+    for (const p of r.members) p.y = avgY - (SYMBOL_BBOX.h * p.scale) / 2;
+  }
+
+  // colunas: idem pra X (só colunas com 2+ — coluna de 1 não tem com o que alinhar)
+  const cols: { members: PlacedSymbol[]; sumX: number }[] = [];
+  for (const p of [...placements].sort((a, b) => center(a).x - center(b).x)) {
+    const cx = center(p).x;
+    const col = cols.find(c => Math.abs(c.sumX / c.members.length - cx) <= COL_TOL);
+    if (col) { col.members.push(p); col.sumX += cx; }
+    else cols.push({ members: [p], sumX: cx });
+  }
+  for (const c of cols) {
+    if (c.members.length < 2) continue;
+    const avgX = snapToGrid(c.sumX / c.members.length);
+    for (const p of c.members) p.x = avgX - (SYMBOL_BBOX.w * p.scale) / 2;
+  }
+
+  // espaçamento uniforme dentro de fileiras longas (3+), mantendo a ordem e
+  // as extremidades — só quando o passo médio comporta os símbolos
+  for (const r of rows) {
+    if (r.members.length < 3) continue;
+    const ms = [...r.members].sort((a, b) => a.x - b.x);
+    const first = center(ms[0]).x;
+    const last = center(ms[ms.length - 1]).x;
+    const pitch = (last - first) / (ms.length - 1);
+    if (pitch < SYMBOL_BBOX.w + 4) continue; // apertado demais: não força sobreposição
+    ms.forEach((p, i) => {
+      p.x = snapToGrid(first + i * pitch) - (SYMBOL_BBOX.w * p.scale) / 2;
+    });
+  }
+
+  // limpa pontos de dobra: os condutores re-roteiam sozinhos (com desvio)
+  const connections = state.connections.map(c =>
+    c.waypoints?.length ? { ...c, waypoints: undefined } : c,
+  );
+
+  return { ...state, placements, connections };
+}
+
+/** Camada da Scene correspondente ao tipo de condutor (ausente = CA). */
+export function conductorLayer(c: ConductorType | undefined): 'CONDUCTOR_AC' | 'CONDUCTOR_DC' | 'CONDUCTOR_GROUND' {
+  if (c === 'dc') return 'CONDUCTOR_DC';
+  if (c === 'ground') return 'CONDUCTOR_GROUND';
+  return 'CONDUCTOR_AC';
+}
+
+/** Tipos de condutor efetivamente usados (na ordem CA→CC→terra) — alimenta a legenda. */
+export function usedConductorsOf(connections: ManualConnection[]): ConductorType[] {
+  const present = new Set(connections.map(c => c.conductor ?? 'ac'));
+  return (['ac', 'dc', 'ground'] as ConductorType[]).filter(t => present.has(t));
+}
+
+/** Componentes em série (entrada→saída no fluxo) — os que podem ser soltos "no fio". */
+export const SERIES_KINDS: ReadonlySet<ComponentKind> = new Set([
+  'breaker', 'breaker-tripolar', 'dc-switch', 'fuse', 'distribution-panel',
+]);
+
+/**
+ * "Soltar no fio": divide a ligação `conn` em duas, passando pelo componente
+ * em série `sym` (porta entrada ← lado do `from`; porta saída → lado do
+ * `to`). A primeira metade HERDA o id da ligação original — derivações
+ * formais penduradas nela continuam resolvendo (a posição ao longo do `t`
+ * se acomoda no traçado mais curto). Bitola e tipo de condutor são
+ * preservados; os pontos de dobra são descartados (as duas metades
+ * re-roteiam sozinhas com desvio de obstáculo).
+ */
+export function splitConnectionAtSymbol(
+  connections: ManualConnection[],
+  connId: string,
+  sym: PlacedSymbol,
+): ManualConnection[] {
+  const conn = connections.find(c => c.id === connId);
+  if (!conn) return connections;
+  const first: ManualConnection = {
+    id: conn.id,
+    from: conn.from,
+    to: { kind: 'port', id: sym.id, port: 'entrada' },
+    label: conn.label,
+    conductor: conn.conductor,
+  };
+  const second: ManualConnection = {
+    id: `manual-${Date.now()}-split`,
+    from: { kind: 'port', id: sym.id, port: 'saida' },
+    to: conn.to,
+    conductor: conn.conductor,
+  };
+  return connections.flatMap(c => (c.id === connId ? [first, second] : [c]));
+}
+
+/**
+ * "Refazer o fio": ao remover um componente em série que tinha EXATAMENTE
+ * uma ligação chegando e uma saindo, funde as duas numa só (a ligação
+ * original volta a atravessar direto) — o inverso do soltar-no-fio. Se a
+ * topologia for outra (0 ou 2+ de cada lado), nada é fundido e as ligações
+ * do componente caem como antes.
+ */
+export function healConnectionsThrough(
+  connections: ManualConnection[],
+  removedIds: Set<string>,
+): { connections: ManualConnection[]; mergedAwayIds: Set<string> } {
+  let result = connections;
+  const mergedAwayIds = new Set<string>();
+  for (const symId of removedIds) {
+    const refs = (e: ConnectionEndpoint) => (e.kind === 'symbol' || e.kind === 'port') && e.id === symId;
+    const incoming = result.filter(c => refs(c.to) && !refs(c.from));
+    const outgoing = result.filter(c => refs(c.from) && !refs(c.to));
+    if (incoming.length !== 1 || outgoing.length !== 1) continue;
+    const merged: ManualConnection = {
+      id: incoming[0].id,
+      from: incoming[0].from,
+      to: outgoing[0].to,
+      label: incoming[0].label ?? outgoing[0].label,
+      conductor: incoming[0].conductor ?? outgoing[0].conductor,
+    };
+    mergedAwayIds.add(outgoing[0].id); // derivações penduradas nele precisam ser soltas
+    result = result.flatMap(c => (c.id === incoming[0].id ? [merged] : c.id === outgoing[0].id ? [] : [c]));
+  }
+  return { connections: result, mergedAwayIds };
+}
+
 /** Tipos de componente efetivamente usados, na ordem de primeira aparição — alimenta a tabela de legenda. */
 export function usedKindsOf(placements: PlacedSymbol[]): ComponentKind[] {
   const seen = new Set<ComponentKind>();
@@ -764,12 +1013,13 @@ export function buildSheetFurnitureScene(
   usedKinds: ComponentKind[],
   sheet?: SheetOptions,
   tagValues?: Record<string, string>,
+  usedConductors: ConductorType[] = [],
 ): Scene {
   const scene: Scene = { paper: { widthMm: 297, heightMm: 210 }, shapes: [], blocks: [], blockDefs: SYMBOL_DEFS };
   const resolve = (s: string) => (tagValues ? resolveProjectTags(s, tagValues) : s);
   drawFrameAndHeader(scene, json);
   drawTitleBlock(scene, json, resolveSheet(sheet, resolve));
-  if (sheet?.showLegend !== false) drawLegendTable(scene, usedKinds);
+  if (sheet?.showLegend !== false) drawLegendTable(scene, usedKinds, usedConductors);
   return scene;
 }
 
@@ -826,17 +1076,18 @@ export function buildSceneFromPlacement(
   for (const conn of connections) {
     const points = allPts.get(conn.id);
     if (!points) continue;
-    scene.shapes.push({ layer: 'CONDUCTOR_AC', geometry: { kind: 'polyline', points } });
+    const layer = conductorLayer(conn.conductor);
+    scene.shapes.push({ layer, geometry: { kind: 'polyline', points, dashed: conn.conductor === 'ground' || undefined } });
     if (conn.label) {
       const { at, anchor } = connectionLabelPosition(points);
       scene.shapes.push({ layer: 'TEXT_LABEL', geometry: { kind: 'text', at, value: resolve(conn.label), size: 2.2, anchor } });
     }
     // nó de junção (•) onde a derivação formal nasce da linha-mãe — convenção dos unifilares reais
     if (conn.from.kind === 'line') {
-      scene.shapes.push({ layer: 'CONDUCTOR_AC', geometry: { kind: 'circle', center: points[0], radius: 0.8, filled: true } });
+      scene.shapes.push({ layer, geometry: { kind: 'circle', center: points[0], radius: 0.8, filled: true } });
     }
     if (conn.to.kind === 'line') {
-      scene.shapes.push({ layer: 'CONDUCTOR_AC', geometry: { kind: 'circle', center: points[points.length - 1], radius: 0.8, filled: true } });
+      scene.shapes.push({ layer, geometry: { kind: 'circle', center: points[points.length - 1], radius: 0.8, filled: true } });
     }
   }
 
@@ -866,6 +1117,6 @@ export function buildSceneFromPlacement(
   }
 
   drawTitleBlock(scene, json, resolveSheet(state.sheet, resolve));
-  if (state.sheet?.showLegend !== false) drawLegendTable(scene, usedKindsOf(placements));
+  if (state.sheet?.showLegend !== false) drawLegendTable(scene, usedKindsOf(placements), usedConductorsOf(connections));
   return scene;
 }

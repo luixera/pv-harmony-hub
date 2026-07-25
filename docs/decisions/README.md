@@ -5,6 +5,20 @@ Registro de decisões de produto/UX (não arquiteturais — essas ficam em
 
 ## Log
 
+- **Diagrama unifilar — 13ª rodada: Fase E, Organizar, DXF, paramétrico e
+  aprendizado** (jul/2026): dos próximos passos propostos, o usuário
+  escolheu "1, 3, 4, 5 e 6 (porém ainda não libere para os tenants)" — o
+  validador elétrico local (item 2) ficou de fora por escolha, e a
+  liberação a outros tenants segue travada pela checagem de `is_library`.
+  Entregues: componente em série solto EM CIMA de uma linha divide a
+  ligação (e remover refaz o fio); condutores com tipo CA/CC/terra
+  (cores/tracejado idênticos no canvas, SVG, PDF, DXF e legenda); botão
+  "Organizar" (alinha fileiras/colunas e re-roteia); exportador DXF R12
+  com camadas; casamento de modelo por concessionária + nº de inversores e
+  multiplicação automática do ramal FV; e o loop de aprendizado — as
+  correções do engenheiro revisor viram lições injetadas nos prompts das
+  próximas importações. Ver [ADR 0006](../adr/0006-cad-engine-alpha.md).
+  (jul/2026)
 - **Console master — extrato "Agentes de IA" com saldo local** (jul/2026):
   pedido do usuário: "um extrato de uso dos agentes que já temos... saldo
   atual e outras informações... para que a gente não deixe a conta sem

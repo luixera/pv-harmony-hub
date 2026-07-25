@@ -4,7 +4,7 @@ import { ProjectWithDetails } from '@/hooks/useProjects';
 import { buildTechnicalJsonFromProject } from '@/utils/cadEngine/buildTechnicalJson';
 import {
   ConnectionEndpoint, DiagramSceneState, ManualConnection,
-  initialConnections, initialPlacement, isConnectionResolvable,
+  initialConnections, initialPlacement, inverterCountOf, isConnectionResolvable, multiplyInverterBranches,
 } from '@/utils/cadEngine/editableLayout';
 import { Point } from '@/utils/cadEngine/types';
 import { buildProjectValues } from '@/utils/projectValues';
@@ -140,20 +140,39 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
     }, 800);
   };
 
+  const projectInverters = Math.max(1, Number(project.equipment?.inverter_quantity ?? 1) || 1);
+
   const applyTemplate = () => {
     const t = templates.find(x => x.id === templatePick);
     if (!t) return;
     if (!confirm(`Aplicar o modelo "${t.name}" a este projeto? O diagrama atual deste projeto será substituído (o modelo em si não é alterado).`)) return;
-    setApplied(prev => ({ v: (prev?.v ?? 0) + 1, state: t.scene_data }));
+    // paramétrico: modelo de 1 inversor num projeto com N — oferece replicar o ramal FV
+    let state = t.scene_data;
+    if (projectInverters > 1 && inverterCountOf(state) === 1) {
+      if (confirm(`Este projeto tem ${projectInverters} inversores e o modelo desenha 1. Replicar o ramal FV (módulos + proteções + inversor) ${projectInverters}x automaticamente, todos ligando no mesmo barramento?`)) {
+        const multiplied = multiplyInverterBranches(state, projectInverters);
+        if (multiplied) state = multiplied;
+        else alert('Não deu pra replicar automaticamente (topologia do modelo fora do padrão 1 ramal → 1 inversor) — o modelo foi aplicado como está.');
+      }
+    }
+    setApplied(prev => ({ v: (prev?.v ?? 0) + 1, state }));
     setTemplatePick('');
   };
 
-  // Modelos da mesma concessionária primeiro, marcados como sugeridos.
+  // Casamento paramétrico: mesma concessionária (2 pts) + nº de inversores do
+  // desenho igual ao do projeto (1 pt). Score > 0 = sugerido, melhor primeiro.
   const sortedTemplates = useMemo(() => {
-    const suggested = templates.filter(t => t.concessionaire_id && t.concessionaire_id === project.concessionaire_id);
-    const rest = templates.filter(t => !suggested.includes(t));
+    const scored = templates.map(t => {
+      let score = 0;
+      if (t.concessionaire_id && t.concessionaire_id === project.concessionaire_id) score += 2;
+      const drawn = inverterCountOf(t.scene_data);
+      if (drawn > 0 && (drawn === projectInverters || (drawn === 1 && projectInverters > 1))) score += 1;
+      return { t, score, drawn };
+    });
+    const suggested = scored.filter(s => s.score > 0).sort((a, b) => b.score - a.score);
+    const rest = scored.filter(s => s.score === 0);
     return { suggested, rest };
-  }, [templates, project.concessionaire_id]);
+  }, [templates, project.concessionaire_id, projectInverters]);
 
   if (isLoading) {
     return <div style={{ padding: 60, textAlign: 'center' }}><Loader2 size={22} className="animate-spin" style={{ color: '#F5A800' }} /></div>;
@@ -181,13 +200,17 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
             >
               <option value="">Importar modelo…</option>
               {sortedTemplates.suggested.length > 0 && (
-                <optgroup label="Sugeridos (mesma concessionária)">
-                  {sortedTemplates.suggested.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                <optgroup label="Sugeridos pra este projeto">
+                  {sortedTemplates.suggested.map(({ t, drawn }) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}{drawn > 0 ? ` (${drawn} inv.)` : ''}
+                    </option>
+                  ))}
                 </optgroup>
               )}
               {sortedTemplates.rest.length > 0 && (
                 <optgroup label={sortedTemplates.suggested.length > 0 ? 'Outros modelos' : 'Modelos'}>
-                  {sortedTemplates.rest.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                  {sortedTemplates.rest.map(({ t }) => <option key={t.id} value={t.id}>{t.name}</option>)}
                 </optgroup>
               )}
             </select>

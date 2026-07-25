@@ -65,7 +65,44 @@ const KIND_CATALOG = `
 - distribution-panel: quadro de distribuição / quadro geral (caixa maior com divisórias internas)
 `.trim()
 
-function buildPrompt(): string {
+/**
+ * Lições de importações anteriores: as correções que o engenheiro revisor
+ * (diagram-review) fez em diagramas passados deste tenant — injetadas no
+ * prompt pra IA não repetir os mesmos erros. Best-effort: sem lições (ou
+ * com erro), o prompt segue sem a seção.
+ */
+async function fetchLessons(userClient: ReturnType<typeof createClient>): Promise<string[]> {
+  try {
+    const { data } = await userClient
+      .from('diagram_ai_lessons')
+      .select('lesson')
+      .order('created_at', { ascending: false })
+      .limit(40)
+    const seen = new Set<string>()
+    const out: string[] = []
+    for (const row of (data ?? []) as { lesson: string }[]) {
+      const key = String(row.lesson).trim().toLowerCase()
+      if (!key || seen.has(key)) continue
+      seen.add(key)
+      out.push(String(row.lesson).trim())
+      if (out.length >= 10) break
+    }
+    return out
+  } catch {
+    return []
+  }
+}
+
+function lessonsSection(lessons: string[]): string {
+  if (lessons.length === 0) return ''
+  return `
+
+APRENDIZADO DE IMPORTAÇÕES ANTERIORES — correções que um revisor já precisou
+fazer em diagramas passados; NÃO repita estes erros:
+${lessons.map((l) => `- ${l}`).join('\n')}`
+}
+
+function buildPrompt(lessons: string[] = []): string {
   return `Você é um especialista em leitura de diagramas unifilares de sistemas fotovoltaicos.
 
 Analise o diagrama unifilar enviado (PDF ou imagem) e identifique cada componente elétrico
@@ -124,7 +161,7 @@ Retorne APENAS JSON válido, sem markdown, no formato exato:
     { "title": "QG - Sistema Fotovoltaico", "x": 20, "y": 70, "w": 30, "h": 28 }
   ],
   "warnings": []
-}`
+}${lessonsSection(lessons)}`
 }
 
 /**
@@ -218,7 +255,8 @@ Deno.serve(async (req) => {
       })
     }
 
-    const contentBlocks: any[] = [buildContentBlock(body), { type: 'text', text: buildPrompt() }]
+    const lessons = await fetchLessons(userClient)
+    const contentBlocks: any[] = [buildContentBlock(body), { type: 'text', text: buildPrompt(lessons) }]
 
     // Opus + adaptive thinking: importar um diagrama é raro e de alto valor —
     // o modelo mais capaz em visão compensa aqui (o Claudinho segue no Haiku,

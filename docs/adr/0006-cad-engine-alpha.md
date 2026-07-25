@@ -623,3 +623,41 @@ Plano de 4 fases apresentado por escrito e aprovado ("pode fazer").
 - Menu de contexto (botão direito) por tipo de elemento — implementação
   própria em div fixa (não Radix DropdownMenu: o alvo é SVG e a posição é
   o ponto do clique, não um trigger).
+
+## Atualização (13ª rodada) — Fase E, Organizar, DXF, paramétrico e aprendizado
+
+O usuário escolheu do roadmap proposto: Fase E, template paramétrico,
+reconhecimento que aprende, botão organizar e DXF — **sem liberar pra
+tenants ainda** (a checagem de `is_library` fica).
+
+**Fase E — no fio + condutores com identidade**:
+- Condutor ganhou tipo (`conductor: 'ac' | 'dc' | 'ground'`, ausente = CA
+  retrocompatível) com camadas próprias na IR — decisão: cor por TIPO
+  ELÉTRICO, não por ligação individual (consistência > liberdade).
+- "Soltar no fio": componente em série solto sobre uma linha divide a
+  ligação (entrada/saída), assenta no ponto e gira pra acompanhar o trecho;
+  remover com 1-entrada-1-saída FUNDE de volta (`healConnectionsThrough`).
+  A 1ª metade herda o id da ligação — derivações formais não quebram.
+
+**Organizar** (`autoArrange`): clusterização simples de centros (fileiras
+±15mm, colunas ±12mm) + espaçamento uniforme em fileiras 3+ + limpeza de
+waypoints. Decisão: NÃO é o motor de layout automático do roadmap — é o
+degrau barato que resolve o caso real ("importei e está quase bom").
+
+**DXF** (`exportDxf.ts`): R12/AC1009 flatten (sem BLOCK/INSERT) — máxima
+compatibilidade com o mínimo de formato; camadas por LayerId com cor ACI;
+raster fora. Exportador novo = 1 arquivo, como a IR prometia.
+
+**Template paramétrico**:
+- Casamento por score derivado do próprio `scene_data` (nº de inversores
+  desenhados) — sem coluna nova no banco, sem manutenção manual de metadado.
+- `multiplyInverterBranches`: replica o subgrafo A MONTANTE do inversor
+  (BFS pelos predecessores) N-1 vezes; inversores clonados ligam no mesmo
+  barramento a jusante. Restrito ao caso 1 inversor → N (topologia clara);
+  fora disso devolve null e o modelo aplica como está.
+
+**Reconhecimento que aprende** (`diagram_ai_lessons`): as `notes` do
+engenheiro revisor viram lições por tenant; recognize/review injetam as 10
+mais recentes (dedup) no prompt. Decisão: aprender das notas da IA (baratas,
+estruturadas, automáticas) em vez de diffs de edição humana (ruidosos, sem
+gatilho claro de "terminei de corrigir").

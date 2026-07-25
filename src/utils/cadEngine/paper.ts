@@ -96,13 +96,20 @@ export function drawTitleBlock(scene: Scene, json: TechnicalJsonMvp, sheet?: She
  * estrutura da legenda dos unifilares reais usados como referência. Gerada
  * do próprio conteúdo, nunca precisa ser mantida à mão.
  */
-export function drawLegendTable(scene: Scene, usedKinds: ComponentKind[]) {
-  if (usedKinds.length === 0) return;
+export function drawLegendTable(
+  scene: Scene,
+  usedKinds: ComponentKind[],
+  usedConductors: ('ac' | 'dc' | 'ground')[] = [],
+) {
+  // condutores CA-únicos não precisam de linha na legenda (é o padrão do desenho inteiro)
+  const conductorRows = usedConductors.length > 1 ? usedConductors : [];
+  if (usedKinds.length === 0 && conductorRows.length === 0) return;
   const x0 = LEGEND_X0;
   const y0 = MARGIN + 18;
   const headerH = 5.5, colHeaderH = 4.5, rowH = 8;
+  const conductorRowH = 5;
   const symbolColW = 11;
-  const totalH = headerH + colHeaderH + usedKinds.length * rowH;
+  const totalH = headerH + colHeaderH + usedKinds.length * rowH + conductorRows.length * conductorRowH;
 
   scene.shapes.push({ layer: 'TITLE_BLOCK', geometry: { kind: 'rect', x: x0, y: y0, w: LEGEND_W, h: totalH } });
   scene.shapes.push({ layer: 'TITLE_BLOCK', geometry: { kind: 'text', at: { x: x0 + LEGEND_W / 2, y: y0 + 4 }, value: 'LEGENDA', size: 3, anchor: 'middle', weight: 'bold' } });
@@ -125,5 +132,21 @@ export function drawLegendTable(scene: Scene, usedKinds: ComponentKind[]) {
       rotation: 0, scale: SYMBOL_SCALE,
     });
     scene.shapes.push({ layer: 'TITLE_BLOCK', geometry: { kind: 'text', at: { x: x0 + symbolColW + 2, y: rowY + rowH / 2 + 0.8 }, value: KIND_LEGEND[kind], size: 1.7, anchor: 'start' } });
+  });
+
+  // linhas dos tipos de condutor usados: amostra do traço na cor/estilo da
+  // camada correspondente + descrição (só quando há mais de um tipo em uso)
+  const CONDUCTOR_ROWS: Record<'ac' | 'dc' | 'ground', { layer: 'CONDUCTOR_AC' | 'CONDUCTOR_DC' | 'CONDUCTOR_GROUND'; label: string; dashed?: boolean }> = {
+    ac: { layer: 'CONDUCTOR_AC', label: 'CONDUTOR CA' },
+    dc: { layer: 'CONDUCTOR_DC', label: 'CONDUTOR CC' },
+    ground: { layer: 'CONDUCTOR_GROUND', label: 'CONDUTOR DE ATERRAMENTO', dashed: true },
+  };
+  conductorRows.forEach((type, i) => {
+    const def = CONDUCTOR_ROWS[type];
+    const rowY = y0 + headerH + colHeaderH + usedKinds.length * rowH + i * conductorRowH;
+    scene.shapes.push({ layer: 'TITLE_BLOCK', geometry: { kind: 'line', a: { x: x0, y: rowY }, b: { x: x0 + LEGEND_W, y: rowY } } });
+    const midY = rowY + conductorRowH / 2;
+    scene.shapes.push({ layer: def.layer, geometry: { kind: 'line', a: { x: x0 + 1.5, y: midY }, b: { x: x0 + symbolColW - 1.5, y: midY }, dashed: def.dashed } });
+    scene.shapes.push({ layer: 'TITLE_BLOCK', geometry: { kind: 'text', at: { x: x0 + symbolColW + 2, y: midY + 0.8 }, value: def.label, size: 1.7, anchor: 'start' } });
   });
 }

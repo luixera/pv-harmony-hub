@@ -46,11 +46,16 @@
   de símbolos, guias de alinhamento, arrastar segmento individual; (3)
   figuras de anotação (retângulo/elipse/divisória/seta), grupos com estilo
   e "arrastar conteúdo junto", frente/trás; (4) modos Selecionar×Ligar +
-  menu de contexto. Próximos: casamento automático de modelo
-  por critério paramétrico; calibrar prompt/símbolos com mais unifilares
-  reais; liberar pra todos os tenants (RLS pronto); componentes em série
-  desenhados "no fio" + portas CC/CA no inversor (Fase E, refactor visual
-  final); motor de layout automático; exportador DXF; BESS/múltiplos
+  menu de contexto. **13ª rodada**: Fase E (soltar componente em série NO
+  FIO divide a ligação; remover refaz; condutores CA/CC/terra com cor e
+  legenda), botão "Organizar" (alinha fileiras/colunas + re-roteia),
+  exportador **DXF** R12 com camadas, template paramétrico (casamento por
+  concessionária + nº de inversores; multiplicar ramal FV automaticamente)
+  e reconhecimento que aprende (`diagram_ai_lessons`: correções do revisor
+  viram lições nos prompts). Próximos: validador elétrico local em tempo
+  real (checklist do engenheiro sem IA); calibrar com unifilares de outras
+  concessionárias; liberar pra todos os tenants (RLS pronto — decisão de
+  produto pendente); motor de layout automático completo; BESS/múltiplos
   inversores oficiais no cadastro.
 - **Extrato "Agentes de IA" no console master** ✅ (jul/2026): saldo estimado
   (recargas lançadas − custo por tokens reais), gasto por agente/tenant/dia,

@@ -3,18 +3,20 @@ import {
   Loader2, Download, FileImage, RotateCw, Link2, Trash2, RefreshCw,
   Image as ImageIcon, Plus, Type, BoxSelect, FileText,
   Undo2, Redo2, ZoomIn, ZoomOut, Maximize, Copy,
-  Square, Circle as CircleIcon, Minus, MoveUpRight, BringToFront, SendToBack, MousePointer2,
+  Square, Circle as CircleIcon, Minus, MoveUpRight, BringToFront, SendToBack, MousePointer2, Wand2,
 } from 'lucide-react';
 import {
-  ConnectionEndpoint, DiagramSceneState, ManualConnection, PlacedGroup, PlacedPhoto, PlacedShape, PlacedSymbol,
-  PlacedText, SheetOptions, blockCenter, buildSceneFromPlacement, buildSheetFurnitureScene,
+  autoArrange, ConductorType, ConnectionEndpoint, DiagramSceneState, ManualConnection, PlacedGroup, PlacedPhoto,
+  PlacedShape, PlacedSymbol, PlacedText, SheetOptions, blockCenter, buildSceneFromPlacement, buildSheetFurnitureScene,
   computeAllConnectionPoints, connectionDependsOn, connectionLabelPosition, detachDerivations, findNearestPort,
-  findNearestSymbol, initialConnections, initialPlacement, nearestPointOnPolyline, orthoSnapPoint, pointAtT,
-  portPagePosition, shapePrimitives, SNAP_RADIUS, snapToGrid, usedKindsOf,
+  findNearestSymbol, healConnectionsThrough, initialConnections, initialPlacement, nearestPointOnPolyline,
+  orthoSnapPoint, pointAtT, portPagePosition, SERIES_KINDS, shapePrimitives, SNAP_RADIUS, snapToGrid,
+  splitConnectionAtSymbol, usedConductorsOf, usedKindsOf,
 } from '@/utils/cadEngine/editableLayout';
 import { ComponentKind, Point, TechnicalJsonMvp } from '@/utils/cadEngine/types';
-import { sceneToSvgInner, primitiveToSvg, blockTransform } from '@/utils/cadEngine/exportSvg';
+import { CONDUCTOR_COLOR, sceneToSvgInner, primitiveToSvg, blockTransform } from '@/utils/cadEngine/exportSvg';
 import { sceneToPdfBlob } from '@/utils/cadEngine/exportPdf';
+import { sceneToDxf } from '@/utils/cadEngine/exportDxf';
 import { KIND_LABEL, SYMBOL_BBOX, SYMBOL_DEFS, SYMBOL_PORTS } from '@/utils/cadEngine/symbols';
 import { CENTER_Y, PAPER, PITCH_X, START_X } from '@/utils/cadEngine/paper';
 import { resolveProjectTags, TEMPLATE_VARIABLES } from '@/utils/projectValues';
@@ -199,8 +201,8 @@ export function DiagramEditor({
   // camada estática atrás do conteúdo interativo; reage a mudanças de
   // símbolos usados (legenda) e dos campos do carimbo.
   const furnitureSvg = useMemo(
-    () => sceneToSvgInner(buildSheetFurnitureScene(json, usedKindsOf(placements), sheet, values)),
-    [json, placements, sheet, values],
+    () => sceneToSvgInner(buildSheetFurnitureScene(json, usedKindsOf(placements), sheet, values, usedConductorsOf(connections))),
+    [json, placements, connections, sheet, values],
   );
 
   // ── Interação: arrastar símbolos, fotos, textos, linhas inteiras e pontos ─
@@ -419,6 +421,33 @@ export function DiagramEditor({
         return;
       }
       if (drag.type === 'symbol' && !drag.moved) handleSymbolClick(drag.id, e.shiftKey); // arrasto não ocorreu → foi um clique
+      if (drag.type === 'symbol' && drag.moved && !drag.origPositions) {
+        // "Soltar no fio": componente em série solto em cima de uma linha
+        // divide a ligação em duas (entrada/saída), orientado pelo trecho.
+        const sym = placementsRef.current.find(p => p.id === drag.id);
+        if (sym && SERIES_KINDS.has(sym.kind)) {
+          const center = { x: sym.x + (SYMBOL_BBOX.w * sym.scale) / 2, y: sym.y + (SYMBOL_BBOX.h * sym.scale) / 2 };
+          const idsNow = new Map(placementsRef.current.map(p => [p.id, p]));
+          const hit = nearestLineHit(center, connectionsRef.current, idsNow);
+          const refsSym = (ep: ConnectionEndpoint) => (ep.kind === 'symbol' || ep.kind === 'port') && ep.id === sym.id;
+          const hitConn = hit ? connectionsRef.current.find(c => c.id === hit.connId) : null;
+          if (hit && hitConn && !refsSym(hitConn.from) && !refsSym(hitConn.to)) {
+            const allPtsNow = computeAllConnectionPoints(connectionsRef.current, idsNow);
+            const pts = allPtsNow.get(hit.connId);
+            let rotation = sym.rotation;
+            if (pts) {
+              const a = pointAtT(pts, Math.max(0, hit.t - 0.02));
+              const b = pointAtT(pts, Math.min(1, hit.t + 0.02));
+              rotation = Math.abs(b.y - a.y) > Math.abs(b.x - a.x) ? 90 : 0;
+            }
+            // assenta o componente centrado no ponto da linha (sem snap de grade — precisa sentar NO fio)
+            setPlacements(prev => prev.map(p => (p.id === sym.id
+              ? { ...p, rotation, x: hit.point.x - (SYMBOL_BBOX.w * p.scale) / 2, y: hit.point.y - (SYMBOL_BBOX.h * p.scale) / 2 }
+              : p)));
+            setConnections(prev => splitConnectionAtSymbol(prev, hit.connId, sym));
+          }
+        }
+      }
       if (drag.type === 'endpoint' && drag.moved) {
         // Uma ponta só pode ficar numa porta, num componente ou em cima de
         // outra linha — nunca solta no vazio. Do alvo mais específico pro
@@ -816,12 +845,20 @@ export function DiagramEditor({
     if (removable.length > 0) {
       snapshot();
       const removeSet = new Set(removable);
+      // "refazer o fio": componente em série com exatamente 1 entrada e 1
+      // saída some e a ligação volta a atravessar direto (inverso do
+      // soltar-no-fio)
+      const healed = healConnectionsThrough(connections, removeSet);
       const refsRemoved = (e: ConnectionEndpoint) => (e.kind === 'symbol' || e.kind === 'port') && removeSet.has(e.id);
-      // ligações que encostavam nos símbolos removidos caem; derivações que
-      // nasciam DELAS não caem em cascata — viram ponto fixo na posição atual
-      const droppedIds = new Set(connections.filter(c => refsRemoved(c.from) || refsRemoved(c.to)).map(c => c.id));
+      // ligações que ainda encostavam nos símbolos removidos caem; derivações
+      // que nasciam delas (ou das fundidas) não caem em cascata — viram ponto
+      // fixo na posição atual
+      const droppedIds = new Set([
+        ...healed.connections.filter(c => refsRemoved(c.from) || refsRemoved(c.to)).map(c => c.id),
+        ...healed.mergedAwayIds,
+      ]);
       setPlacements(prev => prev.filter(p => !removeSet.has(p.id)));
-      setConnections(prev => detachDerivations(prev, droppedIds, allConnPoints));
+      setConnections(() => detachDerivations(healed.connections, droppedIds, allConnPoints));
       setSelectedId(null);
       setSelectedIds(new Set());
     }
@@ -1101,6 +1138,17 @@ export function DiagramEditor({
     dragRef.current = { type: 'group-resize', id: g.id, startX: e.clientX, startY: e.clientY, origW: g.w, origH: g.h, moved: false, preState: currentStateRef.current };
   };
 
+  // "Organizar": alinhamento de fileiras/colunas + re-roteamento — um clique,
+  // desfazível com Ctrl+Z
+  const handleAutoArrange = () => {
+    if (!confirm('Organizar o diagrama? Fileiras e colunas serão alinhadas e as linhas re-roteadas (pontos de dobra manuais são recalculados). Ctrl+Z desfaz.')) return;
+    snapshot();
+    const arranged = autoArrange(currentStateRef.current);
+    setPlacements(arranged.placements);
+    setConnections(arranged.connections);
+    clearSelection();
+  };
+
   const resetLayout = () => {
     if (!confirm(resetConfirmMessage)) return;
     snapshot();
@@ -1128,6 +1176,10 @@ export function DiagramEditor({
   const handleDownloadSvg = () => {
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${scene.paper.widthMm} ${scene.paper.heightMm}" width="${scene.paper.widthMm}mm" height="${scene.paper.heightMm}mm" style="background:#fff">${sceneToSvgInner(scene)}</svg>`;
     download(new Blob([svg], { type: 'image/svg+xml' }), `unifilar_${sanitizeFileName(downloadBaseName)}.svg`);
+  };
+  const handleDownloadDxf = () => {
+    const dxf = sceneToDxf(scene);
+    download(new Blob([dxf], { type: 'application/dxf' }), `unifilar_${sanitizeFileName(downloadBaseName)}.dxf`);
   };
   const handleDownloadPdf = async () => {
     setGeneratingPdf(true);
@@ -1226,6 +1278,15 @@ export function DiagramEditor({
           <span style={{ fontSize: 10.5, color: '#888', padding: '0 5px', minWidth: 34, textAlign: 'center' }}>{Math.round((PAPER.widthMm / viewBox.w) * 100)}%</span>
         </div>
 
+        <button
+          onClick={handleAutoArrange}
+          disabled={placements.length === 0}
+          title="Alinha fileiras e colunas e re-roteia as linhas com desvio de obstáculo (Ctrl+Z desfaz)"
+          style={{ ...btnStyle(), color: placements.length ? '#333' : '#bbb', cursor: placements.length ? 'pointer' : 'not-allowed' }}
+        >
+          <Wand2 size={13} /> Organizar
+        </button>
+
         <button onClick={() => setSheetPanelOpen(o => !o)} style={btnStyle(sheetPanelOpen)}>
           <FileText size={13} /> Dados da folha
         </button>
@@ -1272,6 +1333,9 @@ export function DiagramEditor({
 
         <button onClick={handleDownloadSvg} style={btnStyle()}>
           <FileImage size={13} /> Baixar SVG
+        </button>
+        <button onClick={handleDownloadDxf} style={btnStyle()} title="AutoCAD/QCAD/LibreCAD — camadas separadas por tipo (símbolos, condutores CA/CC/terra, carimbo); fotos ficam de fora">
+          <FileImage size={13} /> Baixar DXF
         </button>
         <button
           onClick={handleDownloadPdf}
@@ -1584,9 +1648,13 @@ export function DiagramEditor({
             const pointsStr = routePoints.map(p => `${p.x},${p.y}`).join(' ');
             const waypoints = conn.waypoints ?? [];
             const isSelected = selectedConnId === conn.id;
+            const condColor = CONDUCTOR_COLOR[conn.conductor ?? 'ac'];
             return (
               <g key={conn.id}>
-                <polyline points={pointsStr} fill="none" stroke="#B0271A" strokeWidth={isSelected ? 0.7 : 0.4} />
+                <polyline
+                  points={pointsStr} fill="none" stroke={condColor} strokeWidth={isSelected ? 0.7 : 0.4}
+                  strokeDasharray={conn.conductor === 'ground' ? '2,1.4' : undefined}
+                />
                 {isSelected && (
                   <polyline points={pointsStr} fill="none" stroke="#2B8CFF" strokeWidth={1.1} strokeDasharray="2,1.5" opacity={0.5} />
                 )}
@@ -1628,7 +1696,7 @@ export function DiagramEditor({
                   <circle
                     key={i}
                     cx={wp.x} cy={wp.y} r={1.3}
-                    fill="#fff" stroke="#B0271A" strokeWidth={0.4}
+                    fill="#fff" stroke={condColor} strokeWidth={0.4}
                     style={{ cursor: linkMode ? 'crosshair' : 'move' }}
                     onMouseDown={e => handleWaypointMouseDown(e, conn.id, i, wp)}
                     onClick={e => e.stopPropagation()}
@@ -1644,7 +1712,7 @@ export function DiagramEditor({
                   return ep.kind === 'line' ? (
                     <circle
                       key={which}
-                      cx={at.x} cy={at.y} r={1.1} fill="#B0271A" stroke="#fff" strokeWidth={0.25}
+                      cx={at.x} cy={at.y} r={1.1} fill={condColor} stroke="#fff" strokeWidth={0.25}
                       style={{ cursor: linkMode ? 'crosshair' : 'move' }}
                       onMouseDown={e => handleEndpointMouseDown(e, conn.id, which, at, ep)}
                       onClick={e => e.stopPropagation()}
@@ -1813,6 +1881,12 @@ export function DiagramEditor({
                     <Copy size={13} />
                   </button>
                 </div>
+                {SERIES_KINDS.has(sel.kind) && (
+                  <p style={{ fontSize: 10.5, color: '#999', margin: 0 }}>
+                    Solte este componente em cima de uma linha pra inseri-lo <strong>no fio</strong> (a ligação
+                    se divide em entrada/saída). Removê-lo refaz a ligação direta.
+                  </p>
+                )}
                 {isManualSymbol(sel.id) && (
                   <button onClick={removeSelected} style={{ ...btnStyle(), justifyContent: 'center', color: '#A32D2D' }}>
                     <Trash2 size={13} /> Remover
@@ -1823,6 +1897,21 @@ export function DiagramEditor({
               <>
                 <p style={{ fontSize: 13, fontWeight: 700, color: '#1A1A1A', margin: 0 }}>Ligação</p>
                 <p style={{ fontSize: 11.5, color: '#777', margin: 0 }}>{labelOfEndpoint(selConn.from)} → {labelOfEndpoint(selConn.to)}</p>
+                <div>
+                  <label style={labelStyle}>Tipo de condutor</label>
+                  <select
+                    value={selConn.conductor ?? 'ac'} style={fieldStyle}
+                    onChange={e => {
+                      snapshot();
+                      const conductor = e.target.value as ConductorType;
+                      setConnections(prev => prev.map(c => (c.id === selConn.id ? { ...c, conductor: conductor === 'ac' ? undefined : conductor } : c)));
+                    }}
+                  >
+                    <option value="ac">CA (vermelho)</option>
+                    <option value="dc">CC (azul)</option>
+                    <option value="ground">Aterramento (verde tracejado)</option>
+                  </select>
+                </div>
                 <div>
                   <label style={labelStyle}>Bitola / especificação do condutor</label>
                   <input

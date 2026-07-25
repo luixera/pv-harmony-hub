@@ -8,15 +8,24 @@ const LAYER_COLOR: Record<LayerId, string> = {
   TITLE_BLOCK: '#555555',
   SYMBOLS: '#1A1A1A',
   CONDUCTOR_AC: '#B0271A',
+  CONDUCTOR_DC: '#1A56B0',
+  CONDUCTOR_GROUND: '#2D7A3A',
   TEXT_LABEL: '#333333',
   PHOTO: 'transparent',
   GROUP_BOX: '#7A7A7A',
   ANNOTATION: '#444444',
 };
 const LAYER_WIDTH: Record<LayerId, number> = {
-  FRAME: 0.5, TITLE_BLOCK: 0.3, SYMBOLS: 0.35, CONDUCTOR_AC: 0.4, TEXT_LABEL: 0, PHOTO: 0, GROUP_BOX: 0.3,
-  ANNOTATION: 0.3,
+  FRAME: 0.5, TITLE_BLOCK: 0.3, SYMBOLS: 0.35, CONDUCTOR_AC: 0.4, CONDUCTOR_DC: 0.4, CONDUCTOR_GROUND: 0.4,
+  TEXT_LABEL: 0, PHOTO: 0, GROUP_BOX: 0.3, ANNOTATION: 0.3,
 };
+
+/** Cores dos condutores por tipo — exportadas pro canvas ao vivo usar as mesmas. */
+export const CONDUCTOR_COLOR = {
+  ac: LAYER_COLOR.CONDUCTOR_AC,
+  dc: LAYER_COLOR.CONDUCTOR_DC,
+  ground: LAYER_COLOR.CONDUCTOR_GROUND,
+} as const;
 
 function pts(points: Point[]): string {
   return points.map(p => `${p.x},${p.y}`).join(' ');
@@ -29,7 +38,7 @@ export function primitiveToSvg(p: Primitive, color: string, strokeWidth: number)
     case 'line':
       return `<line x1="${p.a.x}" y1="${p.a.y}" x2="${p.b.x}" y2="${p.b.y}" stroke="${color}" stroke-width="${strokeWidth}"${p.dashed ? ` stroke-dasharray="${DASH}"` : ''} />`;
     case 'polyline':
-      return `<polyline points="${pts(p.points)}" fill="none" stroke="${color}" stroke-width="${strokeWidth}" />`;
+      return `<polyline points="${pts(p.points)}" fill="none" stroke="${color}" stroke-width="${strokeWidth}"${p.dashed ? ` stroke-dasharray="${DASH}"` : ''} />`;
     case 'rect':
       return `<rect x="${p.x}" y="${p.y}" width="${p.w}" height="${p.h}" fill="none" stroke="${color}" stroke-width="${strokeWidth}"${p.dashed ? ` stroke-dasharray="${DASH}"` : ''} />`;
     case 'circle':

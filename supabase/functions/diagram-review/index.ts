@@ -66,7 +66,39 @@ const KIND_CATALOG = `
 - distribution-panel: quadro de distribuição / quadro geral (caixa maior com divisórias internas)
 `.trim()
 
-function buildPrompt(currentJson: string, hasRender: boolean): string {
+/** Mesmo mecanismo do diagram-recognize: lições de revisões anteriores no prompt. */
+async function fetchLessons(userClient: ReturnType<typeof createClient>): Promise<string[]> {
+  try {
+    const { data } = await userClient
+      .from('diagram_ai_lessons')
+      .select('lesson')
+      .order('created_at', { ascending: false })
+      .limit(40)
+    const seen = new Set<string>()
+    const out: string[] = []
+    for (const row of (data ?? []) as { lesson: string }[]) {
+      const key = String(row.lesson).trim().toLowerCase()
+      if (!key || seen.has(key)) continue
+      seen.add(key)
+      out.push(String(row.lesson).trim())
+      if (out.length >= 10) break
+    }
+    return out
+  } catch {
+    return []
+  }
+}
+
+function lessonsSection(lessons: string[]): string {
+  if (lessons.length === 0) return ''
+  return `
+
+APRENDIZADO DE REVISÕES ANTERIORES — erros recorrentes já corrigidos em
+diagramas passados; verifique com atenção redobrada se se repetem aqui:
+${lessons.map((l) => `- ${l}`).join('\n')}`
+}
+
+function buildPrompt(currentJson: string, hasRender: boolean, lessons: string[] = []): string {
   return `Você é um ENGENHEIRO ELETRICISTA REVISOR, especialista em projetos fotovoltaicos de
 geração distribuída no Brasil e em diagramas unifilares aceitos pelas concessionárias.
 
@@ -117,7 +149,7 @@ Retorne APENAS JSON válido, sem markdown, com o diagrama COMPLETO já corrigido
   "connections": [ { "from": "c1", "to": "c2", "label": "2#6mm² + #6mm²" } ],
   "groups": [ { "title": "QG - Sistema Fotovoltaico", "x": 20, "y": 70, "w": 30, "h": 28 } ],
   "notes": ["movido o medidor pra coluna da direita, alinhado com a rede"]
-}`
+}${lessonsSection(lessons)}`
 }
 
 const KIND_ALIASES: Record<string, string> = {
@@ -208,9 +240,10 @@ Deno.serve(async (req) => {
       groups: body.current.groups ?? [],
     })
 
+    const lessons = await fetchLessons(userClient)
     const content: any[] = [imageBlock(body.original)]
     if (body.render?.base64) content.push(imageBlock(body.render))
-    content.push({ type: 'text', text: buildPrompt(currentJson, !!body.render?.base64) })
+    content.push({ type: 'text', text: buildPrompt(currentJson, !!body.render?.base64, lessons) })
 
     // Opus + adaptive thinking: a revisão é a etapa de maior valor da importação
     // (rara e crítica) — modelo mais capaz compensa aqui.
@@ -303,6 +336,15 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ ok: false, error: 'A revisão não devolveu um diagrama válido' }), {
         status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
+    }
+
+    // cada correção vira uma LIÇÃO — as próximas importações a recebem no
+    // prompt e evitam repetir o erro (best-effort; RLS aplica o tenant)
+    if (notes.length > 0) {
+      const { error: lessonErr } = await userClient
+        .from('diagram_ai_lessons')
+        .insert(notes.map((n) => ({ source: 'review', lesson: n })))
+      if (lessonErr) console.error('diagram_ai_lessons insert:', lessonErr)
     }
 
     return new Response(JSON.stringify({ ok: true, components, connections, groups, notes }), {
