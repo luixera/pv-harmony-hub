@@ -19,6 +19,8 @@ import { RevisionGeneralData, RevisionEquipment } from '@/hooks/useProjectRevisi
 import { useDocumentPreview } from '@/hooks/useDocumentPreview';
 import { detectTemplateTags, generateDocxFromTemplate } from '@/utils/docxGenerator';
 import { useEntryRules, matchEntryRule, entryRuleValues } from '@/hooks/useEntryRules';
+import { useEngineeringRuleMap } from '@/hooks/useEngineeringRules';
+import { engineeringTemplateValues } from '@/utils/engineering/templateValues';
 import { buildProjectValues as buildProjectValues_ } from '@/utils/projectValues';
 import { logEvent } from '@/lib/tracking';
 
@@ -155,6 +157,7 @@ export function GenerateDocumentDialog({
     project.concessionaire_id ?? undefined,
   );
   const { data: entryRules = [] } = useEntryRules(project.concessionaire_id ?? undefined);
+  const { ruleMap } = useEngineeringRuleMap();
 
   const preview    = useDocumentPreview();
   const previewRef = useRef<HTMLDivElement>(null);
@@ -176,10 +179,19 @@ export function GenerateDocumentDialog({
   // revisão selecionada e as colunas do padrão de entrada da concessionária.
   const buildProjectValues = (): Record<string, string> => {
     const g = revisionData?.general_data ?? project.generalData;
+    const e = revisionData?.equipment ?? project.equipment;
     const entryRule = matchEntryRule(entryRules, g?.phase_type, g?.circuit_breaker_current);
 
     return {
       ...entryRuleValues(entryRule),
+      // variáveis de engenharia (arranjo, bitolas, disjuntores) — Rules Engine
+      ...engineeringTemplateValues({
+        totalModules: e?.module_quantity,
+        modulePowerW: e?.module_power,
+        inverterPowerKw: e?.inverter_power,
+        inverterCount: e?.inverter_quantity,
+        phaseType: g?.phase_type,
+      }, ruleMap),
       ...buildProjectValues_(project, {
         generalData: revisionData?.general_data,
         equipment:   revisionData?.equipment,

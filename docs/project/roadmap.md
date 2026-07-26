@@ -73,9 +73,13 @@
   cadastro). **Padrão de entrada + auto-reorganização ✅** (jul/2026):
   bloco PADRÃO DE ENTRADA no diagrama (disjuntor do padrão com dados das
   regras da concessionária + medidor + DPS em paralelo + placa de
-  advertência `warning-sign`); >3 arranjos comprimem espaçamento e
-  reduzem escala dos ramais (A4 sempre). **Fase 3**: microinversores completos, memoriais/lista de
-  materiais consumindo o sizing, checklist, assistente. Ver
+  advertência com a FOTO REAL); >3 arranjos comprimem espaçamento e
+  reduzem escala dos ramais (A4 sempre). **Validador elétrico local ✅ +
+  memoriais ENEL/EDP ✅** (jul/2026): checklist em tempo real no diagrama
+  do projeto (sem IA, nunca bloqueia) e os 2 memoriais recriados como
+  templates com tags de engenharia (`docs/modelos-memoriais/`; SEM lista
+  de materiais — concessionárias não exigem). **Fase 3 (restante)**:
+  microinversores completos, memorial de cálculo, assistente. Ver
   [modules/engineering](../modules/engineering/overview.md) e
   [ADR 0007](../adr/0007-engineering-rules-engine.md).
 - **Extrato "Agentes de IA" no console master** ✅ (jul/2026): saldo estimado

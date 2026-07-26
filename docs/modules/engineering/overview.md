@@ -86,6 +86,36 @@ projeto (bloco "Dimensionamento elétrico"); alimentará os memoriais na
 sequência. Seções e ratings comerciais são constantes de mercado no código
 (não são regras técnicas); mínimos e fatores vêm das regras.
 
+## Validador elétrico local (checklist em tempo real)
+
+`src/utils/engineering/diagramValidator.ts` — o checklist do engenheiro SEM
+IA e sem custo por uso, recalculado a cada edição do diagrama do projeto
+(painel "Validação do diagrama" no UnifilarTab). Monta um grafo elétrico
+simplificado da cena (derivação formal conta como encostar na linha-mãe) e
+verifica: disjuntor CA no caminho de CADA inversor até o medidor (BFS que
+não atravessa proteções), DPS conectado no lado CA, **DPS no padrão de
+entrada**, medidor/rede presentes, placa de advertência, trechos
+FV→inversor como condutor CC, ligações quebradas/ciclo, componentes soltos
+e aterramento. Respeita os interruptores dos grupos (`protections`,
+`grounding`; `alerts` desligado silencia tudo) e **nunca bloqueia** —
+avisos âmbar com a sugestão de correção, em português simples.
+
+## Memoriais descritivos por concessionária
+
+Modelos recriados dos memoriais reais do usuário (ENEL e EDP), como
+templates .docx com {tags} — em [docs/modelos-memoriais/](../../modelos-memoriais/)
+(subir na tela de Templates; **sem lista de materiais** — as
+concessionárias não exigem, decisão do usuário). As tags de engenharia são
+calculadas na geração por `engineeringTemplateValues`
+(`src/utils/engineering/templateValues.ts`, ligada no
+GenerateDocumentDialog): `{arranjo_strings}` (multilinha, por
+inversor/MPPT — a MESMA melhor opção do "Usar esta"),
+`{arranjo_strings_resumo}`, `{bitola_cc}`, `{bitola_ca}`,
+`{queda_tensao_cc}`, `{queda_tensao_ca}`, `{disjuntor_ca}` (por inversor),
+`{disjuntor_geral_ca}` (potência total) e `{bitola_aterramento}` —
+registradas no catálogo de variáveis (categoria "Engenharia (Motor)").
+Sem dados/regra, resolvem vazias (o documento sai mesmo assim).
+
 ## Arquivos
 
 - `src/utils/engineering/rulesEngine.ts` — o motor (funções PURAS,

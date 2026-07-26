@@ -72,6 +72,18 @@ export const TEMPLATE_VARIABLES: TemplateVariable[] = [
   { key: 'classe_padrao',     desc: 'Classe do padrão de entrada',       category: 'Padrão de entrada', example: 'BIFÁSICO' },
   { key: 'caixa_medicao',     desc: 'Caixa de medição',                  category: 'Padrão de entrada', example: 'TIPO II' },
   // Datas
+  // Engenharia (Motor) — calculadas pelo Rules Engine na hora de gerar o
+  // documento (engineeringTemplateValues); sem dados/regra, resolvem vazias.
+  { key: 'arranjo_strings',        desc: 'Arranjo dos painéis por inversor/MPPT (multilinha)', category: 'Engenharia (Motor)', example: 'Inversor 1:\n    2 strings de 10 módulos ligadas ao MPPT1;\nTotal: 40 módulos – 2 inversores.' },
+  { key: 'arranjo_strings_resumo', desc: 'Arranjo dos painéis em uma linha', category: 'Engenharia (Motor)', example: '2 strings × 10 módulos' },
+  { key: 'bitola_cc',              desc: 'Bitola CC sugerida (string→inversor)', category: 'Engenharia (Motor)', example: '6 mm²' },
+  { key: 'bitola_ca',              desc: 'Bitola CA sugerida (inversor→quadro)', category: 'Engenharia (Motor)', example: '6 mm²' },
+  { key: 'queda_tensao_cc',        desc: 'Queda de tensão CC estimada',          category: 'Engenharia (Motor)', example: '1,20%' },
+  { key: 'queda_tensao_ca',        desc: 'Queda de tensão CA estimada',          category: 'Engenharia (Motor)', example: '2,10%' },
+  { key: 'disjuntor_ca',           desc: 'Disjuntor CA sugerido por inversor',   category: 'Engenharia (Motor)', example: '32A' },
+  { key: 'disjuntor_geral_ca',     desc: 'Disjuntor geral CA sugerido (todos os arranjos)', category: 'Engenharia (Motor)', example: '63A' },
+  { key: 'bitola_aterramento',     desc: 'Bitola do condutor de aterramento',    category: 'Engenharia (Motor)', example: '6 mm²' },
+
   { key: 'data',              desc: 'Data de hoje',                      category: 'Datas',        example: '15/07/2026' },
   { key: 'data_emissao',      desc: 'Data de emissão (hoje)',            category: 'Datas',        example: '15/07/2026' },
   { key: 'data_atual',        desc: 'Data atual — alias de {data}',      category: 'Datas',        example: '15/07/2026' },

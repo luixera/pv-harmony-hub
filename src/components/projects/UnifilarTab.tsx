@@ -1,5 +1,5 @@
-import { useMemo, useRef, useState } from 'react';
-import { AlertTriangle, FlaskConical, LayoutTemplate, Lightbulb, Loader2 } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { AlertTriangle, FlaskConical, LayoutTemplate, Lightbulb, Loader2, ShieldCheck } from 'lucide-react';
 import { ProjectWithDetails } from '@/hooks/useProjects';
 import { buildTechnicalJsonFromProject } from '@/utils/cadEngine/buildTechnicalJson';
 import {
@@ -17,6 +17,7 @@ import { useEngineeringRuleMap } from '@/hooks/useEngineeringRules';
 import {
   ProjectArrangementOption, ruleValue, suggestElectricalSizing, suggestProjectArrangement,
 } from '@/utils/engineering/rulesEngine';
+import { validateDiagram } from '@/utils/engineering/diagramValidator';
 
 /**
  * Diagrama Unifilar do projeto — o `DiagramEditor` compartilhado alimentado
@@ -145,7 +146,12 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
   }, [project.id, json, dbScene, applied]);
 
   const debounceRef = useRef<number | null>(null);
+  // Cópia viva da cena pro VALIDADOR (o editor é quem manda o estado a cada
+  // mudança; o autosave continua com o debounce dele).
+  const [liveState, setLiveState] = useState<DiagramSceneState | null>(null);
+  useEffect(() => { setLiveState(null); }, [initialState]); // reseed → volta a validar o estado inicial
   const handleStateChange = (state: DiagramSceneState) => {
+    setLiveState(state);
     if (debounceRef.current) window.clearTimeout(debounceRef.current);
     debounceRef.current = window.setTimeout(() => {
       saveDiagram.mutate({ projectId: project.id, sceneData: state });
@@ -185,6 +191,13 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
       phaseType,
     }, ruleMap);
   }, [suggestOpen, ruleMap, project.equipment, project.generalData]);
+
+  // ── Validador elétrico local (checklist do engenheiro, sem IA) ───────────
+  const [validationOpen, setValidationOpen] = useState(false);
+  const validation = useMemo(
+    () => validateDiagram(liveState ?? initialState, ruleMap),
+    [liveState, initialState, ruleMap],
+  );
 
   /** "Usar esta": gera o diagrama na topologia multi-arranjo (1 disjuntor CA
    *  por arranjo, junção em nó, disjuntor geral opcional por regra, DPS em
@@ -340,6 +353,61 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
                 </p>
               </div>
             )}
+          </div>
+        )}
+      </div>
+      {/* Validador elétrico local — checklist do engenheiro em tempo real (nunca bloqueia) */}
+      <div style={{
+        display: 'flex', flexDirection: 'column', gap: 8,
+        background: validation.warningCount > 0 ? '#FFF7E6' : '#F3FAF4',
+        border: `1px solid ${validation.warningCount > 0 ? '#FDE4A8' : '#BEE3C8'}`,
+        borderRadius: 10, padding: '10px 14px',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <ShieldCheck size={15} style={{ color: validation.warningCount > 0 ? '#854F0B' : '#2D7A3A', flexShrink: 0 }} />
+          <p style={{ fontSize: 12, margin: 0, flex: 1, color: validation.warningCount > 0 ? '#854F0B' : '#2D7A3A' }}>
+            <strong>Validação do diagrama:</strong>{' '}
+            {validation.silenced
+              ? 'alertas desligados nas Regras de Engenharia (grupo Alertas).'
+              : validation.warningCount > 0
+                ? `${validation.warningCount} aviso(s)${validation.infoCount > 0 ? ` e ${validation.infoCount} observação(ões)` : ''} — nada bloqueia, mas o analista da concessionária vai olhar.`
+                : validation.infoCount > 0
+                  ? `sem avisos · ${validation.infoCount} observação(ões) (${validation.okCount} verificações ok).`
+                  : `diagrama conforme — ${validation.okCount} verificações ok.`}
+          </p>
+          <button
+            onClick={() => setValidationOpen(o => !o)}
+            style={{
+              padding: '5px 12px', borderRadius: 7, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+              border: `1px solid ${validation.warningCount > 0 ? '#854F0B' : '#2D7A3A'}`,
+              background: validationOpen ? (validation.warningCount > 0 ? '#854F0B' : '#2D7A3A') : '#fff',
+              color: validationOpen ? '#fff' : (validation.warningCount > 0 ? '#854F0B' : '#2D7A3A'),
+            }}
+          >
+            {validationOpen ? 'Fechar' : 'Ver checklist'}
+          </button>
+        </div>
+        {validationOpen && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {validation.checks.map(c => (
+              <div key={c.id} style={{
+                display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 11.5, borderRadius: 8,
+                padding: '6px 10px', background: '#fff',
+                border: `1px solid ${c.status === 'warning' ? '#FDE4A8' : c.status === 'info' ? '#BFDBFE' : '#DDEEE2'}`,
+              }}>
+                <span style={{
+                  flexShrink: 0, marginTop: 1, fontWeight: 700,
+                  color: c.status === 'ok' ? '#2D7A3A' : c.status === 'warning' ? '#854F0B' : '#1D4ED8',
+                }}>
+                  {c.status === 'ok' ? '✓' : c.status === 'warning' ? '⚠' : 'ℹ'}
+                </span>
+                <span style={{ color: '#333' }}>
+                  <strong>{c.label}.</strong>{' '}
+                  {c.detail ? <span>{c.detail} </span> : null}
+                  {c.suggestion ? <span style={{ color: '#666' }}>{c.suggestion}</span> : null}
+                </span>
+              </div>
+            ))}
           </div>
         )}
       </div>

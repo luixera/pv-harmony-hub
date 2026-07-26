@@ -92,6 +92,19 @@ sempre ≥2 sugestões quando houver mais de uma opção válida.
   (espaçamento comprime e os símbolos do ramal reduzem de escala até
   0,6×) em vez de crescer a prancha — A4 é o formato aceito nas
   homologações; o padrão de entrada nunca reduz.
-- **Fase 3**: microinversores completos (cadastro + ramais), memoriais/
-  lista de materiais consumindo o sizing, checklist e assistente; fluxo
+- **Validador elétrico local + memoriais (jul/2026 — início da Fase 3)**:
+  (a) `diagramValidator.ts` valida a CENA contra as regras em tempo real
+  (grafo elétrico simplificado; BFS inversor→medidor sem atravessar
+  proteção; DPS no CA e no padrão; placa; condutor CC; ligações quebradas;
+  isolados; aterramento) — decisões: é um módulo-PONTE (consome cadEngine
+  E rulesEngine; o rulesEngine segue sem conhecer o desenho), respeita os
+  interruptores de grupo e nunca bloqueia. (b) memoriais ENEL e EDP
+  recriados dos modelos reais do usuário como templates .docx com tags;
+  as variáveis de engenharia (`engineeringTemplateValues`) entram na
+  geração de documentos — o arranjo do memorial é a MESMA melhor opção do
+  "Usar esta" (uma só fonte de verdade). Decisão do usuário: **sem lista
+  de materiais** (as concessionárias não exigem); cada concessionária tem
+  seu layout próprio de memorial.
+- **Fase 3 (restante)**: microinversores completos (cadastro + ramais),
+  memorial de cálculo, assistente; fluxo
   Projeto→Motor→Validação→Sugestões→CAD→Documentação fechado.

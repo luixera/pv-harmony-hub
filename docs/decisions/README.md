@@ -5,6 +5,18 @@ Registro de decisões de produto/UX (não arquiteturais — essas ficam em
 
 ## Log
 
+- **Validador elétrico + memoriais ENEL/EDP** (jul/2026): dos próximos
+  passos propostos, o usuário escolheu "vamos iniciar pelo validador
+  elétrico e pela confecção de 2 memoriais descritivos", enviando os
+  modelos reais da ENEL e da EDP. Decisões de produto: **sem lista de
+  equipamentos/materiais** ("as concessionárias não exigem isso"); cada
+  concessionária tem seu PRÓPRIO layout de memorial (os dois modelos foram
+  recriados como templates .docx com tags, em docs/modelos-memoriais/,
+  para subir na tela de Templates); o arranjo de strings no memorial é a
+  mesma melhor sugestão do Motor de Engenharia ("Usar esta") e as
+  bitolas/disjuntores vêm do dimensionamento pelas regras. O validador
+  roda em tempo real no diagrama do projeto, sem IA, e nunca bloqueia.
+  (jul/2026)
 - **Placas de advertência: FOTO REAL nativa no diagrama** (jul/2026): o
   usuário enviou as fotos das placas exigidas e pediu — explicitamente
   ("quero a imagem nativa no diagrama, não uma representação") — que a
