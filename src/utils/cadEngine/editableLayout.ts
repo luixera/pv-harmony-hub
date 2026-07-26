@@ -718,10 +718,21 @@ export function findLineSnapPoint(
   radius = SNAP_RADIUS,
 ): { connId: string; t: number; point: Point; snap: 'end' | 'intersection' } | null {
   const usable = connections.filter(c => !excludeIds?.has(c.id) && allPts.has(c.id));
+  const byConnId = new Map(connections.map(c => [c.id, c]));
+  // Prioridade quando dois candidatos empatam na distância (o caso das
+  // interseções, em que o MESMO ponto pertence às duas linhas): prefere a
+  // linha que NÃO é derivação da outra — grudar na derivada faria a junção
+  // pular de lugar quando a linha-mãe se movesse.
+  const rank = (snap: 'end' | 'intersection') => (snap === 'end' ? 0 : 1);
   let best: { connId: string; t: number; point: Point; snap: 'end' | 'intersection'; dist: number } | null = null;
   const consider = (connId: string, point: Point, snap: 'end' | 'intersection') => {
     const dist = Math.hypot(pt.x - point.x, pt.y - point.y);
-    if (dist > radius || (best && dist >= best.dist)) return;
+    if (dist > radius) return;
+    if (best) {
+      const closer = dist < best.dist - 0.01;
+      const tied = Math.abs(dist - best.dist) <= 0.01;
+      if (!closer && !(tied && rank(snap) < rank(best.snap))) return;
+    }
     const onLine = nearestPointOnPolyline(point, allPts.get(connId)!);
     best = { connId, t: onLine?.t ?? 0, point, snap, dist };
   };
@@ -730,14 +741,32 @@ export function findLineSnapPoint(
     consider(c.id, pts[0], 'end');
     consider(c.id, pts[pts.length - 1], 'end');
   }
+  /** O ponto é (quase) uma das pontas da linha? Aí já foi tratado como 'end' —
+   *  contar de novo como interseção criava um alvo fantasma em cima de cada
+   *  junção que já existe. */
+  const isEndpointOf = (connId: string, p: Point) => {
+    const pts = allPts.get(connId)!;
+    const near = (q: Point) => Math.hypot(q.x - p.x, q.y - p.y) < 0.2;
+    return near(pts[0]) || near(pts[pts.length - 1]);
+  };
   for (let i = 0; i < usable.length; i++) {
-    const pa = allPts.get(usable[i].id)!;
+    const ca = usable[i];
+    const pa = allPts.get(ca.id)!;
     for (let j = i + 1; j < usable.length; j++) {
-      const pb = allPts.get(usable[j].id)!;
+      const cb = usable[j];
+      const pb = allPts.get(cb.id)!;
       for (let si = 0; si < pa.length - 1; si++) {
         for (let sj = 0; sj < pb.length - 1; sj++) {
           const x = segmentIntersection(pa[si], pa[si + 1], pb[sj], pb[sj + 1]);
-          if (x) consider(usable[i].id, x, 'intersection');
+          if (!x) continue;
+          if (isEndpointOf(ca.id, x) || isEndpointOf(cb.id, x)) continue; // é ponta, não cruzamento
+          // a interseção pertence às DUAS linhas: oferece as duas e deixa o
+          // desempate escolher a mãe (antes gravava sempre na primeira do par,
+          // o que fazia a derivação grudar numa linha arbitrária)
+          const aDependsOnB = connectionDependsOn(ca, cb.id, byConnId);
+          const bDependsOnA = connectionDependsOn(cb, ca.id, byConnId);
+          if (!aDependsOnB) consider(ca.id, x, 'intersection');
+          if (!bDependsOnA) consider(cb.id, x, 'intersection');
         }
       }
     }
@@ -759,6 +788,45 @@ export function connectionDependsOn(
     if (parent && connectionDependsOn(parent, targetId, byConnId, depth + 1)) return true;
   }
   return false;
+}
+
+/**
+ * Plano pra EXCLUIR UM TRECHO de um condutor (pedido do usuário: "quero
+ * conseguir excluir um traço de linha, hoje só consigo movimentá-lo").
+ * Trabalha sobre o traçado real (`full`), então funciona igual em linha
+ * roteada automaticamente e em linha com dobras manuais:
+ *
+ * - único trecho da linha  → a ligação inteira sai (devolve []);
+ * - trecho de uma PONTA    → a linha encolhe e a ponta vira livre;
+ * - trecho do MEIO         → a ligação vira DUAS, com pontas livres na
+ *                            falha (é o comportamento de CAD esperado).
+ *
+ * As ligações devolvidas ganham ids novos quando há divisão, pra não
+ * herdarem derivações que apontavam pro traçado antigo (quem chama passa
+ * o id original por `detachDerivations`).
+ */
+export function deleteSegmentPlan(
+  conn: ManualConnection,
+  full: Point[],
+  segIndex: number,
+): ManualConnection[] {
+  const last = full.length - 2; // índice do último trecho
+  if (full.length < 2 || segIndex < 0 || segIndex > last) return [conn];
+  if (full.length === 2) return []; // linha de um trecho só: some inteira
+
+  const freePoint = (p: Point): ConnectionEndpoint => ({ kind: 'point', at: { x: p.x, y: p.y } });
+  const rest = { conductor: conn.conductor, label: conn.label };
+
+  if (segIndex === 0) {
+    return [{ ...conn, from: freePoint(full[1]), waypoints: full.slice(2, -1) }];
+  }
+  if (segIndex === last) {
+    return [{ ...conn, to: freePoint(full[full.length - 2]), waypoints: full.slice(1, -2) }];
+  }
+  return [
+    { id: `${conn.id}-a`, from: conn.from, to: freePoint(full[segIndex]), waypoints: full.slice(1, segIndex), ...rest },
+    { id: `${conn.id}-b`, from: freePoint(full[segIndex + 1]), to: conn.to, waypoints: full.slice(segIndex + 2, -1), ...rest },
+  ];
 }
 
 /**
@@ -955,18 +1023,23 @@ export function buildMultiArrangementScene(options: {
    *  ENEL; 'generic' (padrão) = placa amarela CUIDADO/GERAÇÃO PRÓPRIA
    *  (CPFL e demais concessionárias). */
   warningVariant?: 'generic' | 'enel';
+  /** Nome da concessionária — vira o rótulo da rede ("Rede – CPFL"). */
+  utilityName?: string;
 }): DiagramSceneState {
   const n = Math.max(1, options.inverterCount);
   const includeGB = options.includeGeneralBreaker !== false;
   const includeLoads = options.includeLoadsReference !== false;
   const uid = (() => { let i = 0; return (kind: string) => `manual-${kind}-arr${++i}`; })();
 
-  // colunas (x do canto sup-esq; caixa 24×20) e linhas dos arranjos
-  const X_PV = 20, X_INV = 58, X_CB = 96;
-  const X_JUNC = 124;                       // x do nó de junção dos arranjos
-  const X_GB = 130;                         // disjuntor geral (se incluído)
-  const X_EB = 180;                         // disjuntor do padrão de entrada
-  const X_METER = 212, X_GRID = 260;
+  // Colunas (x do canto sup-esq; caixa 24×20). TUDO fica à esquerda de
+  // LEGEND_X0 (235): a coluna da direita é reservada à tabela de LEGENDA, que
+  // cresce com o nº de símbolos — desenhar por baixo dela deixava o tracejado
+  // do padrão de entrada em cima da legenda (relato do usuário).
+  const X_PV = 18, X_INV = 54, X_CB = 90;
+  const X_JUNC = 116;                       // x do nó de junção dos arranjos
+  const X_GB = 122;                         // disjuntor geral (se incluído)
+  const X_EB = 156;                         // disjuntor do padrão de entrada
+  const X_METER = 182, X_GRID = 208;
   const MID_TOP = 110;                      // y do tronco CA (portas em MID_TOP+10) — abaixo da tabela de legenda, que ocupa o canto sup-direito até ~108mm
   const ROW_GAP = 36;
   const midY = MID_TOP + 10;
@@ -1005,7 +1078,9 @@ export function buildMultiArrangementScene(options: {
   // ── Padrão de entrada: disjuntor do padrão + medidor + DPS + placa ──
   const entryBreaker = sym('breaker', X_EB, MID_TOP, 'Disjuntor do Padrão', options.entryBreakerLegend ?? []);
   const meter = sym('meter-bidirectional', X_METER, MID_TOP, 'Medidor', options.meterLegend ?? []);
-  const grid = sym('utility-grid', X_GRID, MID_TOP, 'Rede');
+  // rótulo da rede com o nome da concessionária ("Rede – CPFL") — pedido do
+  // usuário: o analista identifica de cara de quem é a rede do desenho
+  const grid = sym('utility-grid', X_GRID, MID_TOP, options.utilityName ? `Rede – ${options.utilityName}` : 'Rede');
 
   // tronco: do disjuntor do 1º arranjo até o próximo elemento, dobrando no nó
   const trunkTo: ConnectionEndpoint = gb
@@ -1055,20 +1130,21 @@ export function buildMultiArrangementScene(options: {
   // DPS pós-junção (paralelo, abaixo) + cargas do local (referência, acima) +
   // DPS do padrão de entrada (paralelo ao disjuntor do padrão) — todos
   // derivações formais com t calculado da geometria real
-  const dps = sym('dps', 148, MID_TOP + 26, 'DPS CA');
+  const dps = sym('dps', 130, MID_TOP + 26, 'DPS CA');
   // cargas ficam acima e à esquerda do padrão de entrada (rótulo não pode
   // colidir com o título da caixa "PADRÃO DE ENTRADA")
   const loadsPanel = includeLoads
-    ? sym('distribution-panel', 146, MID_TOP - 46, 'Cargas do local', ['(apenas referência)'])
+    ? sym('distribution-panel', 128, MID_TOP - 46, 'Cargas do local', ['(apenas referência)'])
     : null;
-  const entryDps = sym('dps', 197, MID_TOP + 26, 'DPS do Padrão');
+  const entryDps = sym('dps', 168, MID_TOP + 26, 'DPS do Padrão');
   // placa de advertência: a FOTO REAL entra nativa no diagrama (pedido do
   // usuário — não é redesenho); sem ligação elétrica, dentro do bloco do padrão
   const plate = options.warningVariant === 'enel' ? WARNING_PLATE_ENEL : WARNING_PLATE_GENERIC;
   const photos: PlacedPhoto[] = [{
     id: uid('plate'), href: plate.href,
-    // um pouco mais baixa que os DPS pra não cobrir o rótulo do medidor
-    x: 230 + (24 - plate.w) / 2, y: MID_TOP + 30, w: plate.w, h: plate.h,
+    // ACIMA do medidor: embaixo ela cobria os rótulos do disjuntor do padrão
+    // e do DPS (os três dividem a mesma faixa de texto)
+    x: X_METER + (24 - plate.w) / 2, y: MID_TOP - 28, w: plate.w, h: plate.h,
   }];
   {
     const byId = new Map(placements.map(p => [p.id, p]));
@@ -1077,13 +1153,13 @@ export function buildMultiArrangementScene(options: {
     const tapT = (pts: Point[], x: number) => nearestPointOnPolyline({ x, y: midY }, pts)!.t;
     connections.push({
       id: 'manual-dps-arr',
-      from: { kind: 'line', connId: busConnId, t: tapT(busPts, 160) },
+      from: { kind: 'line', connId: busConnId, t: tapT(busPts, 142) },
       to: { kind: 'port', id: dps.id, port: 'topo' },
     });
     if (loadsPanel) {
       connections.push({
         id: 'manual-loads-arr',
-        from: { kind: 'line', connId: busConnId, t: tapT(busPts, 170) },
+        from: { kind: 'line', connId: busConnId, t: tapT(busPts, 152) },
         to: { kind: 'port', id: loadsPanel.id, port: 'entrada' },
       });
     }
@@ -1091,17 +1167,19 @@ export function buildMultiArrangementScene(options: {
     const entryPts = allPts.get('manual-entry-arr')!;
     connections.push({
       id: 'manual-entrydps-arr',
-      from: { kind: 'line', connId: 'manual-entry-arr', t: tapT(entryPts, 209) },
+      from: { kind: 'line', connId: 'manual-entry-arr', t: tapT(entryPts, 180) },
       to: { kind: 'port', id: entryDps.id, port: 'topo' },
     });
   }
 
-  // caixa de grupo do padrão de entrada — arrastar a caixa move o bloco todo
+  // Caixa de grupo do padrão de entrada — arrastar a caixa move o bloco todo.
+  // Vai só até o medidor: a REDE fica fora (não faz parte do padrão) e a caixa
+  // inteira mora à esquerda da coluna da legenda.
   const groups: PlacedGroup[] = [{
     id: uid('group'),
     title: 'PADRÃO DE ENTRADA',
-    // altura folgada: os rótulos dos DPS/placa (embaixo dos símbolos) ficam DENTRO da caixa
-    x: X_EB - 4, y: MID_TOP - 6, w: 258 - (X_EB - 4), h: 64,
+    // engloba a placa (acima do medidor) e os rótulos dos DPS (abaixo)
+    x: X_EB - 4, y: MID_TOP - 32, w: (X_METER + 24 + 4) - (X_EB - 4), h: 90,
     style: 'dashed', moveContents: true,
   }];
 

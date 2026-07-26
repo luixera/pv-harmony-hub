@@ -224,6 +224,7 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
       // ENEL usa a placa própria (AVISO / RETORNO GERADOR DE ENERGIA);
       // CPFL e demais usam a placa amarela CUIDADO / GERAÇÃO PRÓPRIA
       warningVariant: (project.concessionaireName ?? '').toLowerCase().includes('enel') ? 'enel' : 'generic',
+      utilityName: project.concessionaireName ?? undefined,
     });
     setApplied(prev => ({ v: (prev?.v ?? 0) + 1, state }));
     setSuggestOpen(false);

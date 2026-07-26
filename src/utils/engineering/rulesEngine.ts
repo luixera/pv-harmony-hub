@@ -138,6 +138,8 @@ interface StringWindow {
   mppts: number;
   perMppt: number;
   approximate: boolean; // true = calculado por fallback (sem datasheet)
+  /** Motivo do teto de módulos por string, quando um limite das regras mandou. */
+  capReason: string | null;
 }
 
 /** Janela válida de módulos por string + capacidade de strings do inversor. */
@@ -162,10 +164,29 @@ function stringWindow(inv: InverterSpecs, mod: ModuleSpecs, rules: RuleMap): Str
     minN = ruleValue(rules, 'strings.min_modules_per_string', 6);
     maxN = ruleValue(rules, 'strings.max_modules_per_string', 24);
   }
+
+  // TETO de módulos por string — vale SEMPRE, com ou sem datasheet. (Antes só
+  // era aplicado no fallback: quem tinha tensões no catálogo via a regra ser
+  // ignorada e recebia strings longas demais.) Inversores pequenos têm um
+  // teto próprio, mais apertado, porque a janela de tensão do MPPT deles não
+  // comporta strings longas.
+  let capReason: string | null = null;
+  const hardMax = ruleValue(rules, 'strings.max_modules_per_string', 24);
+  if (maxN > hardMax) {
+    maxN = hardMax;
+    capReason = `limite de ${hardMax} módulos por string das Regras de Engenharia`;
+  }
+  const smallKw = ruleValue(rules, 'strings.small_inverter_kw_limit', 10);
+  const smallMax = ruleValue(rules, 'strings.max_modules_small_inverter', 11);
+  if (inv.powerKw && inv.powerKw <= smallKw && maxN > smallMax) {
+    maxN = smallMax;
+    capReason = `limite de ${smallMax} módulos por string para inversores de até ${smallKw} kW`;
+  }
+
   const approximate = !hasVoltageData
     || inv.mpptCount === undefined || inv.stringsPerMppt === undefined
     || inv.mpptVminV === undefined || inv.mpptVmaxV === undefined || inv.maxDcVoltageV === undefined;
-  return { minN: Math.max(1, minN), maxN: Math.max(1, maxN), mppts, perMppt, approximate };
+  return { minN: Math.max(1, minN), maxN: Math.max(1, maxN), mppts, perMppt, approximate, capReason };
 }
 
 /** Distribui `count` strings entre `mppts` MPPTs, o mais equilibrado possível. */
@@ -252,11 +273,20 @@ export function suggestStringArrangements(
     alerts.push({
       severity: 'warning',
       code: 'no_valid_arrangement',
-      message: `Não achei um arranjo válido pra ${totalModules} módulos neste inversor (janela de ${w.minN} a ${w.maxN} módulos por string, até ${maxStrings} strings).`,
+      message: `Não achei um arranjo válido pra ${totalModules} módulos neste inversor (janela de ${w.minN} a ${w.maxN} módulos por string${w.capReason ? `, pelo ${w.capReason}` : ''}, até ${maxStrings} strings).`,
       suggestion: 'Ajuste a quantidade de módulos, use outro inversor ou revise as regras do Grupo Strings.',
       source: ruleSource(rules, 'strings.min_modules_per_string'),
     });
-  } else if (candidates.length === 1) {
+  } else if (w.capReason) {
+    alerts.push({
+      severity: 'info',
+      code: 'string_cap_applied',
+      message: `Strings limitadas a ${w.maxN} módulos pelo ${w.capReason}.`,
+      suggestion: 'Pra mudar, ajuste o Grupo Strings nas Regras de Engenharia.',
+      source: ruleSource(rules, 'strings.max_modules_per_string'),
+    });
+  }
+  if (candidates.length === 1) {
     alerts.push({
       severity: 'info',
       code: 'single_arrangement',

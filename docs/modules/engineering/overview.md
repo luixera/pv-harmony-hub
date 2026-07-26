@@ -50,7 +50,7 @@ um fallback neutro. Toda alteração vira histórico automático
 
 | # | group_key | O que controla | Fase |
 |---|---|---|---|
-| 1 | `strings` | módulos/string, MPPTs, faixas de tensão, fator Voc a frio, equilíbrio | **1 ✅** |
+| 1 | `strings` | módulos/string (teto geral + teto de inversor pequeno), MPPTs, faixas de tensão, fator Voc a frio, equilíbrio | **1 ✅** |
 | 2 | `inverter_distribution` | divisão módulos/potência entre inversores | **1 ✅** |
 | 3 | `arrays` | topologias do arranjo | **1 ✅** (via orquestrador) |
 | 4 | `microinverters` | limites por ramal/circuito | 3 (regras já semeadas) |
@@ -85,6 +85,16 @@ fator × corrente, DPS/aterramento pelas regras. Exibido no painel do
 projeto (bloco "Dimensionamento elétrico"); alimentará os memoriais na
 sequência. Seções e ratings comerciais são constantes de mercado no código
 (não são regras técnicas); mínimos e fatores vêm das regras.
+
+## Teto de módulos por string (correção jul/2026)
+
+`strings.max_modules_per_string` vale **sempre** — antes só era aplicado
+quando o equipamento não tinha datasheet no catálogo, então quem ajustava
+a regra via ela ser ignorada e recebia strings longas demais. Além dele,
+inversores pequenos têm teto próprio: `strings.small_inverter_kw_limit`
+(padrão 10 kW) + `strings.max_modules_small_inverter` (padrão 11 módulos).
+Quando um teto corta a janela, o motor explica no alerta
+`string_cap_applied` qual regra mandou.
 
 ## Validador elétrico local (checklist em tempo real)
 

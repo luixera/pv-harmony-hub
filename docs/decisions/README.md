@@ -5,6 +5,23 @@ Registro de decisões de produto/UX (não arquiteturais — essas ficam em
 
 ## Log
 
+- **UX de linhas, folha e teto de string** (jul/2026): lote de ajustes do
+  usuário usando o motor de verdade. (1) "Não consigo excluir um traço de
+  linha, só movimentar" → agora dá pra apagar UM trecho (Delete no traço
+  clicado ou menu de contexto): trecho de ponta encurta a linha, trecho do
+  meio parte em duas. (2) Bugs de interseção: o encaixe grudava sempre na
+  primeira linha do par (a junção pulava de lugar quando a outra se movia)
+  e cada junção existente virava uma "interseção fantasma" — os dois
+  corrigidos. (3) O tracejado do PADRÃO DE ENTRADA cobria a tabela de
+  legenda: o desenho automático passou a respeitar a coluna reservada da
+  legenda (nada além de x=235). (4) Símbolo da rede virou um POSTE de
+  distribuição (cruzeta + isoladores) e o rótulo passou a nomear a
+  concessionária ("Rede – CPFL"). (5) **Bug de regra**: o teto de módulos
+  por string só era aplicado quando o equipamento NÃO tinha datasheet — por
+  isso o ajuste do usuário "não surtia efeito" e apareciam strings de 14/16
+  módulos em inversor pequeno. O teto agora vale sempre, e há regra nova:
+  inversores até 10 kW → no máximo 11 módulos por string (ambos editáveis
+  nas Regras de Engenharia). (jul/2026)
 - **Validador elétrico + memoriais ENEL/EDP** (jul/2026): dos próximos
   passos propostos, o usuário escolheu "vamos iniciar pelo validador
   elétrico e pela confecção de 2 memoriais descritivos", enviando os

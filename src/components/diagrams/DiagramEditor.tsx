@@ -10,7 +10,7 @@ import {
   PlacedShape, PlacedSymbol, PlacedText, SheetOptions, blockCenter, buildSceneFromPlacement, buildSheetFurnitureScene,
   computeAllConnectionPoints, connectionDependsOn, connectionLabelPosition, detachDerivations, findNearestPort,
   findLineSnapPoint, findNearestSymbol, healConnectionsThrough, initialConnections, initialPlacement,
-  nearestPointOnPolyline, orthogonalPath, orthoSnapPoint, pointAtT, portPagePosition, segmentDragPlan,
+  deleteSegmentPlan, nearestPointOnPolyline, orthogonalPath, orthoSnapPoint, pointAtT, portPagePosition, segmentDragPlan,
   SERIES_KINDS, shapePrimitives, SNAP_RADIUS, snapToGrid, splitConnectionAtSymbol, usedConductorsOf, usedKindsOf,
 } from '@/utils/cadEngine/editableLayout';
 import { ComponentKind, Point, TechnicalJsonMvp } from '@/utils/cadEngine/types';
@@ -102,7 +102,10 @@ export function DiagramEditor({
   /** Prévia elástica do desenho de linha: onde o cursor está agora (já com encaixe ortogonal). */
   const [hoverPt, setHoverPt] = useState<Point | null>(null);
   /** Menu de contexto (botão direito) — posição em px da janela + o alvo clicado. */
-  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; kind: 'symbol' | 'conn' | 'group' | 'shape' | 'photo' | 'text'; id: string } | null>(null);
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; kind: 'symbol' | 'conn' | 'group' | 'shape' | 'photo' | 'text'; id: string; seg?: number } | null>(null);
+  /** Trecho da ligação selecionada que recebeu o último clique — é ele que o
+   *  Delete apaga (excluir UM traço, não a linha toda). */
+  const [selectedSegIndex, setSelectedSegIndex] = useState<number | null>(null);
   /** Símbolo sob o mouse — só ele mostra as bolinhas de porta (menos ruído visual). */
   const [hoveredSymbolId, setHoveredSymbolId] = useState<string | null>(null);
   /** Ligação sob o mouse — mostra as alças de ponta (esticar) mesmo sem selecionar. */
@@ -117,7 +120,7 @@ export function DiagramEditor({
   const clearSelection = () => {
     setSelectedId(null); setSelectedIds(new Set());
     setSelectedPhotoId(null); setSelectedTextId(null); setSelectedConnId(null); setSelectedGroupId(null);
-    setSelectedShapeId(null);
+    setSelectedShapeId(null); setSelectedSegIndex(null);
   };
 
   // ── Desfazer/refazer ──────────────────────────────────────────────────────
@@ -588,18 +591,18 @@ export function DiagramEditor({
   };
 
   // Botão direito num elemento: seleciona e abre o menu de contexto ali.
-  const openCtxMenu = (e: React.MouseEvent, kind: NonNullable<typeof ctxMenu>['kind'], id: string) => {
+  const openCtxMenu = (e: React.MouseEvent, kind: NonNullable<typeof ctxMenu>['kind'], id: string, seg?: number) => {
     if (linkMode) return;
     e.preventDefault();
     e.stopPropagation();
     clearSelection();
     if (kind === 'symbol') { setSelectedId(id); setSelectedIds(new Set([id])); }
-    else if (kind === 'conn') setSelectedConnId(id);
+    else if (kind === 'conn') { setSelectedConnId(id); setSelectedSegIndex(seg ?? null); }
     else if (kind === 'group') setSelectedGroupId(id);
     else if (kind === 'shape') setSelectedShapeId(id);
     else if (kind === 'photo') setSelectedPhotoId(id);
     else setSelectedTextId(id);
-    setCtxMenu({ x: e.clientX, y: e.clientY, kind, id });
+    setCtxMenu({ x: e.clientX, y: e.clientY, kind, id, seg });
   };
 
   // Onde uma ponta de ligação "está" na tela agora — usado pela prévia do
@@ -820,7 +823,23 @@ export function DiagramEditor({
     snapshot();
     // derivações que nasciam desta linha não somem junto: viram ponto fixo na posição atual
     setConnections(prev => detachDerivations(prev, new Set([id]), allConnPoints));
-    if (selectedConnId === id) setSelectedConnId(null);
+    if (selectedConnId === id) { setSelectedConnId(null); setSelectedSegIndex(null); }
+  };
+
+  /** Excluir UM TRECHO: apaga só aquele traço — a linha encolhe (trecho de
+   *  ponta) ou se parte em duas (trecho do meio). Ver `deleteSegmentPlan`. */
+  const removeSegment = (connId: string, segIndex: number) => {
+    const conn = connections.find(c => c.id === connId);
+    const full = allConnPoints.get(connId);
+    if (!conn || !full || full.length < 2) return;
+    snapshot();
+    const replacements = deleteSegmentPlan(conn, full, segIndex);
+    setConnections(prev => [
+      ...detachDerivations(prev, new Set([connId]), allConnPoints),
+      ...replacements,
+    ]);
+    setSelectedConnId(null);
+    setSelectedSegIndex(null);
   };
 
   const handleConnMouseDown = (e: React.MouseEvent, connId: string, segIndex?: number) => {
@@ -837,6 +856,7 @@ export function DiagramEditor({
     // pela alça ✛ (ver handleWholeLineMouseDown). Clique sem arrastar =
     // só seleciona.
     setSelectedConnId(connId);
+    setSelectedSegIndex(segIndex); // Delete apaga ESTE trecho
     setSelectedId(null); setSelectedIds(new Set());
     setSelectedPhotoId(null); setSelectedTextId(null); setSelectedGroupId(null); setSelectedShapeId(null);
     const seg = segmentDragPlan(full, segIndex);
@@ -954,8 +974,14 @@ export function DiagramEditor({
       return;
     }
     if (selectedConnId) {
+      // Delete com um TRECHO clicado apaga só aquele traço (a linha encolhe
+      // ou se parte em duas); sem trecho, apaga a ligação inteira.
+      if (selectedSegIndex !== null) {
+        removeSegment(selectedConnId, selectedSegIndex);
+        return;
+      }
       snapshot();
-      setConnections(prev => prev.filter(c => c.id !== selectedConnId));
+      setConnections(prev => detachDerivations(prev, new Set([selectedConnId]), allConnPoints));
       setSelectedConnId(null);
       return;
     }
@@ -1808,6 +1834,14 @@ export function DiagramEditor({
                 {isSelected && (
                   <polyline points={pointsStr} fill="none" stroke="#2B8CFF" strokeWidth={1.1} strokeDasharray="2,1.5" opacity={0.5} />
                 )}
+                {/* trecho sob o cursor/clicado: realce sólido — é ele que o Delete apaga */}
+                {isSelected && selectedSegIndex !== null && routePoints[selectedSegIndex + 1] && (
+                  <line
+                    x1={routePoints[selectedSegIndex].x} y1={routePoints[selectedSegIndex].y}
+                    x2={routePoints[selectedSegIndex + 1].x} y2={routePoints[selectedSegIndex + 1].y}
+                    stroke="#2B8CFF" strokeWidth={1.6} opacity={0.85} strokeLinecap="round"
+                  />
+                )}
                 {conn.label && (() => {
                   const { at, anchor } = connectionLabelPosition(routePoints);
                   return (
@@ -1838,7 +1872,7 @@ export function DiagramEditor({
                       onClick={e => e.stopPropagation()}
                       onMouseEnter={() => setHoveredConnId(conn.id)}
                       onMouseLeave={() => setHoveredConnId(prev => (prev === conn.id ? null : prev))}
-                      onContextMenu={e => openCtxMenu(e, 'conn', conn.id)}
+                      onContextMenu={e => openCtxMenu(e, 'conn', conn.id, i)}
                       onDoubleClick={e => { e.stopPropagation(); handleConnDoubleClick(conn.id, i, mid); }}
                     />
                   );
@@ -2284,7 +2318,10 @@ export function DiagramEditor({
           items.push(item('Duplicar (Ctrl+D)', duplicateSelected));
           items.push(item('Remover', removeSelected, true));
         } else if (ctxMenu.kind === 'conn') {
-          items.push(item('Remover ligação', () => removeConnection(ctxMenu.id), true));
+          if (ctxMenu.seg !== undefined) {
+            items.push(item('Excluir este trecho (Del)', () => removeSegment(ctxMenu.id, ctxMenu.seg!), true));
+          }
+          items.push(item('Remover ligação inteira', () => removeConnection(ctxMenu.id), true));
         } else if (ctxMenu.kind === 'group') {
           items.push(item('Remover grupo', removeSelected, true));
         } else if (ctxMenu.kind === 'shape') {

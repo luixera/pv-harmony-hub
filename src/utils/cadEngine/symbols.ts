@@ -165,25 +165,28 @@ export const SYMBOL_PORTS: Record<ComponentKind, SymbolPort[]> = {
 
 export const SYMBOL_DEFS: Record<ComponentKind, Primitive[]> = {
   'pv-array': [
+    // Módulo/arranjo FV — caixa com o triângulo de FONTE apontando pro lado
+    // da saída (modelo escolhido pelo usuário, jul/2026, a partir do desenho
+    // real que ele mandou; substituiu a caixa hachurada).
     { kind: 'rect', x: 2, y: 3, w: W - 4, h: H - 6 },
-    { kind: 'line', a: { x: 4, y: H - 4 }, b: { x: W - 8, y: 5 } },
-    { kind: 'line', a: { x: 8, y: H - 4 }, b: { x: W - 4, y: 5 } },
-    { kind: 'line', a: { x: 12, y: H - 4 }, b: { x: W - 2, y: 6 } },
+    { kind: 'polyline', points: [{ x: W - 2, y: 3 }, { x: 13, y: H / 2 }, { x: W - 2, y: H - 3 }] },
   ],
+  // Inversor — caixa dividida pela DIAGONAL: lado CC (cima/esquerda) com os
+  // dois traços de corrente contínua, lado CA (baixo/direita) com a senoide.
+  // Também veio do desenho real enviado pelo usuário (jul/2026).
   inverter: [
     { kind: 'rect', x: 2, y: 2, w: W - 4, h: H - 4 },
-    { kind: 'line', a: { x: W / 2, y: 2 }, b: { x: W / 2, y: H - 2 } },
-    // lado CC (esquerda): dois traços +/-
-    { kind: 'line', a: { x: 5, y: 7 }, b: { x: 9, y: 7 } },
-    { kind: 'line', a: { x: 5, y: H - 7 }, b: { x: 9, y: H - 7 } },
-    // lado CA (direita): senoide simplificada em polilinha
+    { kind: 'line', a: { x: 2, y: H - 2 }, b: { x: W - 2, y: 2 } },
+    // lado CC: dois traços verticais paralelos
+    { kind: 'line', a: { x: 7.5, y: 5 }, b: { x: 7.5, y: 9.5 } },
+    { kind: 'line', a: { x: 9.5, y: 5 }, b: { x: 9.5, y: 9.5 } },
+    // lado CA: senoide de um período
     {
       kind: 'polyline',
       points: [
-        { x: W / 2 + 3, y: H / 2 },
-        { x: W / 2 + 5, y: H / 2 - 4 },
-        { x: W / 2 + 8, y: H / 2 + 4 },
-        { x: W / 2 + 10, y: H / 2 },
+        { x: 12.5, y: 15 }, { x: 13.4, y: 13.6 }, { x: 14.5, y: 13 }, { x: 15.6, y: 13.6 },
+        { x: 16.5, y: 15 }, { x: 17.4, y: 16.4 }, { x: 18.5, y: 17 }, { x: 19.6, y: 16.4 },
+        { x: 20.5, y: 15 },
       ],
     },
   ],
@@ -201,12 +204,22 @@ export const SYMBOL_DEFS: Record<ComponentKind, Primitive[]> = {
     { kind: 'circle', center: { x: W / 2, y: H / 2 }, radius: 8 },
     { kind: 'text', at: { x: W / 2, y: H / 2 + 3 }, value: 'M', size: 8, anchor: 'middle', weight: 'bold' },
   ],
+  // Rede da concessionária — POSTE de distribuição (pedido do usuário: um
+  // símbolo que se leia na hora como "rede da concessionária", em vez da
+  // hachura genérica de antes): ramal de ligação entrando pela esquerda,
+  // poste, cruzeta com três isoladores e a base engastada.
   'utility-grid': [
-    { kind: 'line', a: { x: 4, y: H / 2 }, b: { x: W - 4, y: H / 2 } },
-    { kind: 'line', a: { x: 6, y: H / 2 }, b: { x: 3, y: H / 2 + 5 } },
-    { kind: 'line', a: { x: 10, y: H / 2 }, b: { x: 7, y: H / 2 + 5 } },
-    { kind: 'line', a: { x: 14, y: H / 2 }, b: { x: 11, y: H / 2 + 5 } },
-    { kind: 'line', a: { x: 18, y: H / 2 }, b: { x: 15, y: H / 2 + 5 } },
+    { kind: 'line', a: { x: 4, y: H / 2 }, b: { x: 13, y: H / 2 } },   // ramal de ligação
+    { kind: 'line', a: { x: 13, y: 3 }, b: { x: 13, y: H - 2 } },      // poste
+    { kind: 'line', a: { x: 7, y: 6 }, b: { x: 21, y: 6 } },           // cruzeta
+    { kind: 'line', a: { x: 8, y: 4 }, b: { x: 8, y: 6 } },            // isolador 1
+    { kind: 'line', a: { x: 14, y: 4 }, b: { x: 14, y: 6 } },          // isolador 2
+    { kind: 'line', a: { x: 20, y: 4 }, b: { x: 20, y: 6 } },          // isolador 3
+    { kind: 'circle', center: { x: 8, y: 3.4 }, radius: 0.8 },
+    { kind: 'circle', center: { x: 14, y: 3.4 }, radius: 0.8 },
+    { kind: 'circle', center: { x: 20, y: 3.4 }, radius: 0.8 },
+    { kind: 'line', a: { x: 10, y: H - 2 }, b: { x: 16, y: H - 2 } },  // base
+    { kind: 'line', a: { x: 13, y: 6 }, b: { x: 13, y: 3 } },
   ],
   // DPS (dispositivo de proteção contra surtos): desenhado no eixo VERTICAL —
   // é um componente de derivação (liga do condutor para o terra), não um
