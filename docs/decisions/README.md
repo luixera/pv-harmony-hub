@@ -5,6 +5,18 @@ Registro de decisões de produto/UX (não arquiteturais — essas ficam em
 
 ## Log
 
+- **Placas de advertência: FOTO REAL nativa no diagrama** (jul/2026): o
+  usuário enviou as fotos das placas exigidas e pediu — explicitamente
+  ("quero a imagem nativa no diagrama, não uma representação") — que a
+  própria imagem fosse usada no lugar de um redesenho vetorial. Decisão: as
+  duas fotos (amarela "CUIDADO / RISCO DE CHOQUE ELÉTRICO / GERAÇÃO
+  PRÓPRIA" para CPFL e demais; ENEL "AVISO / RETORNO GERADOR DE ENERGIA")
+  foram comprimidas (~360px, JPEG q72, ~20KB) e embutidas como data URLs em
+  `cadEngine/warningPlates.ts`; o gerador as coloca como `PlacedPhoto`
+  (aparecem no canvas, SVG e PDF; o DXF R12 não carrega raster — pra DXF há
+  as versões vetoriais `warning-sign`/`warning-sign-enel`, mantidas na
+  paleta). A escolha da placa é automática pelo nome da concessionária do
+  projeto (contém "enel"). (jul/2026)
 - **Motor de Engenharia — padrão de entrada no diagrama + auto-reorganização**
   (jul/2026): pedidos do usuário: "Está faltando o disjuntor do padrão de
   entrada, ao lado do medidor — o disjuntor do padrão + medidor

@@ -1,5 +1,6 @@
 import { ComponentKind, Point, Scene, TechnicalJsonMvp } from './types';
 import { CONNECTION_INSET, SYMBOL_BBOX, SYMBOL_DEFS, SYMBOL_PORTS, SymbolPort } from './symbols';
+import { WARNING_PLATE_ENEL, WARNING_PLATE_GENERIC } from './warningPlates';
 import {
   CENTER_Y, DRAW_BOTTOM, DRAW_TOP, drawFrameAndHeader, drawLegendTable, drawTitleBlock,
   LEGEND_LINE_H, LEGEND_X0, PITCH_X, SheetOptions, START_X,
@@ -950,6 +951,10 @@ export function buildMultiArrangementScene(options: {
   entryBreakerLegend?: string[];
   /** Legenda do medidor (ex.: caixa de medição das regras da concessionária). */
   meterLegend?: string[];
+  /** Placa de advertência do padrão: 'enel' = placa AVISO/RETORNO GERADOR da
+   *  ENEL; 'generic' (padrão) = placa amarela CUIDADO/GERAÇÃO PRÓPRIA
+   *  (CPFL e demais concessionárias). */
+  warningVariant?: 'generic' | 'enel';
 }): DiagramSceneState {
   const n = Math.max(1, options.inverterCount);
   const includeGB = options.includeGeneralBreaker !== false;
@@ -1057,8 +1062,14 @@ export function buildMultiArrangementScene(options: {
     ? sym('distribution-panel', 146, MID_TOP - 46, 'Cargas do local', ['(apenas referência)'])
     : null;
   const entryDps = sym('dps', 197, MID_TOP + 26, 'DPS do Padrão');
-  const sign = sym('warning-sign', 230, MID_TOP + 26, 'Placa de Advertência', ['no padrão de entrada']);
-  void sign; // sem ligação elétrica — fica afixada dentro do bloco do padrão
+  // placa de advertência: a FOTO REAL entra nativa no diagrama (pedido do
+  // usuário — não é redesenho); sem ligação elétrica, dentro do bloco do padrão
+  const plate = options.warningVariant === 'enel' ? WARNING_PLATE_ENEL : WARNING_PLATE_GENERIC;
+  const photos: PlacedPhoto[] = [{
+    id: uid('plate'), href: plate.href,
+    // um pouco mais baixa que os DPS pra não cobrir o rótulo do medidor
+    x: 230 + (24 - plate.w) / 2, y: MID_TOP + 30, w: plate.w, h: plate.h,
+  }];
   {
     const byId = new Map(placements.map(p => [p.id, p]));
     const allPts = computeAllConnectionPoints(connections, byId);
@@ -1094,7 +1105,7 @@ export function buildMultiArrangementScene(options: {
     style: 'dashed', moveContents: true,
   }];
 
-  return { placements, connections, photos: [], texts: [], groups, shapes: [] };
+  return { placements, connections, photos, texts: [], groups, shapes: [] };
 }
 
 /**

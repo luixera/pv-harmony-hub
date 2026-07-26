@@ -31,6 +31,7 @@ export const KIND_LABEL: Record<ComponentKind, string> = {
   'dc-switch': 'Chave CC',
   'breaker-tripolar': 'Disjuntor Tripolar',
   'warning-sign': 'Placa de Advertência',
+  'warning-sign-enel': 'Placa de Advertência (ENEL)',
 };
 
 /**
@@ -52,6 +53,7 @@ export const KIND_LEGEND: Record<ComponentKind, string> = {
   ground: 'ATERRAMENTO',
   'distribution-panel': 'QUADRO DE DISTRIBUIÇÃO',
   'warning-sign': 'PLACA DE GERAÇÃO PRÓPRIA',
+  'warning-sign-enel': 'PLACA RETORNO GERADOR (ENEL)',
 };
 
 /**
@@ -76,6 +78,7 @@ export const CONNECTION_INSET: Record<ComponentKind, number> = {
   'dc-switch': 2,
   'breaker-tripolar': 2,
   'warning-sign': 2,
+  'warning-sign-enel': 2,
 };
 
 /**
@@ -155,8 +158,9 @@ export const SYMBOL_PORTS: Record<ComponentKind, SymbolPort[]> = {
     { id: 'entrada', name: 'Entrada', x: 2, y: H / 2 },
     { id: 'saida', name: 'Saída', x: W - 2, y: H / 2 },
   ],
-  // placa de sinalização — sem ligação elétrica (fica afixada no padrão de entrada)
+  // placas de sinalização — sem ligação elétrica (ficam afixadas no padrão de entrada)
   'warning-sign': [],
+  'warning-sign-enel': [],
 };
 
 export const SYMBOL_DEFS: Record<ComponentKind, Primitive[]> = {
@@ -280,15 +284,33 @@ export const SYMBOL_DEFS: Record<ComponentKind, Primitive[]> = {
     { kind: 'line', a: { x: W / 2 + 4, y: H / 2 }, b: { x: W - 2, y: H / 2 } },
     { kind: 'line', a: { x: W / 2 - 1, y: H / 2 + 2.5 }, b: { x: W / 2 + 3, y: H / 2 - 4.5 } },
   ],
-  // Placa de advertência de geração própria (exigência das concessionárias no
-  // padrão de entrada): placa retangular com o triângulo de risco elétrico
-  // (raio dentro) e o texto "CUIDADO / GERAÇÃO PRÓPRIA". Sem ligação elétrica.
+  // Placa de advertência amarela — CPFL e demais concessionárias (calibrada
+  // pela foto real enviada pelo usuário): faixa "CUIDADO" no topo e os
+  // dizeres "RISCO DE CHOQUE ELÉTRICO / GERAÇÃO PRÓPRIA". Sem ligação elétrica.
   'warning-sign': [
-    { kind: 'rect', x: 3, y: 1.5, w: W - 6, h: H - 3 },
-    { kind: 'polyline', points: [{ x: W / 2, y: 3.5 }, { x: W / 2 - 5, y: 11.5 }, { x: W / 2 + 5, y: 11.5 }, { x: W / 2, y: 3.5 }] },
-    // raio (seta de descarga) dentro do triângulo
-    { kind: 'polyline', points: [{ x: W / 2 + 0.8, y: 5.5 }, { x: W / 2 - 1.2, y: 8.5 }, { x: W / 2 + 0.4, y: 8.5 }, { x: W / 2 - 0.8, y: 10.8 }] },
-    { kind: 'text', at: { x: W / 2, y: 14.6 }, value: 'CUIDADO', size: 1.9, anchor: 'middle', weight: 'bold' },
-    { kind: 'text', at: { x: W / 2, y: 17 }, value: 'GERAÇÃO PRÓPRIA', size: 1.6, anchor: 'middle' },
+    { kind: 'rect', x: 2.5, y: 1, w: W - 5, h: H - 2 },
+    // faixa do cabeçalho (na placa real é preta com letras amarelas)
+    { kind: 'rect', x: 4, y: 2.5, w: W - 8, h: 4 },
+    { kind: 'text', at: { x: W / 2, y: 5.7 }, value: 'CUIDADO', size: 2.6, anchor: 'middle', weight: 'bold' },
+    { kind: 'text', at: { x: W / 2, y: 10.4 }, value: 'RISCO DE CHOQUE', size: 1.7, anchor: 'middle', weight: 'bold' },
+    { kind: 'text', at: { x: W / 2, y: 12.8 }, value: 'ELÉTRICO', size: 1.7, anchor: 'middle', weight: 'bold' },
+    { kind: 'text', at: { x: W / 2, y: 16.4 }, value: 'GERAÇÃO PRÓPRIA', size: 1.7, anchor: 'middle', weight: 'bold' },
+  ],
+  // Placa de aviso da ENEL (calibrada pela foto real): cabeçalho "AVISO",
+  // raio de choque à esquerda, "RISCO DE CHOQUE ELÉTRICO" e a faixa
+  // "RETORNO GERADOR DE ENERGIA" embaixo. Sem ligação elétrica.
+  'warning-sign-enel': [
+    { kind: 'rect', x: 2.5, y: 1, w: W - 5, h: H - 2 },
+    { kind: 'text', at: { x: W / 2, y: 4.3 }, value: 'AVISO', size: 2.4, anchor: 'middle', weight: 'bold' },
+    { kind: 'line', a: { x: 2.5, y: 5.4 }, b: { x: W - 2.5, y: 5.4 } },
+    // raio (seta de descarga) à esquerda
+    { kind: 'polyline', points: [{ x: 7.5, y: 6.8 }, { x: 5.2, y: 10.6 }, { x: 6.6, y: 10.6 }, { x: 4.8, y: 13.6 }] },
+    { kind: 'polyline', points: [{ x: 4.8, y: 13.6 }, { x: 5, y: 12.2 }, { x: 6.1, y: 13 }, { x: 4.8, y: 13.6 }] },
+    { kind: 'text', at: { x: 14.8, y: 8.6 }, value: 'RISCO DE', size: 1.7, anchor: 'middle', weight: 'bold' },
+    { kind: 'text', at: { x: 14.8, y: 11 }, value: 'CHOQUE', size: 1.7, anchor: 'middle', weight: 'bold' },
+    { kind: 'text', at: { x: 14.8, y: 13.4 }, value: 'ELÉTRICO', size: 1.7, anchor: 'middle', weight: 'bold' },
+    { kind: 'line', a: { x: 2.5, y: 14.6 }, b: { x: W - 2.5, y: 14.6 } },
+    { kind: 'text', at: { x: W / 2, y: 16.4 }, value: 'RETORNO GERADOR', size: 1.5, anchor: 'middle', weight: 'bold' },
+    { kind: 'text', at: { x: W / 2, y: 18.2 }, value: 'DE ENERGIA', size: 1.5, anchor: 'middle', weight: 'bold' },
   ],
 };

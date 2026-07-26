@@ -17,7 +17,7 @@ export type ComponentKind =
   | 'pv-array' | 'inverter' | 'breaker' | 'meter' | 'utility-grid' | 'dps'
   | 'fuse' | 'ground' | 'distribution-panel'
   | 'meter-bidirectional' | 'dc-switch' | 'breaker-tripolar'
-  | 'warning-sign';
+  | 'warning-sign' | 'warning-sign-enel';
 
 export interface ComponentNode {
   id: string;

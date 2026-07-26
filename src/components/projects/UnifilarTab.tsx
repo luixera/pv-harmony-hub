@@ -208,6 +208,9 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
            entryRule.bitola ? `bitola ${entryRule.bitola} mm²` : ''].filter(Boolean)
         : [],
       meterLegend: entryRule?.caixa_medicao ? [`caixa ${entryRule.caixa_medicao}`] : [],
+      // ENEL usa a placa própria (AVISO / RETORNO GERADOR DE ENERGIA);
+      // CPFL e demais usam a placa amarela CUIDADO / GERAÇÃO PRÓPRIA
+      warningVariant: (project.concessionaireName ?? '').toLowerCase().includes('enel') ? 'enel' : 'generic',
     });
     setApplied(prev => ({ v: (prev?.v ?? 0) + 1, state }));
     setSuggestOpen(false);

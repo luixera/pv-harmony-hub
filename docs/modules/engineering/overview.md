@@ -128,8 +128,14 @@ diagrama completo pedido pelo usuário para 1..N arranjos:
   bitola/caixa de medição) vem das REGRAS DE PADRÃO DE ENTRADA cadastradas
   em Concessionárias (`matchEntryRule` com fase + disjuntor do projeto),
   **DPS do padrão em paralelo ao disjuntor do padrão** (exigência das
-  concessionárias) e a **placa de advertência de geração própria**
-  (símbolo novo `warning-sign`, sem ligação elétrica);
+  concessionárias) e a **placa de advertência de geração própria** — a
+  FOTO REAL da placa entra NATIVA no diagrama (`PlacedPhoto` com data URL
+  embutido em `cadEngine/warningPlates.ts`, ~20KB JPEG cada): placa amarela
+  "CUIDADO / RISCO DE CHOQUE ELÉTRICO / GERAÇÃO PRÓPRIA" (CPFL e demais) ou
+  placa ENEL "AVISO / RETORNO GERADOR DE ENERGIA"; o gerador escolhe pela
+  concessionária do projeto (nome contém "enel"). Também existem versões
+  vetoriais na paleta (`warning-sign`/`warning-sign-enel`) — úteis no DXF,
+  que não carrega raster;
 - depois medidor bidirecional → rede; trechos FV→inversor em condutor CC.
 
 **Auto-reorganização**: até 3 arranjos, fileiras em escala cheia centradas
