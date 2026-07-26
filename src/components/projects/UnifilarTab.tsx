@@ -13,7 +13,7 @@ import { useProjectDiagram, useSaveProjectDiagram } from '@/hooks/useProjectDiag
 import { useDiagramTemplates } from '@/hooks/useDiagramTemplates';
 import { useEngineeringRuleMap } from '@/hooks/useEngineeringRules';
 import {
-  ProjectArrangementOption, suggestProjectArrangement,
+  ProjectArrangementOption, suggestElectricalSizing, suggestProjectArrangement,
 } from '@/utils/engineering/rulesEngine';
 
 /**
@@ -163,6 +163,18 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
     }, ruleMap);
   }, [suggestOpen, ruleMap, project.equipment, projectInverters]);
 
+  // Dimensionamento elétrico simplificado (Fase 2): bitolas, queda, disjuntor
+  const sizing = useMemo(() => {
+    if (!suggestOpen || ruleMap.size === 0) return null;
+    const rawPhase = String(project.generalData?.phase_type ?? '').toLowerCase();
+    const phaseType = rawPhase.includes('tri') ? 'trifasico' as const
+      : rawPhase.includes('bi') ? 'bifasico' as const : 'monofasico' as const;
+    return suggestElectricalSizing({
+      inverterPowerKw: Number(project.equipment?.inverter_power ?? 0) || undefined,
+      phaseType,
+    }, ruleMap);
+  }, [suggestOpen, ruleMap, project.equipment, project.generalData]);
+
   /** "Usar esta": gera o diagrama automático com o arranjo escolhido nas legendas. */
   const applySuggestion = (opt: ProjectArrangementOption) => {
     if (!confirm(`Usar "${opt.title}" (${opt.summary})? O diagrama atual será substituído pela cadeia automática com este arranjo.`)) return;
@@ -291,6 +303,28 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
               <p style={{ fontSize: 11.5, color: '#854F0B', margin: 0 }}>
                 Nenhum arranjo válido — veja os avisos acima e ajuste o projeto ou as Regras de Engenharia.
               </p>
+            )}
+            {/* Dimensionamento elétrico simplificado (Fase 2) */}
+            {sizing && (sizing.dc || sizing.ac || sizing.breakerA || sizing.groundSectionMm2) && (
+              <div style={{ background: '#fff', border: '1px solid #DDEEE2', borderRadius: 8, padding: '9px 12px' }}>
+                <p style={{ fontSize: 12, fontWeight: 700, color: '#1A1A1A', margin: '0 0 4px' }}>Dimensionamento elétrico (simplificado)</p>
+                {sizing.dc && <p style={{ fontSize: 11, color: '#666', margin: '2px 0 0' }}>• {sizing.dc.explanation}</p>}
+                {sizing.ac && <p style={{ fontSize: 11, color: '#666', margin: '2px 0 0' }}>• {sizing.ac.explanation}</p>}
+                {sizing.breakerExplanation && <p style={{ fontSize: 11, color: '#666', margin: '2px 0 0' }}>• {sizing.breakerExplanation}</p>}
+                {sizing.groundSectionMm2 && (
+                  <p style={{ fontSize: 11, color: '#666', margin: '2px 0 0' }}>
+                    • Aterramento: condutor mínimo {sizing.groundSectionMm2}mm²{sizing.groundNotes ? ` — ${sizing.groundNotes}` : ''}.
+                  </p>
+                )}
+                {sizing.alerts.map((a, i) => (
+                  <p key={i} style={{ fontSize: 11, color: a.severity === 'warning' ? '#854F0B' : '#1D4ED8', margin: '3px 0 0' }}>
+                    ⚠ {a.message} {a.suggestion ? <strong>{a.suggestion}</strong> : null}
+                  </p>
+                ))}
+                <p style={{ fontSize: 10, color: '#999', margin: '4px 0 0' }}>
+                  Estimativas com os comprimentos padrão das Regras (grupos Cabos/Queda de Tensão) — ajuste as regras conforme o padrão da empresa.
+                </p>
+              </div>
             )}
           </div>
         )}

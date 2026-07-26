@@ -62,9 +62,12 @@
   histórico na aba "Regras de Engenharia"), motor puro que sugere arranjos
   de strings/distribuição entre inversores/DC-AC com ≥2 opções explicadas e
   alertas que nunca bloqueiam, painel "Usar esta" no projeto gerando o
-  diagrama. **Fase 2**: queda de tensão/cabos/proteções/aterramento →
-  memoriais e lista de materiais; form de tech_specs na tela Equipamentos.
-  **Fase 3**: microinversores completos, checklist, assistente. Ver
+  diagrama. **Fase 2 ✅** (jul/2026): liga/desliga por função (interruptor
+  por grupo) e por regra; dimensionamento elétrico simplificado (queda de
+  tensão NBR 5410, bitolas CC/CA, disjuntor, aterramento) no painel do
+  projeto; form de datasheet estruturado (tech_specs) no cadastro de
+  Equipamentos. **Fase 3**: microinversores completos, memoriais/lista de
+  materiais consumindo o sizing, checklist, assistente. Ver
   [modules/engineering](../modules/engineering/overview.md) e
   [ADR 0007](../adr/0007-engineering-rules-engine.md).
 - **Extrato "Agentes de IA" no console master** ✅ (jul/2026): saldo estimado

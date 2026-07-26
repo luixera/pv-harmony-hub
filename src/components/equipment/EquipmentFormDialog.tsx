@@ -4,9 +4,27 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { useSaveEquipment, useAfciDaMarca, EquipmentType, EquipmentCatalogItem } from '@/hooks/useEquipmentCatalog';
-import { Upload, Loader2 } from 'lucide-react';
+import { Upload, Loader2, SlidersHorizontal, ChevronDown, ChevronRight } from 'lucide-react';
 
 const UNIT: Record<EquipmentType, string> = { inverter: 'kW', module: 'Wp' };
+
+/** Campos do datasheet estruturado (tech_specs) que o Motor de Engenharia usa. */
+const TECH_FIELDS: Record<EquipmentType, { key: string; label: string; placeholder: string }[]> = {
+  inverter: [
+    { key: 'mppt_count', label: 'Nº de MPPTs', placeholder: '2' },
+    { key: 'strings_per_mppt', label: 'Strings por MPPT', placeholder: '2' },
+    { key: 'mppt_vmin_v', label: 'Tensão mín. MPPT (V)', placeholder: '200' },
+    { key: 'mppt_vmax_v', label: 'Tensão máx. MPPT (V)', placeholder: '800' },
+    { key: 'max_dc_voltage_v', label: 'Tensão CC máx. (V)', placeholder: '1000' },
+    { key: 'max_mppt_current_a', label: 'Corrente máx./MPPT (A)', placeholder: '26' },
+  ],
+  module: [
+    { key: 'voc_v', label: 'Voc (V)', placeholder: '49.9' },
+    { key: 'vmp_v', label: 'Vmp (V)', placeholder: '41.9' },
+    { key: 'isc_a', label: 'Isc (A)', placeholder: '13.9' },
+    { key: 'imp_a', label: 'Imp (A)', placeholder: '13.1' },
+  ],
+};
 
 interface Props {
   type: EquipmentType;
@@ -28,6 +46,10 @@ export function EquipmentFormDialog({ type, editing, initialBrand, initialModel,
   const dsRef = useRef<HTMLInputElement>(null);
   const inRef = useRef<HTMLInputElement>(null);
   const afciRef = useRef<HTMLInputElement>(null);
+  // Datasheet estruturado (Motor de Engenharia) — abre expandido se já tem dados
+  const [specs, setSpecs] = useState<Record<string, string>>(() =>
+    Object.fromEntries(TECH_FIELDS[type].map(f => [f.key, editing?.tech_specs?.[f.key] != null ? String(editing.tech_specs[f.key]) : ''])));
+  const [specsOpen, setSpecsOpen] = useState(() => Object.values(editing?.tech_specs ?? {}).some(v => v != null));
 
   const isInverter = type === 'inverter';
   // AFCI é documento da marca: se a marca já tem, não precisa anexar de novo.
@@ -36,12 +58,18 @@ export function EquipmentFormDialog({ type, editing, initialBrand, initialModel,
   const handleSave = async () => {
     if (!brand.trim() || !model.trim()) return;
     const powerNum = power.trim() === '' ? null : Number(power.replace(',', '.'));
+    // só campos numéricos válidos entram; tudo vazio → limpa (null)
+    const techEntries = Object.entries(specs)
+      .map(([k, v]) => [k, Number(String(v).replace(',', '.'))] as const)
+      .filter(([, v]) => Number.isFinite(v) && v > 0);
+    const tech_specs = techEntries.length > 0 ? Object.fromEntries(techEntries) : null;
     const id = await save.mutateAsync({
       id: editing?.id, type, brand, model, power: powerNum,
       datasheetFile, inmetroFile, afciFile,
       datasheet_url: editing?.datasheet_url ?? null,
       inmetro_url: editing?.inmetro_url ?? null,
       afci_url: editing?.afci_url ?? null,
+      tech_specs,
     });
     onSaved?.({ id, brand: brand.trim(), model: model.trim(), power: powerNum });
     onClose();
@@ -88,6 +116,39 @@ export function EquipmentFormDialog({ type, editing, initialBrand, initialModel,
           <p className="text-[11px] text-muted-foreground">
             Aceita PDF, JPG ou PNG. Imagens são convertidas em PDF automaticamente, e o arquivo é renomeado no padrão <strong>TIPO MARCA MODELO</strong>.
           </p>
+
+          {/* Datasheet estruturado — alimenta o Motor de Engenharia */}
+          <div className="rounded-lg border border-border">
+            <button
+              type="button"
+              onClick={() => setSpecsOpen(o => !o)}
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm font-medium text-foreground"
+            >
+              {specsOpen ? <ChevronDown className="w-4 h-4 text-muted-foreground" /> : <ChevronRight className="w-4 h-4 text-muted-foreground" />}
+              <SlidersHorizontal className="w-4 h-4 text-primary" /> Dados técnicos (Motor de Engenharia)
+            </button>
+            {specsOpen && (
+              <div className="px-3 pb-3 space-y-2">
+                <p className="text-[11px] text-muted-foreground -mt-1">
+                  Com estes dados, as sugestões de strings do motor ficam exatas
+                  (sem eles, o motor usa os valores-padrão das Regras de Engenharia e avisa).
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  {TECH_FIELDS[type].map(f => (
+                    <div key={f.key} className="space-y-1">
+                      <Label className="text-xs">{f.label}</Label>
+                      <Input
+                        inputMode="decimal"
+                        value={specs[f.key] ?? ''}
+                        onChange={e => setSpecs(prev => ({ ...prev, [f.key]: e.target.value }))}
+                        placeholder={f.placeholder}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
         <div className="flex justify-end gap-3">
           <Button variant="outline" onClick={onClose}>Cancelar</Button>

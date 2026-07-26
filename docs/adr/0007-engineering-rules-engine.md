@@ -53,9 +53,19 @@ sempre ≥2 sugestões quando houver mais de uma opção válida.
   dos Grupos 1/2/3/5/11/12, painel "Sugestões do Motor" no projeto com
   "Usar esta" gerando o diagrama. 24 testes headless (inclui os exemplos
   do briefing: 120→6×20/5×24; 240 em 2×75kW→120+120/118+122).
-- **Fase 2**: queda de tensão, cabos, proteções e aterramento alimentando
-  memoriais e lista de materiais; formulário de tech_specs na tela
-  Equipamentos.
-- **Fase 3**: microinversores completos (cadastro + ramais), checklist e
-  assistente; fluxo Projeto→Motor→Validação→Sugestões→CAD→Documentação
-  fechado.
+- **Fase 2 (entregue)**: liga/desliga por FUNÇÃO (regra `group_enabled`
+  por grupo, interruptor no cabeçalho do card — pedido direto: "botão pra
+  habilitar e desabilitar cada regra e função do motor"; decisão: a chave
+  do interruptor é uma REGRA comum, então ganha histórico e RLS de graça)
+  e por regra individual (Toggle no lugar do checkbox);
+  `suggestElectricalSizing` (Grupos 6–9): queda de tensão simplificada
+  (NBR 5410, k×ρ×L×I/(S×V)), bitola = menor seção comercial que atende
+  queda máxima + mínimo da regra, disjuntor = próximo rating comercial ≥
+  fator×I, aterramento/DPS pelas regras; bloco "Dimensionamento elétrico"
+  no painel do projeto; formulário de datasheet estruturado (tech_specs)
+  no cadastro de Equipamentos (campos por tipo, colapsável). Decisão:
+  seções/ratings comerciais são CONSTANTES de mercado no código; mínimos,
+  fatores, ρ, comprimentos padrão e tensões da rede são regras editáveis.
+- **Fase 3**: microinversores completos (cadastro + ramais), memoriais/
+  lista de materiais consumindo o sizing, checklist e assistente; fluxo
+  Projeto→Motor→Validação→Sugestões→CAD→Documentação fechado.

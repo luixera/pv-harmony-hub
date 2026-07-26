@@ -1,10 +1,29 @@
 import { useMemo, useState } from 'react';
 import {
-  BookOpen, ChevronDown, ChevronRight, History, Loader2, Search, SlidersHorizontal,
+  BookOpen, ChevronDown, ChevronRight, History, Loader2, Power, Search, SlidersHorizontal,
 } from 'lucide-react';
 import {
   EngineeringRuleRow, RuleHistoryEntry, useEngineeringRules, useRuleHistory, useUpdateEngineeringRule,
 } from '@/hooks/useEngineeringRules';
+
+/** Interruptor visual (liga/desliga) — usado por regra e por função do motor. */
+function Toggle({ on, onChange, title, size = 'sm' }: { on: boolean; onChange: (v: boolean) => void; title?: string; size?: 'sm' | 'md' }) {
+  const w = size === 'md' ? 38 : 30, h = size === 'md' ? 20 : 16, dot = h - 6;
+  return (
+    <button
+      type="button"
+      onClick={e => { e.stopPropagation(); onChange(!on); }}
+      title={title ?? (on ? 'Ligado — clique pra desligar' : 'Desligado — clique pra ligar')}
+      style={{
+        width: w, height: h, borderRadius: 999, border: 'none', cursor: 'pointer', padding: 3,
+        background: on ? '#2D7A3A' : '#CFCFCF', display: 'inline-flex', alignItems: 'center',
+        justifyContent: on ? 'flex-end' : 'flex-start', transition: 'background 0.15s', flexShrink: 0,
+      }}
+    >
+      <span style={{ width: dot, height: dot, borderRadius: '50%', background: '#fff', display: 'block' }} />
+    </button>
+  );
+}
 
 /**
  * Tela "Regras de Engenharia" — aba do Motor de Templates. Centraliza TODAS
@@ -113,25 +132,43 @@ export function EngineeringRulesTab() {
       {/* cards por grupo */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {GROUP_ORDER.filter(g => byGroup.has(g)).map(groupKey => {
-          const groupRules = byGroup.get(groupKey)!;
+          const allGroupRules = byGroup.get(groupKey)!;
+          // a regra `group_enabled` vira o INTERRUPTOR DA FUNÇÃO no cabeçalho
+          const groupSwitch = allGroupRules.find(r => r.ruleKey === 'group_enabled');
+          const groupRules = allGroupRules.filter(r => r.ruleKey !== 'group_enabled');
+          const functionOn = !groupSwitch || (groupSwitch.enabled && (groupSwitch.valueDefault ?? 1) === 1);
           const info = GROUPS[groupKey] ?? { name: groupKey, description: '' };
           const enabledCount = groupRules.filter(r => r.enabled).length;
           const open = openGroups.has(groupKey) || !!search.trim();
           return (
-            <div key={groupKey} style={{ background: '#fff', border: '1px solid #E8E8E8', borderRadius: 12 }}>
-              <button
+            <div key={groupKey} style={{ background: '#fff', border: '1px solid #E8E8E8', borderRadius: 12, opacity: functionOn ? 1 : 0.75 }}>
+              <div
                 onClick={() => toggleGroup(groupKey)}
-                style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '12px 16px', border: 'none', background: 'none', cursor: 'pointer', textAlign: 'left' }}
+                style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '12px 16px', cursor: 'pointer' }}
               >
-                {open ? <ChevronDown size={15} style={{ color: '#999' }} /> : <ChevronRight size={15} style={{ color: '#999' }} />}
-                <div style={{ flex: 1 }}>
-                  <p style={{ fontSize: 13.5, fontWeight: 700, color: '#1A1A1A', margin: 0 }}>{info.name}</p>
+                {open ? <ChevronDown size={15} style={{ color: '#999', flexShrink: 0 }} /> : <ChevronRight size={15} style={{ color: '#999', flexShrink: 0 }} />}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ fontSize: 13.5, fontWeight: 700, color: functionOn ? '#1A1A1A' : '#999', margin: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    {info.name}
+                    {!functionOn && <span style={{ fontSize: 10, fontWeight: 700, color: '#A32D2D', border: '1px solid #E8C4C4', borderRadius: 999, padding: '1px 7px' }}>FUNÇÃO DESLIGADA</span>}
+                  </p>
                   <p style={{ fontSize: 11.5, color: '#888', margin: 0 }}>{info.description}</p>
                 </div>
                 <span style={{ fontSize: 11, color: enabledCount > 0 ? '#2D7A3A' : '#999', fontWeight: 600, whiteSpace: 'nowrap' }}>
-                  {enabledCount}/{groupRules.length} ativa(s)
+                  {enabledCount}/{groupRules.length} regra(s) ativa(s)
                 </span>
-              </button>
+                {groupSwitch && (
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }} title={groupSwitch.description ?? undefined}>
+                    <Power size={12} style={{ color: functionOn ? '#2D7A3A' : '#999' }} />
+                    <Toggle
+                      size="md"
+                      on={functionOn}
+                      onChange={v => updateRule.mutate({ id: groupSwitch.id, value_default: v ? 1 : 0, enabled: true })}
+                      title={functionOn ? 'Função LIGADA — o motor executa este grupo' : 'Função DESLIGADA — o motor pula este grupo'}
+                    />
+                  </span>
+                )}
+              </div>
               {open && (
                 <div style={{ borderTop: '1px solid #F0F0F0', padding: '4px 16px 12px' }}>
                   {groupRules.map(rule => (
@@ -184,9 +221,7 @@ function RuleRowEditor({ rule, onSave, onHistory }: {
   return (
     <div style={{ borderBottom: '1px solid #F5F5F5', padding: '9px 0' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-        <label style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }} title={rule.enabled ? 'Regra ativa' : 'Regra desativada'}>
-          <input type="checkbox" checked={rule.enabled} onChange={e => onSave({ enabled: e.target.checked })} />
-        </label>
+        <Toggle on={rule.enabled} onChange={v => onSave({ enabled: v })} title={rule.enabled ? 'Regra ativa — clique pra desativar' : 'Regra desativada — o motor usa o comportamento neutro'} />
         <div style={{ flex: 1, minWidth: 200 }}>
           <p style={{ fontSize: 12.5, fontWeight: 600, color: rule.enabled ? '#1A1A1A' : '#999', margin: 0 }}>{rule.label}</p>
           {rule.description && <p style={{ fontSize: 11, color: '#999', margin: 0 }}>{rule.description}</p>}

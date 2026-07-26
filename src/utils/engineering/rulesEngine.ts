@@ -49,6 +49,16 @@ function ruleSource(rules: RuleMap, key: string): string {
   return rules.get(key)?.source ?? 'Regra interna';
 }
 
+/**
+ * A FUNÇÃO do motor deste grupo está ligada? (interruptor `group_enabled`
+ * no cabeçalho de cada card da tela Regras de Engenharia — pedido do
+ * usuário: habilitar/desabilitar cada regra E cada função). Sem a regra,
+ * a função fica ligada por padrão.
+ */
+export function isGroupEnabled(rules: RuleMap, group: string): boolean {
+  return ruleValue(rules, `${group}.group_enabled`, 1) === 1;
+}
+
 /** Datasheet estruturado do inversor (equipment_catalog.tech_specs). */
 export interface InverterSpecs {
   mpptCount?: number;
@@ -177,6 +187,9 @@ export function suggestStringArrangements(
   rules: RuleMap,
 ): { arrangements: StringArrangement[]; alerts: EngineAlert[] } {
   const alerts: EngineAlert[] = [];
+  if (!isGroupEnabled(rules, 'strings')) {
+    return { arrangements: [], alerts: [{ severity: 'info', code: 'group_disabled', message: 'Sugestões de strings desligadas nas Regras de Engenharia (grupo Strings).' }] };
+  }
   if (totalModules <= 0) return { arrangements: [], alerts };
   const w = stringWindow(inv, mod, rules);
   const tolerance = ruleValue(rules, 'strings.balance_tolerance_modules', 1);
@@ -273,6 +286,7 @@ export function distributeAcrossInverters(
       alerts,
     };
   }
+  const groupOn = isGroupEnabled(rules, 'inverter_distribution');
   const totalPower = inverterPowersKw.reduce((a, b) => a + b, 0) || n;
   // A: proporcional à potência, arredondando e ajustando o resto no maior
   const ideal = inverterPowersKw.map(p => (totalModules * (p || totalPower / n)) / totalPower);
@@ -298,14 +312,15 @@ export function distributeAcrossInverters(
   const splits: InverterSplit[] = [
     { label: label(splitA), modulesPerInverter: splitA, explanation: `Divisão proporcional à potência de cada inversor (${inverterPowersKw.map(p => `${p}kW`).join(' / ')}) — a mais equilibrada.` },
   ];
-  if (label(splitB) !== label(splitA)) {
+  // função desligada: só a divisão proporcional, sem alternativa nem alertas
+  if (groupOn && label(splitB) !== label(splitA)) {
     splits.push({ label: label(splitB), modulesPerInverter: splitB, explanation: 'Alternativa com pequeno deslocamento — útil quando o arranjo de strings fecha melhor assim.' });
   }
   // alerta de desequilíbrio (em % da média)
   const avg = totalModules / n;
   const worst = Math.max(...splitA.map(v => Math.abs(v - avg)));
   const samePower = inverterPowersKw.every(p => p === inverterPowersKw[0]);
-  if (samePower && avg > 0 && (worst / avg) * 100 > maxImbalance) {
+  if (groupOn && samePower && avg > 0 && (worst / avg) * 100 > maxImbalance) {
     alerts.push({
       severity: 'warning',
       code: 'inverter_imbalance',
@@ -327,6 +342,7 @@ export function checkDcAcRatio(
   const alerts: EngineAlert[] = [];
   if (!totalModuleW || !totalInverterKw) return { ratio: null, alerts };
   const ratio = totalModuleW / (totalInverterKw * 1000);
+  if (!isGroupEnabled(rules, 'dcac')) return { ratio: Math.round(ratio * 100) / 100, alerts };
   const min = ruleValue(rules, 'dcac.dcac_min', 1.0);
   const ideal = ruleValue(rules, 'dcac.dcac_ideal', 1.25);
   const max = ruleValue(rules, 'dcac.dcac_max', 1.6);
@@ -355,6 +371,166 @@ export function checkDcAcRatio(
     });
   }
   return { ratio: r2, alerts };
+}
+
+// ── Grupos 6–9: queda de tensão, cabos, proteções e aterramento (Fase 2) ────
+
+/** Seções comerciais de cabo (mm²) — tamanhos de mercado, não regra técnica. */
+const STANDARD_SECTIONS = [1.5, 2.5, 4, 6, 10, 16, 25, 35, 50, 70, 95, 120];
+/** Correntes nominais comerciais de disjuntor (A). */
+const STANDARD_BREAKERS = [10, 16, 20, 25, 32, 40, 50, 63, 80, 100, 125, 160, 200, 250];
+
+/**
+ * Queda de tensão percentual (fórmula simplificada da NBR 5410):
+ * ΔV% = (2 × ρ × L × I) / (S × V) × 100 (mono/CC); trifásico usa √3 no
+ * lugar do 2.
+ */
+export function computeVoltageDropPct(params: {
+  lengthM: number; currentA: number; sectionMm2: number; systemV: number;
+  threePhase?: boolean; resistivity?: number;
+}): number {
+  const { lengthM, currentA, sectionMm2, systemV, threePhase, resistivity = 0.0172 } = params;
+  if (sectionMm2 <= 0 || systemV <= 0) return 0;
+  const k = threePhase ? Math.sqrt(3) : 2;
+  return (k * resistivity * lengthM * currentA) / (sectionMm2 * systemV) * 100;
+}
+
+export interface CircuitSizing {
+  currentA: number;
+  sectionMm2: number;
+  voltageDropPct: number;
+  systemV: number;
+  lengthM: number;
+  explanation: string;
+}
+
+export interface ElectricalSizing {
+  dc: CircuitSizing | null;
+  ac: CircuitSizing | null;
+  /** Corrente nominal do disjuntor CA sugerido. */
+  breakerA: number | null;
+  breakerExplanation: string | null;
+  groundSectionMm2: number | null;
+  groundNotes: string | null;
+  alerts: EngineAlert[];
+}
+
+/** Menor seção comercial que atende à queda máxima e à seção mínima da regra. */
+function pickSection(params: {
+  minSection: number; lengthM: number; currentA: number; systemV: number;
+  threePhase?: boolean; resistivity: number; maxDropPct: number;
+}): { sectionMm2: number; dropPct: number; capped: boolean } {
+  const candidates = STANDARD_SECTIONS.filter(s => s >= params.minSection);
+  for (const s of candidates) {
+    const drop = computeVoltageDropPct({ ...params, sectionMm2: s });
+    if (drop <= params.maxDropPct) return { sectionMm2: s, dropPct: drop, capped: false };
+  }
+  const last = candidates[candidates.length - 1] ?? params.minSection;
+  return { sectionMm2: last, dropPct: computeVoltageDropPct({ ...params, sectionMm2: last }), capped: true };
+}
+
+/**
+ * Dimensionamento elétrico simplificado (Grupos 6–9): correntes, bitolas
+ * CC/CA pela queda de tensão, disjuntor CA e aterramento — tudo dirigido
+ * pelas regras, com explicação e fonte. Alimenta o painel do projeto e,
+ * na sequência, os memoriais.
+ */
+export function suggestElectricalSizing(input: {
+  stringCurrentA?: number;          // Imp do módulo (ou fallback da regra)
+  stringsInParallelPerMppt?: number;// pra corrente CC por circuito (padrão 1)
+  inverterPowerKw?: number;         // por inversor (disjuntor de saída)
+  phaseType?: 'monofasico' | 'bifasico' | 'trifasico';
+  dcLengthM?: number;
+  acLengthM?: number;
+  dcVoltageV?: number;              // tensão de operação da string (do arranjo escolhido)
+}, rules: RuleMap): ElectricalSizing {
+  const alerts: EngineAlert[] = [];
+  const rho = ruleValue(rules, 'cables.copper_resistivity', 0.0172);
+  const threePhase = input.phaseType === 'trifasico';
+  const acV = threePhase
+    ? ruleValue(rules, 'voltage_drop.ac_voltage_tri_v', 380)
+    : ruleValue(rules, 'voltage_drop.ac_voltage_mono_v', 220);
+
+  const cablesOn = isGroupEnabled(rules, 'cables');
+  const vdOn = isGroupEnabled(rules, 'voltage_drop');
+
+  // ── CC (string → inversor) ────────────────────────────────────────────────
+  let dc: CircuitSizing | null = null;
+  if (cablesOn) {
+    const iString = input.stringCurrentA ?? ruleValue(rules, 'strings.default_string_current_a', 13);
+    const parallel = Math.max(1, input.stringsInParallelPerMppt ?? 1);
+    const iDc = iString * parallel;
+    const lDc = input.dcLengthM ?? ruleValue(rules, 'cables.default_dc_length_m', 20);
+    const vDc = input.dcVoltageV ?? 600; // aproximação neutra quando o arranjo não foi escolhido
+    const maxDropDc = ruleValue(rules, 'voltage_drop.vd_dc_max_pct', 2);
+    const pick = pickSection({
+      minSection: ruleValue(rules, 'cables.min_dc_section_mm2', 6),
+      lengthM: lDc, currentA: iDc, systemV: vDc, resistivity: rho, maxDropPct: maxDropDc,
+    });
+    dc = {
+      currentA: Math.round(iDc * 10) / 10, sectionMm2: pick.sectionMm2,
+      voltageDropPct: Math.round(pick.dropPct * 100) / 100, systemV: vDc, lengthM: lDc,
+      explanation: `Cabo CC ${pick.sectionMm2}mm² pra ${Math.round(iDc * 10) / 10}A e ${lDc}m — queda ~${Math.round(pick.dropPct * 100) / 100}% (limite ${maxDropDc}%). ${ruleSource(rules, 'cables.min_dc_section_mm2')}.`,
+    };
+    if (vdOn && pick.capped) {
+      alerts.push({
+        severity: 'warning', code: 'vd_dc_exceeded',
+        message: `Mesmo com a maior bitola da tabela, a queda CC estimada (${dc.voltageDropPct}%) passa do limite de ${maxDropDc}%.`,
+        suggestion: 'Reduza a distância do arranjo ao inversor ou revise o circuito.',
+        source: ruleSource(rules, 'voltage_drop.vd_dc_max_pct'),
+      });
+    }
+  }
+
+  // ── CA (inversor → conexão) + disjuntor ──────────────────────────────────
+  let ac: CircuitSizing | null = null;
+  let breakerA: number | null = null;
+  let breakerExplanation: string | null = null;
+  if (cablesOn && input.inverterPowerKw && input.inverterPowerKw > 0) {
+    const iAc = (input.inverterPowerKw * 1000) / (acV * (threePhase ? Math.sqrt(3) : 1));
+    const lAc = input.acLengthM ?? ruleValue(rules, 'cables.default_ac_length_m', 30);
+    const maxDropAc = ruleValue(rules, 'voltage_drop.vd_ac_max_pct', 3);
+    const pick = pickSection({
+      minSection: ruleValue(rules, 'cables.min_ac_section_mm2', 2.5),
+      lengthM: lAc, currentA: iAc, systemV: acV, threePhase, resistivity: rho, maxDropPct: maxDropAc,
+    });
+    ac = {
+      currentA: Math.round(iAc * 10) / 10, sectionMm2: pick.sectionMm2,
+      voltageDropPct: Math.round(pick.dropPct * 100) / 100, systemV: acV, lengthM: lAc,
+      explanation: `Cabo CA ${pick.sectionMm2}mm² pra ${Math.round(iAc * 10) / 10}A (${input.inverterPowerKw}kW em ${acV}V${threePhase ? ' trifásico' : ''}) e ${lAc}m — queda ~${Math.round(pick.dropPct * 100) / 100}% (limite ${maxDropAc}%).`,
+    };
+    if (vdOn && pick.capped) {
+      alerts.push({
+        severity: 'warning', code: 'vd_ac_exceeded',
+        message: `Queda CA estimada (${ac.voltageDropPct}%) acima do limite de ${maxDropAc}% mesmo na maior bitola.`,
+        suggestion: 'Aumente a bitola além da tabela, reduza a distância ou divida o circuito.',
+        source: ruleSource(rules, 'voltage_drop.vd_ac_max_pct'),
+      });
+    }
+    if (isGroupEnabled(rules, 'protections')) {
+      const factor = ruleValue(rules, 'protections.breaker_sizing_factor', 1.25);
+      const target = iAc * factor;
+      breakerA = STANDARD_BREAKERS.find(b => b >= target) ?? STANDARD_BREAKERS[STANDARD_BREAKERS.length - 1];
+      breakerExplanation = `Disjuntor CA de ${breakerA}A — ${factor}× a corrente de ${Math.round(iAc * 10) / 10}A, próximo valor comercial. ${ruleSource(rules, 'protections.breaker_sizing_factor')}.`;
+      const dpsNotes = rules.get('protections.dps_class_notes');
+      if (dpsNotes?.enabled && dpsNotes.notes) {
+        alerts.push({ severity: 'info', code: 'dps_hint', message: `DPS: ${dpsNotes.notes}.`, source: dpsNotes.source });
+      }
+    }
+  }
+
+  // ── Aterramento ───────────────────────────────────────────────────────────
+  let groundSectionMm2: number | null = null;
+  let groundNotes: string | null = null;
+  if (isGroupEnabled(rules, 'grounding')) {
+    const g = rules.get('grounding.min_ground_section_mm2');
+    if (g?.enabled && g.valueDefault !== null) {
+      groundSectionMm2 = Number(g.valueDefault);
+      groundNotes = g.notes;
+    }
+  }
+
+  return { dc, ac, breakerA, breakerExplanation, groundSectionMm2, groundNotes, alerts };
 }
 
 // ── Orquestrador (Grupos 1+2+3+5+11+12) ─────────────────────────────────────
@@ -443,7 +619,11 @@ export function suggestProjectArrangement(input: ProjectEngineInput, rules: Rule
     }
   }
 
-  return { options, alerts };
+  // interruptores globais: Sugestões desligado = 1 opção só; Alertas
+  // desligado = silencia tudo (a regra avisa que não é recomendado)
+  const finalOptions = isGroupEnabled(rules, 'suggestions') ? options : options.slice(0, 1);
+  const finalAlerts = isGroupEnabled(rules, 'alerts') ? alerts : [];
+  return { options: finalOptions, alerts: finalAlerts };
 }
 
 // ── Datasheet: leitura tolerante do tech_specs do catálogo ───────────────────

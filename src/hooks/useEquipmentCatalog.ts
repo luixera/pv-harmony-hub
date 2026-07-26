@@ -15,6 +15,8 @@ export interface EquipmentCatalogItem {
   inmetro_url: string | null;
   /** Certificado AFCI — somente inversores. */
   afci_url: string | null;
+  /** Datasheet estruturado pro Motor de Engenharia (MPPTs, tensões, Voc/Vmp...). */
+  tech_specs: Record<string, number> | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -98,6 +100,8 @@ interface SaveEquipmentInput {
   datasheet_url?: string | null;
   inmetro_url?: string | null;
   afci_url?: string | null;
+  /** Dados técnicos do Motor de Engenharia — `undefined` não mexe no que está salvo. */
+  tech_specs?: Record<string, number> | null;
 }
 
 /** Busca o certificado AFCI já cadastrado para uma marca de inversor. */
@@ -158,6 +162,7 @@ export function useSaveEquipment() {
         datasheet_url,
         inmetro_url,
         afci_url,
+        ...(input.tech_specs !== undefined ? { tech_specs: input.tech_specs } : {}),
       };
 
       // Certificado novo anexado → passa a valer para os outros inversores da

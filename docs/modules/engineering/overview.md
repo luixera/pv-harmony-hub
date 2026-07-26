@@ -55,13 +55,36 @@ um fallback neutro. Toda alteração vira histórico automático
 | 3 | `arrays` | topologias do arranjo | **1 ✅** (via orquestrador) |
 | 4 | `microinverters` | limites por ramal/circuito | 3 (regras já semeadas) |
 | 5 | `dcac` | relação DC/AC mín/ideal/máx | **1 ✅** |
-| 6 | `voltage_drop` | queda CC/CA máxima | 2 (memorial) |
-| 7 | `cables` | bitolas mínimas, fatores de correção | 2 (memorial) |
-| 8 | `protections` | critérios de disjuntor/DPS/DR/fusível | 2 |
-| 9 | `grounding` | condutor mínimo, cor, interligações | 2 |
+| 6 | `voltage_drop` | queda CC/CA máxima + tensões da rede (220/380V) | **2 ✅** |
+| 7 | `cables` | bitolas mínimas, resistividade, comprimentos padrão, fatores | **2 ✅** |
+| 8 | `protections` | disjuntor (fator × corrente, ratings comerciais), DPS | **2 ✅** |
+| 9 | `grounding` | condutor mínimo, cor, interligações | **2 ✅** |
 | 10 | `norms` | referências normativas (justificam as regras) | **1 ✅** (informativo) |
-| 11 | `alerts` | avisos — nunca bloqueiam | **1 ✅** |
+| 11 | `alerts` | avisos — nunca bloqueiam (desligar silencia tudo) | **1 ✅** |
 | 12 | `suggestions` | nº mínimo de alternativas apresentadas | **1 ✅** |
+
+## Liga/desliga por FUNÇÃO e por regra (Fase 2)
+
+Cada grupo tem a regra especial **`group_enabled`**, que a tela mostra como
+**interruptor no cabeçalho do card** (ícone ⏻): desligado, o motor PULA a
+função inteira daquele grupo (strings desligado = sem sugestões de arranjo;
+cabos desligado = sem bitolas; alertas desligado = silencia tudo — a própria
+regra avisa que não é recomendado). Cada regra individual também tem seu
+próprio interruptor na linha. Semântica no motor: `isGroupEnabled(rules,
+grupo)`; sem a regra, a função fica ligada por padrão.
+
+## Dimensionamento elétrico simplificado (Fase 2)
+
+`suggestElectricalSizing` (Grupos 6–9): corrente CC (Imp do módulo ou
+fallback), corrente CA (P/(V×√3) trifásico ou P/V mono, tensões da rede
+configuráveis), **bitola** = menor seção comercial que atende à queda
+máxima E ao mínimo da regra (queda pela fórmula simplificada da NBR 5410:
+ΔV% = k×ρ×L×I/(S×V)×100, k=2 mono/CC e √3 trifásico, ρ e comprimentos
+padrão configuráveis), **disjuntor CA** = próximo rating comercial ≥
+fator × corrente, DPS/aterramento pelas regras. Exibido no painel do
+projeto (bloco "Dimensionamento elétrico"); alimentará os memoriais na
+sequência. Seções e ratings comerciais são constantes de mercado no código
+(não são regras técnicas); mínimos e fatores vêm das regras.
 
 ## Arquivos
 
