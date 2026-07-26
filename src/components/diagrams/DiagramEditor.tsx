@@ -73,6 +73,9 @@ export function DiagramEditor({
   const [texts, setTexts] = useState<PlacedText[]>([]);
   const [groups, setGroups] = useState<PlacedGroup[]>([]);
   const [shapes, setShapes] = useState<PlacedShape[]>([]);
+  /** Componentes FIXOS do cadastro que o usuário removeu à mão — o reconcile()
+   *  de quem chama não os semeia de novo (edição manual livre). */
+  const [suppressedIds, setSuppressedIds] = useState<string[]>([]);
   const [sheet, setSheet] = useState<SheetOptions>({});
   const [loaded, setLoaded] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -122,7 +125,7 @@ export function DiagramEditor({
   // que muda o desenho (não a cada mousemove) — o estado é pequeno o
   // suficiente (fotos são a exceção; ainda ok pra ~50 passos).
   const HISTORY_MAX = 50;
-  const currentStateRef = useRef<DiagramSceneState>({ placements: [], connections: [], photos: [], texts: [], groups: [], shapes: [], sheet: {} });
+  const currentStateRef = useRef<DiagramSceneState>({ placements: [], connections: [], photos: [], texts: [], groups: [], shapes: [], suppressedIds: [], sheet: {} });
   const historyRef = useRef<{ undo: DiagramSceneState[]; redo: DiagramSceneState[] }>({ undo: [], redo: [] });
   const snapshot = () => {
     historyRef.current.undo.push(currentStateRef.current);
@@ -137,6 +140,7 @@ export function DiagramEditor({
     setTexts(s.texts);
     setGroups(s.groups ?? []);
     setShapes(s.shapes ?? []);
+    setSuppressedIds(s.suppressedIds ?? []);
     setSheet(s.sheet ?? {});
     clearSelection();
   };
@@ -163,6 +167,7 @@ export function DiagramEditor({
     setTexts(initialState.texts);
     setGroups(initialState.groups ?? []); // diagramas salvos antes dos grupos não têm o campo
     setShapes(initialState.shapes ?? []);
+    setSuppressedIds(initialState.suppressedIds ?? []);
     setSheet(initialState.sheet ?? {});
     clearSelection();
     setLinkMode(false);
@@ -175,7 +180,8 @@ export function DiagramEditor({
     currentStateRef.current = {
       placements: initialState.placements, connections: initialState.connections,
       photos: initialState.photos, texts: initialState.texts,
-      groups: initialState.groups ?? [], shapes: initialState.shapes ?? [], sheet: initialState.sheet ?? {},
+      groups: initialState.groups ?? [], shapes: initialState.shapes ?? [],
+      suppressedIds: initialState.suppressedIds ?? [], sheet: initialState.sheet ?? {},
     };
     setLoaded(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- só reage à troca de documento
@@ -184,11 +190,11 @@ export function DiagramEditor({
   // Notifica o dono (localStorage por projeto, ou o motor de templates) a cada mudança.
   useEffect(() => {
     if (!loaded) return;
-    const state: DiagramSceneState = { placements, connections, photos, texts, groups, shapes, sheet };
+    const state: DiagramSceneState = { placements, connections, photos, texts, groups, shapes, suppressedIds, sheet };
     currentStateRef.current = state; // espelho pro desfazer/refazer (snapshot lê daqui)
     onStateChange(state);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- onStateChange não entra: reagimos à mudança de estado, não à identidade da função
-  }, [placements, connections, photos, texts, groups, shapes, sheet, loaded]);
+  }, [placements, connections, photos, texts, groups, shapes, suppressedIds, sheet, loaded]);
 
   const byId = useMemo(() => new Map(placements.map(p => [p.id, p])), [placements]);
   // Espelha `placements`/`connections` num ref pra ler a versão mais recente
@@ -965,12 +971,16 @@ export function DiagramEditor({
       setSelectedPhotoId(null);
       return;
     }
-    // símbolos: remove todos os MANUAIS da multi-seleção (os do cadastro do projeto ficam)
+    // símbolos: remove QUALQUER um da multi-seleção. Os fixos do cadastro
+    // entram em `suppressedIds` pro reconcile() de quem chama não recriá-los
+    // (edição manual livre — pedido do usuário; "Restaurar" limpa a lista).
     const ids = selectedIds.size > 0 ? selectedIds : (selectedId ? new Set([selectedId]) : new Set<string>());
-    const removable = [...ids].filter(isManualSymbol);
+    const removable = [...ids].filter(id => byId.has(id));
     if (removable.length > 0) {
       snapshot();
       const removeSet = new Set(removable);
+      const fixed = removable.filter(id => !isManualSymbol(id));
+      if (fixed.length > 0) setSuppressedIds(prev => [...new Set([...prev, ...fixed])]);
       // "refazer o fio": componente em série com exatamente 1 entrada e 1
       // saída some e a ligação volta a atravessar direto (inverso do
       // soltar-no-fio)
@@ -992,7 +1002,7 @@ export function DiagramEditor({
 
   const canRemoveSelected = !!selectedGroupId || !!selectedConnId || !!selectedTextId || !!selectedPhotoId
     || !!selectedShapeId
-    || [...(selectedIds.size > 0 ? selectedIds : (selectedId ? [selectedId] : []))].some(isManualSymbol);
+    || selectedIds.size > 0 || !!selectedId;
 
   // Duplicar os símbolos selecionados (Ctrl+D / botão) — só os manuais podem
   // ser removidos depois, mas duplicar qualquer um vira sempre um "manual-".
@@ -1292,6 +1302,7 @@ export function DiagramEditor({
     setTexts([]);
     setGroups([]);
     setShapes([]);
+    setSuppressedIds([]); // restaurar traz de volta os componentes do cadastro removidos
     // `sheet` (resp. técnico/ART/revisão) sobrevive ao reset — é metadado da
     // folha digitado pelo usuário, não parte do layout.
     clearSelection();
@@ -2271,7 +2282,7 @@ export function DiagramEditor({
         if (ctxMenu.kind === 'symbol') {
           items.push(item('Girar 90°', rotateSelected));
           items.push(item('Duplicar (Ctrl+D)', duplicateSelected));
-          items.push(item('Remover', removeSelected, true, !isManualSymbol(ctxMenu.id)));
+          items.push(item('Remover', removeSelected, true));
         } else if (ctxMenu.kind === 'conn') {
           items.push(item('Remover ligação', () => removeConnection(ctxMenu.id), true));
         } else if (ctxMenu.kind === 'group') {

@@ -133,6 +133,9 @@ export interface DiagramSceneState {
   groups?: PlacedGroup[];
   /** Figuras de anotação (retângulo/elipse/divisória/seta) — idem, opcional por retrocompatibilidade. */
   shapes?: PlacedShape[];
+  /** Ids de componentes FIXOS do cadastro removidos à mão pelo usuário — o
+   *  reconcile() não os semeia de novo (edição manual livre no projeto). */
+  suppressedIds?: string[];
   /** Campos editáveis da folha (resp. técnico/ART/revisão do carimbo + legenda lig./desl.). */
   sheet?: SheetOptions;
 }
@@ -912,6 +915,139 @@ export function multiplyInverterBranches(state: DiagramSceneState, targetCount: 
 /** Nº de inversores desenhados numa cena — usado no casamento paramétrico de modelos. */
 export function inverterCountOf(state: DiagramSceneState): number {
   return state.placements.filter(p => p.kind === 'inverter').length;
+}
+
+/**
+ * Cena COMPLETA de um projeto com 1..N arranjos, na topologia padrão pedida
+ * pelo usuário:
+ *
+ *   Arranjo 1: FV ──(CC)── INV 1 ── Disjuntor Arranjo 1 ─┐
+ *   Arranjo N: FV ──(CC)── INV N ── Disjuntor Arranjo N ─┴•─ [Disj. Geral*] ─┬─┬─ Medidor ── Rede
+ *                                                                       DPS ┘ └ Cargas do local
+ *
+ * - UM disjuntor CA por arranjo; os arranjos se JUNTAM num nó (•, derivação
+ *   formal — mover o tronco arrasta a junção junto).
+ * - Disjuntor geral de seccionamento OPCIONAL (`includeGeneralBreaker`).
+ * - DPS em PARALELO (derivação) DEPOIS da junção dos arranjos.
+ * - Caminho de referência pras CARGAS DO LOCAL (`includeLoadsReference`) —
+ *   um quadro de distribuição derivado do mesmo tronco, só indicativo.
+ * - TODOS os ids são `manual-` → cena 100% editável no projeto e o
+ *   reconcile() nunca recria nada por cima (mesma regra dos modelos).
+ */
+export function buildMultiArrangementScene(options: {
+  inverterCount: number;
+  /** Legenda do bloco FV de cada arranjo (ex.: o arranjo de strings escolhido). */
+  pvLegends?: string[][];
+  includeGeneralBreaker?: boolean;
+  includeLoadsReference?: boolean;
+}): DiagramSceneState {
+  const n = Math.max(1, options.inverterCount);
+  const includeGB = options.includeGeneralBreaker !== false;
+  const includeLoads = options.includeLoadsReference !== false;
+  const uid = (() => { let i = 0; return (kind: string) => `manual-${kind}-arr${++i}`; })();
+
+  // colunas (x do canto sup-esq; caixa 24×20) e linhas dos arranjos
+  const X_PV = 20, X_INV = 58, X_CB = 96;
+  const X_JUNC = 124;                       // x do nó de junção dos arranjos
+  const X_GB = 130;                         // disjuntor geral (se incluído)
+  const X_METER = 196, X_GRID = 230;
+  const MID_TOP = 110;                      // y do tronco CA (portas em MID_TOP+10) — abaixo da tabela de legenda, que ocupa o canto sup-direito até ~108mm
+  const ROW_GAP = 36;
+  const midY = MID_TOP + 10;
+  const rowY = (i: number) => MID_TOP + (i - (n - 1) / 2) * ROW_GAP;
+
+  const placements: PlacedSymbol[] = [];
+  const connections: ManualConnection[] = [];
+  const sym = (kind: ComponentKind, x: number, y: number, label: string, legend: string[] = []): PlacedSymbol => {
+    const p: PlacedSymbol = { id: uid(kind), kind, label, legend, x, y: snapToGrid(y), rotation: 0, scale: 1 };
+    placements.push(p);
+    return p;
+  };
+
+  const cbs: PlacedSymbol[] = [];
+  for (let i = 0; i < n; i++) {
+    const y = rowY(i);
+    const pv = sym('pv-array', X_PV, y, n > 1 ? `Arranjo ${i + 1}` : 'Arranjo FV', options.pvLegends?.[i] ?? []);
+    const inv = sym('inverter', X_INV, y, n > 1 ? `Inversor ${i + 1}` : 'Inversor');
+    const cb = sym('breaker', X_CB, y, n > 1 ? `Disjuntor Arranjo ${i + 1}` : 'Disjuntor CA');
+    cbs.push(cb);
+    connections.push({ id: `${pv.id}-dc`, from: { kind: 'port', id: pv.id, port: 'dir' }, to: { kind: 'port', id: inv.id, port: 'cc' }, conductor: 'dc' });
+    connections.push({ id: `${inv.id}-ac`, from: { kind: 'port', id: inv.id, port: 'ca' }, to: { kind: 'port', id: cb.id, port: 'entrada' } });
+  }
+
+  const gb = includeGB
+    ? sym('breaker', X_GB, MID_TOP, 'Disjuntor Geral', ['(seccionamento — opcional)'])
+    : null;
+  const meter = sym('meter-bidirectional', X_METER, MID_TOP, 'Medidor');
+  const grid = sym('utility-grid', X_GRID, MID_TOP, 'Rede');
+
+  // tronco: do disjuntor do 1º arranjo até o próximo elemento, dobrando no nó
+  const trunkTo: ConnectionEndpoint = gb
+    ? { kind: 'port', id: gb.id, port: 'entrada' }
+    : { kind: 'port', id: meter.id, port: 'esq' };
+  const firstCbY = cbs[0].y + 10; // y da PORTA (placement já snapado à grade)
+  const trunk: ManualConnection = {
+    id: 'manual-trunk-arr',
+    from: { kind: 'port', id: cbs[0].id, port: 'saida' },
+    to: trunkTo,
+    waypoints: n > 1 ? [{ x: X_JUNC, y: firstCbY }, { x: X_JUNC, y: midY }] : undefined,
+  };
+  connections.push(trunk);
+
+  // demais arranjos entram como DERIVAÇÃO FORMAL no nó do tronco (•)
+  if (n > 1) {
+    const byId = new Map(placements.map(p => [p.id, p]));
+    const allPts = computeAllConnectionPoints(connections, byId);
+    const trunkPts = allPts.get(trunk.id)!;
+    const junction = nearestPointOnPolyline({ x: X_JUNC, y: midY }, trunkPts)!;
+    for (let i = 1; i < n; i++) {
+      connections.push({
+        id: `${cbs[i].id}-junc`,
+        from: { kind: 'port', id: cbs[i].id, port: 'saida' },
+        to: { kind: 'line', connId: trunk.id, t: junction.t },
+      });
+    }
+  }
+
+  // segundo trecho do tronco (depois do disjuntor geral) até o medidor
+  const busConnId = gb ? 'manual-bus-arr' : trunk.id;
+  if (gb) {
+    connections.push({
+      id: busConnId,
+      from: { kind: 'port', id: gb.id, port: 'saida' },
+      to: { kind: 'port', id: meter.id, port: 'esq' },
+    });
+  }
+  connections.push({ id: 'manual-grid-arr', from: { kind: 'port', id: meter.id, port: 'dir' }, to: { kind: 'port', id: grid.id, port: 'esq' } });
+
+  // DPS em PARALELO depois da junção + cargas do local (referência) — ambos
+  // derivam do trecho pós-junção; o t é calculado da geometria real
+  // derivações caem na vertical dos símbolos, DEPOIS da saída do disjuntor
+  // geral (o barramento pós-junção começa em GB.saida quando ele existe)
+  const dps = sym('dps', 148, MID_TOP + 26, 'DPS CA');
+  const loadsPanel = includeLoads
+    ? sym('distribution-panel', 186, MID_TOP + 26, 'Cargas do local', ['(apenas referência)'])
+    : null;
+  {
+    const byId = new Map(placements.map(p => [p.id, p]));
+    const allPts = computeAllConnectionPoints(connections, byId);
+    const busPts = allPts.get(busConnId)!;
+    const tapT = (x: number) => nearestPointOnPolyline({ x, y: midY }, busPts)!.t;
+    connections.push({
+      id: 'manual-dps-arr',
+      from: { kind: 'line', connId: busConnId, t: tapT(160) },
+      to: { kind: 'port', id: dps.id, port: 'topo' },
+    });
+    if (loadsPanel) {
+      connections.push({
+        id: 'manual-loads-arr',
+        from: { kind: 'line', connId: busConnId, t: tapT(188) },
+        to: { kind: 'port', id: loadsPanel.id, port: 'entrada' },
+      });
+    }
+  }
+
+  return { placements, connections, photos: [], texts: [], groups: [], shapes: [] };
 }
 
 /**

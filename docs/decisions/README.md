@@ -5,6 +5,23 @@ Registro de decisões de produto/UX (não arquiteturais — essas ficam em
 
 ## Log
 
+- **Motor de Engenharia — topologia multi-arranjo + edição livre no
+  projeto** (jul/2026): pedido do usuário: "Em casos de arranjos com mais
+  de um inversor, precisamos colocar um disjuntor para cada arranjo. Um
+  disjuntor para seccionar os dois arranjos ou mais pode ser opcional. O
+  DPS deve ficar em paralelo após a junção dos dois arranjos. Deve ser
+  prevista também, apenas para referência, um caminho para indicar as
+  cargas do local. Permita a edição manual direta na aba do diagrama no
+  modal de projetos." Decisões: disjuntor por arranjo é OBRIGATÓRIO na
+  cena gerada; o disjuntor geral e o caminho de cargas são regras
+  liga/desliga do próprio motor (`protections.include_general_ac_breaker`
+  e `arrays.include_loads_reference` — editáveis com histórico como
+  qualquer regra); a cena gerada sai 100% com ids `manual-`, então é
+  editável livremente e o reconcile nunca recria nada por cima; e o
+  editor passou a permitir REMOVER qualquer componente no diagrama do
+  projeto (inclusive os fixos do cadastro — `suppressedIds`; "Restaurar"
+  traz de volta). Ver [ADR 0007](../adr/0007-engineering-rules-engine.md).
+  (jul/2026)
 - **Motor de Engenharia (Engineering Rules Engine) — Fase 1** (jul/2026):
   pedido detalhado do usuário ("antes de criar me fale o que vai fazer...
   o objetivo é ser prático, sem complicação, para que alguém com baixo

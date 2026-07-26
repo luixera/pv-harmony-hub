@@ -66,7 +66,11 @@
   por grupo) e por regra; dimensionamento elétrico simplificado (queda de
   tensão NBR 5410, bitolas CC/CA, disjuntor, aterramento) no painel do
   projeto; form de datasheet estruturado (tech_specs) no cadastro de
-  Equipamentos. **Fase 3**: microinversores completos, memoriais/lista de
+  Equipamentos. **Topologia multi-arranjo ✅** (jul/2026): "Usar esta"
+  gera 1 disjuntor por arranjo + junção em nó + disjuntor geral opcional
+  (regra) + DPS pós-junção + cargas do local de referência, cena 100%
+  editável (`suppressedIds` permite remover até componentes fixos do
+  cadastro). **Fase 3**: microinversores completos, memoriais/lista de
   materiais consumindo o sizing, checklist, assistente. Ver
   [modules/engineering](../modules/engineering/overview.md) e
   [ADR 0007](../adr/0007-engineering-rules-engine.md).

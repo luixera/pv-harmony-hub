@@ -4,7 +4,8 @@ import { ProjectWithDetails } from '@/hooks/useProjects';
 import { buildTechnicalJsonFromProject } from '@/utils/cadEngine/buildTechnicalJson';
 import {
   ConnectionEndpoint, DiagramSceneState, ManualConnection,
-  initialConnections, initialPlacement, inverterCountOf, isConnectionResolvable, multiplyInverterBranches,
+  buildMultiArrangementScene, initialConnections, initialPlacement, inverterCountOf,
+  isConnectionResolvable, multiplyInverterBranches,
 } from '@/utils/cadEngine/editableLayout';
 import { Point } from '@/utils/cadEngine/types';
 import { buildProjectValues } from '@/utils/projectValues';
@@ -13,7 +14,7 @@ import { useProjectDiagram, useSaveProjectDiagram } from '@/hooks/useProjectDiag
 import { useDiagramTemplates } from '@/hooks/useDiagramTemplates';
 import { useEngineeringRuleMap } from '@/hooks/useEngineeringRules';
 import {
-  ProjectArrangementOption, suggestElectricalSizing, suggestProjectArrangement,
+  ProjectArrangementOption, ruleValue, suggestElectricalSizing, suggestProjectArrangement,
 } from '@/utils/engineering/rulesEngine';
 
 /**
@@ -45,6 +46,7 @@ interface SavedLayout {
   texts?: DiagramSceneState['texts'];
   groups?: DiagramSceneState['groups'];
   shapes?: DiagramSceneState['shapes'];
+  suppressedIds?: string[];
   sheet?: DiagramSceneState['sheet'];
 }
 
@@ -88,10 +90,14 @@ function reconcile(json: ReturnType<typeof buildTechnicalJsonFromProject>, saved
     };
   }
 
-  const reconciledProject = fresh.map(f => {
-    const s = saved.placements.find(p => p.id === f.id);
-    return s ? { ...f, x: s.x, y: s.y, rotation: s.rotation, scale: s.scale ?? 1 } : f;
-  });
+  // componentes fixos que o usuário REMOVEU à mão não são semeados de novo
+  const suppressed = new Set(saved.suppressedIds ?? []);
+  const reconciledProject = fresh
+    .filter(f => !suppressed.has(f.id))
+    .map(f => {
+      const s = saved.placements.find(p => p.id === f.id);
+      return s ? { ...f, x: s.x, y: s.y, rotation: s.rotation, scale: s.scale ?? 1 } : f;
+    });
   const manual = saved.placements
     .filter(p => p.id.startsWith('manual-'))
     .map(p => ({ ...p, scale: p.scale ?? 1 })); // diagramas salvos antes do redimensionamento não tinham "scale"
@@ -105,7 +111,8 @@ function reconcile(json: ReturnType<typeof buildTechnicalJsonFromProject>, saved
   return {
     placements, connections,
     photos: saved.photos ?? [], texts: saved.texts ?? [],
-    groups: saved.groups ?? [], shapes: saved.shapes ?? [], sheet: saved.sheet,
+    groups: saved.groups ?? [], shapes: saved.shapes ?? [],
+    suppressedIds: saved.suppressedIds ?? [], sheet: saved.sheet,
   };
 }
 
@@ -175,29 +182,22 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
     }, ruleMap);
   }, [suggestOpen, ruleMap, project.equipment, project.generalData]);
 
-  /** "Usar esta": gera o diagrama automático com o arranjo escolhido nas legendas. */
+  /** "Usar esta": gera o diagrama na topologia multi-arranjo (1 disjuntor CA
+   *  por arranjo, junção em nó, disjuntor geral opcional por regra, DPS em
+   *  paralelo depois da junção e caminho de referência pras cargas do local).
+   *  A cena sai 100% `manual-` — editável livremente, sem reconcile por cima. */
   const applySuggestion = (opt: ProjectArrangementOption) => {
-    if (!confirm(`Usar "${opt.title}" (${opt.summary})? O diagrama atual será substituído pela cadeia automática com este arranjo.`)) return;
-    let state: DiagramSceneState = {
-      placements: initialPlacement(json),
-      connections: initialConnections(json),
-      photos: [], texts: [], groups: [],
-    };
-    if (projectInverters > 1) {
-      const multiplied = multiplyInverterBranches(state, projectInverters);
-      if (multiplied) state = multiplied;
-    }
-    // grava o arranjo escolhido nas legendas dos arranjos FV (ramal i → inversor i)
-    let pvIdx = 0;
-    state = {
-      ...state,
-      placements: state.placements.map(p => {
-        if (p.kind !== 'pv-array') return p;
-        const arr = opt.perInverter[Math.min(pvIdx++, opt.perInverter.length - 1)];
-        const legend = [arr.label, arr.operatingVoltageV ? `~${arr.operatingVoltageV}V de operação` : ''].filter(Boolean);
-        return { ...p, legend };
-      }),
-    };
+    if (!confirm(`Usar "${opt.title}" (${opt.summary})? O diagrama atual será substituído pela topologia automática com este arranjo.`)) return;
+    const pvLegends = Array.from({ length: projectInverters }, (_, i) => {
+      const arr = opt.perInverter[Math.min(i, opt.perInverter.length - 1)];
+      return [arr.label, arr.operatingVoltageV ? `~${arr.operatingVoltageV}V de operação` : ''].filter(Boolean);
+    });
+    const state = buildMultiArrangementScene({
+      inverterCount: projectInverters,
+      pvLegends,
+      includeGeneralBreaker: ruleValue(ruleMap, 'protections.include_general_ac_breaker', 1) !== 0,
+      includeLoadsReference: ruleValue(ruleMap, 'arrays.include_loads_reference', 1) !== 0,
+    });
     setApplied(prev => ({ v: (prev?.v ?? 0) + 1, state }));
     setSuggestOpen(false);
   };

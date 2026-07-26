@@ -106,9 +106,31 @@ sequência. Seções e ratings comerciais são constantes de mercado no código
   histórico.
 - `src/components/projects/UnifilarTab.tsx` — painel verde "Motor de
   engenharia" na aba Unifilar: botão "Ver sugestões" → opções explicadas +
-  alertas; **"Usar esta"** gera o diagrama automático com o arranjo
-  escolhido (multiplica ramais por inversor e grava o arranjo na legenda
-  do bloco FV).
+  alertas; **"Usar esta"** gera o diagrama na topologia multi-arranjo
+  (abaixo) com o arranjo escolhido nas legendas dos blocos FV.
+
+## Topologia multi-arranjo (diagrama automático)
+
+`buildMultiArrangementScene` (cadEngine/editableLayout.ts) desenha o
+diagrama completo pedido pelo usuário para 1..N arranjos:
+
+- **1 disjuntor CA por arranjo** ("Disjuntor Arranjo i") — obrigatório;
+- os arranjos se **juntam num nó** (•, derivação formal no tronco — mover
+  o tronco arrasta a junção junto);
+- **disjuntor geral de seccionamento OPCIONAL** depois da junção — regra
+  `protections.include_general_ac_breaker` (1 = desenha, 0 = não);
+- **DPS em PARALELO depois da junção** (derivação do barramento pós-GB);
+- **caminho de referência das cargas do local** (quadro de distribuição
+  "Cargas do local (apenas referência)", derivado do mesmo barramento) —
+  regra `arrays.include_loads_reference`;
+- depois medidor bidirecional → rede; trechos FV→inversor em condutor CC.
+
+A cena sai com TODOS os ids `manual-` — o `reconcile()` do UnifilarTab a
+trata como cena de modelo (passthrough) e **nada é recriado por cima**:
+edição manual 100% livre na aba do projeto. Complementando, o editor agora
+permite **remover qualquer componente** (inclusive os fixos do cadastro):
+os removidos entram em `DiagramSceneState.suppressedIds` e o reconcile não
+os semeia de novo ("Restaurar" limpa a lista).
 
 ## Exemplos validados por teste
 

@@ -66,6 +66,19 @@ sempre ≥2 sugestões quando houver mais de uma opção válida.
   no cadastro de Equipamentos (campos por tipo, colapsável). Decisão:
   seções/ratings comerciais são CONSTANTES de mercado no código; mínimos,
   fatores, ρ, comprimentos padrão e tensões da rede são regras editáveis.
+- **Topologia multi-arranjo (jul/2026)**: "Usar esta" passou a gerar a
+  cena por `buildMultiArrangementScene` — 1 disjuntor CA por arranjo
+  (obrigatório, pedido direto do usuário), junção em nó com derivação
+  formal, disjuntor geral de seccionamento OPCIONAL (regra
+  `protections.include_general_ac_breaker`), DPS em paralelo DEPOIS da
+  junção e caminho de referência "Cargas do local" (regra
+  `arrays.include_loads_reference`). Decisões: (a) a cena sai 100% com ids
+  `manual-` — reaproveita a regra de passthrough das cenas de modelo, então
+  o reconcile nunca recria nada e a edição no projeto é livre; (b) os
+  liga/desliga da topologia são REGRAS comuns (ganham histórico, RLS e
+  interruptor de graça); (c) junto veio `suppressedIds` no
+  DiagramSceneState: remover um componente FIXO do cadastro passa a ser
+  permitido e o reconcile respeita a remoção ("Restaurar" desfaz).
 - **Fase 3**: microinversores completos (cadastro + ramais), memoriais/
   lista de materiais consumindo o sizing, checklist e assistente; fluxo
   Projeto→Motor→Validação→Sugestões→CAD→Documentação fechado.
