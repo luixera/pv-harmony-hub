@@ -123,7 +123,19 @@ diagrama completo pedido pelo usuário para 1..N arranjos:
 - **caminho de referência das cargas do local** (quadro de distribuição
   "Cargas do local (apenas referência)", derivado do mesmo barramento) —
   regra `arrays.include_loads_reference`;
+- **bloco PADRÃO DE ENTRADA** (caixa de grupo tracejada, `moveContents`):
+  **disjuntor do padrão ao lado do medidor** — a legenda (corrente/categoria/
+  bitola/caixa de medição) vem das REGRAS DE PADRÃO DE ENTRADA cadastradas
+  em Concessionárias (`matchEntryRule` com fase + disjuntor do projeto),
+  **DPS do padrão em paralelo ao disjuntor do padrão** (exigência das
+  concessionárias) e a **placa de advertência de geração própria**
+  (símbolo novo `warning-sign`, sem ligação elétrica);
 - depois medidor bidirecional → rede; trechos FV→inversor em condutor CC.
+
+**Auto-reorganização**: até 3 arranjos, fileiras em escala cheia centradas
+no tronco; acima disso o espaçamento comprime (`110/(n-1)`, mín. 16mm), o
+conjunto sobe e os símbolos do ramal reduzem de escala (até 0,6×) pra
+prancha A4 comportar tudo — o padrão de entrada nunca reduz.
 
 A cena sai com TODOS os ids `manual-` — o `reconcile()` do UnifilarTab a
 trata como cena de modelo (passthrough) e **nada é recriado por cima**:

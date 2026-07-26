@@ -70,7 +70,11 @@
   gera 1 disjuntor por arranjo + junção em nó + disjuntor geral opcional
   (regra) + DPS pós-junção + cargas do local de referência, cena 100%
   editável (`suppressedIds` permite remover até componentes fixos do
-  cadastro). **Fase 3**: microinversores completos, memoriais/lista de
+  cadastro). **Padrão de entrada + auto-reorganização ✅** (jul/2026):
+  bloco PADRÃO DE ENTRADA no diagrama (disjuntor do padrão com dados das
+  regras da concessionária + medidor + DPS em paralelo + placa de
+  advertência `warning-sign`); >3 arranjos comprimem espaçamento e
+  reduzem escala dos ramais (A4 sempre). **Fase 3**: microinversores completos, memoriais/lista de
   materiais consumindo o sizing, checklist, assistente. Ver
   [modules/engineering](../modules/engineering/overview.md) e
   [ADR 0007](../adr/0007-engineering-rules-engine.md).

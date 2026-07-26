@@ -919,18 +919,24 @@ export function inverterCountOf(state: DiagramSceneState): number {
 
 /**
  * Cena COMPLETA de um projeto com 1..N arranjos, na topologia padrão pedida
- * pelo usuário:
+ * pelo usuário (boas práticas + facilitar a análise da concessionária):
  *
- *   Arranjo 1: FV ──(CC)── INV 1 ── Disjuntor Arranjo 1 ─┐
- *   Arranjo N: FV ──(CC)── INV N ── Disjuntor Arranjo N ─┴•─ [Disj. Geral*] ─┬─┬─ Medidor ── Rede
- *                                                                       DPS ┘ └ Cargas do local
+ *   Arranjo 1: FV ─(CC)─ INV 1 ─ Disj. Arranjo 1 ─┐         Cargas do local
+ *   Arranjo N: FV ─(CC)─ INV N ─ Disj. Arranjo N ─┴•─[Geral*]─┬──╔══ PADRÃO DE ENTRADA ══╗── Rede
+ *                                                        DPS ┘  ║ Disj. padrão ─┬─ Medidor ║
+ *                                                               ║          DPS ┘  ⚠ placa  ║
  *
- * - UM disjuntor CA por arranjo; os arranjos se JUNTAM num nó (•, derivação
- *   formal — mover o tronco arrasta a junção junto).
+ * - UM disjuntor CA por arranjo; junção em nó (•, derivação formal).
  * - Disjuntor geral de seccionamento OPCIONAL (`includeGeneralBreaker`).
- * - DPS em PARALELO (derivação) DEPOIS da junção dos arranjos.
- * - Caminho de referência pras CARGAS DO LOCAL (`includeLoadsReference`) —
- *   um quadro de distribuição derivado do mesmo tronco, só indicativo.
+ * - DPS em PARALELO depois da junção dos arranjos.
+ * - Cargas do local (referência) derivadas do mesmo barramento, acima.
+ * - **PADRÃO DE ENTRADA** (caixa de grupo): disjuntor do padrão AO LADO do
+ *   medidor (legenda vem das regras da concessionária — `matchEntryRule`),
+ *   DPS do padrão em paralelo ao disjuntor do padrão (exigência das
+ *   concessionárias) e a placa de advertência de geração própria.
+ * - Layout SE REORGANIZA com muitos inversores: acima de 3 arranjos o
+ *   espaçamento entre fileiras comprime e os símbolos do ramal reduzem de
+ *   escala pra prancha A4 continuar comportando tudo.
  * - TODOS os ids são `manual-` → cena 100% editável no projeto e o
  *   reconcile() nunca recria nada por cima (mesma regra dos modelos).
  */
@@ -940,6 +946,10 @@ export function buildMultiArrangementScene(options: {
   pvLegends?: string[][];
   includeGeneralBreaker?: boolean;
   includeLoadsReference?: boolean;
+  /** Legenda do disjuntor do padrão de entrada (ex.: "63A · B1", das regras da concessionária). */
+  entryBreakerLegend?: string[];
+  /** Legenda do medidor (ex.: caixa de medição das regras da concessionária). */
+  meterLegend?: string[];
 }): DiagramSceneState {
   const n = Math.max(1, options.inverterCount);
   const includeGB = options.includeGeneralBreaker !== false;
@@ -950,16 +960,25 @@ export function buildMultiArrangementScene(options: {
   const X_PV = 20, X_INV = 58, X_CB = 96;
   const X_JUNC = 124;                       // x do nó de junção dos arranjos
   const X_GB = 130;                         // disjuntor geral (se incluído)
-  const X_METER = 196, X_GRID = 230;
+  const X_EB = 180;                         // disjuntor do padrão de entrada
+  const X_METER = 212, X_GRID = 260;
   const MID_TOP = 110;                      // y do tronco CA (portas em MID_TOP+10) — abaixo da tabela de legenda, que ocupa o canto sup-direito até ~108mm
   const ROW_GAP = 36;
   const midY = MID_TOP + 10;
-  const rowY = (i: number) => MID_TOP + (i - (n - 1) / 2) * ROW_GAP;
+
+  // Auto-reorganização: com até 3 arranjos, fileiras centradas no tronco em
+  // escala cheia; acima disso, o espaçamento comprime, o CONJUNTO sobe (o
+  // limite de baixo é mais apertado — carimbo) e os símbolos do ramal
+  // reduzem de escala pra prancha A4 comportar tudo.
+  const gap = n <= 3 ? ROW_GAP : Math.max(16, Math.min(ROW_GAP, 110 / (n - 1)));
+  const rowScale = n <= 3 ? 1 : Math.max(0.6, Math.min(1, gap / ROW_GAP));
+  const rowCenter = n <= 3 ? MID_TOP : 92;
+  const rowY = (i: number) => rowCenter + (i - (n - 1) / 2) * gap;
 
   const placements: PlacedSymbol[] = [];
   const connections: ManualConnection[] = [];
-  const sym = (kind: ComponentKind, x: number, y: number, label: string, legend: string[] = []): PlacedSymbol => {
-    const p: PlacedSymbol = { id: uid(kind), kind, label, legend, x, y: snapToGrid(y), rotation: 0, scale: 1 };
+  const sym = (kind: ComponentKind, x: number, y: number, label: string, legend: string[] = [], scale = 1): PlacedSymbol => {
+    const p: PlacedSymbol = { id: uid(kind), kind, label, legend, x, y: snapToGrid(y), rotation: 0, scale };
     placements.push(p);
     return p;
   };
@@ -967,9 +986,9 @@ export function buildMultiArrangementScene(options: {
   const cbs: PlacedSymbol[] = [];
   for (let i = 0; i < n; i++) {
     const y = rowY(i);
-    const pv = sym('pv-array', X_PV, y, n > 1 ? `Arranjo ${i + 1}` : 'Arranjo FV', options.pvLegends?.[i] ?? []);
-    const inv = sym('inverter', X_INV, y, n > 1 ? `Inversor ${i + 1}` : 'Inversor');
-    const cb = sym('breaker', X_CB, y, n > 1 ? `Disjuntor Arranjo ${i + 1}` : 'Disjuntor CA');
+    const pv = sym('pv-array', X_PV, y, n > 1 ? `Arranjo ${i + 1}` : 'Arranjo FV', options.pvLegends?.[i] ?? [], rowScale);
+    const inv = sym('inverter', X_INV, y, n > 1 ? `Inversor ${i + 1}` : 'Inversor', [], rowScale);
+    const cb = sym('breaker', X_CB, y, n > 1 ? `Disjuntor Arranjo ${i + 1}` : 'Disjuntor CA', [], rowScale);
     cbs.push(cb);
     connections.push({ id: `${pv.id}-dc`, from: { kind: 'port', id: pv.id, port: 'dir' }, to: { kind: 'port', id: inv.id, port: 'cc' }, conductor: 'dc' });
     connections.push({ id: `${inv.id}-ac`, from: { kind: 'port', id: inv.id, port: 'ca' }, to: { kind: 'port', id: cb.id, port: 'entrada' } });
@@ -978,14 +997,16 @@ export function buildMultiArrangementScene(options: {
   const gb = includeGB
     ? sym('breaker', X_GB, MID_TOP, 'Disjuntor Geral', ['(seccionamento — opcional)'])
     : null;
-  const meter = sym('meter-bidirectional', X_METER, MID_TOP, 'Medidor');
+  // ── Padrão de entrada: disjuntor do padrão + medidor + DPS + placa ──
+  const entryBreaker = sym('breaker', X_EB, MID_TOP, 'Disjuntor do Padrão', options.entryBreakerLegend ?? []);
+  const meter = sym('meter-bidirectional', X_METER, MID_TOP, 'Medidor', options.meterLegend ?? []);
   const grid = sym('utility-grid', X_GRID, MID_TOP, 'Rede');
 
   // tronco: do disjuntor do 1º arranjo até o próximo elemento, dobrando no nó
   const trunkTo: ConnectionEndpoint = gb
     ? { kind: 'port', id: gb.id, port: 'entrada' }
-    : { kind: 'port', id: meter.id, port: 'esq' };
-  const firstCbY = cbs[0].y + 10; // y da PORTA (placement já snapado à grade)
+    : { kind: 'port', id: entryBreaker.id, port: 'entrada' };
+  const firstCbY = cbs[0].y + 10 * rowScale; // y da PORTA (placement já snapado à grade)
   const trunk: ManualConnection = {
     id: 'manual-trunk-arr',
     from: { kind: 'port', id: cbs[0].id, port: 'saida' },
@@ -1009,45 +1030,71 @@ export function buildMultiArrangementScene(options: {
     }
   }
 
-  // segundo trecho do tronco (depois do disjuntor geral) até o medidor
+  // trecho pós-junção (depois do disjuntor geral) até o disjuntor do padrão
   const busConnId = gb ? 'manual-bus-arr' : trunk.id;
   if (gb) {
     connections.push({
       id: busConnId,
       from: { kind: 'port', id: gb.id, port: 'saida' },
-      to: { kind: 'port', id: meter.id, port: 'esq' },
+      to: { kind: 'port', id: entryBreaker.id, port: 'entrada' },
     });
   }
+  // dentro do padrão: disjuntor do padrão → medidor → rede
+  connections.push({
+    id: 'manual-entry-arr',
+    from: { kind: 'port', id: entryBreaker.id, port: 'saida' },
+    to: { kind: 'port', id: meter.id, port: 'esq' },
+  });
   connections.push({ id: 'manual-grid-arr', from: { kind: 'port', id: meter.id, port: 'dir' }, to: { kind: 'port', id: grid.id, port: 'esq' } });
 
-  // DPS em PARALELO depois da junção + cargas do local (referência) — ambos
-  // derivam do trecho pós-junção; o t é calculado da geometria real
-  // derivações caem na vertical dos símbolos, DEPOIS da saída do disjuntor
-  // geral (o barramento pós-junção começa em GB.saida quando ele existe)
+  // DPS pós-junção (paralelo, abaixo) + cargas do local (referência, acima) +
+  // DPS do padrão de entrada (paralelo ao disjuntor do padrão) — todos
+  // derivações formais com t calculado da geometria real
   const dps = sym('dps', 148, MID_TOP + 26, 'DPS CA');
+  // cargas ficam acima e à esquerda do padrão de entrada (rótulo não pode
+  // colidir com o título da caixa "PADRÃO DE ENTRADA")
   const loadsPanel = includeLoads
-    ? sym('distribution-panel', 186, MID_TOP + 26, 'Cargas do local', ['(apenas referência)'])
+    ? sym('distribution-panel', 146, MID_TOP - 46, 'Cargas do local', ['(apenas referência)'])
     : null;
+  const entryDps = sym('dps', 197, MID_TOP + 26, 'DPS do Padrão');
+  const sign = sym('warning-sign', 230, MID_TOP + 26, 'Placa de Advertência', ['no padrão de entrada']);
+  void sign; // sem ligação elétrica — fica afixada dentro do bloco do padrão
   {
     const byId = new Map(placements.map(p => [p.id, p]));
     const allPts = computeAllConnectionPoints(connections, byId);
     const busPts = allPts.get(busConnId)!;
-    const tapT = (x: number) => nearestPointOnPolyline({ x, y: midY }, busPts)!.t;
+    const tapT = (pts: Point[], x: number) => nearestPointOnPolyline({ x, y: midY }, pts)!.t;
     connections.push({
       id: 'manual-dps-arr',
-      from: { kind: 'line', connId: busConnId, t: tapT(160) },
+      from: { kind: 'line', connId: busConnId, t: tapT(busPts, 160) },
       to: { kind: 'port', id: dps.id, port: 'topo' },
     });
     if (loadsPanel) {
       connections.push({
         id: 'manual-loads-arr',
-        from: { kind: 'line', connId: busConnId, t: tapT(188) },
+        from: { kind: 'line', connId: busConnId, t: tapT(busPts, 170) },
         to: { kind: 'port', id: loadsPanel.id, port: 'entrada' },
       });
     }
+    // DPS do padrão deriva do trecho disjuntor do padrão → medidor
+    const entryPts = allPts.get('manual-entry-arr')!;
+    connections.push({
+      id: 'manual-entrydps-arr',
+      from: { kind: 'line', connId: 'manual-entry-arr', t: tapT(entryPts, 209) },
+      to: { kind: 'port', id: entryDps.id, port: 'topo' },
+    });
   }
 
-  return { placements, connections, photos: [], texts: [], groups: [], shapes: [] };
+  // caixa de grupo do padrão de entrada — arrastar a caixa move o bloco todo
+  const groups: PlacedGroup[] = [{
+    id: uid('group'),
+    title: 'PADRÃO DE ENTRADA',
+    // altura folgada: os rótulos dos DPS/placa (embaixo dos símbolos) ficam DENTRO da caixa
+    x: X_EB - 4, y: MID_TOP - 6, w: 258 - (X_EB - 4), h: 64,
+    style: 'dashed', moveContents: true,
+  }];
+
+  return { placements, connections, photos: [], texts: [], groups, shapes: [] };
 }
 
 /**

@@ -79,6 +79,19 @@ sempre ≥2 sugestões quando houver mais de uma opção válida.
   interruptor de graça); (c) junto veio `suppressedIds` no
   DiagramSceneState: remover um componente FIXO do cadastro passa a ser
   permitido e o reconcile respeita a remoção ("Restaurar" desfaz).
+- **Padrão de entrada + auto-reorganização (jul/2026)**: o diagrama
+  automático ganhou o bloco PADRÃO DE ENTRADA — disjuntor do padrão ao
+  lado do medidor (legenda vinda das regras de padrão de entrada da
+  concessionária, `matchEntryRule` — REUSO da tabela
+  `concessionaire_entry_rules`, sem duplicar regra), DPS do padrão em
+  paralelo ao disjuntor do padrão (exigência das concessionárias) e a
+  placa de advertência de geração própria (símbolo novo `warning-sign`).
+  Decisões: (a) o bloco é uma caixa de grupo com `moveContents` — o
+  analista da concessionária enxerga o padrão como unidade e o projetista
+  move tudo junto; (b) com >3 arranjos o layout SE REORGANIZA sozinho
+  (espaçamento comprime e os símbolos do ramal reduzem de escala até
+  0,6×) em vez de crescer a prancha — A4 é o formato aceito nas
+  homologações; o padrão de entrada nunca reduz.
 - **Fase 3**: microinversores completos (cadastro + ramais), memoriais/
   lista de materiais consumindo o sizing, checklist e assistente; fluxo
   Projeto→Motor→Validação→Sugestões→CAD→Documentação fechado.

@@ -30,6 +30,7 @@ export const KIND_LABEL: Record<ComponentKind, string> = {
   'meter-bidirectional': 'Medidor Bidirecional',
   'dc-switch': 'Chave CC',
   'breaker-tripolar': 'Disjuntor Tripolar',
+  'warning-sign': 'Placa de Advertência',
 };
 
 /**
@@ -50,6 +51,7 @@ export const KIND_LEGEND: Record<ComponentKind, string> = {
   fuse: 'FUSÍVEL',
   ground: 'ATERRAMENTO',
   'distribution-panel': 'QUADRO DE DISTRIBUIÇÃO',
+  'warning-sign': 'PLACA DE GERAÇÃO PRÓPRIA',
 };
 
 /**
@@ -73,6 +75,7 @@ export const CONNECTION_INSET: Record<ComponentKind, number> = {
   'meter-bidirectional': 3,
   'dc-switch': 2,
   'breaker-tripolar': 2,
+  'warning-sign': 2,
 };
 
 /**
@@ -152,6 +155,8 @@ export const SYMBOL_PORTS: Record<ComponentKind, SymbolPort[]> = {
     { id: 'entrada', name: 'Entrada', x: 2, y: H / 2 },
     { id: 'saida', name: 'Saída', x: W - 2, y: H / 2 },
   ],
+  // placa de sinalização — sem ligação elétrica (fica afixada no padrão de entrada)
+  'warning-sign': [],
 };
 
 export const SYMBOL_DEFS: Record<ComponentKind, Primitive[]> = {
@@ -274,5 +279,16 @@ export const SYMBOL_DEFS: Record<ComponentKind, Primitive[]> = {
     { kind: 'circle', center: { x: W / 2 + 4, y: H / 2 }, radius: 1 },
     { kind: 'line', a: { x: W / 2 + 4, y: H / 2 }, b: { x: W - 2, y: H / 2 } },
     { kind: 'line', a: { x: W / 2 - 1, y: H / 2 + 2.5 }, b: { x: W / 2 + 3, y: H / 2 - 4.5 } },
+  ],
+  // Placa de advertência de geração própria (exigência das concessionárias no
+  // padrão de entrada): placa retangular com o triângulo de risco elétrico
+  // (raio dentro) e o texto "CUIDADO / GERAÇÃO PRÓPRIA". Sem ligação elétrica.
+  'warning-sign': [
+    { kind: 'rect', x: 3, y: 1.5, w: W - 6, h: H - 3 },
+    { kind: 'polyline', points: [{ x: W / 2, y: 3.5 }, { x: W / 2 - 5, y: 11.5 }, { x: W / 2 + 5, y: 11.5 }, { x: W / 2, y: 3.5 }] },
+    // raio (seta de descarga) dentro do triângulo
+    { kind: 'polyline', points: [{ x: W / 2 + 0.8, y: 5.5 }, { x: W / 2 - 1.2, y: 8.5 }, { x: W / 2 + 0.4, y: 8.5 }, { x: W / 2 - 0.8, y: 10.8 }] },
+    { kind: 'text', at: { x: W / 2, y: 14.6 }, value: 'CUIDADO', size: 1.9, anchor: 'middle', weight: 'bold' },
+    { kind: 'text', at: { x: W / 2, y: 17 }, value: 'GERAÇÃO PRÓPRIA', size: 1.6, anchor: 'middle' },
   ],
 };

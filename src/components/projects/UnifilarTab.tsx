@@ -12,6 +12,7 @@ import { buildProjectValues } from '@/utils/projectValues';
 import { DiagramEditor } from '@/components/diagrams/DiagramEditor';
 import { useProjectDiagram, useSaveProjectDiagram } from '@/hooks/useProjectDiagram';
 import { useDiagramTemplates } from '@/hooks/useDiagramTemplates';
+import { matchEntryRule, useEntryRules } from '@/hooks/useEntryRules';
 import { useEngineeringRuleMap } from '@/hooks/useEngineeringRules';
 import {
   ProjectArrangementOption, ruleValue, suggestElectricalSizing, suggestProjectArrangement,
@@ -152,6 +153,9 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
   };
 
   const projectInverters = Math.max(1, Number(project.equipment?.inverter_quantity ?? 1) || 1);
+  // Regras do padrão de entrada da concessionária do projeto — dão a legenda
+  // do bloco PADRÃO DE ENTRADA no diagrama automático (disjuntor/categoria/caixa).
+  const { data: entryRules = [] } = useEntryRules(project.concessionaire_id ?? undefined);
 
   // ── Sugestões do Motor de Engenharia (Rules Engine, Fase 1) ──────────────
   const { ruleMap } = useEngineeringRuleMap();
@@ -192,11 +196,18 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
       const arr = opt.perInverter[Math.min(i, opt.perInverter.length - 1)];
       return [arr.label, arr.operatingVoltageV ? `~${arr.operatingVoltageV}V de operação` : ''].filter(Boolean);
     });
+    // padrão de entrada do projeto — as regras cadastradas em Concessionárias
+    const entryRule = matchEntryRule(entryRules, project.generalData?.phase_type, project.generalData?.circuit_breaker_current);
     const state = buildMultiArrangementScene({
       inverterCount: projectInverters,
       pvLegends,
       includeGeneralBreaker: ruleValue(ruleMap, 'protections.include_general_ac_breaker', 1) !== 0,
       includeLoadsReference: ruleValue(ruleMap, 'arrays.include_loads_reference', 1) !== 0,
+      entryBreakerLegend: entryRule
+        ? [[`${entryRule.disjuntor}A`, entryRule.categoria ? `cat. ${entryRule.categoria}` : ''].filter(Boolean).join(' · '),
+           entryRule.bitola ? `bitola ${entryRule.bitola} mm²` : ''].filter(Boolean)
+        : [],
+      meterLegend: entryRule?.caixa_medicao ? [`caixa ${entryRule.caixa_medicao}`] : [],
     });
     setApplied(prev => ({ v: (prev?.v ?? 0) + 1, state }));
     setSuggestOpen(false);

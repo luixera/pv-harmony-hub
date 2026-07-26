@@ -5,6 +5,21 @@ Registro de decisões de produto/UX (não arquiteturais — essas ficam em
 
 ## Log
 
+- **Motor de Engenharia — padrão de entrada no diagrama + auto-reorganização**
+  (jul/2026): pedidos do usuário: "Está faltando o disjuntor do padrão de
+  entrada, ao lado do medidor — o disjuntor do padrão + medidor
+  correspondem a um bloco do padrão de entrada que já cadastramos suas
+  regras anteriormente em concessionárias"; "o próprio layout deve se
+  reorganizar em caso de projetos com vários inversores"; "adicionar a
+  placa de advertência de geração própria como componente"; "as
+  concessionárias estão pedindo DPS no padrão de entrada também — em
+  paralelo ao disjuntor do padrão". Decisões: o bloco PADRÃO DE ENTRADA é
+  uma caixa de grupo (move tudo junto) e a legenda do disjuntor do padrão
+  REUSA as regras de `concessionaire_entry_rules` via `matchEntryRule`
+  (nenhuma regra duplicada); a reorganização comprime espaçamento e reduz
+  a escala dos ramais em vez de aumentar a prancha (A4 é o formato aceito
+  nas homologações); símbolo novo `warning-sign` na paleta. Ver
+  [ADR 0007](../adr/0007-engineering-rules-engine.md). (jul/2026)
 - **Motor de Engenharia — topologia multi-arranjo + edição livre no
   projeto** (jul/2026): pedido do usuário: "Em casos de arranjos com mais
   de um inversor, precisamos colocar um disjuntor para cada arranjo. Um
