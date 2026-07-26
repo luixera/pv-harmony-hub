@@ -27,6 +27,22 @@ export interface PlacedSymbol {
   rotation: number;
   /** Fator de escala uniforme em torno do centro do bloco (1 = tamanho padrão). */
   scale: number;
+  /** Deslocamento do BLOCO DE RÓTULO (nome + legendas) em relação à posição
+   *  padrão (centrado logo abaixo do símbolo) — o usuário arrasta o texto pra
+   *  onde quiser quando o desenho aperta. Ausente = posição padrão. */
+  labelDx?: number;
+  labelDy?: number;
+}
+
+/** Distância padrão entre a base do símbolo e a 1ª linha do rótulo (mm). */
+export const LABEL_GAP = 3.4;
+
+/** Posição do bloco de rótulo de um símbolo (já com o deslocamento manual). */
+export function labelAnchor(p: PlacedSymbol): Point {
+  return {
+    x: p.x + (SYMBOL_BBOX.w * p.scale) / 2 + (p.labelDx ?? 0),
+    y: p.y + SYMBOL_BBOX.h * p.scale + LABEL_GAP + (p.labelDy ?? 0),
+  };
 }
 
 /**
@@ -1025,6 +1041,16 @@ export function buildMultiArrangementScene(options: {
   warningVariant?: 'generic' | 'enel';
   /** Nome da concessionária — vira o rótulo da rede ("Rede – CPFL"). */
   utilityName?: string;
+  /** Corrente nominal do disjuntor de cada arranjo (ex.: [40, 40]) — vira a
+   *  legenda do disjuntor, dimensionada pela corrente CA de cada inversor. */
+  branchBreakerA?: (number | null)[];
+  /** Corrente do disjuntor geral (proporcional à soma das correntes). */
+  generalBreakerA?: number | null;
+  /** Bitolas pra rotular os trechos: CC (FV→inversor), CA de cada arranjo e
+   *  o tronco depois da junção (ex.: '6 mm²'). */
+  dcSection?: string;
+  branchSection?: string;
+  trunkSection?: string;
 }): DiagramSceneState {
   const n = Math.max(1, options.inverterCount);
   const includeGB = options.includeGeneralBreaker !== false;
@@ -1064,16 +1090,28 @@ export function buildMultiArrangementScene(options: {
   const cbs: PlacedSymbol[] = [];
   for (let i = 0; i < n; i++) {
     const y = rowY(i);
+    const breakerA = options.branchBreakerA?.[i] ?? null;
     const pv = sym('pv-array', X_PV, y, n > 1 ? `Arranjo ${i + 1}` : 'Arranjo FV', options.pvLegends?.[i] ?? [], rowScale);
     const inv = sym('inverter', X_INV, y, n > 1 ? `Inversor ${i + 1}` : 'Inversor', [], rowScale);
-    const cb = sym('breaker', X_CB, y, n > 1 ? `Disjuntor Arranjo ${i + 1}` : 'Disjuntor CA', [], rowScale);
+    const cb = sym(
+      'breaker', X_CB, y,
+      n > 1 ? `Disjuntor Arranjo ${i + 1}` : 'Disjuntor CA',
+      breakerA ? [`${breakerA}A`] : [], rowScale,
+    );
     cbs.push(cb);
-    connections.push({ id: `${pv.id}-dc`, from: { kind: 'port', id: pv.id, port: 'dir' }, to: { kind: 'port', id: inv.id, port: 'cc' }, conductor: 'dc' });
-    connections.push({ id: `${inv.id}-ac`, from: { kind: 'port', id: inv.id, port: 'ca' }, to: { kind: 'port', id: cb.id, port: 'entrada' } });
+    connections.push({
+      id: `${pv.id}-dc`, from: { kind: 'port', id: pv.id, port: 'dir' }, to: { kind: 'port', id: inv.id, port: 'cc' },
+      conductor: 'dc', label: options.dcSection,
+    });
+    connections.push({
+      id: `${inv.id}-ac`, from: { kind: 'port', id: inv.id, port: 'ca' }, to: { kind: 'port', id: cb.id, port: 'entrada' },
+      label: options.branchSection,
+    });
   }
 
   const gb = includeGB
-    ? sym('breaker', X_GB, MID_TOP, 'Disjuntor Geral', ['(seccionamento — opcional)'])
+    ? sym('breaker', X_GB, MID_TOP, 'Disjuntor Geral',
+        [options.generalBreakerA ? `${options.generalBreakerA}A` : '', '(seccionamento — opcional)'].filter(Boolean))
     : null;
   // ── Padrão de entrada: disjuntor do padrão + medidor + DPS + placa ──
   const entryBreaker = sym('breaker', X_EB, MID_TOP, 'Disjuntor do Padrão', options.entryBreakerLegend ?? []);
@@ -1092,6 +1130,8 @@ export function buildMultiArrangementScene(options: {
     from: { kind: 'port', id: cbs[0].id, port: 'saida' },
     to: trunkTo,
     waypoints: n > 1 ? [{ x: X_JUNC, y: firstCbY }, { x: X_JUNC, y: midY }] : undefined,
+    // depois da junção o tronco carrega a soma dos arranjos
+    label: n > 1 ? options.trunkSection : options.branchSection,
   };
   connections.push(trunk);
 
@@ -1106,6 +1146,7 @@ export function buildMultiArrangementScene(options: {
         id: `${cbs[i].id}-junc`,
         from: { kind: 'port', id: cbs[i].id, port: 'saida' },
         to: { kind: 'line', connId: trunk.id, t: junction.t },
+        label: options.branchSection,
       });
     }
   }
@@ -1117,6 +1158,7 @@ export function buildMultiArrangementScene(options: {
       id: busConnId,
       from: { kind: 'port', id: gb.id, port: 'saida' },
       to: { kind: 'port', id: entryBreaker.id, port: 'entrada' },
+      label: options.trunkSection,
     });
   }
   // dentro do padrão: disjuntor do padrão → medidor → rede
@@ -1130,7 +1172,8 @@ export function buildMultiArrangementScene(options: {
   // DPS pós-junção (paralelo, abaixo) + cargas do local (referência, acima) +
   // DPS do padrão de entrada (paralelo ao disjuntor do padrão) — todos
   // derivações formais com t calculado da geometria real
-  const dps = sym('dps', 130, MID_TOP + 26, 'DPS CA');
+  // depois do rótulo do disjuntor geral (senão a descida do DPS corta o texto)
+  const dps = sym('dps', 144, MID_TOP + 26, 'DPS CA');
   // cargas ficam acima e à esquerda do padrão de entrada (rótulo não pode
   // colidir com o título da caixa "PADRÃO DE ENTRADA")
   const loadsPanel = includeLoads
@@ -1153,7 +1196,7 @@ export function buildMultiArrangementScene(options: {
     const tapT = (pts: Point[], x: number) => nearestPointOnPolyline({ x, y: midY }, pts)!.t;
     connections.push({
       id: 'manual-dps-arr',
-      from: { kind: 'line', connId: busConnId, t: tapT(busPts, 142) },
+      from: { kind: 'line', connId: busConnId, t: tapT(busPts, 156) },
       to: { kind: 'port', id: dps.id, port: 'topo' },
     });
     if (loadsPanel) {
@@ -1445,8 +1488,9 @@ export function buildSceneFromPlacement(
   for (const p of placements) {
     scene.blocks.push({ layer: 'SYMBOLS', blockRef: p.kind, at: { x: p.x, y: p.y }, rotation: p.rotation, scale: p.scale });
 
-    const legendX = p.x + (SYMBOL_BBOX.w * p.scale) / 2;
-    let legendY = p.y + SYMBOL_BBOX.h * p.scale + 5;
+    const anchor = labelAnchor(p);
+    const legendX = anchor.x;
+    let legendY = anchor.y;
     scene.shapes.push({
       layer: 'TEXT_LABEL',
       geometry: { kind: 'text', at: { x: legendX, y: legendY }, value: resolve(p.label), size: 2.6, anchor: 'middle', weight: 'bold' },

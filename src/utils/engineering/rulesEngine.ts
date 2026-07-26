@@ -68,6 +68,8 @@ export interface InverterSpecs {
   maxDcVoltageV?: number;
   maxMpptCurrentA?: number;
   powerKw?: number;
+  /** Corrente CA máxima de saída (datasheet) — base exata do disjuntor do arranjo. */
+  maxAcCurrentA?: number;
 }
 
 /** Datasheet estruturado do módulo. */
@@ -469,6 +471,9 @@ export function suggestElectricalSizing(input: {
   stringCurrentA?: number;          // Imp do módulo (ou fallback da regra)
   stringsInParallelPerMppt?: number;// pra corrente CC por circuito (padrão 1)
   inverterPowerKw?: number;         // por inversor (disjuntor de saída)
+  /** Corrente CA máxima de saída do inversor (datasheet) — tem prioridade
+   *  sobre o cálculo por potência, que é só uma aproximação. */
+  inverterAcCurrentA?: number;
   phaseType?: 'monofasico' | 'bifasico' | 'trifasico';
   dcLengthM?: number;
   acLengthM?: number;
@@ -516,8 +521,10 @@ export function suggestElectricalSizing(input: {
   let ac: CircuitSizing | null = null;
   let breakerA: number | null = null;
   let breakerExplanation: string | null = null;
-  if (cablesOn && input.inverterPowerKw && input.inverterPowerKw > 0) {
-    const iAc = (input.inverterPowerKw * 1000) / (acV * (threePhase ? Math.sqrt(3) : 1));
+  if (cablesOn && ((input.inverterPowerKw && input.inverterPowerKw > 0) || input.inverterAcCurrentA)) {
+    // corrente REAL do datasheet quando existir; senão, calculada pela potência
+    const iAc = input.inverterAcCurrentA
+      ?? (input.inverterPowerKw! * 1000) / (acV * (threePhase ? Math.sqrt(3) : 1));
     const lAc = input.acLengthM ?? ruleValue(rules, 'cables.default_ac_length_m', 30);
     const maxDropAc = ruleValue(rules, 'voltage_drop.vd_ac_max_pct', 3);
     const pick = pickSection({
@@ -561,6 +568,106 @@ export function suggestElectricalSizing(input: {
   }
 
   return { dc, ac, breakerA, breakerExplanation, groundSectionMm2, groundNotes, alerts };
+}
+
+// ── Plano de proteções do projeto (disjuntor de cada arranjo + geral) ───────
+
+export interface BranchBreaker {
+  /** Corrente CA do inversor usada no dimensionamento. */
+  currentA: number;
+  /** Corrente nominal do disjuntor comercial escolhido. */
+  breakerA: number;
+  /** true = a corrente veio do datasheet; false = estimada pela potência. */
+  fromDatasheet: boolean;
+  explanation: string;
+}
+
+export interface BreakerPlan {
+  /** Um disjuntor por arranjo/inversor, na ordem recebida. */
+  branches: BranchBreaker[];
+  /** Soma das correntes dos inversores (o que o geral precisa comportar). */
+  totalCurrentA: number;
+  /** Disjuntor geral proporcional à soma — null quando não há geral. */
+  generalBreakerA: number | null;
+  generalExplanation: string | null;
+  /** Bitola CA sugerida por arranjo e do tronco (pra rotular os trechos). */
+  branchSectionMm2: number | null;
+  trunkSectionMm2: number | null;
+  alerts: EngineAlert[];
+}
+
+/**
+ * Dimensiona a PROTEÇÃO do projeto inteiro (pedido do usuário): o disjuntor
+ * de CADA arranjo sai da corrente CA de saída do respectivo inversor
+ * (datasheet quando houver, senão estimada pela potência) e o disjuntor
+ * geral é proporcional à SOMA dessas correntes — nunca a soma dos
+ * disjuntores individuais, que superdimensionaria o geral.
+ */
+export function suggestBreakerPlan(input: {
+  inverters: { powerKw?: number; acCurrentA?: number }[];
+  phaseType?: 'monofasico' | 'bifasico' | 'trifasico';
+  includeGeneral?: boolean;
+}, rules: RuleMap): BreakerPlan {
+  const alerts: EngineAlert[] = [];
+  const threePhase = input.phaseType === 'trifasico';
+  const acV = threePhase
+    ? ruleValue(rules, 'voltage_drop.ac_voltage_tri_v', 380)
+    : ruleValue(rules, 'voltage_drop.ac_voltage_mono_v', 220);
+  const factor = ruleValue(rules, 'protections.breaker_sizing_factor', 1.25);
+  const protectionsOn = isGroupEnabled(rules, 'protections');
+  const pickBreaker = (i: number) =>
+    STANDARD_BREAKERS.find(b => b >= i * factor) ?? STANDARD_BREAKERS[STANDARD_BREAKERS.length - 1];
+  const round1 = (v: number) => Math.round(v * 10) / 10;
+
+  const branches: BranchBreaker[] = input.inverters.map((inv, i) => {
+    const fromDatasheet = !!inv.acCurrentA;
+    const currentA = round1(inv.acCurrentA ?? ((inv.powerKw ?? 0) * 1000) / (acV * (threePhase ? Math.sqrt(3) : 1)));
+    const breakerA = pickBreaker(currentA);
+    return {
+      currentA, breakerA, fromDatasheet,
+      explanation: `Arranjo ${i + 1}: disjuntor ${breakerA}A — ${factor}× a corrente de saída de ${currentA}A `
+        + `(${fromDatasheet ? 'datasheet do inversor' : `estimada de ${inv.powerKw ?? 0}kW em ${acV}V${threePhase ? ' trifásico' : ''}`}).`,
+    };
+  });
+
+  const totalCurrentA = round1(branches.reduce((a, b) => a + b.currentA, 0));
+  let generalBreakerA: number | null = null;
+  let generalExplanation: string | null = null;
+  if (input.includeGeneral && branches.length > 0) {
+    generalBreakerA = pickBreaker(totalCurrentA);
+    const sumBranches = branches.reduce((a, b) => a + b.breakerA, 0);
+    generalExplanation = `Disjuntor geral ${generalBreakerA}A — ${factor}× a SOMA das correntes dos ${branches.length} arranjo(s) (${totalCurrentA}A).`
+      + (generalBreakerA < sumBranches
+        ? ` Fica abaixo da soma dos disjuntores de arranjo (${sumBranches}A) porque os inversores não somam corrente de curto — o geral acompanha a corrente real do conjunto.`
+        : '');
+  }
+
+  if (!protectionsOn) {
+    alerts.push({ severity: 'info', code: 'group_disabled', message: 'Grupo Proteções desligado nas Regras de Engenharia — os disjuntores são só indicativos.' });
+  }
+  if (branches.some(b => !b.fromDatasheet)) {
+    alerts.push({
+      severity: 'info', code: 'ac_current_estimated',
+      message: 'A corrente de saída de algum inversor foi estimada pela potência.',
+      suggestion: 'Preencha "Corrente CA máxima de saída" no Catálogo de Equipamentos pra o disjuntor sair exato.',
+      source: ruleSource(rules, 'protections.breaker_sizing_factor'),
+    });
+  }
+
+  // bitolas pra rotular os trechos (mesma conta do dimensionamento elétrico)
+  const branchSizing = branches.length > 0
+    ? suggestElectricalSizing({ inverterAcCurrentA: branches[0].currentA, phaseType: input.phaseType }, rules)
+    : null;
+  const trunkSizing = branches.length > 0
+    ? suggestElectricalSizing({ inverterAcCurrentA: totalCurrentA, phaseType: input.phaseType }, rules)
+    : null;
+
+  return {
+    branches, totalCurrentA, generalBreakerA, generalExplanation,
+    branchSectionMm2: branchSizing?.ac?.sectionMm2 ?? null,
+    trunkSectionMm2: trunkSizing?.ac?.sectionMm2 ?? null,
+    alerts,
+  };
 }
 
 // ── Orquestrador (Grupos 1+2+3+5+11+12) ─────────────────────────────────────
@@ -670,6 +777,7 @@ export function inverterSpecsFromTechSpecs(ts: Record<string, unknown> | null | 
     maxDcVoltageV: num(t['max_dc_voltage_v']),
     maxMpptCurrentA: num(t['max_mppt_current_a']),
     powerKw: powerKw ?? num(t['power_kw']),
+    maxAcCurrentA: num(t['max_ac_current_a']),
   };
 }
 

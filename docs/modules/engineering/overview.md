@@ -96,6 +96,20 @@ inversores pequenos têm teto próprio: `strings.small_inverter_kw_limit`
 Quando um teto corta a janela, o motor explica no alerta
 `string_cap_applied` qual regra mandou.
 
+## Proteções do projeto: disjuntor de cada arranjo + geral
+
+`suggestBreakerPlan` (jul/2026) dimensiona a proteção do projeto inteiro: o
+disjuntor de CADA arranjo sai da **corrente CA de saída do inversor** —
+`tech_specs.max_ac_current_a` do catálogo quando existe, senão estimada pela
+potência (com aviso) — aplicando `protections.breaker_sizing_factor` e
+arredondando pro próximo rating comercial. O **disjuntor geral** é
+proporcional à **SOMA das correntes** dos inversores (não à soma dos
+disjuntores, que superdimensionaria); quando o geral fica abaixo dessa soma,
+a explicação diz por quê. O mesmo plano devolve as bitolas do trecho de cada
+arranjo e do tronco, que o diagrama usa como **rótulo de cada ligação**
+(bitola marcada em cada trecho: CC, CA por arranjo e tronco pós-junção). No
+projeto, "Usar esta" pergunta se o disjuntor geral entra.
+
 ## Validador elétrico local (checklist em tempo real)
 
 `src/utils/engineering/diagramValidator.ts` — o checklist do engenheiro SEM

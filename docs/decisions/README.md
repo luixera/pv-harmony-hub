@@ -5,6 +5,19 @@ Registro de decisões de produto/UX (não arquiteturais — essas ficam em
 
 ## Log
 
+- **Diagrama harmônico: rótulos móveis, disjuntores calculados e bitola por
+  trecho** (jul/2026): pedidos do usuário depois de usar o motor num projeto
+  real. (1) Rótulos dos componentes coladinhos no símbolo (3,4mm em vez de
+  5mm) e **arrastáveis** — o texto guarda só o deslocamento, então acompanha
+  o símbolo quando ele se move; duplo-clique devolve ao lugar padrão.
+  (2) **Disjuntor de cada arranjo dimensionado pela corrente CA de saída do
+  inversor** (campo novo no catálogo: "Corrente CA máx. de saída"), e o
+  **geral proporcional à SOMA das correntes** — decisão: nunca somar os
+  disjuntores individuais (superdimensiona); quando o geral fica abaixo
+  dessa soma, o motor explica o porquê. Ao gerar o diagrama, o sistema
+  PERGUNTA se o disjuntor geral entra. (3) **Bitola marcada em cada trecho**
+  (CC, CA de cada arranjo, tronco pós-junção) reusando o rótulo de ligação
+  que já existia — mesma linguagem do padrão de entrada. (jul/2026)
 - **UX de linhas, folha e teto de string** (jul/2026): lote de ajustes do
   usuário usando o motor de verdade. (1) "Não consigo excluir um traço de
   linha, só movimentar" → agora dá pra apagar UM trecho (Delete no traço

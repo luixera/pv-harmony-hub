@@ -15,8 +15,10 @@ import { useDiagramTemplates } from '@/hooks/useDiagramTemplates';
 import { matchEntryRule, useEntryRules } from '@/hooks/useEntryRules';
 import { useEngineeringRuleMap } from '@/hooks/useEngineeringRules';
 import {
-  ProjectArrangementOption, ruleValue, suggestElectricalSizing, suggestProjectArrangement,
+  ProjectArrangementOption, inverterSpecsFromTechSpecs, ruleValue, suggestBreakerPlan,
+  suggestElectricalSizing, suggestProjectArrangement,
 } from '@/utils/engineering/rulesEngine';
+import { useEquipmentCatalog } from '@/hooks/useEquipmentCatalog';
 import { validateDiagram } from '@/utils/engineering/diagramValidator';
 
 /**
@@ -162,6 +164,13 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
   // Regras do padrão de entrada da concessionária do projeto — dão a legenda
   // do bloco PADRÃO DE ENTRADA no diagrama automático (disjuntor/categoria/caixa).
   const { data: entryRules = [] } = useEntryRules(project.concessionaire_id ?? undefined);
+  // Datasheet do inversor do projeto (catálogo) — dá a corrente CA real, que é
+  // a base exata do disjuntor de cada arranjo.
+  const { data: inverterCatalogItems = [] } = useEquipmentCatalog('inverter');
+  const inverterCatalog = useMemo(() => {
+    const id = (project.equipment as { inverter_catalog_id?: string } | undefined)?.inverter_catalog_id;
+    return id ? inverterCatalogItems.find(i => i.id === id) ?? null : null;
+  }, [inverterCatalogItems, project.equipment]);
 
   // ── Sugestões do Motor de Engenharia (Rules Engine, Fase 1) ──────────────
   const { ruleMap } = useEngineeringRuleMap();
@@ -211,11 +220,40 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
     });
     // padrão de entrada do projeto — as regras cadastradas em Concessionárias
     const entryRule = matchEntryRule(entryRules, project.generalData?.phase_type, project.generalData?.circuit_breaker_current);
+
+    // Disjuntor geral: pergunta ao usuário (a regra decide só o padrão da caixa)
+    const ruleWantsGeneral = ruleValue(ruleMap, 'protections.include_general_ac_breaker', 1) !== 0;
+    const includeGeneral = projectInverters > 1
+      ? confirm(`Colocar um disjuntor geral para seccionar os ${projectInverters} arranjos?\n\nEle é opcional (cada arranjo já tem o seu) e será dimensionado pela SOMA das correntes dos inversores.`)
+      : ruleWantsGeneral;
+
+    // Proteções: disjuntor de cada arranjo pela corrente CA do inversor
+    const rawPhase = String(project.generalData?.phase_type ?? '').toLowerCase();
+    const phaseType = rawPhase.includes('tri') ? 'trifasico' as const
+      : rawPhase.includes('bi') ? 'bifasico' as const : 'monofasico' as const;
+    const invSpecs = inverterSpecsFromTechSpecs(
+      inverterCatalog?.tech_specs ?? null,
+      Number(project.equipment?.inverter_power ?? 0) || undefined,
+    );
+    const plan = suggestBreakerPlan({
+      inverters: Array.from({ length: projectInverters }, () => ({
+        powerKw: invSpecs.powerKw, acCurrentA: invSpecs.maxAcCurrentA,
+      })),
+      phaseType,
+      includeGeneral,
+    }, ruleMap);
+    const dcSizing = suggestElectricalSizing({ phaseType }, ruleMap);
+
     const state = buildMultiArrangementScene({
       inverterCount: projectInverters,
       pvLegends,
-      includeGeneralBreaker: ruleValue(ruleMap, 'protections.include_general_ac_breaker', 1) !== 0,
+      includeGeneralBreaker: includeGeneral,
       includeLoadsReference: ruleValue(ruleMap, 'arrays.include_loads_reference', 1) !== 0,
+      branchBreakerA: plan.branches.map(b => b.breakerA),
+      generalBreakerA: plan.generalBreakerA,
+      dcSection: dcSizing.dc ? `${dcSizing.dc.sectionMm2} mm²` : undefined,
+      branchSection: plan.branchSectionMm2 ? `${plan.branchSectionMm2} mm²` : undefined,
+      trunkSection: plan.trunkSectionMm2 ? `${plan.trunkSectionMm2} mm²` : undefined,
       entryBreakerLegend: entryRule
         ? [[`${entryRule.disjuntor}A`, entryRule.categoria ? `cat. ${entryRule.categoria}` : ''].filter(Boolean).join(' · '),
            entryRule.bitola ? `bitola ${entryRule.bitola} mm²` : ''].filter(Boolean)

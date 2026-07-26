@@ -10,7 +10,7 @@ import {
   PlacedShape, PlacedSymbol, PlacedText, SheetOptions, blockCenter, buildSceneFromPlacement, buildSheetFurnitureScene,
   computeAllConnectionPoints, connectionDependsOn, connectionLabelPosition, detachDerivations, findNearestPort,
   findLineSnapPoint, findNearestSymbol, healConnectionsThrough, initialConnections, initialPlacement,
-  deleteSegmentPlan, nearestPointOnPolyline, orthogonalPath, orthoSnapPoint, pointAtT, portPagePosition, segmentDragPlan,
+  deleteSegmentPlan, labelAnchor, nearestPointOnPolyline, orthogonalPath, orthoSnapPoint, pointAtT, portPagePosition, segmentDragPlan,
   SERIES_KINDS, shapePrimitives, SNAP_RADIUS, snapToGrid, splitConnectionAtSymbol, usedConductorsOf, usedKindsOf,
 } from '@/utils/cadEngine/editableLayout';
 import { ComponentKind, Point, TechnicalJsonMvp } from '@/utils/cadEngine/types';
@@ -233,6 +233,7 @@ export function DiagramEditor({
   type DragState =
     | { type: 'symbol'; id: string; startX: number; startY: number; origX: number; origY: number; moved: boolean; origPositions?: Record<string, { x: number; y: number }> }
     | { type: 'symbol-resize'; id: string; startX: number; startY: number; origScale: number; moved: boolean }
+    | { type: 'label'; id: string; startX: number; startY: number; origDx: number; origDy: number; moved: boolean }
     | { type: 'pan'; startX: number; startY: number; origVb: { x: number; y: number; w: number; h: number }; moved: boolean }
     | { type: 'marquee'; startX: number; startY: number; startMm: Point; moved: boolean }
     | { type: 'waypoint'; connId: string; index: number; startX: number; startY: number; origX: number; origY: number; moved: boolean }
@@ -283,6 +284,12 @@ export function DiagramEditor({
         const mmX = vb.x + (e.clientX - rect.left) * pxToMm;
         const mmY = vb.y + (e.clientY - rect.top) * pxToMm;
         setMarquee({ x1: drag.startMm.x, y1: drag.startMm.y, x2: mmX, y2: mmY });
+      } else if (drag.type === 'label') {
+        // rótulo do componente: guarda só o DESLOCAMENTO, então continua
+        // acompanhando o símbolo quando ele é movido depois
+        setPlacements(prev => prev.map(p => (
+          p.id === drag.id ? { ...p, labelDx: drag.origDx + dx, labelDy: drag.origDy + dy } : p
+        )));
       } else if (drag.type === 'symbol') {
         if (drag.origPositions) {
           // multi-seleção: move todos os selecionados juntos, mantendo o arranjo
@@ -817,6 +824,30 @@ export function DiagramEditor({
     if (!selectedId) return;
     snapshot();
     setPlacements(prev => prev.map(p => (p.id === selectedId ? { ...p, rotation: (p.rotation + 90) % 360 } : p)));
+  };
+
+  /** Arrastar o BLOCO DE RÓTULO de um componente (pedido do usuário: poder
+   *  reposicionar as legendas dos disjuntores, DPS etc. quando apertam). */
+  const handleLabelMouseDown = (e: React.MouseEvent, p: PlacedSymbol) => {
+    if (linkMode) return;
+    e.preventDefault();
+    e.stopPropagation();
+    clearSelection();
+    setSelectedId(p.id);
+    setSelectedIds(new Set([p.id]));
+    dragRef.current = {
+      type: 'label', id: p.id, startX: e.clientX, startY: e.clientY,
+      origDx: p.labelDx ?? 0, origDy: p.labelDy ?? 0, moved: false,
+      preState: currentStateRef.current,
+    };
+  };
+
+  /** Duplo-clique no rótulo devolve à posição padrão (abaixo do símbolo). */
+  const resetLabelOffset = (id: string) => {
+    snapshot();
+    setPlacements(prev => prev.map(p => (
+      p.id === id ? { ...p, labelDx: undefined, labelDy: undefined } : p
+    )));
   };
 
   const removeConnection = (id: string) => {
@@ -1980,10 +2011,32 @@ export function DiagramEditor({
                     onClick={e => e.stopPropagation()}
                   />
                 )}
-                <text x={p.x + scaledW / 2} y={p.y + scaledH + 5} fontSize={2.6} textAnchor="middle" fontWeight="bold" fill="#333">{resolveProjectTags(p.label, values)}</text>
-                {p.legend.map((line, i) => (
-                  <text key={i} x={p.x + scaledW / 2} y={p.y + scaledH + 5 + (i + 1) * 3.6} fontSize={2.4} textAnchor="middle" fill="#333">{resolveProjectTags(line, values)}</text>
-                ))}
+                {/* Bloco de rótulo (nome + legendas): arrastável — o usuário
+                    reposiciona o texto quando o desenho aperta. Duplo-clique
+                    devolve à posição padrão. */}
+                {(() => {
+                  const at = labelAnchor(p);
+                  const moved = !!(p.labelDx || p.labelDy);
+                  return (
+                    <g
+                      style={{ cursor: 'move' }}
+                      onMouseDown={e => handleLabelMouseDown(e, p)}
+                      onDoubleClick={e => { e.stopPropagation(); resetLabelOffset(p.id); }}
+                    >
+                      {moved && (
+                        <line
+                          x1={p.x + scaledW / 2} y1={p.y + scaledH}
+                          x2={at.x} y2={at.y - 2}
+                          stroke="#BBB" strokeWidth={0.25} strokeDasharray="1,1"
+                        />
+                      )}
+                      <text x={at.x} y={at.y} fontSize={2.6} textAnchor="middle" fontWeight="bold" fill="#333">{resolveProjectTags(p.label, values)}</text>
+                      {p.legend.map((line, i) => (
+                        <text key={i} x={at.x} y={at.y + (i + 1) * 3.4} fontSize={2.4} textAnchor="middle" fill="#333">{resolveProjectTags(line, values)}</text>
+                      ))}
+                    </g>
+                  );
+                })()}
               </g>
             );
           })}

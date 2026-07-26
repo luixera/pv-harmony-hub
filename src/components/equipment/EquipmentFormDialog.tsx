@@ -17,6 +17,8 @@ const TECH_FIELDS: Record<EquipmentType, { key: string; label: string; placehold
     { key: 'mppt_vmax_v', label: 'Tensão máx. MPPT (V)', placeholder: '800' },
     { key: 'max_dc_voltage_v', label: 'Tensão CC máx. (V)', placeholder: '1000' },
     { key: 'max_mppt_current_a', label: 'Corrente máx./MPPT (A)', placeholder: '26' },
+    // base EXATA do disjuntor de cada arranjo (sem ela, o motor estima pela potência)
+    { key: 'max_ac_current_a', label: 'Corrente CA máx. de saída (A)', placeholder: '36.2' },
   ],
   module: [
     { key: 'voc_v', label: 'Voc (V)', placeholder: '49.9' },
