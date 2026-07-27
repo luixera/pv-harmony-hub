@@ -117,19 +117,33 @@ Checklist de tudo que foi aplicado em produção. Atualizado em 2026-05-19.
 
 ---
 
-## ⏳ Tarefa 8 — Restringir Google Maps API Key
-**Status:** Pendente (ação manual — 2 minutos)  
-**Quem:** Bruno (acesso ao Google Cloud Console)
+## ✅ Tarefa 8 — Restringir Google Maps API Key
+**Status:** restrição por SITE aplicada (verificado em jul/2026) · falta ativar a Maps Static API
+
+Verificação objetiva (sem abrir o console): uma chamada server-side à
+Geocoding API com a chave responde
+`REQUEST_DENIED — API keys with referer restrictions cannot be used with
+this API`. Esse erro **prova** que a restrição por referenciador está
+ativa (uma chave sem restrição responderia normalmente).
 
 1. GCP → APIs & Services → Credentials → key "gd manager"
-2. Application restrictions → HTTP referrers
-3. Adicionar:
+2. Application restrictions → HTTP referrers ✅ já configurado:
    - `https://homologamanager.com.br/*`
    - `https://*.homologamanager.com.br/*`
    - `http://localhost:5173/*`
    - `http://localhost:8080/*`
-4. API restrictions → Maps JavaScript API, Geocoding API, Static Maps API
-5. Save
+3. API restrictions → a chave deve permitir **exatamente** as 4 APIs em uso:
+   - **Maps JavaScript API** (MapPicker, DashboardMap, ProjectsMap)
+   - **Places API** (Autocomplete de endereço — `libraries=['places']`)
+   - **Geocoding API** (endereço → coordenadas)
+   - **Maps Static API** (planta de localização do diagrama unifilar) ⚠️
+4. ⚠️ **Pendente**: a Maps Static API ainda não está ATIVADA no projeto do
+   Cloud (`This API is not activated on your API project`). Biblioteca →
+   "Maps Static API" → Ativar. Ativar a API e permiti-la na chave são
+   passos diferentes: os dois são necessários.
+5. Faturamento: manter orçamento + alerta de gasto no projeto (a chave é
+   pública por natureza no front; a restrição por site é a barreira, o
+   alerta de gasto é a rede de proteção).
 
 ---
 
