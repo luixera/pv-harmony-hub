@@ -195,11 +195,21 @@ export function validateDiagram(state: DiagramSceneState, rules: RuleMap): Diagr
 
   // ── 9. Aterramento ────────────────────────────────────────────────────────
   if (groundingOn) {
+    // vale como indicação: símbolo de terra, condutor de terra OU a declaração
+    // de equipotencialização (BEP) em legenda/nota — é assim que o desenho
+    // informa que padrão, neutro e malha da edificação estão interligados
+    const mentionsBep = (s: string) => /\bbep\b|equipotencial/i.test(s);
     const hasGround = placements.some(p => p.kind === 'ground')
-      || state.connections.some(c => c.conductor === 'ground');
+      || state.connections.some(c => c.conductor === 'ground')
+      || placements.some(p => p.legend?.some(mentionsBep))
+      || (state.texts ?? []).some(t => mentionsBep(t.value));
     push(hasGround
-      ? { id: 'ground', label: 'Aterramento indicado', status: 'ok' }
-      : { id: 'ground', label: 'Aterramento indicado', status: 'info', detail: 'Sem símbolo de aterramento nem condutor terra.', suggestion: 'Indique o aterramento (símbolo ou condutor tipo terra) — as concessionárias conferem.' });
+      ? { id: 'ground', label: 'Aterramento / equipotencialização indicados', status: 'ok' }
+      : {
+          id: 'ground', label: 'Aterramento / equipotencialização indicados', status: 'info',
+          detail: 'Sem símbolo de terra, condutor de terra ou nota de equipotencialização.',
+          suggestion: 'Indique o aterramento — símbolo, condutor tipo terra ou a nota de que padrão, neutro e malha da edificação estão equipotencializados no BEP.',
+        });
   }
 
   // Interruptor do grupo Alertas desligado = silencia avisos (vira tudo ok/observação)

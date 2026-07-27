@@ -1063,16 +1063,19 @@ export function buildMultiArrangementScene(options: {
   const includeLoads = options.includeLoadsReference !== false;
   const uid = (() => { let i = 0; return (kind: string) => `manual-${kind}-arr${++i}`; })();
 
-  // Colunas (x do canto sup-esq; caixa 24×20). TUDO fica à esquerda de
-  // LEGEND_X0 (235): a coluna da direita é reservada à tabela de LEGENDA, que
-  // cresce com o nº de símbolos — desenhar por baixo dela deixava o tracejado
-  // do padrão de entrada em cima da legenda (relato do usuário).
-  const X_PV = 16, X_INV = 48, X_CB = 80;
-  const X_JUNC = 110;                       // x do nó de junção dos arranjos
-  const X_GB = 116;                         // disjuntor geral (só com 2+ arranjos)
-  const X_EB = 152;                         // disjuntor do padrão de entrada
-  const X_METER = 180, X_GRID = 208;
-  const MID_TOP = 110;                      // y do tronco CA (portas em MID_TOP+10) — abaixo da tabela de legenda, que ocupa o canto sup-direito até ~108mm
+  // Colunas (x do canto sup-esq; caixa 24×20). A tabela de LEGENDA ocupa o
+  // canto superior direito (x ≥ 235, y de 30 até ~114 no pior caso: 8 símbolos
+  // + 2 condutores). O eixo do tronco desceu para 118 justamente pra a linha
+  // principal passar POR BAIXO da legenda — com isso a corrente de símbolos
+  // pode ir até a margem direita da folha e sobra vão de verdade entre o QGBT
+  // e o padrão de entrada (pedido do usuário: "deixe o seguimento entre o
+  // QGBT Solar e o padrão de entrada um pouco maior").
+  const X_PV = 14, X_INV = 44, X_CB = 74;
+  const X_JUNC = 104;                       // x do nó de junção dos arranjos
+  const X_GB = 110;                         // disjuntor geral (só com 2+ arranjos)
+  const X_EB = 163;                         // disjuntor do padrão de entrada
+  const X_METER = 199, X_GRID = 231;
+  const MID_TOP = 118;                      // y do tronco CA (portas em MID_TOP+10) — abaixo da tabela de legenda
   const ROW_GAP = 36;
   const midY = MID_TOP + 10;
 
@@ -1083,7 +1086,7 @@ export function buildMultiArrangementScene(options: {
   // LOCALIZAÇÃO no canto superior esquerdo, a faixa útil começa mais abaixo.
   const hasMap = !!options.locationMap;
   const topLimit = hasMap ? 82 : 30;    // 1ª fileira não sobe além disso
-  const BOTTOM = 162;                   // acima do carimbo (com folga pro snap de 2,5mm)
+  const BOTTOM = 158;                   // base do último símbolo: sobram ~10mm pro rótulo + legenda antes do carimbo (172)
   const avail = BOTTOM - topLimit;
   const minGap = hasMap ? 13 : 16;
   // afrouxa o espaçamento até o conjunto (fileiras + altura do último
@@ -1163,11 +1166,18 @@ export function buildMultiArrangementScene(options: {
     const allPts = computeAllConnectionPoints(connections, byId);
     const trunkPts = allPts.get(trunk.id)!;
     const junction = nearestPointOnPolyline({ x: X_JUNC, y: midY }, trunkPts)!;
+    const saidaPort = SYMBOL_PORTS.breaker.find(p => p.id === 'saida')!;
     for (let i = 1; i < n; i++) {
+      // Chegada em ESQUADRO no nó: corre na horizontal na altura da fileira até
+      // a coluna do nó e sobe/desce reto pra dentro dele. Sem a dobra explícita
+      // o roteador automático abre um Z e o condutor entra no nó na horizontal,
+      // com dois tocos de 4mm — o "nó torto" que o usuário apontou.
+      const cbY = portPagePosition(cbs[i], saidaPort).y;
       connections.push({
         id: `${cbs[i].id}-junc`,
         from: { kind: 'port', id: cbs[i].id, port: 'saida' },
         to: { kind: 'line', connId: trunk.id, t: junction.t },
+        waypoints: Math.abs(cbY - junction.point.y) < 0.01 ? undefined : [{ x: junction.point.x, y: cbY }],
         label: options.branchSection,
       });
     }
@@ -1195,12 +1205,31 @@ export function buildMultiArrangementScene(options: {
   // logo depois do disjuntor do inversor; com dois ou mais, na JUNÇÃO dos
   // arranjos (é onde o barramento do QGBT realmente se forma).
   const dpsTapX = n > 1 ? X_JUNC : X_CB + 24 + 12;
-  const dps = sym('dps', dpsTapX - 12, MID_TOP + 26, 'DPS CA');
-  // cargas ficam acima, derivando do trecho entre o QGBT e o padrão
+  // Derivações verticais (DPS, cargas): o ponto de derivação no condutor e a
+  // PORTA do componente têm de ficar no MESMO x. Fora do eixo, o roteador
+  // ortogonal insere um degrauzinho de 1–2mm logo acima do símbolo — foi o
+  // "bug da ligação no DPS" que o usuário fotografou. Estes helpers derivam
+  // uma coisa da outra, então não há como voltarem a divergir.
+  const PORT_DX = 12;                       // x da porta 'topo' dentro da caixa 24×20
+  const symUnderTap = (tapX: number) => tapX - PORT_DX;
+  // "Conectado ao BEP": as concessionárias exigem que o aterramento do
+  // padrão, o neutro e a malha da edificação estejam equipotencializados no
+  // Barramento de Equipotencialização Principal — a legenda declara isso em
+  // cada DPS, sem precisar desenhar a malha inteira (pedido do usuário).
+  const BEP_NOTE = 'Conectado ao BEP';
+  const dps = sym('dps', symUnderTap(dpsTapX), MID_TOP + 24, 'DPS CA', [BEP_NOTE]);
+  // cargas: sobem do meio do VÃO entre o QGBT e o padrão de entrada — antes o
+  // montante raspava no tracejado do padrão
+  const qgbtRight = Math.max(X_CB + 24, includeGB ? X_GB + 24 : 0, symUnderTap(dpsTapX) + 24) + 5;
+  const loadsTapX = (qgbtRight + (X_EB - 4)) / 2;
+  // o quadro de cargas tem toco de entrada HORIZONTAL: o montante sobe no x da
+  // derivação e vira em esquadro pra dentro do toco (L limpo, sem degrau)
   const loadsPanel = includeLoads
-    ? sym('distribution-panel', 150, MID_TOP - 68, 'Cargas do local', ['(apenas referência)'])
+    ? sym('distribution-panel', loadsTapX + 6, MID_TOP - 68, 'Cargas do local', ['(apenas referência)'])
     : null;
-  const entryDps = sym('dps', 166, MID_TOP + 26, 'DPS do Padrão');
+  // DPS do padrão: centrado no trecho disjuntor do padrão → medidor
+  const entryDpsTapX = (X_EB + 22 + (X_METER + 4)) / 2;
+  const entryDps = sym('dps', symUnderTap(entryDpsTapX), MID_TOP + 24, 'DPS do Padrão', [BEP_NOTE]);
   // placa de advertência: a FOTO REAL entra nativa no diagrama (pedido do
   // usuário — não é redesenho); sem ligação elétrica, dentro do bloco do padrão
   const plate = options.warningVariant === 'enel' ? WARNING_PLATE_ENEL : WARNING_PLATE_GENERIC;
@@ -1226,21 +1255,42 @@ export function buildMultiArrangementScene(options: {
     if (loadsPanel) {
       connections.push({
         id: 'manual-loads-arr',
-        from: { kind: 'line', connId: busConnId, t: tapT(busPts, 146) },
+        from: { kind: 'line', connId: busConnId, t: tapT(busPts, loadsTapX) },
         to: { kind: 'port', id: loadsPanel.id, port: 'entrada' },
+        // dobra explícita: sem ela o roteador automático abre um Z (sobe no
+        // meio do caminho, com dois degraus de 4mm) em vez do L do montante
+        waypoints: [{
+          x: loadsTapX,
+          y: portPagePosition(loadsPanel, SYMBOL_PORTS['distribution-panel'].find(p => p.id === 'entrada')!).y,
+        }],
       });
     }
     // DPS do padrão deriva do trecho disjuntor do padrão → medidor
     const entryPts = allPts.get('manual-entry-arr')!;
     connections.push({
       id: 'manual-entrydps-arr',
-      from: { kind: 'line', connId: 'manual-entry-arr', t: tapT(entryPts, 180) },
+      from: { kind: 'line', connId: 'manual-entry-arr', t: tapT(entryPts, entryDpsTapX) },
       to: { kind: 'port', id: entryDps.id, port: 'topo' },
     });
   }
 
+  // Nota normativa da equipotencialização — é o que a concessionária procura
+  // quando confere o aterramento do sistema.
+  // duas linhas curtas: uma linha só passava por baixo da tabela de legenda
+  const texts: PlacedText[] = [
+    {
+      id: uid('nota-bep'),
+      value: 'NOTA: aterramento do padrão de entrada, neutro e malha de',
+      x: 96, y: 24, size: 2.1,
+    },
+    {
+      id: uid('nota-bep2'),
+      value: 'aterramento da edificação equipotencializados no BEP — NBR 5410.',
+      x: 96, y: 27.5, size: 2.1,
+    },
+  ];
+
   // ── PLANTA DE LOCALIZAÇÃO (recorte de satélite do local) ────────────────
-  const texts: PlacedText[] = [];
   if (options.locationMap) {
     // abaixo do cabeçalho da folha (título + subtítulo ocupam até ~28mm)
     const MAP = { x: 18, y: 36, w: 54, h: 38 };
@@ -1259,20 +1309,21 @@ export function buildMultiArrangementScene(options: {
   // QGBT SOLAR — o quadro da geração: disjuntor(es) de arranjo, junção,
   // disjuntor geral (quando há 2+) e o DPS CA. Mesma linguagem visual do
   // padrão de entrada, pra o analista ler o desenho em dois blocos.
-  const qgbtRight = Math.max(X_CB + 24, includeGB ? X_GB + 24 : 0, dps.x + 24) + 5;
   const qgbtTop = Math.min(rowY(0), MID_TOP) - 7;
+  const BLOCK_BOTTOM = MID_TOP + 52;   // abaixo do rótulo do DPS, acima do carimbo
   const groups: PlacedGroup[] = [{
     id: uid('group'),
     title: 'QGBT SOLAR',
     x: X_CB - 5, y: qgbtTop,
     w: qgbtRight - (X_CB - 5),
-    h: (MID_TOP + 54) - qgbtTop,   // até o rótulo do DPS CA
+    h: BLOCK_BOTTOM - qgbtTop,
     style: 'dashed', moveContents: true,
   }, {
     id: uid('group'),
     title: 'PADRÃO DE ENTRADA',
     // engloba a placa (acima do medidor) e os rótulos dos DPS (abaixo)
-    x: X_EB - 4, y: MID_TOP - 32, w: (X_METER + 24 + 4) - (X_EB - 4), h: 90,
+    x: X_EB - 4, y: MID_TOP - 32,
+    w: (X_METER + 24 + 4) - (X_EB - 4), h: BLOCK_BOTTOM - (MID_TOP - 32),
     style: 'dashed', moveContents: true,
   }];
   if (options.locationMap) {

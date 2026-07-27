@@ -5,6 +5,25 @@ Registro de decisões de produto/UX (não arquiteturais — essas ficam em
 
 ## Log
 
+- **Equipotencialização no BEP e geometria dos nós** (jul/2026): o usuário
+  pediu para trocar o aviso de aterramento por uma declaração explícita —
+  "adicione embaixo da legenda dos DPS 'Conectado ao BEP' como se todos os
+  pontos fossem interligados; as concessionárias pedem que o aterramento do
+  padrão, o neutro e o aterramento da edificação sejam equipotencializados".
+  Decisão: os dois DPS ganham essa legenda e o desenho traz a nota normativa
+  citando a NBR 5410; o validador passa a aceitar essa indicação como
+  aterramento presente (em vez de cobrar o símbolo de terra desenhado).
+  Na sequência, com duas fotos do diagrama gerado: "ajuste os nós e pontos de
+  ligação entre os componentes, como exemplo o bug da ligação no DPS; deixe o
+  seguimento entre o QGBT Solar e o padrão de entrada um pouco maior".
+  Decisões: (1) todo ponto de derivação nasce **no eixo da porta** do
+  componente — o degrauzinho no DPS era o roteador ortogonal costurando 2mm
+  de desalinhamento; (2) arranjo entra no nó do tronco **em esquadro**
+  (horizontal na altura da fileira, vertical pra dentro do nó) em vez do Z
+  automático; (3) o eixo do tronco desceu pra passar **por baixo da tabela de
+  legenda**, o que liberou a largura da folha e abriu 20mm de vão entre o
+  QGBT e o padrão de entrada (eram 3mm) sem trocar a prancha de A4.
+
 - **QGBT Solar e regra do inversor único** (jul/2026): pedido do usuário —
   "com 1 inversor, o disjuntor do inversor e o geral são o mesmo, apenas um
   é suficiente"; "deixe o DPS CA mais próximo do disjuntor do inversor (com

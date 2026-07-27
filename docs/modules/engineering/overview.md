@@ -205,11 +205,39 @@ diagrama completo pedido pelo usuário para 1..N arranjos:
   que não carrega raster;
 - depois medidor bidirecional → rede; trechos FV→inversor em condutor CC.
 
+- **aterramento/equipotencialização**: os dois DPS levam a legenda
+  "Conectado ao BEP" e o desenho traz a nota normativa "aterramento do padrão
+  de entrada, neutro e malha de aterramento da edificação equipotencializados
+  no BEP — NBR 5410" (é o que a concessionária procura ao conferir o
+  aterramento; o validador aceita essa indicação como aterramento presente).
+
 **Auto-reorganização**: o espaçamento entre fileiras afrouxa até o conjunto
 (fileiras + altura do último símbolo já escalado) caber na faixa útil da
 folha; os símbolos do ramal reduzem de escala junto (até 0,6×) e o padrão de
 entrada nunca reduz. Com **planta de localização** a faixa começa mais
 abaixo (82mm) e o gap mínimo cai pra 13mm.
+
+**Geometria da prancha e dos nós** (jul/2026 — pedido do usuário "ajuste os
+nós e pontos de ligação entre os componentes"):
+
+- o **eixo do tronco CA desceu para y=118**, abaixo da tabela de legenda (que
+  chega no pior caso a y≈114). Com a linha principal passando por baixo da
+  legenda, a corrente de símbolos usa a largura inteira da folha e sobrou vão
+  de verdade entre os blocos: **20mm entre o QGBT SOLAR e o PADRÃO DE
+  ENTRADA** (com 1 inversor, 32mm) — antes eram 3mm;
+- **base do último símbolo em y=158**: sobram ~10mm pro rótulo + legenda
+  antes do carimbo (y=172), então nenhuma fileira escreve por cima dele;
+- **derivação vertical nasce no eixo da porta**. O x do ponto de derivação e
+  o x da porta do componente são derivados um do outro (`symUnderTap`); fora
+  de eixo, o roteador ortogonal insere um degrau de 1–2mm logo acima do
+  símbolo — era o "bug da ligação no DPS";
+- **entrada de arranjo no nó do tronco em esquadro**: dobra explícita na
+  coluna do nó, então o condutor corre na horizontal na altura da fileira e
+  **sobe/desce reto pra dentro do nó** (sem a dobra o roteador automático
+  abria um Z, entrando no nó na horizontal com dois tocos de 4mm);
+- **montante das cargas em L**: sobe no x da derivação e vira em esquadro pro
+  toco horizontal do quadro, no meio do vão entre os dois blocos (antes
+  raspava no tracejado do padrão de entrada).
 
 **Planta de localização** (`cadEngine/locationMap.ts`): recorte de satélite
 do local (Maps Static API, `maptype=hybrid` + marcador, comprimido a ~820px
