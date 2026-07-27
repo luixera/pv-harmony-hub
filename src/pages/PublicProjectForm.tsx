@@ -315,7 +315,9 @@ export default function PublicProjectForm() {
         uc_number: formData.consumerUnitNumber,
         phase_type: formData.phaseType,
         has_beneficiaries: hasBeneficiaries,
-        circuit_breaker_current: noCircuitBreakerPhoto ? circuitBreakerCurrent : null,
+        // salva a corrente sempre que informada — inclusive junto com a foto
+        // (o campo agora aparece nos dois casos)
+        circuit_breaker_current: circuitBreakerCurrent || null,
         observations: formData.observations?.trim() || null,
       }));
       if (generalError) throw generalError;

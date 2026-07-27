@@ -195,8 +195,11 @@ export function DocumentUploadField({
         </div>
       )}
 
-      {/* Alternative text input */}
-      {hasAlternativeInput && useAlternative && (
+      {/* Campo de texto complementar — SEMPRE visível (pedido do usuário:
+          mesmo anexando a foto do disjuntor, o campo da corrente aparece).
+          Sem a foto ele é a informação obrigatória; com a foto, é o dado
+          que alimenta o dimensionamento sem precisar abrir a imagem. */}
+      {hasAlternativeInput && (
         <div style={{ marginBottom: 10 }}>
           <label style={{
             display: 'block', fontSize: 11, fontWeight: 700,
@@ -204,6 +207,11 @@ export function DocumentUploadField({
             color: '#6B7280', marginBottom: 6,
           }}>
             {alternativeLabel}
+            {!useAlternative && (
+              <span style={{ fontWeight: 500, textTransform: 'none', letterSpacing: 0, color: '#9CA3AF' }}>
+                {' '}· opcional
+              </span>
+            )}
           </label>
           <Input
             placeholder="Ex: 63A"
@@ -211,6 +219,11 @@ export function DocumentUploadField({
             onChange={e => onAlternativeChange?.(e.target.value)}
             style={{ height: 42 }}
           />
+          {!useAlternative && (
+            <p style={{ fontSize: 11, color: '#9CA3AF', margin: '5px 0 0' }}>
+              Se souber a corrente, informe aqui também — o sistema usa no dimensionamento sem precisar abrir a foto.
+            </p>
+          )}
         </div>
       )}
 
