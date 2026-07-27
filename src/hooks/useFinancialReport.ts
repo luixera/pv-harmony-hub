@@ -3,7 +3,10 @@ import { useFinancialDashboard, FinancialProjectRow } from './useFinancialDashbo
 
 export interface FinancialReportFilters {
   companyId?: string;
-  status?: string;
+  /** Etapas do projeto a incluir. Vazio/ausente = todas. É lista porque um
+   *  extrato costuma juntar etapas diferentes (aprovado + vistoria
+   *  solicitada + concluído que ainda não foi pago) — pedido do usuário. */
+  statuses?: string[];
   paymentStatus?: string;
   dateFrom?: string;
   dateTo?: string;
@@ -30,20 +33,27 @@ export interface FinancialReportSummary {
   totalBalance: number;
 }
 
+/** Um projeto entra no extrato? Pura e exportada pra ser testável fora do React.
+ *  Filtro ausente (ou lista de etapas vazia) = não restringe nada. */
+export function matchesReportFilters(
+  p: Pick<FinancialProjectRow, 'companyId' | 'status' | 'paymentStatus' | 'createdAt'>,
+  filters: FinancialReportFilters,
+): boolean {
+  if (filters.companyId && p.companyId !== filters.companyId) return false;
+  if (filters.statuses?.length && !filters.statuses.includes(p.status)) return false;
+  if (filters.paymentStatus && p.paymentStatus !== filters.paymentStatus) return false;
+  if (filters.dateFrom && p.createdAt < filters.dateFrom) return false;
+  if (filters.dateTo && p.createdAt.slice(0, 10) > filters.dateTo) return false;
+  return true;
+}
+
 export function useFinancialReport(filters: FinancialReportFilters) {
   const { data, isLoading } = useFinancialDashboard();
 
   const { rows, summary } = useMemo(() => {
     const projetos: FinancialProjectRow[] = data?.projetos || [];
 
-    const filtered = projetos.filter(p => {
-      if (filters.companyId && p.companyId !== filters.companyId) return false;
-      if (filters.status && p.status !== filters.status) return false;
-      if (filters.paymentStatus && p.paymentStatus !== filters.paymentStatus) return false;
-      if (filters.dateFrom && p.createdAt < filters.dateFrom) return false;
-      if (filters.dateTo && p.createdAt.slice(0, 10) > filters.dateTo) return false;
-      return true;
-    });
+    const filtered = projetos.filter(p => matchesReportFilters(p, filters));
 
     const rows: FinancialReportRow[] = filtered.map(p => ({
       id: p.id,

@@ -2,6 +2,7 @@ import { useState, useRef, useCallback } from 'react';
 import { useCompanies } from '@/hooks/useCompanies';
 import { useFinancialReport, FinancialReportFilters } from '@/hooks/useFinancialReport';
 import { useWindowSize } from '@/hooks/useWindowSize';
+import { PROJECT_STATUS_LABELS, VALID_PROJECT_STATUSES } from '@/lib/statusMapping';
 import { formatCurrency } from '@/lib/utils';
 import { X, Download, Printer, Loader2, SlidersHorizontal } from 'lucide-react';
 import { format } from 'date-fns';
@@ -9,17 +10,20 @@ import { ptBR } from 'date-fns/locale';
 
 const fmt = formatCurrency;
 
-const STATUS_LABELS: Record<string, string> = {
-  pending: 'Aguardando', analysis: 'Em Análise', documentation: 'Documentação',
-  approval: 'Aprovação', approved: 'Aprovado', completed: 'Concluído',
-};
+// Etapas: usa a lista canônica do projeto (statusMapping) — antes esta tela
+// tinha uma cópia própria SEM "Pendência" e "Vistoria Solicitada", então esses
+// projetos não podiam ser filtrados e apareciam com o código cru no extrato.
+const STATUS_OPTIONS = VALID_PROJECT_STATUSES;
+const STATUS_LABELS = PROJECT_STATUS_LABELS;
 const STATUS_BADGE: Record<string, { bg: string; color: string }> = {
-  pending:       { bg: '#F0F0F0', color: '#666' },
-  analysis:      { bg: '#E6F1FB', color: '#185FA5' },
-  documentation: { bg: '#FEF3D0', color: '#854F0B' },
-  approval:      { bg: '#FEF3D0', color: '#854F0B' },
-  approved:      { bg: '#E1F5EE', color: '#0F6E56' },
-  completed:     { bg: '#1A1A1A', color: '#F5A800' },
+  pending:             { bg: '#F0F0F0', color: '#666' },
+  analysis:            { bg: '#E6F1FB', color: '#185FA5' },
+  documentation:       { bg: '#FEF3D0', color: '#854F0B' },
+  approval:            { bg: '#FEF3D0', color: '#854F0B' },
+  approved:            { bg: '#E1F5EE', color: '#0F6E56' },
+  pendencia:           { bg: '#FDE7E3', color: '#B23A1B' },
+  vistoria_solicitada: { bg: '#EDE7FB', color: '#5B3BA8' },
+  completed:           { bg: '#1A1A1A', color: '#F5A800' },
 };
 const PAY_LABELS: Record<string, string> = {
   pending: 'Pendente', partial: 'Parc. Pago', paid: 'Quitado',
@@ -39,17 +43,26 @@ export function FinancialReportModal({ onClose }: FinancialReportModalProps) {
   const [filters, setFilters] = useState<FinancialReportFilters>({});
   const [applied, setApplied] = useState<FinancialReportFilters>({});
 
-  // Local form state
-  const [form, setForm] = useState({
-    companyId: '', status: '', paymentStatus: '', dateFrom: '', dateTo: '',
+  // Local form state — `statuses` é multi-seleção (lista vazia = todas as etapas)
+  const [form, setForm] = useState<{
+    companyId: string; statuses: string[]; paymentStatus: string; dateFrom: string; dateTo: string;
+  }>({
+    companyId: '', statuses: [], paymentStatus: '', dateFrom: '', dateTo: '',
   });
+
+  const toggleStatus = (status: string) => setForm(f => ({
+    ...f,
+    statuses: f.statuses.includes(status)
+      ? f.statuses.filter(s => s !== status)
+      : [...f.statuses, status],
+  }));
 
   const { rows, summary, isLoading } = useFinancialReport(applied);
 
   const applyFilters = () => {
     const f: FinancialReportFilters = {};
     if (form.companyId) f.companyId = form.companyId;
-    if (form.status) f.status = form.status;
+    if (form.statuses.length) f.statuses = form.statuses;
     if (form.paymentStatus) f.paymentStatus = form.paymentStatus;
     if (form.dateFrom) f.dateFrom = form.dateFrom;
     if (form.dateTo) f.dateTo = form.dateTo;
@@ -57,7 +70,7 @@ export function FinancialReportModal({ onClose }: FinancialReportModalProps) {
   };
 
   const clearFilters = () => {
-    setForm({ companyId: '', status: '', paymentStatus: '', dateFrom: '', dateTo: '' });
+    setForm({ companyId: '', statuses: [], paymentStatus: '', dateFrom: '', dateTo: '' });
     setApplied({});
   };
 
@@ -67,7 +80,10 @@ export function FinancialReportModal({ onClose }: FinancialReportModalProps) {
     const c = companies.find(x => x.id === applied.companyId);
     if (c) activeChips.push({ key: 'companyId', label: c.name });
   }
-  if (applied.status) activeChips.push({ key: 'status', label: STATUS_LABELS[applied.status] });
+  // uma tarja por etapa: o extrato tem de deixar explícito o recorte usado
+  for (const s of applied.statuses ?? []) {
+    activeChips.push({ key: `status-${s}`, label: STATUS_LABELS[s] ?? s });
+  }
   if (applied.paymentStatus) activeChips.push({ key: 'paymentStatus', label: PAY_LABELS[applied.paymentStatus] });
   if (applied.dateFrom) activeChips.push({ key: 'dateFrom', label: `De: ${applied.dateFrom}` });
   if (applied.dateTo) activeChips.push({ key: 'dateTo', label: `Até: ${applied.dateTo}` });
@@ -193,12 +209,43 @@ export function FinancialReportModal({ onClose }: FinancialReportModalProps) {
                 </select>
               </div>
 
-              <div style={{ flex: isTablet ? '1 1 160px' : undefined }}>
-                <label style={labelStyle}>Status do projeto</label>
-                <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))} style={inputStyle}>
-                  <option value="">Todos</option>
-                  {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-                </select>
+              {/* Etapas: multi-seleção. Um extrato normalmente junta etapas
+                  diferentes (aprovado + vistoria solicitada + concluído ainda
+                  em aberto), então cada etapa é um botão que liga/desliga. */}
+              <div style={{ flex: isTablet ? '1 1 240px' : undefined }}>
+                <label style={labelStyle}>
+                  Etapas do projeto
+                  {form.statuses.length > 0 && (
+                    <span style={{ color: '#B87A20', marginLeft: 5 }}>({form.statuses.length} selecionadas)</span>
+                  )}
+                </label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                  {STATUS_OPTIONS.map(k => {
+                    const on = form.statuses.includes(k);
+                    return (
+                      <button
+                        key={k}
+                        type="button"
+                        onClick={() => toggleStatus(k)}
+                        aria-pressed={on}
+                        style={{
+                          padding: '5px 9px', borderRadius: 20, fontSize: 11, fontWeight: 600,
+                          cursor: 'pointer', lineHeight: 1.2,
+                          border: on ? '1px solid #F5A800' : '1px solid #E0E0E0',
+                          background: on ? '#FEF3D0' : '#fff',
+                          color: on ? '#854F0B' : '#777',
+                        }}
+                      >
+                        {STATUS_LABELS[k]}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p style={{ fontSize: 10, color: '#aaa', margin: '5px 0 0' }}>
+                  {form.statuses.length === 0
+                    ? 'Nenhuma marcada = todas as etapas entram no extrato.'
+                    : 'Só as etapas marcadas entram no extrato.'}
+                </p>
               </div>
 
               <div style={{ flex: isTablet ? '1 1 160px' : undefined }}>
