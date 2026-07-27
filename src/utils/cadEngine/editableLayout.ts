@@ -1051,6 +1051,10 @@ export function buildMultiArrangementScene(options: {
   dcSection?: string;
   branchSection?: string;
   trunkSection?: string;
+  /** PLANTA DE LOCALIZAÇÃO: recorte de satélite do local (data URL) + as
+   *  coordenadas pra legenda. Entra no canto superior esquerdo e empurra as
+   *  fileiras pra baixo. */
+  locationMap?: { href: string; caption?: string };
 }): DiagramSceneState {
   const n = Math.max(1, options.inverterCount);
   const includeGB = options.includeGeneralBreaker !== false;
@@ -1073,10 +1077,22 @@ export function buildMultiArrangementScene(options: {
   // Auto-reorganização: com até 3 arranjos, fileiras centradas no tronco em
   // escala cheia; acima disso, o espaçamento comprime, o CONJUNTO sobe (o
   // limite de baixo é mais apertado — carimbo) e os símbolos do ramal
-  // reduzem de escala pra prancha A4 comportar tudo.
-  const gap = n <= 3 ? ROW_GAP : Math.max(16, Math.min(ROW_GAP, 110 / (n - 1)));
-  const rowScale = n <= 3 ? 1 : Math.max(0.6, Math.min(1, gap / ROW_GAP));
-  const rowCenter = n <= 3 ? MID_TOP : 92;
+  // reduzem de escala pra prancha A4 comportar tudo. Com a PLANTA DE
+  // LOCALIZAÇÃO no canto superior esquerdo, a faixa útil começa mais abaixo.
+  const hasMap = !!options.locationMap;
+  const topLimit = hasMap ? 82 : 30;    // 1ª fileira não sobe além disso
+  const BOTTOM = 162;                   // acima do carimbo (com folga pro snap de 2,5mm)
+  const avail = BOTTOM - topLimit;
+  const minGap = hasMap ? 13 : 16;
+  // afrouxa o espaçamento até o conjunto (fileiras + altura do último
+  // símbolo, já escalado) caber na faixa útil
+  let gap = ROW_GAP;
+  const heightAt = (g: number) => 20 * Math.max(0.6, Math.min(1, g / ROW_GAP));
+  while (gap > minGap && (n - 1) * gap + heightAt(gap) > avail) gap -= 0.5;
+  const rowScale = Math.max(0.6, Math.min(1, gap / ROW_GAP));
+  // centra no tronco quando cabe; senão encosta na faixa útil (topo primeiro)
+  const half = ((n - 1) / 2) * gap;
+  const rowCenter = Math.max(topLimit + half, Math.min(MID_TOP, BOTTOM - 20 * rowScale - half));
   const rowY = (i: number) => rowCenter + (i - (n - 1) / 2) * gap;
 
   const placements: PlacedSymbol[] = [];
@@ -1215,6 +1231,20 @@ export function buildMultiArrangementScene(options: {
     });
   }
 
+  // ── PLANTA DE LOCALIZAÇÃO (recorte de satélite do local) ────────────────
+  const texts: PlacedText[] = [];
+  if (options.locationMap) {
+    // abaixo do cabeçalho da folha (título + subtítulo ocupam até ~28mm)
+    const MAP = { x: 18, y: 36, w: 54, h: 38 };
+    photos.push({ id: uid('planta'), href: options.locationMap.href, ...MAP });
+    if (options.locationMap.caption) {
+      texts.push({
+        id: uid('planta-legenda'), value: options.locationMap.caption,
+        x: MAP.x, y: MAP.y + MAP.h + 5, size: 2.2,
+      });
+    }
+  }
+
   // Caixa de grupo do padrão de entrada — arrastar a caixa move o bloco todo.
   // Vai só até o medidor: a REDE fica fora (não faz parte do padrão) e a caixa
   // inteira mora à esquerda da coluna da legenda.
@@ -1225,8 +1255,16 @@ export function buildMultiArrangementScene(options: {
     x: X_EB - 4, y: MID_TOP - 32, w: (X_METER + 24 + 4) - (X_EB - 4), h: 90,
     style: 'dashed', moveContents: true,
   }];
+  if (options.locationMap) {
+    groups.unshift({
+      id: uid('group'),
+      title: 'PLANTA DE LOCALIZAÇÃO',
+      x: 15, y: 32, w: 60, h: options.locationMap.caption ? 50 : 46,
+      style: 'solid', moveContents: true,
+    });
+  }
 
-  return { placements, connections, photos, texts: [], groups, shapes: [] };
+  return { placements, connections, photos, texts, groups, shapes: [] };
 }
 
 /**

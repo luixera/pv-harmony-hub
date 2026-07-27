@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, FlaskConical, LayoutTemplate, Lightbulb, Loader2, ShieldCheck } from 'lucide-react';
+import { AlertTriangle, FlaskConical, LayoutTemplate, Lightbulb, Loader2, MapPin, ShieldCheck } from 'lucide-react';
 import { ProjectWithDetails } from '@/hooks/useProjects';
 import { buildTechnicalJsonFromProject } from '@/utils/cadEngine/buildTechnicalJson';
 import {
@@ -20,6 +20,7 @@ import {
 } from '@/utils/engineering/rulesEngine';
 import { useEquipmentCatalog } from '@/hooks/useEquipmentCatalog';
 import { validateDiagram } from '@/utils/engineering/diagramValidator';
+import { fetchLocationMap, LOCATION_MAP_MESSAGES } from '@/utils/cadEngine/locationMap';
 
 /**
  * Diagrama Unifilar do projeto — o `DiagramEditor` compartilhado alimentado
@@ -212,7 +213,36 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
    *  por arranjo, junção em nó, disjuntor geral opcional por regra, DPS em
    *  paralelo depois da junção e caminho de referência pras cargas do local).
    *  A cena sai 100% `manual-` — editável livremente, sem reconcile por cima. */
-  const applySuggestion = (opt: ProjectArrangementOption) => {
+  /** Insere/atualiza a PLANTA DE LOCALIZAÇÃO no diagrama que já existe —
+   *  recorte de satélite das coordenadas do projeto, como manda a praxe. */
+  const [mapLoading, setMapLoading] = useState(false);
+  const insertLocationMap = async () => {
+    setMapLoading(true);
+    try {
+      const { map, reason } = await fetchLocationMap(project.generalData?.coordinates);
+      if (!map) {
+        alert(`Planta de localização: ${LOCATION_MAP_MESSAGES[reason ?? 'falhou']}`);
+        return;
+      }
+      const base = liveState ?? initialState;
+      // troca a planta anterior (se houver) em vez de empilhar
+      const photos = (base.photos ?? []).filter(p => !p.id.includes('-planta-'));
+      const texts = (base.texts ?? []).filter(t => !t.id.includes('-planta-'));
+      const groups = (base.groups ?? []).filter(g => g.title !== 'PLANTA DE LOCALIZAÇÃO');
+      const stamp = Date.now();
+      const state: DiagramSceneState = {
+        ...base,
+        photos: [...photos, { id: `manual-planta-${stamp}`, href: map.href, x: 18, y: 36, w: 54, h: 38 }],
+        texts: [...texts, { id: `manual-planta-legenda-${stamp}`, value: map.caption, x: 18, y: 79, size: 2.2 }],
+        groups: [{ id: `manual-group-planta-${stamp}`, title: 'PLANTA DE LOCALIZAÇÃO', x: 15, y: 32, w: 60, h: 50, style: 'solid' as const, moveContents: true }, ...groups],
+      };
+      setApplied(prev => ({ v: (prev?.v ?? 0) + 1, state }));
+    } finally {
+      setMapLoading(false);
+    }
+  };
+
+  const applySuggestion = async (opt: ProjectArrangementOption) => {
     if (!confirm(`Usar "${opt.title}" (${opt.summary})? O diagrama atual será substituído pela topologia automática com este arranjo.`)) return;
     const pvLegends = Array.from({ length: projectInverters }, (_, i) => {
       const arr = opt.perInverter[Math.min(i, opt.perInverter.length - 1)];
@@ -243,10 +273,14 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
       includeGeneral,
     }, ruleMap);
     const dcSizing = suggestElectricalSizing({ phaseType }, ruleMap);
+    // planta de localização (recorte de satélite) — some silenciosamente se o
+    // projeto não tiver coordenadas ou faltar a chave do Maps
+    const locationMap = (await fetchLocationMap(project.generalData?.coordinates)).map;
 
     const state = buildMultiArrangementScene({
       inverterCount: projectInverters,
       pvLegends,
+      locationMap,
       includeGeneralBreaker: includeGeneral,
       includeLoadsReference: ruleValue(ruleMap, 'arrays.include_loads_reference', 1) !== 0,
       branchBreakerA: plan.branches.map(b => b.breakerA),
@@ -414,6 +448,21 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
                   ? `sem avisos · ${validation.infoCount} observação(ões) (${validation.okCount} verificações ok).`
                   : `diagrama conforme — ${validation.okCount} verificações ok.`}
           </p>
+          {/* Planta de localização: recorte de satélite das coordenadas */}
+          <button
+            onClick={insertLocationMap}
+            disabled={mapLoading}
+            title="Insere (ou atualiza) o recorte de satélite do local no canto do desenho"
+            style={{
+              padding: '5px 12px', borderRadius: 7, fontSize: 12, fontWeight: 700,
+              border: '1px solid #2D7A3A', background: '#fff', color: '#2D7A3A',
+              cursor: mapLoading ? 'wait' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6,
+              opacity: mapLoading ? 0.6 : 1, whiteSpace: 'nowrap',
+            }}
+          >
+            <MapPin size={13} />
+            {mapLoading ? 'Buscando…' : 'Planta de localização'}
+          </button>
           <button
             onClick={() => setValidationOpen(o => !o)}
             style={{

@@ -1,6 +1,11 @@
 # Roadmap, Pendências e Débitos Técnicos
 
 ## Pendências externas (config, não código)
+- **Maps Static API** (Google Cloud): habilitar no mesmo projeto da
+  `VITE_GOOGLE_MAPS_API_KEY` para a **planta de localização** do diagrama
+  unifilar funcionar (o Maps JavaScript API já está ativo; a Static é uma
+  API separada). Console → APIs e serviços → Biblioteca → "Maps Static API"
+  → Ativar. Sem isso o sistema avisa o motivo e segue sem a planta.
 - **Resend**: configurar `RESEND_API_KEY`, domínio verificado e `NOTIFY_FROM`
   para as automações de e-mail realmente enviarem.
 - **Proteção de senha vazada** no Supabase Auth: habilitar no painel.

@@ -198,10 +198,21 @@ diagrama completo pedido pelo usuário para 1..N arranjos:
   que não carrega raster;
 - depois medidor bidirecional → rede; trechos FV→inversor em condutor CC.
 
-**Auto-reorganização**: até 3 arranjos, fileiras em escala cheia centradas
-no tronco; acima disso o espaçamento comprime (`110/(n-1)`, mín. 16mm), o
-conjunto sobe e os símbolos do ramal reduzem de escala (até 0,6×) pra
-prancha A4 comportar tudo — o padrão de entrada nunca reduz.
+**Auto-reorganização**: o espaçamento entre fileiras afrouxa até o conjunto
+(fileiras + altura do último símbolo já escalado) caber na faixa útil da
+folha; os símbolos do ramal reduzem de escala junto (até 0,6×) e o padrão de
+entrada nunca reduz. Com **planta de localização** a faixa começa mais
+abaixo (82mm) e o gap mínimo cai pra 13mm.
+
+**Planta de localização** (`cadEngine/locationMap.ts`): recorte de satélite
+do local (Maps Static API, `maptype=hybrid` + marcador, comprimido a ~820px
+JPEG 0,72 e embutido como data URL) no canto superior esquerdo, dentro de
+uma caixa "PLANTA DE LOCALIZAÇÃO" com as coordenadas embaixo. Entra
+automaticamente no "Usar esta" e pelo botão **Planta de localização** no
+painel do projeto (que insere/atualiza em qualquer diagrama). Sem
+coordenadas, sem chave ou com a Static API desabilitada no Google Cloud, o
+motor explica o motivo em vez de falhar em silêncio
+(`LOCATION_MAP_MESSAGES`).
 
 A cena sai com TODOS os ids `manual-` — o `reconcile()` do UnifilarTab a
 trata como cena de modelo (passthrough) e **nada é recriado por cima**:
