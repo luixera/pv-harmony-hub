@@ -246,6 +246,38 @@ function enclosing(ranges: XmlRange[], offset: number): XmlRange | null {
   return best;
 }
 
+/**
+ * Limpa a PONTUAÇÃO ÓRFÃ que sobra quando uma tag resolve vazia.
+ *
+ * Templates costumam escrever o endereço em pedaços —
+ * `{endereco_rua}, {endereco_numero}, {endereco_complemento}, {bairro}` — e,
+ * sem complemento, o documento saía "Rua José da Silva, 2007, , São José"
+ * (relato do usuário). Como a vírgula está no template, e não no valor, a
+ * correção tem que ser no texto já renderizado.
+ *
+ * Só mexe em vírgulas/pontos-e-vírgulas soltos; nunca remove tags XML (elas
+ * são preservadas nos grupos), então formatação e estrutura ficam intactas.
+ */
+export function tidyOrphanPunctuation(xml: string): string {
+  // fragmentos XML/espaços que podem aparecer ENTRE os sinais (o Word quebra
+  // o parágrafo em vários runs)
+  const GAP = '((?:\\s|<[^>]*>)*)';
+  let out = xml;
+  // ", ," → uma vírgula só; repete pra pegar vários campos vazios seguidos
+  for (let i = 0; i < 4; i++) out = out.replace(new RegExp(`,${GAP},`, 'g'), ',$1');
+  out = out
+    // vírgula colada num ponto final / fecha-parênteses
+    .replace(new RegExp(`,${GAP}([.)])`, 'g'), '$1$2')
+    // vírgula/hífen sobrando no fim do parágrafo
+    .replace(new RegExp(`[,;–-]${GAP}</w:p>`, 'g'), '$1</w:p>')
+    // "( )" que sobrou de um campo vazio entre parênteses
+    .replace(new RegExp(`\\(${GAP}\\)`, 'g'), '$1');
+  // sobra de espaço deixada pelas remoções — normaliza SÓ dentro do texto,
+  // sem tocar em atributos ou estrutura XML
+  return out.replace(/(<w:t[^>]*>)([^<]*)(<\/w:t>)/g, (_m, open, text: string, close) =>
+    open + text.replace(/[ \t]{2,}/g, ' ').replace(/[ \t]+([.,;)])/g, '$1') + close);
+}
+
 /** Ordena as partes com o corpo do documento primeiro. */
 function docxPartNames(zip: PizZip): string[] {
   return Object.keys(zip.files)
@@ -469,7 +501,17 @@ export async function generateDocxFromTemplate(
     }
   }
 
-  const output = doc.getZip().generate({
+  // Campos vazios deixam pontuação órfã no texto do template
+  // (ex.: "Rua X, 2007, , São José" quando não há complemento) — limpa agora,
+  // com o documento já preenchido.
+  const rendered = doc.getZip();
+  for (const name of docxPartNames(rendered)) {
+    const xml = rendered.files[name].asText();
+    const tidy = tidyOrphanPunctuation(xml);
+    if (tidy !== xml) rendered.file(name, tidy);
+  }
+
+  const output = rendered.generate({
     type: 'arraybuffer',
     mimeType:
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document',

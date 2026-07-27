@@ -5,6 +5,19 @@ Registro de decisões de produto/UX (não arquiteturais — essas ficam em
 
 ## Log
 
+- **QGBT Solar e regra do inversor único** (jul/2026): pedido do usuário —
+  "com 1 inversor, o disjuntor do inversor e o geral são o mesmo, apenas um
+  é suficiente"; "deixe o DPS CA mais próximo do disjuntor do inversor (com
+  2, na junção)"; "coloque um tracejado igual ao do padrão de entrada com
+  nome QGBT Solar". Decisões: o disjuntor único ganha a legenda "(arranjo +
+  geral)" pra o analista não procurar um segundo; o DPS CA passa a derivar
+  do TRONCO no mesmo nó da junção (antes vinha do barramento pós-geral); e
+  o QGBT vira uma caixa de grupo com `moveContents`, então o quadro inteiro
+  se move junto no editor. Junto veio a limpeza de **pontuação órfã** nos
+  documentos: campo vazio em template com tags separadas deixava "Rua X,
+  2007, , São José" — o gerador agora normaliza o texto renderizado.
+  (jul/2026)
+
 - **Diagrama harmônico: rótulos móveis, disjuntores calculados e bitola por
   trecho** (jul/2026): pedidos do usuário depois de usar o motor num projeto
   real. (1) Rótulos dos componentes coladinhos no símbolo (3,4mm em vez de

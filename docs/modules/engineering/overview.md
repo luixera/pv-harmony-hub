@@ -174,7 +174,14 @@ Sem dados/regra, resolvem vazias (o documento sai mesmo assim).
 `buildMultiArrangementScene` (cadEngine/editableLayout.ts) desenha o
 diagrama completo pedido pelo usuário para 1..N arranjos:
 
-- **1 disjuntor CA por arranjo** ("Disjuntor Arranjo i") — obrigatório;
+- **1 disjuntor CA por arranjo** ("Disjuntor Arranjo i") — obrigatório. Com
+  **um único inversor**, esse disjuntor JÁ É o geral: o motor desenha um só
+  ("Disjuntor Geral CA", legenda "(arranjo + geral)") em vez de dois em
+  série;
+- **QGBT SOLAR**: caixa tracejada (mesma linguagem do padrão de entrada)
+  envolvendo os disjuntores da geração, a junção, o disjuntor geral e o
+  **DPS CA** — que fica logo após o disjuntor (1 inversor) ou **na junção
+  dos arranjos** (2+), derivando do tronco no mesmo nó;
 - os arranjos se **juntam num nó** (•, derivação formal no tronco — mover
   o tronco arrasta a junção junto);
 - **disjuntor geral de seccionamento OPCIONAL** depois da junção — regra

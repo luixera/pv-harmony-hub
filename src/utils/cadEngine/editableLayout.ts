@@ -1057,7 +1057,9 @@ export function buildMultiArrangementScene(options: {
   locationMap?: { href: string; caption?: string };
 }): DiagramSceneState {
   const n = Math.max(1, options.inverterCount);
-  const includeGB = options.includeGeneralBreaker !== false;
+  // Com UM inversor, o disjuntor do arranjo JÁ É o disjuntor geral do
+  // sistema — desenhar os dois em série seria redundante (regra do usuário).
+  const includeGB = n > 1 && options.includeGeneralBreaker !== false;
   const includeLoads = options.includeLoadsReference !== false;
   const uid = (() => { let i = 0; return (kind: string) => `manual-${kind}-arr${++i}`; })();
 
@@ -1065,11 +1067,11 @@ export function buildMultiArrangementScene(options: {
   // LEGEND_X0 (235): a coluna da direita é reservada à tabela de LEGENDA, que
   // cresce com o nº de símbolos — desenhar por baixo dela deixava o tracejado
   // do padrão de entrada em cima da legenda (relato do usuário).
-  const X_PV = 18, X_INV = 54, X_CB = 90;
-  const X_JUNC = 116;                       // x do nó de junção dos arranjos
-  const X_GB = 122;                         // disjuntor geral (se incluído)
-  const X_EB = 156;                         // disjuntor do padrão de entrada
-  const X_METER = 182, X_GRID = 208;
+  const X_PV = 16, X_INV = 48, X_CB = 80;
+  const X_JUNC = 110;                       // x do nó de junção dos arranjos
+  const X_GB = 116;                         // disjuntor geral (só com 2+ arranjos)
+  const X_EB = 152;                         // disjuntor do padrão de entrada
+  const X_METER = 180, X_GRID = 208;
   const MID_TOP = 110;                      // y do tronco CA (portas em MID_TOP+10) — abaixo da tabela de legenda, que ocupa o canto sup-direito até ~108mm
   const ROW_GAP = 36;
   const midY = MID_TOP + 10;
@@ -1111,8 +1113,11 @@ export function buildMultiArrangementScene(options: {
     const inv = sym('inverter', X_INV, y, n > 1 ? `Inversor ${i + 1}` : 'Inversor', [], rowScale);
     const cb = sym(
       'breaker', X_CB, y,
-      n > 1 ? `Disjuntor Arranjo ${i + 1}` : 'Disjuntor CA',
-      breakerA ? [`${breakerA}A`] : [], rowScale,
+      n > 1 ? `Disjuntor Arranjo ${i + 1}` : 'Disjuntor Geral CA',
+      // com 1 inversor o disjuntor acumula as duas funções — deixa explícito
+      // pro analista da concessionária não procurar um segundo disjuntor
+      [breakerA ? `${breakerA}A` : '', n === 1 ? '(arranjo + geral)' : ''].filter(Boolean),
+      rowScale,
     );
     cbs.push(cb);
     connections.push({
@@ -1127,7 +1132,8 @@ export function buildMultiArrangementScene(options: {
 
   const gb = includeGB
     ? sym('breaker', X_GB, MID_TOP, 'Disjuntor Geral',
-        [options.generalBreakerA ? `${options.generalBreakerA}A` : '', '(seccionamento — opcional)'].filter(Boolean))
+        // legenda curta: a versão longa transbordava a caixa do QGBT
+        [options.generalBreakerA ? `${options.generalBreakerA}A` : '', '(seccionamento)'].filter(Boolean))
     : null;
   // ── Padrão de entrada: disjuntor do padrão + medidor + DPS + placa ──
   const entryBreaker = sym('breaker', X_EB, MID_TOP, 'Disjuntor do Padrão', options.entryBreakerLegend ?? []);
@@ -1185,17 +1191,16 @@ export function buildMultiArrangementScene(options: {
   });
   connections.push({ id: 'manual-grid-arr', from: { kind: 'port', id: meter.id, port: 'dir' }, to: { kind: 'port', id: grid.id, port: 'esq' } });
 
-  // DPS pós-junção (paralelo, abaixo) + cargas do local (referência, acima) +
-  // DPS do padrão de entrada (paralelo ao disjuntor do padrão) — todos
-  // derivações formais com t calculado da geometria real
-  // depois do rótulo do disjuntor geral (senão a descida do DPS corta o texto)
-  const dps = sym('dps', 144, MID_TOP + 26, 'DPS CA');
-  // cargas ficam acima e à esquerda do padrão de entrada (rótulo não pode
-  // colidir com o título da caixa "PADRÃO DE ENTRADA")
+  // DPS CA do lado da geração: pedido do usuário — com UM inversor ele fica
+  // logo depois do disjuntor do inversor; com dois ou mais, na JUNÇÃO dos
+  // arranjos (é onde o barramento do QGBT realmente se forma).
+  const dpsTapX = n > 1 ? X_JUNC : X_CB + 24 + 12;
+  const dps = sym('dps', dpsTapX - 12, MID_TOP + 26, 'DPS CA');
+  // cargas ficam acima, derivando do trecho entre o QGBT e o padrão
   const loadsPanel = includeLoads
-    ? sym('distribution-panel', 128, MID_TOP - 46, 'Cargas do local', ['(apenas referência)'])
+    ? sym('distribution-panel', 150, MID_TOP - 68, 'Cargas do local', ['(apenas referência)'])
     : null;
-  const entryDps = sym('dps', 168, MID_TOP + 26, 'DPS do Padrão');
+  const entryDps = sym('dps', 166, MID_TOP + 26, 'DPS do Padrão');
   // placa de advertência: a FOTO REAL entra nativa no diagrama (pedido do
   // usuário — não é redesenho); sem ligação elétrica, dentro do bloco do padrão
   const plate = options.warningVariant === 'enel' ? WARNING_PLATE_ENEL : WARNING_PLATE_GENERIC;
@@ -1210,15 +1215,18 @@ export function buildMultiArrangementScene(options: {
     const allPts = computeAllConnectionPoints(connections, byId);
     const busPts = allPts.get(busConnId)!;
     const tapT = (pts: Point[], x: number) => nearestPointOnPolyline({ x, y: midY }, pts)!.t;
+    // com 2+ arranjos o DPS nasce do TRONCO, no mesmo nó em que os arranjos
+    // se juntam; com 1, do trecho logo após o disjuntor
+    const dpsConnId = n > 1 ? trunk.id : busConnId;
     connections.push({
       id: 'manual-dps-arr',
-      from: { kind: 'line', connId: busConnId, t: tapT(busPts, 156) },
+      from: { kind: 'line', connId: dpsConnId, t: tapT(allPts.get(dpsConnId)!, dpsTapX) },
       to: { kind: 'port', id: dps.id, port: 'topo' },
     });
     if (loadsPanel) {
       connections.push({
         id: 'manual-loads-arr',
-        from: { kind: 'line', connId: busConnId, t: tapT(busPts, 152) },
+        from: { kind: 'line', connId: busConnId, t: tapT(busPts, 146) },
         to: { kind: 'port', id: loadsPanel.id, port: 'entrada' },
       });
     }
@@ -1248,7 +1256,19 @@ export function buildMultiArrangementScene(options: {
   // Caixa de grupo do padrão de entrada — arrastar a caixa move o bloco todo.
   // Vai só até o medidor: a REDE fica fora (não faz parte do padrão) e a caixa
   // inteira mora à esquerda da coluna da legenda.
+  // QGBT SOLAR — o quadro da geração: disjuntor(es) de arranjo, junção,
+  // disjuntor geral (quando há 2+) e o DPS CA. Mesma linguagem visual do
+  // padrão de entrada, pra o analista ler o desenho em dois blocos.
+  const qgbtRight = Math.max(X_CB + 24, includeGB ? X_GB + 24 : 0, dps.x + 24) + 5;
+  const qgbtTop = Math.min(rowY(0), MID_TOP) - 7;
   const groups: PlacedGroup[] = [{
+    id: uid('group'),
+    title: 'QGBT SOLAR',
+    x: X_CB - 5, y: qgbtTop,
+    w: qgbtRight - (X_CB - 5),
+    h: (MID_TOP + 54) - qgbtTop,   // até o rótulo do DPS CA
+    style: 'dashed', moveContents: true,
+  }, {
     id: uid('group'),
     title: 'PADRÃO DE ENTRADA',
     // engloba a placa (acima do medidor) e os rótulos dos DPS (abaixo)
