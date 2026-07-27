@@ -127,9 +127,15 @@ avisos âmbar com a sugestão de correção, em português simples.
 ## Memoriais descritivos por concessionária
 
 Modelos recriados dos memoriais reais do usuário (ENEL e EDP), como
-templates .docx com {tags} — em [docs/modelos-memoriais/](../../modelos-memoriais/)
-(subir na tela de Templates; **sem lista de materiais** — as
-concessionárias não exigem, decisão do usuário). As tags de engenharia são
+templates .docx com {tags} — versionados em
+[docs/modelos-memoriais/](../../modelos-memoriais/) e **já publicados nas
+concessionárias** (bucket `concessionaire-templates`, ao lado dos Anexos
+E/F, em todos os tenants) pela edge function `seed-memorial-templates`.
+Ela carrega os .docx embutidos em base64, é idempotente e aceita
+`{"overwrite": true}` pra substituir depois de uma revisão do modelo;
+regerar o base64 com `node scripts/build-seed-memorial-templates.cjs` e
+publicar a função de novo. **Sem lista de materiais** — as concessionárias
+não exigem, decisão do usuário. As tags de engenharia são
 calculadas na geração por `engineeringTemplateValues`
 (`src/utils/engineering/templateValues.ts`, ligada no
 GenerateDocumentDialog): `{arranjo_strings}` (multilinha, por
