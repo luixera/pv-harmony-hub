@@ -347,15 +347,18 @@ export function FinancialReportModal({ onClose }: FinancialReportModalProps) {
                           <tr><td colSpan={7} style={{ padding: '24px 8px', textAlign: 'center', color: '#aaa', fontSize: 12 }}>Nenhum projeto encontrado com os filtros selecionados</td></tr>
                         ) : (
                           rows.map((row, i) => {
-                            const sb = STATUS_BADGE[row.status] || STATUS_BADGE.pending;
+                            const assinatura = row.kind === 'subscription';
+                            const sb = assinatura
+                              ? { bg: '#FEF3D0', color: '#854F0B' }
+                              : STATUS_BADGE[row.status] || STATUS_BADGE.pending;
                             return (
-                              <tr key={row.id} style={{ background: i % 2 === 0 ? '#fff' : '#FAFAFA' }}>
+                              <tr key={row.id} style={{ background: assinatura ? '#FFFBF0' : i % 2 === 0 ? '#fff' : '#FAFAFA' }}>
                                 <td style={{ padding: '7px 8px', fontWeight: 700, color: '#1A1A1A', fontFamily: 'monospace' }}>{row.code}</td>
                                 <td style={{ padding: '7px 8px', color: '#555', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.holderName}</td>
                                 <td style={{ padding: '7px 8px', color: '#555' }}>{row.concessionaireName}</td>
                                 <td style={{ padding: '7px 8px' }}>
                                   <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 20, background: sb.bg, color: sb.color }}>
-                                    {STATUS_LABELS[row.status] || row.status}
+                                    {assinatura ? 'Assinatura' : STATUS_LABELS[row.status] || row.status}
                                   </span>
                                 </td>
                                 <td style={{ padding: '7px 8px', color: '#333', fontWeight: 600 }}>{fmt(row.projectValue)}</td>
@@ -372,6 +375,9 @@ export function FinancialReportModal({ onClose }: FinancialReportModalProps) {
                           <tr style={{ background: '#1A1A1A' }}>
                             <td colSpan={4} style={{ padding: '8px 8px', fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.7)' }}>
                               Total — {summary.totalProjects} projetos
+                              {rows.length - summary.totalProjects > 0
+                                ? ` + ${rows.length - summary.totalProjects} mensalidade(s)`
+                                : ''}
                             </td>
                             <td style={{ padding: '8px 8px', fontSize: 11, fontWeight: 700, color: '#F5A800' }}>{fmt(summary.totalValue)}</td>
                             <td style={{ padding: '8px 8px', fontSize: 11, fontWeight: 700, color: '#4CAF7D' }}>{fmt(summary.totalPaid)}</td>

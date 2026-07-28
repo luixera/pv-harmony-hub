@@ -6,9 +6,14 @@ import { ProjectModal } from '@/components/projects/ProjectModal';
 import { FinancialReportModal } from '@/components/financial/FinancialReportModal';
 import { BatchSettleDialog } from '@/components/financial/BatchSettleDialog';
 import { BarChart, Bar, Tooltip, ResponsiveContainer, Cell, XAxis } from 'recharts';
-import { Loader2, FileText, TrendingUp, Wallet, AlertCircle, DollarSign, CheckCircle2, RotateCcw } from 'lucide-react';
+import { Loader2, FileText, TrendingUp, Wallet, AlertCircle, DollarSign, CheckCircle2, RotateCcw, CalendarClock } from 'lucide-react';
 import { useWindowSize } from '@/hooks/useWindowSize';
 import { formatCurrency } from '@/lib/utils';
+import {
+  useArtValue, useGenerateSubscriptionCharges, useRecomputeSubscriptionValues,
+  useSaveArtValue, useSettleSubscriptionCharge,
+} from '@/hooks/useSubscriptionCharges';
+import { SubscriptionChargeRow } from '@/hooks/useFinancialDashboard';
 
 const fmt = formatCurrency;
 
@@ -18,6 +23,144 @@ const PAY_STATUS_LABELS: Record<string, { label: string; bg: string; color: stri
   paid:    { label: 'Quitado',    bg: '#E1F5EE', color: '#0F6E56' },
 };
 const COMPANY_COLORS = ['#F5A800','#378ADD','#2D6A4F','#D85A30','#9B59B6','#1ABC9C','#E74C3C','#3498DB'];
+
+/**
+ * Assinaturas mensais — empresas que pagam mensalidade. Regra combinada com o
+ * usuário: a mensalidade é cobrada uma vez por mês (este card) e cada projeto
+ * da empresa cobra só a RT; passando da franquia do mês, o projeto vale
+ * RT + excedente.
+ */
+function SubscriptionsCard({ assinaturas }: { assinaturas: SubscriptionChargeRow[] }) {
+  const { data: artValue } = useArtValue();
+  const saveArt = useSaveArtValue();
+  const gerar = useGenerateSubscriptionCharges();
+  const quitar = useSettleSubscriptionCharge();
+  const recalcular = useRecomputeSubscriptionValues();
+  const [artDraft, setArtDraft] = useState<string | null>(null);
+  const draft = artDraft ?? (artValue == null ? '' : String(artValue));
+  const emAberto = assinaturas.filter(a => a.balance > 0);
+
+  const salvarArt = async () => {
+    const raw = draft.trim().replace(',', '.');
+    const value = raw === '' ? null : Number(raw);
+    if (raw !== '' && !Number.isFinite(value)) return;
+    await saveArt.mutateAsync(value);
+    setArtDraft(null);
+    // projetos de assinatura criados antes da RT ficaram zerados
+    const n = await recalcular.mutateAsync(undefined);
+    if (n > 0) alert(`Valor da RT salvo. ${n} projeto(s) de assinatura que estavam zerados passaram a cobrar a RT.`);
+  };
+
+  return (
+    <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #EFEFEF', padding: '16px 18px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 12 }}>
+        <div style={{ width: 32, height: 32, borderRadius: 9, background: '#FEF3D0', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <CalendarClock size={16} color="#854F0B" />
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <p style={{ fontSize: 13, fontWeight: 700, color: '#1A1A1A', margin: 0 }}>Assinaturas mensais</p>
+          <p style={{ fontSize: 10.5, color: '#999', margin: 0 }}>
+            {emAberto.length > 0 ? `${emAberto.length} mensalidade(s) em aberto` : 'Mensalidade + RT de cada projeto'}
+          </p>
+        </div>
+        <button
+          onClick={() => gerar.mutate()}
+          disabled={gerar.isPending}
+          title="Cria as mensalidades que faltam (não duplica as que já existem)"
+          style={{ padding: '6px 10px', borderRadius: 7, border: '1px solid #E8E8E8', background: '#fff', color: '#555', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+        >
+          {gerar.isPending ? '...' : 'Gerar mês'}
+        </button>
+      </div>
+
+      {/* Valor da RT — único do tenant */}
+      <div style={{ background: '#FAFAFA', border: '1px solid #F0F0F0', borderRadius: 9, padding: '9px 11px', marginBottom: 12 }}>
+        <label style={{ fontSize: 10, fontWeight: 700, color: '#888', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          Valor da RT por projeto
+        </label>
+        <div style={{ display: 'flex', gap: 6, marginTop: 5 }}>
+          <input
+            inputMode="decimal"
+            value={draft}
+            onChange={e => setArtDraft(e.target.value)}
+            placeholder="Ex: 250"
+            style={{ flex: 1, minWidth: 0, padding: '7px 9px', borderRadius: 7, border: '1px solid #E0E0E0', fontSize: 12, outline: 'none' }}
+          />
+          <button
+            onClick={salvarArt}
+            disabled={saveArt.isPending || artDraft === null}
+            style={{
+              padding: '7px 12px', borderRadius: 7, border: 'none', fontSize: 12, fontWeight: 700,
+              background: artDraft === null ? '#EEE' : '#F5A800', color: artDraft === null ? '#AAA' : '#1A1A1A',
+              cursor: artDraft === null ? 'default' : 'pointer',
+            }}
+          >
+            Salvar
+          </button>
+        </div>
+        <p style={{ fontSize: 10, color: artValue == null ? '#B23A1B' : '#999', margin: '5px 0 0' }}>
+          {artValue == null
+            ? 'Sem valor definido: os projetos das empresas com assinatura ficam zerados.'
+            : 'Vale para todas as empresas com assinatura. Dá pra editar o valor caso a caso no projeto.'}
+        </p>
+      </div>
+
+      {assinaturas.length === 0 ? (
+        <p style={{ fontSize: 11.5, color: '#aaa', margin: 0 }}>
+          Nenhuma mensalidade lançada. Use "Gerar mês" nas empresas com precificação por assinatura.
+        </p>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 7, maxHeight: 260, overflowY: 'auto' }}>
+          {assinaturas.map(a => {
+            const ps = PAY_STATUS_LABELS[a.status] || PAY_STATUS_LABELS.pending;
+            const excedeu = a.projectsIncluded != null && a.projectsInMonth > a.projectsIncluded;
+            return (
+              <div key={a.id} style={{ border: '1px solid #F0F0F0', borderRadius: 9, padding: '8px 10px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ fontSize: 12, fontWeight: 700, color: '#1A1A1A', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {a.companyName}
+                    </p>
+                    <p style={{ fontSize: 10.5, color: '#999', margin: '1px 0 0' }}>
+                      {a.competenceLabel}
+                      {a.projectsIncluded != null && (
+                        <span style={{ color: excedeu ? '#B23A1B' : '#999' }}>
+                          {' · '}{a.projectsInMonth}/{a.projectsIncluded} projetos{excedeu ? ' (excedente)' : ''}
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                  <span style={{ fontSize: 9.5, fontWeight: 700, padding: '2px 7px', borderRadius: 20, background: ps.bg, color: ps.color, whiteSpace: 'nowrap' }}>
+                    {ps.label}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: '#1A1A1A' }}>{fmt(a.amount)}</span>
+                  <div style={{ flex: 1 }} />
+                  {a.balance > 0 ? (
+                    <button
+                      onClick={() => quitar.mutate({ id: a.id, amount: a.amount, action: 'settle' })}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 700, color: '#0F6E56', background: '#E1F5EE', border: 'none', borderRadius: 7, padding: '5px 10px', cursor: 'pointer' }}
+                    >
+                      <CheckCircle2 size={12} /> Quitar
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => quitar.mutate({ id: a.id, amount: a.amount, action: 'reverse' })}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 700, color: '#B23A1B', background: '#FDE7E3', border: 'none', borderRadius: 7, padding: '5px 10px', cursor: 'pointer' }}
+                    >
+                      <RotateCcw size={12} /> Estornar
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ── Hero KPI Block ────────────────────────────────────────────────────────────
 function KpiBlock({
@@ -227,6 +370,9 @@ export default function Financial() {
                 </div>
               )}
             </div>
+
+            {/* Card Assinaturas mensais */}
+            <SubscriptionsCard assinaturas={data?.assinaturas ?? []} />
 
             {/* Card Extrato PDF */}
             <div style={{ background: 'linear-gradient(135deg, #1A1A1A 0%, #2D2D2D 100%)', borderRadius: 12, padding: '20px 20px' }}>

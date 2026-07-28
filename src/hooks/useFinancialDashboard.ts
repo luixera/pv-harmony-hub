@@ -18,6 +18,27 @@ export interface FinancialProjectRow {
   createdAt: string;
 }
 
+/** Cobrança da ASSINATURA MENSAL de uma empresa (uma por mês) — anda junto dos
+ *  projetos no financeiro: na empresa com assinatura, o projeto cobra só a RT e
+ *  a mensalidade é este lançamento. */
+export interface SubscriptionChargeRow {
+  id: string;
+  companyId: string;
+  companyName: string;
+  /** 1º dia do mês cobrado (YYYY-MM-DD). */
+  competence: string;
+  /** "julho de 2026" — pronto pra tela. */
+  competenceLabel: string;
+  amount: number;
+  paidValue: number;
+  balance: number;
+  status: string;
+  dueDate: string | null;
+  /** Franquia de projetos do mês e quantos entraram (pra conferir excedente). */
+  projectsIncluded: number | null;
+  projectsInMonth: number;
+}
+
 export interface FinancialKPIs {
   totalFaturado: number;
   totalRecebido: number;
@@ -76,6 +97,11 @@ export function useFinancialDashboard() {
         { event: '*', schema: 'public', table: 'payment_history' },
         () => { queryClient.invalidateQueries({ queryKey: QUERY_KEY }); }
       )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'company_subscription_charges' },
+        () => { queryClient.invalidateQueries({ queryKey: QUERY_KEY }); }
+      )
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
@@ -89,7 +115,20 @@ export function useFinancialDashboard() {
       porEmpresa: ByCompanyEntry[];
       porStatus: ByStatusEntry[];
       projetos: FinancialProjectRow[];
+      assinaturas: SubscriptionChargeRow[];
     }> => {
+      // Assinaturas mensais (uma cobrança por empresa/mês) — entram no
+      // financeiro junto dos projetos: são recebíveis de verdade.
+      const chargesRes = await supabase
+        .from('company_subscription_charges' as never)
+        .select('id, company_id, competence, amount, amount_paid, status, due_date, projects_included, companies:company_id (name)')
+        .order('competence', { ascending: false });
+      const chargeRows = (chargesRes.data ?? []) as unknown as {
+        id: string; company_id: string; competence: string; amount: number; amount_paid: number;
+        status: string; due_date: string | null; projects_included: number | null;
+        companies: { name: string } | null;
+      }[];
+
       const { data: projects, error: projErr } = await supabase
         .from('projects')
         .select(`
@@ -103,12 +142,49 @@ export function useFinancialDashboard() {
 
       const projectIds = (projects || []).map(p => p.id);
 
-      if (projectIds.length === 0) {
+      // projetos por empresa/mês — mostra na assinatura quanto da franquia foi usado
+      const monthKey = (iso: string) => iso.slice(0, 7);
+      const porEmpresaMes = new Map<string, number>();
+      for (const p of projects || []) {
+        const k = `${p.company_id}|${monthKey(p.created_at)}`;
+        porEmpresaMes.set(k, (porEmpresaMes.get(k) ?? 0) + 1);
+      }
+      const mesLabel = (competence: string) => {
+        const [y, m] = competence.split('-');
+        return `${['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'][Number(m) - 1] ?? m}/${y}`;
+      };
+      const assinaturas: SubscriptionChargeRow[] = chargeRows.map(c => {
+        const amount = Number(c.amount ?? 0);
+        const paidValue = Number(c.amount_paid ?? 0);
         return {
-          kpis: { totalFaturado: 0, totalRecebido: 0, totalAberto: 0, totalVencido: 0 },
+          id: c.id,
+          companyId: c.company_id,
+          companyName: c.companies?.name || '—',
+          competence: c.competence,
+          competenceLabel: mesLabel(c.competence),
+          amount,
+          paidValue,
+          balance: Math.max(0, amount - paidValue),
+          status: c.status || 'pending',
+          dueDate: c.due_date,
+          projectsIncluded: c.projects_included,
+          projectsInMonth: porEmpresaMes.get(`${c.company_id}|${monthKey(c.competence)}`) ?? 0,
+        };
+      });
+
+      if (projectIds.length === 0) {
+        const abertoAssin = assinaturas.reduce((s, a) => s + a.balance, 0);
+        return {
+          kpis: {
+            totalFaturado: assinaturas.reduce((s, a) => s + a.amount, 0),
+            totalRecebido: assinaturas.reduce((s, a) => s + a.paidValue, 0),
+            totalAberto: abertoAssin,
+            totalVencido: 0,
+          },
           porEmpresa: [],
           porStatus: [],
           projetos: [],
+          assinaturas,
         };
       }
 
@@ -149,26 +225,30 @@ export function useFinancialDashboard() {
         };
       });
 
-      // ── KPIs ────────────────────────────────────────────────────────────────
-      const totalFaturado = projetos.reduce((s, p) => s + p.projectValue, 0);
-      const totalRecebido = projetos.reduce((s, p) => s + p.paidValue,    0);
-      const totalAberto   = projetos.reduce((s, p) => s + p.balance,      0);
+      // ── KPIs (projetos + assinaturas) ───────────────────────────────────────
+      const totalFaturado = projetos.reduce((s, p) => s + p.projectValue, 0)
+        + assinaturas.reduce((s, a) => s + a.amount, 0);
+      const totalRecebido = projetos.reduce((s, p) => s + p.paidValue, 0)
+        + assinaturas.reduce((s, a) => s + a.paidValue, 0);
+      const totalAberto   = projetos.reduce((s, p) => s + p.balance, 0)
+        + assinaturas.reduce((s, a) => s + a.balance, 0);
       const totalVencido  = projetos
         .filter(p => p.paymentStatus !== 'paid' && p.dueDate && p.dueDate < today)
-        .reduce((s, p) => s + p.balance, 0);
+        .reduce((s, p) => s + p.balance, 0)
+        + assinaturas
+          .filter(a => a.status !== 'paid' && a.dueDate && a.dueDate < today)
+          .reduce((s, a) => s + a.balance, 0);
 
-      // ── Por empresa (apenas projetos com saldo em aberto) ───────────────────
+      // ── Por empresa (projetos + assinaturas com saldo em aberto) ────────────
       const empresaMap = new Map<string, ByCompanyEntry>();
-      for (const p of projetos) {
-        if (p.balance <= 0) continue;
-        const existing = empresaMap.get(p.companyId);
-        if (existing) existing.balance += p.balance;
-        else empresaMap.set(p.companyId, {
-          companyId:   p.companyId,
-          companyName: p.companyName,
-          balance:     p.balance,
-        });
-      }
+      const somaEmpresa = (companyId: string, companyName: string, balance: number) => {
+        if (balance <= 0) return;
+        const existing = empresaMap.get(companyId);
+        if (existing) existing.balance += balance;
+        else empresaMap.set(companyId, { companyId, companyName, balance });
+      };
+      for (const p of projetos) somaEmpresa(p.companyId, p.companyName, p.balance);
+      for (const a of assinaturas) somaEmpresa(a.companyId, a.companyName, a.balance);
       const porEmpresa = Array.from(empresaMap.values())
         .sort((a, b) => b.balance - a.balance);
 
@@ -188,7 +268,7 @@ export function useFinancialDashboard() {
         })
       );
 
-      return { kpis: { totalFaturado, totalRecebido, totalAberto, totalVencido }, porEmpresa, porStatus, projetos };
+      return { kpis: { totalFaturado, totalRecebido, totalAberto, totalVencido }, porEmpresa, porStatus, projetos, assinaturas };
     },
   });
 }

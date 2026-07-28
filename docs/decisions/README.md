@@ -5,6 +5,17 @@ Registro de decisões de produto/UX (não arquiteturais — essas ficam em
 
 ## Log
 
+- **Assinatura mensal no financeiro** (jul/2026): o usuário descreveu o modelo
+  que já pratica com a AF ENERGY SOLAR 360 — mensalidade + só a RT em cada
+  projeto + adicional quando passa da franquia do mês. Perguntas respondidas
+  por ele: (1) a mensalidade é **cobrança real com status de pagamento** (não
+  uma linha calculada), então virou tabela própria com quitar/estornar;
+  (2) o valor da RT é **único do tenant**, não por empresa nem por projeto;
+  (3) no projeto excedente cobra-se **RT + excedente** (o adicional não
+  substitui a RT). Consequência: `compute_project_value` deixou de devolver
+  R$ 0 dentro da franquia — quem estava zerado é reprocessado só se ainda
+  estiver em 0.
+
 - **Microinversores: regras próprias e duas representações** (jul/2026): caso
   real trazido pelo usuário (projeto MARA, Hoymiles HMS-2000 4T + DAH 610Wp).
   Perguntas feitas e respondidas por ele: (1) **as duas representações**, com
