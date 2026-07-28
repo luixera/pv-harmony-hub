@@ -8,7 +8,7 @@ import { toast } from 'sonner';
 import {
   Crown, Plus, Building2, Users as UsersIcon, FolderOpen, Sparkles,
   CalendarCheck, Ban, Play, Upload, Loader2, ArrowLeft, Pencil, X, Check,
-  ChevronDown, ChevronRight,
+  ChevronDown, ChevronRight, Trash2, AlertTriangle,
 } from 'lucide-react';
 import { projectStatusLabel } from '@/lib/statusMapping';
 
@@ -84,6 +84,7 @@ export default function MasterPanel({ embedded = false }: { embedded?: boolean }
   const [showCreate, setShowCreate] = useState(false);
   const [showPlans, setShowPlans] = useState(false);
   const [payingTenant, setPayingTenant] = useState<Tenant | null>(null);
+  const [deletingTenant, setDeletingTenant] = useState<Tenant | null>(null);
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['master-tenants'] });
@@ -178,7 +179,8 @@ export default function MasterPanel({ embedded = false }: { embedded?: boolean }
                       </div>
                     </div>
 
-                    <TenantActions tenant={t} onPay={() => setPayingTenant(t)} onUpdate={updateTenant.mutate} onLogo={uploadLogo} plans={plans} />
+                    <TenantActions tenant={t} onPay={() => setPayingTenant(t)} onUpdate={updateTenant.mutate} onLogo={uploadLogo} plans={plans}
+                      onDelete={() => setDeletingTenant(t)} />
                   </div>
 
                   {/* Métricas */}
@@ -205,6 +207,10 @@ export default function MasterPanel({ embedded = false }: { embedded?: boolean }
       {payingTenant && (
         <RegisterPaymentDialog tenant={payingTenant} onClose={() => setPayingTenant(null)}
           onSave={(paidUntil) => { updateTenant.mutate({ id: payingTenant.id, changes: { paid_until: paidUntil, status: 'active' } }); setPayingTenant(null); }} />
+      )}
+      {deletingTenant && (
+        <DeleteTenantDialog tenant={deletingTenant} accessToken={session?.access_token ?? ''}
+          onClose={() => setDeletingTenant(null)} onDeleted={invalidate} />
       )}
       {showPlans && <PlansDialog plans={plans} onClose={() => setShowPlans(false)} />}
     </div>
@@ -312,12 +318,13 @@ function TenantDrillDown({ tenantId }: { tenantId: string }) {
 
 // ── Ações por tenant ───────────────────────────────────────────────────────────
 
-function TenantActions({ tenant, plans, onPay, onUpdate, onLogo }: {
+function TenantActions({ tenant, plans, onPay, onUpdate, onLogo, onDelete }: {
   tenant: Tenant;
   plans: TenantPlan[];
   onPay: () => void;
   onUpdate: (v: { id: string; changes: Record<string, unknown> }) => void;
   onLogo: (t: Tenant, f: File) => void;
+  onDelete: () => void;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const btn = (bg: string, color: string): React.CSSProperties => ({
@@ -357,6 +364,154 @@ function TenantActions({ tenant, plans, onPay, onUpdate, onLogo }: {
           <Play size={12} /> Reativar
         </button>
       )}
+
+      {/* Exclusão definitiva — o diálogo mostra o que será apagado e exige o
+          nome digitado. Suspender continua sendo o caminho reversível. */}
+      <button style={btn('rgba(226,75,74,0.15)', '#FF8A88')} title="Excluir tenant (irreversível)"
+        onClick={onDelete}>
+        <Trash2 size={12} /> Excluir
+      </button>
+    </div>
+  );
+}
+
+// ── Dialog: excluir tenant (irreversível) ──────────────────────────────────────
+
+/**
+ * Exclusão DEFINITIVA de um tenant. Antes de liberar o botão, mostra o que
+ * exatamente vai embora (RPC `master_tenant_delete_preview`) e exige o nome do
+ * tenant digitado igual — o mesmo nome é reconferido no servidor. O tenant
+ * biblioteca e o tenant de quem está logado nunca podem ser excluídos.
+ */
+function DeleteTenantDialog({ tenant, accessToken, onClose, onDeleted }: {
+  tenant: Tenant; accessToken: string; onClose: () => void; onDeleted: () => void;
+}) {
+  const [typed, setTyped] = useState('');
+  const [deleting, setDeleting] = useState(false);
+
+  const { data: preview, isLoading } = useQuery({
+    queryKey: ['master-tenant-delete-preview', tenant.id],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('master_tenant_delete_preview' as never, { _tenant_id: tenant.id } as never);
+      if (error) throw error;
+      return data as unknown as {
+        name: string; is_library: boolean; is_own: boolean;
+        projects: number; companies: number; users: number; documents: number;
+        concessionaires: number; diagrams: number; subscription_charges: number;
+      };
+    },
+  });
+
+  const bloqueado = preview?.is_library || preview?.is_own;
+  const podeExcluir = !bloqueado && typed.trim() === tenant.name && !deleting;
+
+  const handleDelete = async () => {
+    if (!podeExcluir) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/delete-tenant`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tenantId: tenant.id, confirmName: typed.trim() }),
+      });
+      const body = await res.json();
+      if (!res.ok) { toast.error(body.error || 'Não foi possível excluir'); return; }
+      const sobras = (body.warnings ?? []) as string[];
+      toast.success(
+        `"${body.name}" excluído — ${body.projects} projeto(s), ${body.companies} empresa(s), `
+        + `${body.users} usuário(s) e ${body.documents} arquivo(s).`,
+      );
+      if (sobras.length > 0) {
+        console.warn('delete-tenant: sobras', sobras);
+        toast.warning(`${sobras.length} item(ns) não puderam ser removidos — veja o console.`);
+      }
+      onDeleted();
+      onClose();
+    } catch (e) {
+      console.error(e);
+      toast.error('Erro de rede ao excluir o tenant');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const linha = (label: string, valor: number | undefined) => (
+    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#ddd', padding: '3px 0' }}>
+      <span style={{ color: 'rgba(255,255,255,0.55)' }}>{label}</span>
+      <strong>{valor ?? 0}</strong>
+    </div>
+  );
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 1200, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div style={{ background: '#17171F', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 14, width: '100%', maxWidth: 460, padding: 20 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 12 }}>
+          <div style={{ width: 34, height: 34, borderRadius: 9, background: 'rgba(226,75,74,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <AlertTriangle size={17} color="#FF6B6B" />
+          </div>
+          <div style={{ flex: 1 }}>
+            <p style={{ fontSize: 14, fontWeight: 800, color: '#fff', margin: 0 }}>Excluir tenant</p>
+            <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', margin: 0 }}>{tenant.name}</p>
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#888', cursor: 'pointer' }}><X size={16} /></button>
+        </div>
+
+        {isLoading ? (
+          <div style={{ display: 'flex', justifyContent: 'center', padding: 20 }}><Loader2 size={18} className="animate-spin" color="#888" /></div>
+        ) : bloqueado ? (
+          <p style={{ fontSize: 12.5, color: '#FFB4A2', margin: '0 0 14px', lineHeight: 1.6 }}>
+            {preview?.is_library
+              ? 'Este é o tenant BIBLIOTECA (origem das concessionárias, modelos e regras dos demais). Ele não pode ser excluído.'
+              : 'Este é o seu próprio tenant. Entre com outro master para excluí-lo.'}
+          </p>
+        ) : (
+          <>
+            <p style={{ fontSize: 12.5, color: '#FFB4A2', margin: '0 0 10px', lineHeight: 1.6 }}>
+              Isto apaga <strong>para sempre</strong> tudo o que está abaixo, inclusive os
+              logins dos usuários e os arquivos no Storage. Não há como desfazer.
+            </p>
+            <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 9, padding: '9px 12px', marginBottom: 12 }}>
+              {linha('Projetos', preview?.projects)}
+              {linha('Empresas', preview?.companies)}
+              {linha('Usuários (login)', preview?.users)}
+              {linha('Documentos anexados', preview?.documents)}
+              {linha('Concessionárias', preview?.concessionaires)}
+              {linha('Diagramas e modelos', preview?.diagrams)}
+              {linha('Mensalidades lançadas', preview?.subscription_charges)}
+            </div>
+            <label style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)', display: 'block', marginBottom: 5 }}>
+              Digite <strong style={{ color: '#fff' }}>{tenant.name}</strong> para confirmar:
+            </label>
+            <input
+              value={typed}
+              onChange={e => setTyped(e.target.value)}
+              placeholder={tenant.name}
+              style={{ width: '100%', padding: '9px 11px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.15)', background: '#111118', color: '#fff', fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
+            />
+          </>
+        )}
+
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
+          <button onClick={onClose}
+            style={{ padding: '9px 14px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.15)', background: 'none', color: '#ccc', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+            Cancelar
+          </button>
+          {!bloqueado && (
+            <button onClick={handleDelete} disabled={!podeExcluir}
+              style={{
+                padding: '9px 16px', borderRadius: 8, border: 'none', fontSize: 12, fontWeight: 800,
+                display: 'inline-flex', alignItems: 'center', gap: 6,
+                background: podeExcluir ? '#E24B4A' : 'rgba(255,255,255,0.08)',
+                color: podeExcluir ? '#fff' : 'rgba(255,255,255,0.35)',
+                cursor: podeExcluir ? 'pointer' : 'not-allowed',
+              }}>
+              {deleting ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+              {deleting ? 'Excluindo...' : 'Excluir definitivamente'}
+            </button>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

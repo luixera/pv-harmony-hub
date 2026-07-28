@@ -32,3 +32,31 @@ Ver [../../project/permissions.md](../../project/permissions.md) (matriz complet
 ## Auditoria
 `fn_audit_row` grava toda alteração sensível em `system_events`. Ver
 [../../project/security.md](../../project/security.md).
+
+## Exclusão de tenant (master)
+
+Ação **irreversível**, só no console master (`/painel` → Tenants). Suspender
+continua sendo o caminho reversível; excluir apaga de vez.
+
+Camadas:
+
+1. `master_tenant_delete_preview(_tenant_id)` — o que exatamente vai embora
+   (projetos, empresas, usuários, documentos, concessionárias, diagramas,
+   mensalidades). A UI mostra isso antes de liberar o botão.
+2. `master_delete_tenant(_tenant_id, _confirm_name)` — apaga o SQL na ordem
+   certa (logs → configurações → projetos → empresas → concessionárias →
+   perfis → tenant) e devolve os ids de usuário e os caminhos dos arquivos.
+   Recusa: quem não é master, o tenant **biblioteca**, o **próprio tenant** do
+   usuário e confirmação com nome diferente.
+3. Edge function `delete-tenant` — chama a RPC com o JWT do master e, com a
+   service role, apaga os **usuários no Auth** e os **arquivos no Storage**
+   (`project-documents` pelos caminhos devolvidos, `tenant-logos/{id}/`).
+   O que não puder ser removido volta em `warnings`.
+
+A UI exige o **nome do tenant digitado igual** — o mesmo nome é reconferido no
+servidor, então não adianta burlar o campo.
+
+Detalhe de implementação: o gatilho de auditoria (`fn_audit_row`) gravava o
+evento de DELETE de `tenants` apontando para o próprio tenant, o que violava a
+FK e tornava a exclusão impossível. No DELETE de `tenants` o evento agora vai
+sem `tenant_id` (o id continua em `entity_id`).
