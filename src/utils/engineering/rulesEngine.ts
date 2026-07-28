@@ -670,6 +670,231 @@ export function suggestBreakerPlan(input: {
   };
 }
 
+// ── Grupo Microinversores ────────────────────────────────────────────────────
+
+/**
+ * Datasheet do MICROINVERSOR. É outro bicho: não tem janela de string (cada
+ * módulo entra direto numa entrada CC do micro) e o que limita o projeto é
+ * (a) quantas entradas o micro tem e (b) quantos micros cabem no mesmo RAMAL
+ * CA — eles são encadeados no cabo tronco até o disjuntor do ramal.
+ */
+export interface MicroSpecs {
+  /** Entradas CC = módulos por micro (HMS-2000 4T → 4). */
+  dcInputs?: number;
+  /** Corrente CA de saída de UM micro (datasheet). */
+  maxAcCurrentA?: number;
+  /** Potência de saída de UM micro, em kW. */
+  powerKw?: number;
+  /** Máx. de unidades no mesmo ramal, quando o fabricante declara. */
+  maxPerBranch?: number;
+}
+
+/** Um RAMAL CA: os micros encadeados no mesmo tronco + o disjuntor do ramal. */
+export interface MicroBranch {
+  /** Micros neste ramal. */
+  units: number;
+  /** Módulos de cada micro do ramal (ex.: [4,4,3]). */
+  modulesPerUnit: number[];
+  modules: number;
+  /** Soma das correntes CA dos micros do ramal. */
+  currentA: number;
+  breakerA: number;
+  explanation: string;
+}
+
+export interface MicroPlan {
+  /** Micros do projeto. */
+  unitCount: number;
+  /** Teto de módulos por micro efetivamente usado. */
+  modulesPerUnitCap: number;
+  /** Teto de micros por ramal efetivamente usado, e de onde ele veio. */
+  maxPerBranch: number;
+  maxPerBranchReason: string;
+  branches: MicroBranch[];
+  totalCurrentA: number;
+  generalBreakerA: number | null;
+  generalExplanation: string | null;
+  branchSectionMm2: number | null;
+  trunkSectionMm2: number | null;
+  /** Resumo de uma linha, no mesmo espírito das sugestões de string. */
+  summary: string;
+  alerts: EngineAlert[];
+}
+
+/** É microinversor? Decide pelo datasheet (`is_microinverter`) e, sem ele,
+ *  pelo nome do equipamento — nunca pela potência: existe inversor de string
+ *  de 2kW, e chutar pelo porte classificaria errado. */
+export function isMicroinverter(
+  ts: Record<string, unknown> | null | undefined,
+  name?: string | null,
+): boolean {
+  if (ts && Number(ts['is_microinverter']) === 1) return true;
+  return /micro\s*-?\s*inversor|microinverter/i.test(String(name ?? ''));
+}
+
+/** Lê o `tech_specs` do catálogo na visão de microinversor. */
+export function microSpecsFromTechSpecs(
+  ts: Record<string, unknown> | null | undefined,
+  powerKw?: number,
+): MicroSpecs {
+  const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : undefined);
+  const t = ts ?? {};
+  return {
+    dcInputs: num(t['dc_inputs']),
+    maxAcCurrentA: num(t['max_ac_current_a']),
+    powerKw: powerKw ?? num(t['power_kw']),
+    maxPerBranch: num(t['micro_max_per_branch']),
+  };
+}
+
+/** Reparte `total` em `parts` inteiros o mais equilibrados possível (7,3 → 3,2,2). */
+function splitEvenly(total: number, parts: number): number[] {
+  const base = Math.floor(total / parts);
+  const rest = total - base * parts;
+  return Array.from({ length: parts }, (_, i) => base + (i < rest ? 1 : 0));
+}
+
+/**
+ * Plano de um projeto com MICROINVERSORES: quantos micros, quantos módulos em
+ * cada um, como eles se dividem em ramais e o disjuntor de cada ramal.
+ *
+ * O teto de micros por ramal é o MENOR entre a regra do banco / datasheet do
+ * fabricante e o que a corrente do ramal aguenta — o segundo protege contra
+ * uma regra folgada demais num micro potente.
+ */
+export function suggestMicroinverterPlan(input: {
+  totalModules: number;
+  micro: MicroSpecs;
+  /** Micros do projeto; sem isso o motor calcula pelo nº de módulos. */
+  unitCount?: number;
+  phaseType?: 'monofasico' | 'bifasico' | 'trifasico';
+  includeGeneral?: boolean;
+}, rules: RuleMap): MicroPlan {
+  const alerts: EngineAlert[] = [];
+  const round1 = (v: number) => Math.round(v * 10) / 10;
+  const threePhase = input.phaseType === 'trifasico';
+  const acV = threePhase
+    ? ruleValue(rules, 'voltage_drop.ac_voltage_tri_v', 380)
+    : ruleValue(rules, 'voltage_drop.ac_voltage_mono_v', 220);
+  const factor = ruleValue(rules, 'protections.breaker_sizing_factor', 1.25);
+  const pickBreaker = (i: number) =>
+    STANDARD_BREAKERS.find(b => b >= i * factor) ?? STANDARD_BREAKERS[STANDARD_BREAKERS.length - 1];
+
+  if (!isGroupEnabled(rules, 'microinverters')) {
+    alerts.push({
+      severity: 'info', code: 'group_disabled',
+      message: 'Grupo Microinversores desligado nas Regras de Engenharia — o plano de ramais é só indicativo.',
+    });
+  }
+
+  // ── módulos por micro: o datasheet manda; sem ele, a regra-fallback ──
+  const capRule = ruleValue(rules, 'microinverters.default_modules_per_unit', 4);
+  const modulesPerUnitCap = Math.max(1, Math.floor(input.micro.dcInputs ?? capRule));
+  if (!input.micro.dcInputs) {
+    alerts.push({
+      severity: 'info', code: 'micro_inputs_default',
+      message: `Nº de entradas CC do microinversor não cadastrado — usando ${modulesPerUnitCap} módulos por micro.`,
+      suggestion: 'Preencha "Entradas CC (módulos por micro)" no Catálogo de Equipamentos.',
+      source: ruleSource(rules, 'microinverters.default_modules_per_unit'),
+    });
+  }
+
+  // ── quantidade de micros ──
+  const needed = Math.ceil(Math.max(0, input.totalModules) / modulesPerUnitCap);
+  const unitCount = Math.max(1, Math.floor(input.unitCount ?? needed));
+  const capacity = unitCount * modulesPerUnitCap;
+  if (input.totalModules > capacity) {
+    const faltam = Math.ceil((input.totalModules - capacity) / modulesPerUnitCap);
+    alerts.push({
+      severity: 'warning', code: 'micro_units_insufficient',
+      message: `${input.totalModules} módulos não cabem em ${unitCount} microinversor(es) de ${modulesPerUnitCap} entradas (capacidade ${capacity}).`,
+      suggestion: `Acrescente ${faltam} microinversor(es) ou reduza a quantidade de módulos.`,
+    });
+  }
+  // módulos equilibrados entre os micros, respeitando o teto de entradas
+  const modulesPerUnit = splitEvenly(Math.min(input.totalModules, capacity), unitCount)
+    .map(m => Math.min(m, modulesPerUnitCap));
+  if (input.totalModules > 0 && modulesPerUnit.some(m => m < modulesPerUnitCap)) {
+    alerts.push({
+      severity: 'info', code: 'micro_units_partial',
+      message: `Nem todo microinversor fica cheio (${modulesPerUnit.join(' + ')} módulos) — é permitido, só reduz o aproveitamento do equipamento.`,
+      suggestion: `Com ${unitCount * modulesPerUnitCap} módulos os ${unitCount} micros ficariam completos.`,
+    });
+  }
+
+  // ── teto de micros por ramal: regra/datasheet × corrente do ramal ──
+  const unitCurrentA = round1(
+    input.micro.maxAcCurrentA ?? ((input.micro.powerKw ?? 0) * 1000) / (acV * (threePhase ? Math.sqrt(3) : 1)),
+  );
+  // QUEM MANDA é o limite declarado (datasheet do micro > regra do tenant) —
+  // decisão do usuário. A corrente do ramal não reduz o número por conta
+  // própria: se estourar, o motor AVISA e explica o que fazer (princípio do
+  // motor: sugere e explica, nunca decide no lugar do projetista).
+  const maxPerBranch = Math.max(1, Math.floor(input.micro.maxPerBranch ?? ruleValue(rules, 'microinverters.default_max_per_branch', 3)));
+  const branchMaxA = ruleValue(rules, 'microinverters.branch_max_current', 25);
+  const maxPerBranchReason = `${maxPerBranch} micro(s) por ramal — `
+    + `${input.micro.maxPerBranch ? 'limite do datasheet do microinversor' : 'regra "máx. de microinversores por ramal"'}.`;
+  const fullBranchA = round1(maxPerBranch * unitCurrentA);
+  if (unitCurrentA > 0 && fullBranchA > branchMaxA) {
+    const cabem = Math.max(1, Math.floor(branchMaxA / unitCurrentA));
+    alerts.push({
+      severity: 'warning', code: 'micro_branch_over_current',
+      message: `${maxPerBranch} micros no mesmo ramal dão ${fullBranchA}A, acima da corrente prevista pro ramal (${branchMaxA}A).`,
+      suggestion: `Confira o cabo tronco e o disjuntor do ramal: ou aumente "corrente máxima do ramal" (e a bitola) nas Regras de Engenharia, ou baixe pra ${cabem} micro(s) por ramal.`,
+      source: ruleSource(rules, 'microinverters.branch_max_current'),
+    });
+  }
+  if (!input.micro.maxAcCurrentA) {
+    alerts.push({
+      severity: 'info', code: 'micro_current_estimated',
+      message: `Corrente de saída do microinversor estimada em ${unitCurrentA}A pela potência.`,
+      suggestion: 'Preencha "Corrente CA máx. de saída" no Catálogo de Equipamentos pra o ramal sair exato.',
+    });
+  }
+
+  // ── ramais equilibrados (7 micros, teto 3 → 3+2+2) ──
+  const branchCount = Math.max(1, Math.ceil(unitCount / maxPerBranch));
+  const unitsPerBranch = splitEvenly(unitCount, branchCount);
+  let cursor = 0;
+  const branches: MicroBranch[] = unitsPerBranch.map((units, i) => {
+    const mods = modulesPerUnit.slice(cursor, cursor + units);
+    cursor += units;
+    const currentA = round1(units * unitCurrentA);
+    const breakerA = pickBreaker(currentA);
+    return {
+      units, modulesPerUnit: mods, modules: mods.reduce((a, b) => a + b, 0), currentA, breakerA,
+      explanation: `Ramal ${i + 1}: ${units} micro(s) no mesmo tronco CA = ${currentA}A → disjuntor ${breakerA}A (${factor}× a corrente do ramal).`,
+    };
+  });
+
+  const totalCurrentA = round1(branches.reduce((a, b) => a + b.currentA, 0));
+  let generalBreakerA: number | null = null;
+  let generalExplanation: string | null = null;
+  if (input.includeGeneral && branches.length > 0) {
+    generalBreakerA = pickBreaker(totalCurrentA);
+    generalExplanation = `Disjuntor geral ${generalBreakerA}A — ${factor}× a SOMA das correntes dos ${branches.length} ramal(is) (${totalCurrentA}A).`;
+  }
+
+  const branchSizing = branches.length > 0
+    ? suggestElectricalSizing({ inverterAcCurrentA: branches[0].currentA, phaseType: input.phaseType }, rules)
+    : null;
+  const trunkSizing = branches.length > 0
+    ? suggestElectricalSizing({ inverterAcCurrentA: totalCurrentA, phaseType: input.phaseType }, rules)
+    : null;
+
+  const summary = `${unitCount} microinversor(es) · ${modulesPerUnitCap} módulos cada · `
+    + `${branchCount} ramal(is) de até ${maxPerBranch}`;
+
+  return {
+    unitCount, modulesPerUnitCap, maxPerBranch, maxPerBranchReason, branches,
+    totalCurrentA, generalBreakerA, generalExplanation,
+    branchSectionMm2: branchSizing?.ac?.sectionMm2 ?? null,
+    trunkSectionMm2: trunkSizing?.ac?.sectionMm2 ?? null,
+    summary,
+    alerts: isGroupEnabled(rules, 'alerts') ? alerts : [],
+  };
+}
+
 // ── Orquestrador (Grupos 1+2+3+5+11+12) ─────────────────────────────────────
 
 export interface ProjectEngineInput {

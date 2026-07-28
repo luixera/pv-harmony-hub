@@ -32,6 +32,7 @@ export const KIND_LABEL: Record<ComponentKind, string> = {
   'breaker-tripolar': 'Disjuntor Tripolar',
   'warning-sign': 'Placa de Advertência',
   'warning-sign-enel': 'Placa de Advertência (ENEL)',
+  microinverter: 'Microinversor',
 };
 
 /**
@@ -54,6 +55,7 @@ export const KIND_LEGEND: Record<ComponentKind, string> = {
   'distribution-panel': 'QUADRO DE DISTRIBUIÇÃO',
   'warning-sign': 'PLACA DE GERAÇÃO PRÓPRIA',
   'warning-sign-enel': 'PLACA RETORNO GERADOR (ENEL)',
+  microinverter: 'MICROINVERSOR',
 };
 
 /**
@@ -79,6 +81,7 @@ export const CONNECTION_INSET: Record<ComponentKind, number> = {
   'breaker-tripolar': 2,
   'warning-sign': 2,
   'warning-sign-enel': 2,
+  microinverter: 2,
 };
 
 /**
@@ -157,6 +160,15 @@ export const SYMBOL_PORTS: Record<ComponentKind, SymbolPort[]> = {
   'distribution-panel': [
     { id: 'entrada', name: 'Entrada', x: 2, y: H / 2 },
     { id: 'saida', name: 'Saída', x: W - 2, y: H / 2 },
+  ],
+  // Microinversor: mesmas portas do inversor (CC entra pela esquerda, CA sai
+  // pela direita) — o que muda é o desenho e a semântica de N módulos por
+  // unidade, não a topologia da ligação.
+  microinverter: [
+    { id: 'cc', name: 'CC', x: 2, y: H / 2 },
+    { id: 'ca', name: 'CA', x: W - 2, y: H / 2 },
+    { id: 'topo', name: 'Topo', x: W / 2, y: 2 },
+    { id: 'base', name: 'Base', x: W / 2, y: H - 2 },
   ],
   // placas de sinalização — sem ligação elétrica (ficam afixadas no padrão de entrada)
   'warning-sign': [],
@@ -242,6 +254,33 @@ export const SYMBOL_DEFS: Record<ComponentKind, Primitive[]> = {
     { kind: 'line', a: { x: W / 2 - 3, y: 15.5 }, b: { x: W / 2 + 3, y: 15.5 } },
     { kind: 'line', a: { x: W / 2 - 2, y: 17 }, b: { x: W / 2 + 2, y: 17 } },
     { kind: 'line', a: { x: W / 2 - 1, y: 18.5 }, b: { x: W / 2 + 1, y: 18.5 } },
+  ],
+  // Microinversor — mesma caixa CC/CA do inversor, mas com as ENTRADAS
+  // INDIVIDUAIS desenhadas na esquerda (é o que o diferencia na leitura: cada
+  // módulo entra numa entrada própria, não há string) e caixa menor.
+  microinverter: [
+    { kind: 'rect', x: 5, y: 4, w: W - 10, h: H - 8 },
+    { kind: 'line', a: { x: 5, y: H - 4 }, b: { x: W - 5, y: 4 } },
+    // barramento das entradas CC + 4 derivações (o "4T" do micro)
+    { kind: 'line', a: { x: 2, y: H / 2 }, b: { x: 5, y: H / 2 } },
+    { kind: 'line', a: { x: 3.6, y: 6.5 }, b: { x: 3.6, y: 13.5 } },
+    { kind: 'line', a: { x: 3.6, y: 6.5 }, b: { x: 5, y: 6.5 } },
+    { kind: 'line', a: { x: 3.6, y: 8.8 }, b: { x: 5, y: 8.8 } },
+    { kind: 'line', a: { x: 3.6, y: 11.2 }, b: { x: 5, y: 11.2 } },
+    { kind: 'line', a: { x: 3.6, y: 13.5 }, b: { x: 5, y: 13.5 } },
+    // lado CC: dois traços paralelos (contínua)
+    { kind: 'line', a: { x: 8, y: 6.5 }, b: { x: 8, y: 9.5 } },
+    { kind: 'line', a: { x: 9.5, y: 6.5 }, b: { x: 9.5, y: 9.5 } },
+    // lado CA: senoide
+    {
+      kind: 'polyline',
+      points: [
+        { x: 12, y: 14 }, { x: 12.8, y: 12.9 }, { x: 13.7, y: 12.5 }, { x: 14.6, y: 12.9 },
+        { x: 15.4, y: 14 }, { x: 16.2, y: 15.1 }, { x: 17.1, y: 15.5 }, { x: 18, y: 15.1 },
+        { x: 18.8, y: 14 },
+      ],
+    },
+    { kind: 'line', a: { x: W - 5, y: H / 2 }, b: { x: W - 2, y: H / 2 } },
   ],
   // Fusível — corpo retangular no meio do condutor horizontal.
   fuse: [

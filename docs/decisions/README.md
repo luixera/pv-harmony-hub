@@ -5,6 +5,19 @@ Registro de decisões de produto/UX (não arquiteturais — essas ficam em
 
 ## Log
 
+- **Microinversores: regras próprias e duas representações** (jul/2026): caso
+  real trazido pelo usuário (projeto MARA, Hoymiles HMS-2000 4T + DAH 610Wp).
+  Perguntas feitas e respondidas por ele: (1) **as duas representações**, com
+  escolha na hora de gerar — compacto (1 fileira por ramal, quantidades nas
+  legendas) e esquemático (cada micro com os seus módulos, encadeados no
+  barramento CA, como a prancha que ele mandou); (2) o limite de micros por
+  ramal é **regra editável com padrão 3**, e o datasheet do micro sobrepõe
+  quando preenchido. Daí decorre que a corrente do ramal **não corta** o número
+  de micros: quando 3 × 9,09A passa dos 25A previstos, o motor avisa e dá as
+  duas saídas, mas quem decide é o projetista. Limite de folha assumido: a
+  seguimentação de 2+ ramais não cabe em A4 junto do padrão de entrada — a UI
+  desabilita a opção e explica; prancha separada fica como próximo passo.
+
 - **Equipotencialização no BEP e geometria dos nós** (jul/2026): o usuário
   pediu para trocar o aviso de aterramento por uma declaração explícita —
   "adicione embaixo da legenda dos DPS 'Conectado ao BEP' como se todos os

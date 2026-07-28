@@ -82,7 +82,9 @@ export function validateDiagram(state: DiagramSceneState, rules: RuleMap): Diagr
   const neighbors = (id: string) => adj.get(id) ?? new Set<string>();
 
   const ofKind = (pred: (p: PlacedSymbol) => boolean) => placements.filter(pred);
-  const inverters = ofKind(p => p.kind === 'inverter');
+  // microinversor conta como inversor em TODAS as checagens (proteção entre
+  // ele e o medidor, condutor CC do lado dos módulos, etc.)
+  const inverters = ofKind(p => p.kind === 'inverter' || p.kind === 'microinverter');
   const meters = ofKind(p => METER_KINDS.has(p.kind));
   const dpsList = ofKind(p => p.kind === 'dps');
 
@@ -173,7 +175,7 @@ export function validateDiagram(state: DiagramSceneState, rules: RuleMap): Diagr
     const fromIds = endpointSymbols(c.from, byConnId);
     const toIds = endpointSymbols(c.to, byConnId);
     const kinds = new Set([...fromIds, ...toIds].map(id => byId.get(id)?.kind));
-    return kinds.has('pv-array') && kinds.has('inverter') && c.conductor !== 'dc';
+    return kinds.has('pv-array') && (kinds.has('inverter') || kinds.has('microinverter')) && c.conductor !== 'dc';
   });
   push(misTyped.length === 0
     ? { id: 'dc-conductor', label: 'Trechos FV→inversor como condutor CC', status: 'ok' }

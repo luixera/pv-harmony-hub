@@ -1055,6 +1055,25 @@ export function buildMultiArrangementScene(options: {
    *  coordenadas pra legenda. Entra no canto superior esquerdo e empurra as
    *  fileiras pra baixo. */
   locationMap?: { href: string; caption?: string };
+  /** Símbolo do conversor de cada fileira — 'inverter' (padrão) ou
+   *  'microinverter'. Com microinversor a FILEIRA é um RAMAL CA (vários
+   *  micros encadeados no mesmo tronco), não um arranjo de strings. */
+  inverterKind?: ComponentKind;
+  /** Rótulos por fileira (padrão: "Arranjo i" / "Inversor i" / "Disjuntor
+   *  Arranjo i"). Com microinversores vira "Ramal i". */
+  pvLabels?: string[];
+  inverterLabels?: string[];
+  breakerLabels?: string[];
+  /** Legenda do bloco do conversor (ex.: "3× HMS-2000 · 2000W · 9,09A"). */
+  inverterLegends?: string[][];
+  /** Altura reservada a CADA fileira (mm). O padrão 20 é a caixa do símbolo;
+   *  o esquemático de microinversores pede mais (módulos empilhados sobre o
+   *  micro), e as fileiras se espaçam por este valor. */
+  rowHeightHint?: number;
+  /** Espaço a reservar ACIMA do eixo de cada fileira (mm) — o esquemático
+   *  empilha módulos e micros por cima do barramento, então a 1ª fileira
+   *  precisa começar mais abaixo pra a pilha não sair da folha. */
+  rowContentAbove?: number;
 }): DiagramSceneState {
   const n = Math.max(1, options.inverterCount);
   // Com UM inversor, o disjuntor do arranjo JÁ É o disjuntor geral do
@@ -1085,13 +1104,17 @@ export function buildMultiArrangementScene(options: {
   // reduzem de escala pra prancha A4 comportar tudo. Com a PLANTA DE
   // LOCALIZAÇÃO no canto superior esquerdo, a faixa útil começa mais abaixo.
   const hasMap = !!options.locationMap;
-  const topLimit = hasMap ? 82 : 30;    // 1ª fileira não sobe além disso
+  const topLimit = (hasMap ? 82 : 30) + (options.rowContentAbove ?? 0); // 1ª fileira não sobe além disso
   const BOTTOM = 158;                   // base do último símbolo: sobram ~10mm pro rótulo + legenda antes do carimbo (172)
   const avail = BOTTOM - topLimit;
   const minGap = hasMap ? 13 : 16;
   // afrouxa o espaçamento até o conjunto (fileiras + altura do último
   // símbolo, já escalado) caber na faixa útil
-  let gap = ROW_GAP;
+  // `rowHeightHint` só dita o ESPAÇAMENTO inicial entre fileiras; o que fica
+  // ABAIXO do eixo continua sendo a caixa do símbolo (20mm) — é isso que o
+  // limite de baixo precisa reservar.
+  const ROW_H = Math.max(20, options.rowHeightHint ?? 20);
+  let gap = Math.max(ROW_GAP, ROW_H + 20);
   const heightAt = (g: number) => 20 * Math.max(0.6, Math.min(1, g / ROW_GAP));
   while (gap > minGap && (n - 1) * gap + heightAt(gap) > avail) gap -= 0.5;
   const rowScale = Math.max(0.6, Math.min(1, gap / ROW_GAP));
@@ -1112,11 +1135,15 @@ export function buildMultiArrangementScene(options: {
   for (let i = 0; i < n; i++) {
     const y = rowY(i);
     const breakerA = options.branchBreakerA?.[i] ?? null;
-    const pv = sym('pv-array', X_PV, y, n > 1 ? `Arranjo ${i + 1}` : 'Arranjo FV', options.pvLegends?.[i] ?? [], rowScale);
-    const inv = sym('inverter', X_INV, y, n > 1 ? `Inversor ${i + 1}` : 'Inversor', [], rowScale);
+    const pv = sym('pv-array', X_PV, y,
+      options.pvLabels?.[i] ?? (n > 1 ? `Arranjo ${i + 1}` : 'Arranjo FV'),
+      options.pvLegends?.[i] ?? [], rowScale);
+    const inv = sym(options.inverterKind ?? 'inverter', X_INV, y,
+      options.inverterLabels?.[i] ?? (n > 1 ? `Inversor ${i + 1}` : 'Inversor'),
+      options.inverterLegends?.[i] ?? [], rowScale);
     const cb = sym(
       'breaker', X_CB, y,
-      n > 1 ? `Disjuntor Arranjo ${i + 1}` : 'Disjuntor Geral CA',
+      options.breakerLabels?.[i] ?? (n > 1 ? `Disjuntor Arranjo ${i + 1}` : 'Disjuntor Geral CA'),
       // com 1 inversor o disjuntor acumula as duas funções — deixa explícito
       // pro analista da concessionária não procurar um segundo disjuntor
       [breakerA ? `${breakerA}A` : '', n === 1 ? '(arranjo + geral)' : ''].filter(Boolean),
@@ -1336,6 +1363,212 @@ export function buildMultiArrangementScene(options: {
   }
 
   return { placements, connections, photos, texts, groups, shapes: [] };
+}
+
+// ── Microinversores: representação ESQUEMÁTICA (seguimentação do ramal) ──────
+
+/** Um ramal CA de microinversores, do ponto de vista do DESENHO. */
+export interface MicroBranchDraw {
+  /** Módulos de cada micro do ramal, na ordem (ex.: [4,4,3]). */
+  modulesPerUnit: number[];
+  breakerA?: number | null;
+}
+
+/** Faixa útil do desenho (mesma do builder) — usada pra saber se o
+ *  esquemático cabe na folha antes de gerar. */
+const SCHEMATIC_BAND = { top: 30, bottom: 158, left: 14, right: 68 };
+const SCHEMATIC_MIN_SCALE = 0.42;   // abaixo disso o rótulo do bloco fica ilegível
+
+/**
+ * O esquemático cabe em A4? Cada ramal empilha módulos SOBRE o micro e ainda
+ * precisa do barramento CA embaixo, então o desenho cresce rápido: com 1 ou 2
+ * ramais sai legível, com 3+ os símbolos ficariam menores que o mínimo. A UI
+ * usa isso pra avisar antes de gerar (e sugerir o compacto).
+ */
+export function microSchematicFit(branches: { modulesPerUnit: number[] }[], hasMap = false): {
+  /** Cabe com símbolos legíveis? Só então a UI oferece o esquemático. */
+  fits: boolean;
+  /** Dá pra desenhar sem fileiras se sobrepondo (mesmo que apertado)? */
+  possible: boolean;
+  scale: number;
+  /** Pilha acima do barramento (rótulo + módulos + micro + rótulo). */
+  stackAbove: number;
+  /** Explicação pra UI quando não cabe. */
+  reason: string;
+} {
+  const rows = Math.max(1, branches.length);
+  const maxUnits = Math.max(1, ...branches.map(b => Math.max(1, b.modulesPerUnit.length)));
+  // largura: as células dividem a faixa da geração
+  const cellW = (SCHEMATIC_BAND.right - SCHEMATIC_BAND.left) / maxUnits;
+  const sH = (cellW - 2) / 24;
+  // altura: o eixo da 1ª fileira já começa `stackAbove` abaixo do topo e a
+  // última precisa dos 20mm da caixa do disjuntor; entre fileiras, a pilha
+  // seguinte não pode invadir a caixa da anterior (gap ≥ stackAbove + 20).
+  const top = hasMap ? 82 : SCHEMATIC_BAND.top;
+  const anchorSpan = (SCHEMATIC_BAND.bottom - 20) - top;      // eixos disponíveis
+  // (rows-1)·(stackAbove+20) + stackAbove ≤ anchorSpan
+  const maxStack = (anchorSpan - 20 * (rows - 1)) / rows;
+  const sV = (maxStack - 28) / 40;
+  const raw = Math.min(0.85, sH, sV);
+  const scale = Math.max(SCHEMATIC_MIN_SCALE, raw);
+  // Limite honesto: a seguimentação de MAIS DE UM ramal não convive com o
+  // padrão de entrada na mesma folha A4 — é por isso que a prancha de
+  // referência (MARA) põe o esquemático numa folha SÓ dele. Com 2 ramais o
+  // 2º ramal desceria em cima do DPS do QGBT.
+  const oneSheet = rows === 1;
+  const reason = !oneSheet
+    ? `O esquemático desenha cada micro com os seus módulos: ${rows} ramais não cabem na mesma folha do padrão de entrada (em A4). `
+      + 'Nos projetos de referência a seguimentação vai numa prancha separada.'
+    : sH < SCHEMATIC_MIN_SCALE
+      ? `Com ${maxUnits} microinversores no mesmo ramal os blocos ficariam pequenos demais na largura da folha.`
+      : '';
+  return {
+    fits: oneSheet && raw >= SCHEMATIC_MIN_SCALE,
+    possible: oneSheet && sH >= 0.35,
+    scale, stackAbove: 40 * scale + 28, reason,
+  };
+}
+
+/**
+ * Representação ESQUEMÁTICA de um projeto com microinversores — o formato da
+ * prancha que o usuário mandou como referência (MARA): cada microinversor
+ * aparece individualmente com os seus módulos em cima, e os micros do mesmo
+ * ramal são encadeados no BARRAMENTO CA que segue até o disjuntor do ramal.
+ *
+ * Reaproveita `buildMultiArrangementScene` inteiro (junção, QGBT, padrão de
+ * entrada, DPS, placa, planta, nota do BEP) e só reescreve o lado da geração:
+ * a fileira que era "1 bloco FV + 1 inversor" vira a cadeia de células.
+ */
+export function buildMicroSchematicScene(options: Omit<Parameters<typeof buildMultiArrangementScene>[0], 'inverterCount' | 'inverterKind' | 'rowHeightHint'> & {
+  branches: MicroBranchDraw[];
+  /** Modelo do micro pra legenda da 1ª célula (ex.: "HMS-2000 4T"). */
+  microModel?: string;
+  microLegend?: string[];
+  /** Modelo do módulo pra legenda da 1ª célula (ex.: "DAH 610Wp"). */
+  moduleModel?: string;
+}): DiagramSceneState {
+  const branches = options.branches.length > 0 ? options.branches : [{ modulesPerUnit: [4] }];
+  const rows = branches.length;
+  const fit = microSchematicFit(branches, !!options.locationMap);
+  const s = fit.scale;
+
+  const base = buildMultiArrangementScene({
+    ...options,
+    inverterCount: rows,
+    inverterKind: 'microinverter',
+    // a pilha (módulos + micro) cresce PRA CIMA do barramento, que fica na
+    // altura da porta do disjuntor do ramal — assim o disjuntor não sai do
+    // eixo e todo o lado da rede (tronco, QGBT, padrão) segue como no compacto
+    rowContentAbove: fit.stackAbove,
+    rowHeightHint: fit.stackAbove,
+    breakerLabels: branches.map((_, i) => (rows > 1 ? `Disjuntor Ramal ${i + 1}` : 'Disjuntor Geral CA')),
+    branchBreakerA: branches.map(b => b.breakerA ?? null),
+  });
+
+  const placements = [...base.placements];
+  const connections = [...base.connections];
+  const byId = new Map(placements.map(p => [p.id, p]));
+  // as fileiras saem na ordem de criação: 1 bloco FV por ramal
+  const rowPvs = placements.filter(p => p.kind === 'pv-array');
+  const uid = (() => { let i = 0; return (k: string) => `manual-${k}-mi${++i}`; })();
+
+  for (let r = 0; r < rowPvs.length && r < branches.length; r++) {
+    const pv = rowPvs[r];
+    const dcConn = connections.find(c => c.id === `${pv.id}-dc`);
+    const microId = dcConn && dcConn.to.kind === 'port' ? dcConn.to.id : null;
+    const micro = microId ? byId.get(microId) : null;
+    const acConn = micro ? connections.find(c => c.id === `${micro.id}-ac`) : null;
+    const breakerId = acConn && acConn.to.kind === 'port' ? acConn.to.id : null;
+    const breaker = breakerId ? byId.get(breakerId) : null;
+    if (!pv || !micro || !breaker || !acConn) continue;   // topologia fora do padrão: deixa a fileira compacta
+
+    const units = Math.max(1, branches[r].modulesPerUnit.length);
+    const cellW = (SCHEMATIC_BAND.right - SCHEMATIC_BAND.left) / units;
+    // ATENÇÃO à geometria dos símbolos: a escala é aplicada em torno do CENTRO
+    // da caixa 24×20, então o centro visual é sempre (x+12, y+10) — o canto
+    // não acompanha a escala. Por isso os cálculos abaixo são todos por CENTRO.
+    const busY = breaker.y + 10 * breaker.scale;    // barramento na altura da porta do disjuntor
+    const microCy = busY - (10 * s + 12);           // 12mm entre a caixa do micro e o barramento (cabe o rótulo)
+    const pvCy = microCy - (20 * s + 6);
+
+    // fora as duas ligações da fileira compacta (FV→micro e micro→disjuntor)
+    for (const id of [`${pv.id}-dc`, `${micro.id}-ac`]) {
+      const idx = connections.findIndex(c => c.id === id);
+      if (idx >= 0) connections.splice(idx, 1);
+    }
+    // fora os dois símbolos "resumo" — cada micro vira uma célula própria
+    for (const p of [pv, micro]) {
+      const idx = placements.findIndex(x => x.id === p.id);
+      if (idx >= 0) placements.splice(idx, 1);
+    }
+
+    let busConn: ManualConnection | null = null;
+    for (let j = 0; j < units; j++) {
+      const cx = SCHEMATIC_BAND.left + cellW * j + cellW / 2;
+      const x = cx - 12;                                  // centro visual = x + 12
+      const mods = branches[r].modulesPerUnit[j];
+      const cellPv: PlacedSymbol = {
+        id: uid('pv-array'), kind: 'pv-array', x, y: pvCy - 10, rotation: 0, scale: s,
+        label: `${mods}× módulo`,
+        legend: j === 0 && options.moduleModel ? [options.moduleModel] : [],
+        // rótulo ACIMA do bloco: embaixo ele cairia dentro da caixa do micro
+        labelDy: -(20 * s + 4 + (j === 0 && options.moduleModel ? 3.5 : 0)),
+      };
+      const cellMicro: PlacedSymbol = {
+        id: uid('microinverter'), kind: 'microinverter', x, y: microCy - 10, rotation: 0, scale: s,
+        label: rows > 1 ? `MI ${r + 1}.${j + 1}` : `MI ${j + 1}`,
+        legend: j === 0 ? [options.microModel ?? '', ...(options.microLegend ?? [])].filter(Boolean) : [],
+        // sobe o rótulo pra ele caber entre a caixa do micro e o barramento
+        labelDy: -(10 * s + 6),
+      };
+      placements.push(cellPv, cellMicro);
+      // módulos → micro: as duas caixas partilham o eixo, então desce reto
+      connections.push({
+        id: `${cellPv.id}-dc`,
+        from: { kind: 'port', id: cellPv.id, port: 'base' },
+        to: { kind: 'port', id: cellMicro.id, port: 'topo' },
+        conductor: 'dc', label: j === 0 ? options.dcSection : undefined,
+      });
+      if (j === 0) {
+        // 1º micro fecha o barramento CA do ramal e leva até o disjuntor
+        busConn = {
+          id: `manual-bus-mi${r + 1}`,
+          from: { kind: 'port', id: cellMicro.id, port: 'base' },
+          to: { kind: 'port', id: breaker.id, port: 'entrada' },
+          waypoints: [{ x: cx, y: busY }],
+          label: options.branchSection,
+        };
+        connections.push(busConn);
+      } else {
+        // demais micros entram no MESMO barramento, em esquadro
+        connections.push({
+          id: `${cellMicro.id}-bus`,
+          from: { kind: 'port', id: cellMicro.id, port: 'base' },
+          to: { kind: 'line', connId: busConn!.id, t: 0 },   // t ajustado abaixo
+          waypoints: [{ x: cx, y: busY }],
+        });
+      }
+    }
+  }
+
+  // os `t` das entradas no barramento só podem ser calculados com a geometria
+  // final resolvida (o barramento é uma linha com dobras)
+  const byId2 = new Map(placements.map(p => [p.id, p]));
+  const pts = computeAllConnectionPoints(connections, byId2);
+  for (const c of connections) {
+    if (!c.id.endsWith('-bus') || c.to.kind !== 'line') continue;
+    const busPts = pts.get(c.to.connId);
+    const wp = c.waypoints?.[0];
+    if (!busPts || !wp) continue;
+    const hit = nearestPointOnPolyline(wp, busPts);
+    if (!hit) continue;
+    c.to = { ...c.to, t: hit.t };
+    // com o `t` no lugar certo o ponto de dobra vira um duplicado do destino:
+    // sem tirar, a ligação ficaria com um trecho de comprimento zero
+    delete c.waypoints;
+  }
+
+  return { ...base, placements, connections };
 }
 
 /**

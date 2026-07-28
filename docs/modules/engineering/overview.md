@@ -169,6 +169,58 @@ Sem dados/regra, resolvem vazias (o documento sai mesmo assim).
   alertas; **"Usar esta"** gera o diagrama na topologia multi-arranjo
   (abaixo) com o arranjo escolhido nas legendas dos blocos FV.
 
+## Microinversores (grupo `microinverters`)
+
+Microinversor **não tem janela de string** — cada módulo entra numa entrada CC
+própria do micro. Tratar o micro como inversor de string era o que fazia o
+motor responder "não achei arranjo válido pra 4 módulos (janela de 6 a 10 por
+string)" num projeto de microinversores (caso real relatado pelo usuário).
+
+O que manda no dimensionamento:
+
+1. **Entradas CC do micro** = módulos por unidade (HMS-2000 **4T** → 4).
+   Datasheet (`dc_inputs`) > regra `microinverters.default_modules_per_unit` (4).
+2. **Micros por RAMAL CA** — os micros são encadeados no mesmo cabo tronco até
+   o disjuntor do ramal. Datasheet (`micro_max_per_branch`) > regra
+   `microinverters.default_max_per_branch` (**3**, decisão do usuário).
+   A corrente do ramal **não reduz** esse número por conta própria: se
+   `nº × corrente` passar de `microinverters.branch_max_current` (25A), o motor
+   **avisa** e sugere as duas saídas (aumentar a corrente/bitola do ramal ou
+   baixar o nº de micros). Motor sugere e explica, nunca decide sozinho.
+3. **Disjuntor do ramal** = `protections.breaker_sizing_factor` × soma das
+   correntes dos micros do ramal; **geral** = fator × soma dos ramais.
+
+Funções: `isMicroinverter` (datasheet `is_microinverter` = 1, senão pelo nome —
+nunca pela potência: existe inversor de string de 2kW), `microSpecsFromTechSpecs`
+e `suggestMicroinverterPlan` → `MicroPlan` (micros, módulos por micro, ramais
+equilibrados, correntes, disjuntores, bitolas, alertas explicados).
+
+No **Catálogo de Equipamentos** o inversor ganhou a marcação "É um
+microinversor", que troca os campos de janela de string pelos dois campos do
+micro (entradas CC e máx. por ramal).
+
+### As duas representações no diagrama
+
+O usuário pediu as duas, escolhidas na hora de gerar (aba Unifilar do projeto):
+
+- **Compacto** (padrão) — cada RAMAL vira uma fileira:
+  bloco FV "3 × 4 = 12 módulos", bloco do micro "3× HMS-2000 4T · 2000W ·
+  9,09A", disjuntor do ramal, junção, QGBT, padrão de entrada. É o mesmo
+  `buildMultiArrangementScene`, com `inverterKind: 'microinverter'` e rótulos
+  por fileira. Cabe em A4 com qualquer nº de ramais.
+- **Esquemático** (`buildMicroSchematicScene`) — a seguimentação da prancha de
+  referência: cada micro desenhado com os seus módulos em cima, todos
+  encadeados no **barramento CA** do ramal até o disjuntor. Reaproveita o
+  compacto inteiro e só reescreve o lado da geração.
+
+**Limite honesto de folha**: a seguimentação de **mais de um ramal** não cabe
+em A4 junto do padrão de entrada — o 2º ramal desceria em cima do DPS do QGBT.
+`microSchematicFit()` calcula isso (escala por largura de célula e por altura
+de pilha) e devolve `fits`/`possible`/`reason`; a UI desabilita o botão do
+esquemático e mostra o motivo. Nos projetos de referência a seguimentação vai
+numa **prancha separada** — suportar isso é o próximo passo (o motor ainda não
+tem conceito de múltiplas pranchas).
+
 ## Topologia multi-arranjo (diagrama automático)
 
 `buildMultiArrangementScene` (cadEngine/editableLayout.ts) desenha o

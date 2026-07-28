@@ -4,8 +4,8 @@ import { ProjectWithDetails } from '@/hooks/useProjects';
 import { buildTechnicalJsonFromProject } from '@/utils/cadEngine/buildTechnicalJson';
 import {
   ConnectionEndpoint, DiagramSceneState, ManualConnection,
-  buildMultiArrangementScene, initialConnections, initialPlacement, inverterCountOf,
-  isConnectionResolvable, multiplyInverterBranches,
+  buildMicroSchematicScene, buildMultiArrangementScene, initialConnections, initialPlacement,
+  inverterCountOf, isConnectionResolvable, microSchematicFit, multiplyInverterBranches,
 } from '@/utils/cadEngine/editableLayout';
 import { Point } from '@/utils/cadEngine/types';
 import { buildProjectValues } from '@/utils/projectValues';
@@ -15,12 +15,19 @@ import { useDiagramTemplates } from '@/hooks/useDiagramTemplates';
 import { matchEntryRule, useEntryRules } from '@/hooks/useEntryRules';
 import { useEngineeringRuleMap } from '@/hooks/useEngineeringRules';
 import {
-  ProjectArrangementOption, inverterSpecsFromTechSpecs, ruleValue, suggestBreakerPlan,
-  suggestElectricalSizing, suggestProjectArrangement,
+  MicroPlan, ProjectArrangementOption, inverterSpecsFromTechSpecs, isMicroinverter,
+  microSpecsFromTechSpecs, ruleValue, suggestBreakerPlan, suggestElectricalSizing,
+  suggestMicroinverterPlan, suggestProjectArrangement,
 } from '@/utils/engineering/rulesEngine';
 import { useEquipmentCatalog } from '@/hooks/useEquipmentCatalog';
 import { validateDiagram } from '@/utils/engineering/diagramValidator';
 import { fetchLocationMap, LOCATION_MAP_MESSAGES } from '@/utils/cadEngine/locationMap';
+
+/** Fase do projeto no vocabulário do motor (o cadastro é texto livre). */
+function phaseTypeOf(raw: unknown): 'monofasico' | 'bifasico' | 'trifasico' {
+  const s = String(raw ?? '').toLowerCase();
+  return s.includes('tri') ? 'trifasico' : s.includes('bi') ? 'bifasico' : 'monofasico';
+}
 
 /**
  * Diagrama Unifilar do projeto — o `DiagramEditor` compartilhado alimentado
@@ -176,7 +183,30 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
   // ── Sugestões do Motor de Engenharia (Rules Engine, Fase 1) ──────────────
   const { ruleMap } = useEngineeringRuleMap();
   const [suggestOpen, setSuggestOpen] = useState(false);
+
+  /** MICROINVERSOR: outro conjunto de regras (não tem janela de string — o que
+   *  manda é o nº de entradas do micro e quantos cabem no ramal CA). Detecta
+   *  pelo datasheet do catálogo e, sem ele, pelo nome do equipamento. */
+  const isMicro = useMemo(() => isMicroinverter(
+    inverterCatalog?.tech_specs ?? null,
+    [inverterCatalog?.brand, inverterCatalog?.model, project.equipment?.inverter_brand, project.equipment?.inverter_model]
+      .filter(Boolean).join(' '),
+  ), [inverterCatalog, project.equipment]);
+
+  const microPlan = useMemo(() => {
+    if (!isMicro || !suggestOpen || ruleMap.size === 0) return null;
+    const e = project.equipment;
+    return suggestMicroinverterPlan({
+      totalModules: Math.max(0, Number(e?.module_quantity ?? 0) || 0),
+      micro: microSpecsFromTechSpecs(inverterCatalog?.tech_specs ?? null, Number(e?.inverter_power ?? 0) || undefined),
+      unitCount: projectInverters,
+      phaseType: phaseTypeOf(project.generalData?.phase_type),
+      includeGeneral: ruleValue(ruleMap, 'protections.include_general_ac_breaker', 1) !== 0,
+    }, ruleMap);
+  }, [isMicro, suggestOpen, ruleMap, project.equipment, project.generalData, inverterCatalog, projectInverters]);
+
   const engineResult = useMemo(() => {
+    if (isMicro) return null;   // o caminho de microinversor tem painel próprio
     if (!suggestOpen || ruleMap.size === 0) return null;
     const e = project.equipment;
     const totalModules = Math.max(0, Number(e?.module_quantity ?? 0) || 0);
@@ -188,7 +218,7 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
       // virá do catálogo — sem ele, o motor usa as regras-fallback e avisa)
       inverters: Array.from({ length: projectInverters }, () => ({ powerKw })),
     }, ruleMap);
-  }, [suggestOpen, ruleMap, project.equipment, projectInverters]);
+  }, [isMicro, suggestOpen, ruleMap, project.equipment, projectInverters]);
 
   // Dimensionamento elétrico simplificado (Fase 2): bitolas, queda, disjuntor
   const sizing = useMemo(() => {
@@ -240,6 +270,71 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
     } finally {
       setMapLoading(false);
     }
+  };
+
+  /** Dados do padrão de entrada/medidor/placa — iguais nos dois caminhos. */
+  const sheetOptions = () => {
+    const entryRule = matchEntryRule(entryRules, project.generalData?.phase_type, project.generalData?.circuit_breaker_current);
+    return {
+      entryBreakerLegend: entryRule
+        ? [[`${entryRule.disjuntor}A`, entryRule.categoria ? `cat. ${entryRule.categoria}` : ''].filter(Boolean).join(' · '),
+           entryRule.bitola ? `bitola ${entryRule.bitola} mm²` : ''].filter(Boolean)
+        : [],
+      meterLegend: entryRule?.caixa_medicao ? [`caixa ${entryRule.caixa_medicao}`] : [],
+      warningVariant: ((project.concessionaireName ?? '').toLowerCase().includes('enel') ? 'enel' : 'generic') as 'enel' | 'generic',
+      utilityName: project.concessionaireName ?? undefined,
+      includeLoadsReference: ruleValue(ruleMap, 'arrays.include_loads_reference', 1) !== 0,
+    };
+  };
+
+  /** MICROINVERSORES: gera o diagrama nas DUAS representações possíveis —
+   *  'compacto' (1 fileira por ramal, com as quantidades nas legendas) ou
+   *  'esquematico' (cada micro com os seus módulos, encadeados no barramento
+   *  CA, como na prancha de referência). O plano elétrico é o mesmo. */
+  const applyMicroPlan = async (plan: MicroPlan, style: 'compacto' | 'esquematico') => {
+    const micro = microSpecsFromTechSpecs(inverterCatalog?.tech_specs ?? null, Number(project.equipment?.inverter_power ?? 0) || undefined);
+    const microModel = [inverterCatalog?.brand, inverterCatalog?.model].filter(Boolean).join(' ')
+      || [project.equipment?.inverter_brand, project.equipment?.inverter_model].filter(Boolean).join(' ')
+      || 'Microinversor';
+    const moduleModel = [project.equipment?.module_brand, project.equipment?.module_model].filter(Boolean).join(' ')
+      || (project.equipment?.module_power ? `${project.equipment.module_power}Wp` : '');
+    const microSpecLine = [
+      micro.powerKw ? `${micro.powerKw * 1000}W` : '',
+      micro.maxAcCurrentA ? `${micro.maxAcCurrentA}A` : '',
+    ].filter(Boolean).join(' · ');
+    const dcSizing = suggestElectricalSizing({ phaseType: phaseTypeOf(project.generalData?.phase_type) }, ruleMap);
+    const locationMap = (await fetchLocationMap(project.generalData?.coordinates)).map;
+    const common = {
+      ...sheetOptions(),
+      locationMap,
+      includeGeneralBreaker: plan.branches.length > 1 && plan.generalBreakerA != null,
+      generalBreakerA: plan.generalBreakerA,
+      dcSection: dcSizing.dc ? `${dcSizing.dc.sectionMm2} mm²` : undefined,
+      branchSection: plan.branchSectionMm2 ? `${plan.branchSectionMm2} mm²` : undefined,
+      trunkSection: plan.trunkSectionMm2 ? `${plan.trunkSectionMm2} mm²` : undefined,
+    };
+
+    const state = style === 'esquematico'
+      ? buildMicroSchematicScene({
+          ...common,
+          branches: plan.branches.map(b => ({ modulesPerUnit: b.modulesPerUnit, breakerA: b.breakerA })),
+          microModel, microLegend: microSpecLine ? [microSpecLine] : [], moduleModel,
+        })
+      : buildMultiArrangementScene({
+          ...common,
+          inverterCount: plan.branches.length,
+          inverterKind: 'microinverter',
+          pvLabels: plan.branches.map((_, i) => (plan.branches.length > 1 ? `Módulos – Ramal ${i + 1}` : 'Módulos')),
+          pvLegends: plan.branches.map(b => [
+            `${b.units} × ${plan.modulesPerUnitCap} = ${b.modules} módulos`, moduleModel,
+          ].filter(Boolean)),
+          inverterLabels: plan.branches.map((_, i) => (plan.branches.length > 1 ? `Microinversores – Ramal ${i + 1}` : 'Microinversores')),
+          inverterLegends: plan.branches.map(b => [`${b.units}× ${microModel}`, microSpecLine].filter(Boolean)),
+          breakerLabels: plan.branches.map((_, i) => (plan.branches.length > 1 ? `Disjuntor Ramal ${i + 1}` : 'Disjuntor Geral CA')),
+          branchBreakerA: plan.branches.map(b => b.breakerA),
+        });
+    setApplied(prev => ({ v: (prev?.v ?? 0) + 1, state }));
+    setSuggestOpen(false);
   };
 
   const applySuggestion = async (opt: ProjectArrangementOption) => {
@@ -362,6 +457,68 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
             {suggestOpen ? 'Fechar' : 'Ver sugestões'}
           </button>
         </div>
+        {suggestOpen && microPlan && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {microPlan.alerts.map((a, i) => (
+              <div key={i} style={{
+                display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 11.5, borderRadius: 8, padding: '7px 10px',
+                background: a.severity === 'warning' ? '#FFF7E6' : '#EAF3FF',
+                color: a.severity === 'warning' ? '#854F0B' : '#1D4ED8',
+                border: `1px solid ${a.severity === 'warning' ? '#FDE4A8' : '#BFDBFE'}`,
+              }}>
+                <AlertTriangle size={13} style={{ flexShrink: 0, marginTop: 1 }} />
+                <span>
+                  {a.message}{a.suggestion ? <> <strong>{a.suggestion}</strong></> : null}
+                  {a.source ? <span style={{ opacity: 0.7 }}> ({a.source})</span> : null}
+                </span>
+              </div>
+            ))}
+            <div style={{ background: '#fff', border: '1px solid #DDEEE2', borderRadius: 8, padding: '9px 12px' }}>
+              <p style={{ fontSize: 12.5, fontWeight: 700, color: '#1A1A1A', margin: 0 }}>
+                Projeto com microinversores: {microPlan.summary}
+              </p>
+              <p style={{ fontSize: 11, color: '#666', margin: '3px 0 0' }}>{microPlan.maxPerBranchReason}</p>
+              {microPlan.branches.map((b, i) => (
+                <p key={i} style={{ fontSize: 11, color: '#666', margin: '2px 0 0' }}>• {b.explanation}</p>
+              ))}
+              {microPlan.generalExplanation && (
+                <p style={{ fontSize: 11, color: '#666', margin: '2px 0 0' }}>• {microPlan.generalExplanation}</p>
+              )}
+              {(() => {
+                const fit = microSchematicFit(microPlan.branches, false);
+                return (
+                  <>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 9 }}>
+                      <button
+                        onClick={() => applyMicroPlan(microPlan, 'compacto')}
+                        style={{ padding: '6px 14px', borderRadius: 7, border: 'none', background: '#2D7A3A', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
+                      >
+                        Gerar compacto (1 linha por ramal)
+                      </button>
+                      <button
+                        onClick={() => applyMicroPlan(microPlan, 'esquematico')}
+                        disabled={!fit.possible}
+                        title={fit.possible ? 'Cada microinversor com os seus módulos, encadeados no barramento CA' : fit.reason}
+                        style={{
+                          padding: '6px 14px', borderRadius: 7, fontSize: 12, fontWeight: 700,
+                          border: '1px solid #2D7A3A', background: '#fff',
+                          color: fit.possible ? '#2D7A3A' : '#AAB6AC',
+                          borderColor: fit.possible ? '#2D7A3A' : '#DDD',
+                          cursor: fit.possible ? 'pointer' : 'not-allowed',
+                        }}
+                      >
+                        Gerar esquemático (seguimentação)
+                      </button>
+                    </div>
+                    {!fit.possible && (
+                      <p style={{ fontSize: 10.5, color: '#854F0B', margin: '6px 0 0' }}>{fit.reason}</p>
+                    )}
+                  </>
+                );
+              })()}
+            </div>
+          </div>
+        )}
         {suggestOpen && engineResult && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {engineResult.alerts.map((a, i) => (

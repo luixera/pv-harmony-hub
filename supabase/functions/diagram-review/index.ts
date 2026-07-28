@@ -53,7 +53,8 @@ interface RecognizedGroup {
 // ── Vocabulário (sincronizado manualmente com src/utils/cadEngine/symbols.ts) ─
 const KIND_CATALOG = `
 - pv-array: conjunto/arranjo de módulos fotovoltaicos (retângulo com linhas diagonais)
-- inverter: inversor (caixa dividida ao meio, lado CC com +/-, lado CA com onda senoidal)
+- inverter: inversor de string (caixa dividida ao meio, lado CC com +/-, lado CA com onda senoidal)
+- microinverter: MICROINVERSOR — caixa menor com VÁRIAS ENTRADAS CC INDIVIDUAIS (uma por módulo, sem string), normalmente vários encadeados no mesmo ramal CA
 - breaker: disjuntor bipolar (linha com uma lâmina diagonal entre dois contatos)
 - breaker-tripolar: disjuntor tripolar (igual ao bipolar, com uma lâmina/traço extra)
 - dc-switch: chave/seccionadora CC (lâmina diagonal simples entre dois contatos, sem marca de disparo)
@@ -155,6 +156,7 @@ Retorne APENAS JSON válido, sem markdown, com o diagrama COMPLETO já corrigido
 const KIND_ALIASES: Record<string, string> = {
   'solar-array': 'pv-array', 'solar-panel': 'pv-array', 'pv-panel': 'pv-array', 'module-array': 'pv-array',
   'photovoltaic-array': 'pv-array', 'array': 'pv-array', 'modules': 'pv-array', 'painel-solar': 'pv-array',
+  'micro-inverter': 'microinverter', 'microinversor': 'microinverter', 'micro-inversor': 'microinverter', 'micro': 'microinverter',
   'circuit-breaker': 'breaker', 'breaker-bipolar': 'breaker', 'disjuntor': 'breaker', 'disjuntor-bipolar': 'breaker',
   'circuit-breaker-tripolar': 'breaker-tripolar', 'disjuntor-tripolar': 'breaker-tripolar',
   'dc-disconnect': 'dc-switch', 'disconnect-switch': 'dc-switch', 'chave-cc': 'dc-switch', 'switch': 'dc-switch',
@@ -174,7 +176,7 @@ function normalizeKind(kind: unknown): string {
 }
 
 const VALID_KINDS = new Set([
-  'pv-array', 'inverter', 'breaker', 'breaker-tripolar', 'dc-switch', 'meter',
+  'pv-array', 'inverter', 'microinverter', 'breaker', 'breaker-tripolar', 'dc-switch', 'meter',
   'meter-bidirectional', 'utility-grid', 'dps', 'fuse', 'ground', 'distribution-panel',
 ])
 
