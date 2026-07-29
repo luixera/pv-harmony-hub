@@ -1,5 +1,5 @@
 import { ComponentKind, Point, Scene, TechnicalJsonMvp } from './types';
-import { CONNECTION_INSET, SYMBOL_BBOX, SYMBOL_DEFS, SYMBOL_PORTS, SymbolPort } from './symbols';
+import { CONNECTION_INSET, PORT_STUB, SYMBOL_BBOX, SYMBOL_DEFS, SYMBOL_PORTS, SymbolPort } from './symbols';
 import { WARNING_PLATE_ENEL, WARNING_PLATE_GENERIC } from './warningPlates';
 import {
   CENTER_Y, DRAW_BOTTOM, DRAW_TOP, drawFrameAndHeader, drawLegendTable, drawTitleBlock,
@@ -493,6 +493,30 @@ export function portPagePosition(p: PlacedSymbol, port: Pick<SymbolPort, 'x' | '
   };
 }
 
+/**
+ * Onde o CONDUTOR encosta numa porta. É a posição da porta recuada pra dentro
+ * do símbolo pelo `PORT_STUB`: assim o condutor cobre o toco que o próprio
+ * símbolo desenha (o disjuntor, por exemplo, tem 6mm de traço entre a borda e
+ * o primeiro contato) e a ligação vira um traço contínuo até o corpo, em vez
+ * de "morrer" antes dele. As alças e o snap continuam usando
+ * `portPagePosition` — quem se move é só o desenho do fio.
+ */
+export function portConnectPoint(p: PlacedSymbol, port: SymbolPort): Point {
+  const at = portPagePosition(p, port);
+  const stub = (PORT_STUB[p.kind] ?? 0) * p.scale;
+  if (stub <= 0) return at;
+  const c = blockCenter(p);
+  const dx = c.x - at.x, dy = c.y - at.y;
+  // a porta fica numa borda: o recuo segue o eixo dominante, então o
+  // alinhamento (x de derivação vertical, y de trecho horizontal) não muda
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    const passo = Math.min(stub, Math.abs(dx));
+    return { x: at.x + Math.sign(dx) * passo, y: at.y };
+  }
+  const passo = Math.min(stub, Math.abs(dy));
+  return { x: at.x, y: at.y + Math.sign(dy) * passo };
+}
+
 export const SNAP_RADIUS = 6; // mm — clicar/soltar perto o bastante de um componente ou linha "gruda" nele
 export const PORT_SNAP = 3; // mm — mais apertado que o do componente: a porta é um alvo pequeno e específico
 
@@ -633,7 +657,7 @@ export function computeAllConnectionPoints(
     if (e.kind === 'port') {
       const s = byId.get(e.id);
       const port = s ? portOf(s.kind, e.port) : null;
-      return s && port ? portPagePosition(s, port) : null;
+      return s && port ? portConnectPoint(s, port) : null;
     }
     const parent = resolve(e.connId);
     return parent ? pointAtT(parent, e.t) : null;
@@ -1089,13 +1113,13 @@ export function buildMultiArrangementScene(options: {
   // pode ir até a margem direita da folha e sobra vão de verdade entre o QGBT
   // e o padrão de entrada (pedido do usuário: "deixe o seguimento entre o
   // QGBT Solar e o padrão de entrada um pouco maior").
-  const X_PV = 14, X_INV = 44, X_CB = 74;
-  const X_JUNC = 104;                       // x do nó de junção dos arranjos
-  const X_GB = 110;                         // disjuntor geral (só com 2+ arranjos)
-  const X_EB = 163;                         // disjuntor do padrão de entrada
-  const X_METER = 199, X_GRID = 231;
-  const MID_TOP = 118;                      // y do tronco CA (portas em MID_TOP+10) — abaixo da tabela de legenda
-  const ROW_GAP = 36;
+  const X_PV = 20, X_INV = 66, X_CB = 112;  // caixas de 24mm com 22mm de vão
+  const X_JUNC = 152;                       // x do nó de junção dos arranjos
+  const X_GB = 160;                         // disjuntor geral (só com 2+ arranjos)
+  const X_EB = 218;                         // disjuntor do padrão de entrada
+  const X_METER = 268, X_GRID = 314;        // tudo à esquerda da legenda (350)
+  const MID_TOP = 150;                      // y do tronco CA (portas em MID_TOP+10)
+  const ROW_GAP = 44;
   const midY = MID_TOP + 10;
 
   // Auto-reorganização: com até 3 arranjos, fileiras centradas no tronco em
@@ -1104,8 +1128,8 @@ export function buildMultiArrangementScene(options: {
   // reduzem de escala pra prancha A4 comportar tudo. Com a PLANTA DE
   // LOCALIZAÇÃO no canto superior esquerdo, a faixa útil começa mais abaixo.
   const hasMap = !!options.locationMap;
-  const topLimit = (hasMap ? 82 : 30) + (options.rowContentAbove ?? 0); // 1ª fileira não sobe além disso
-  const BOTTOM = 158;                   // base do último símbolo: sobram ~10mm pro rótulo + legenda antes do carimbo (172)
+  const topLimit = (hasMap ? 104 : 30) + (options.rowContentAbove ?? 0); // 1ª fileira não sobe além disso
+  const BOTTOM = 245;                   // base do último símbolo: sobram ~12mm pro rótulo + legenda antes do carimbo (259)
   const avail = BOTTOM - topLimit;
   const minGap = hasMap ? 13 : 16;
   // afrouxa o espaçamento até o conjunto (fileiras + altura do último
@@ -1307,20 +1331,20 @@ export function buildMultiArrangementScene(options: {
   const texts: PlacedText[] = [
     {
       id: uid('nota-bep'),
-      value: 'NOTA: aterramento do padrão de entrada, neutro e malha de',
-      x: 96, y: 24, size: 2.1,
+      value: 'NOTA: aterramento do padrão de entrada, neutro e malha de aterramento da edificação',
+      x: 120, y: 24, size: 2.6,
     },
     {
       id: uid('nota-bep2'),
-      value: 'aterramento da edificação equipotencializados no BEP — NBR 5410.',
-      x: 96, y: 27.5, size: 2.1,
+      value: 'equipotencializados no BEP — NBR 5410.',
+      x: 120, y: 28.5, size: 2.6,
     },
   ];
 
   // ── PLANTA DE LOCALIZAÇÃO (recorte de satélite do local) ────────────────
   if (options.locationMap) {
     // abaixo do cabeçalho da folha (título + subtítulo ocupam até ~28mm)
-    const MAP = { x: 18, y: 36, w: 54, h: 38 };
+    const MAP = { x: 20, y: 38, w: 72, h: 52 };
     photos.push({ id: uid('planta'), href: options.locationMap.href, ...MAP });
     if (options.locationMap.caption) {
       texts.push({
@@ -1357,7 +1381,7 @@ export function buildMultiArrangementScene(options: {
     groups.unshift({
       id: uid('group'),
       title: 'PLANTA DE LOCALIZAÇÃO',
-      x: 15, y: 32, w: 60, h: options.locationMap.caption ? 50 : 46,
+      x: 16, y: 33, w: 80, h: options.locationMap.caption ? 66 : 62,
       style: 'solid', moveContents: true,
     });
   }
@@ -1376,7 +1400,7 @@ export interface MicroBranchDraw {
 
 /** Faixa útil do desenho (mesma do builder) — usada pra saber se o
  *  esquemático cabe na folha antes de gerar. */
-const SCHEMATIC_BAND = { top: 30, bottom: 158, left: 14, right: 68 };
+const SCHEMATIC_BAND = { top: 30, bottom: 245, left: 20, right: 104 };
 const SCHEMATIC_MIN_SCALE = 0.42;   // abaixo disso o rótulo do bloco fica ilegível
 
 /**
@@ -1404,27 +1428,24 @@ export function microSchematicFit(branches: { modulesPerUnit: number[] }[], hasM
   // altura: o eixo da 1ª fileira já começa `stackAbove` abaixo do topo e a
   // última precisa dos 20mm da caixa do disjuntor; entre fileiras, a pilha
   // seguinte não pode invadir a caixa da anterior (gap ≥ stackAbove + 20).
-  const top = hasMap ? 82 : SCHEMATIC_BAND.top;
+  const top = hasMap ? 104 : SCHEMATIC_BAND.top;
   const anchorSpan = (SCHEMATIC_BAND.bottom - 20) - top;      // eixos disponíveis
   // (rows-1)·(stackAbove+20) + stackAbove ≤ anchorSpan
   const maxStack = (anchorSpan - 20 * (rows - 1)) / rows;
   const sV = (maxStack - 28) / 40;
   const raw = Math.min(0.85, sH, sV);
   const scale = Math.max(SCHEMATIC_MIN_SCALE, raw);
-  // Limite honesto: a seguimentação de MAIS DE UM ramal não convive com o
-  // padrão de entrada na mesma folha A4 — é por isso que a prancha de
-  // referência (MARA) põe o esquemático numa folha SÓ dele. Com 2 ramais o
-  // 2º ramal desceria em cima do DPS do QGBT.
-  const oneSheet = rows === 1;
-  const reason = !oneSheet
-    ? `O esquemático desenha cada micro com os seus módulos: ${rows} ramais não cabem na mesma folha do padrão de entrada (em A4). `
-      + 'Nos projetos de referência a seguimentação vai numa prancha separada.'
+  // Em A3 a seguimentação cabe junto do padrão de entrada até ~3 ramais (em A4
+  // só cabia um). Acima disso os blocos ficariam menores que o legível e a UI
+  // manda usar o compacto.
+  const reason = sV < SCHEMATIC_MIN_SCALE
+    ? `O esquemático desenha cada micro com os seus módulos empilhados: ${rows} ramais não cabem legíveis nem em A3. Use o compacto.`
     : sH < SCHEMATIC_MIN_SCALE
       ? `Com ${maxUnits} microinversores no mesmo ramal os blocos ficariam pequenos demais na largura da folha.`
       : '';
   return {
-    fits: oneSheet && raw >= SCHEMATIC_MIN_SCALE,
-    possible: oneSheet && sH >= 0.35,
+    fits: raw >= SCHEMATIC_MIN_SCALE,
+    possible: sV >= 0.35 && sH >= 0.35,
     scale, stackAbove: 40 * scale + 28, reason,
   };
 }
@@ -1502,6 +1523,12 @@ export function buildMicroSchematicScene(options: Omit<Parameters<typeof buildMu
       if (idx >= 0) placements.splice(idx, 1);
     }
 
+    // o rótulo de cada célula não pode passar da largura dela, senão invade a
+    // célula vizinha (relato do usuário: legenda do módulo e do modelo do
+    // micro sobrepostas). ~1,45mm por caractere no corpo 2,6.
+    const maxChars = Math.max(6, Math.floor(cellW / 1.45));
+    const encurtar = (t: string) => (t.length > maxChars ? `${t.slice(0, maxChars - 1)}…` : t);
+
     let busConn: ManualConnection | null = null;
     for (let j = 0; j < units; j++) {
       const cx = SCHEMATIC_BAND.left + cellW * j + cellW / 2;
@@ -1510,14 +1537,16 @@ export function buildMicroSchematicScene(options: Omit<Parameters<typeof buildMu
       const cellPv: PlacedSymbol = {
         id: uid('pv-array'), kind: 'pv-array', x, y: pvCy - 10, rotation: 0, scale: s,
         label: `${mods}× módulo`,
-        legend: j === 0 && options.moduleModel ? [options.moduleModel] : [],
+        legend: j === 0 && options.moduleModel ? [encurtar(options.moduleModel)] : [],
         // rótulo ACIMA do bloco: embaixo ele cairia dentro da caixa do micro
         labelDy: -(20 * s + 4 + (j === 0 && options.moduleModel ? 3.5 : 0)),
       };
       const cellMicro: PlacedSymbol = {
         id: uid('microinverter'), kind: 'microinverter', x, y: microCy - 10, rotation: 0, scale: s,
         label: rows > 1 ? `MI ${r + 1}.${j + 1}` : `MI ${j + 1}`,
-        legend: j === 0 ? [options.microModel ?? '', ...(options.microLegend ?? [])].filter(Boolean) : [],
+        legend: j === 0
+          ? [options.microModel ?? '', ...(options.microLegend ?? [])].filter(Boolean).map(encurtar)
+          : [],
         // sobe o rótulo pra ele caber entre a caixa do micro e o barramento
         labelDy: -(10 * s + 6),
       };

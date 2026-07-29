@@ -106,6 +106,32 @@ export interface SymbolPort {
  * caixa). Componentes em série ganham entrada/saída; o inversor distingue
  * lado CC e lado CA; DPS e aterramento conectam só por cima (derivação).
  */
+/**
+ * Comprimento do TOCO que o próprio símbolo desenha a partir da porta até o
+ * corpo (ex.: o disjuntor liga a borda ao primeiro contato com 6mm de traço).
+ * O condutor é desenhado ATÉ a porta e o toco fica preto, o que dá a impressão
+ * de linha "solta" antes do símbolo (relato do usuário no disjuntor do QGBT).
+ * Com este recuo o condutor entra por cima do toco e a ligação vira um traço
+ * contínuo até o corpo do símbolo.
+ */
+export const PORT_STUB: Record<ComponentKind, number> = {
+  'pv-array': 0,
+  inverter: 0,
+  breaker: 6,
+  'breaker-tripolar': 6,
+  'dc-switch': 6,
+  fuse: 6,
+  meter: 0,
+  'meter-bidirectional': 0,
+  'utility-grid': 0,
+  dps: 4,
+  ground: 4,
+  'distribution-panel': 3,
+  microinverter: 3,
+  'warning-sign': 0,
+  'warning-sign-enel': 0,
+};
+
 export const SYMBOL_PORTS: Record<ComponentKind, SymbolPort[]> = {
   'pv-array': [
     { id: 'esq', name: 'Esquerda', x: 2, y: H / 2 },

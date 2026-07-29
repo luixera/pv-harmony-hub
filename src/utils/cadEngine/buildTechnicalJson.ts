@@ -66,7 +66,9 @@ export function buildTechnicalJsonFromProject(project: ProjectWithDetails): Tech
       projectCode: values.codigo_projeto || '—',
       holderName: values.nome_titular || '—',
       concessionaire: values.concessionaria || '—',
-      installedPower: values.potencia_total ? `${values.potencia_total} kWp` : '—',
+      // `potencia_total` já vem com a unidade ("7,32 kWp") — concatenar de novo
+      // duplicava o kWp no carimbo
+      installedPower: values.potencia_total || '—',
       date: values.data || '—',
       address: values.endereco || undefined,
     },

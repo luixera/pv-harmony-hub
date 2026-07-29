@@ -1,8 +1,16 @@
 import { ComponentKind, Scene, TechnicalJsonMvp } from './types';
 import { KIND_LEGEND } from './symbols';
 
-/** Constantes de papel/margem compartilhadas entre o layout fixo e o editável. */
-export const PAPER = { widthMm: 297, heightMm: 210 }; // A4 paisagem
+/**
+ * Constantes de papel/margem compartilhadas entre o layout fixo e o editável.
+ *
+ * A prancha é **A3 paisagem** (jul/2026, decisão do usuário: "talvez
+ * aumentando o tamanho da folha"). Em A4 o desenho vivia no limite — rótulo de
+ * módulo/inversor se sobrepondo, carimbo apertado e a seguimentação de
+ * microinversores só cabia com um ramal. A3 é o formato usual de unifilar de
+ * GD e resolve os três de uma vez.
+ */
+export const PAPER = { widthMm: 420, heightMm: 297 }; // A3 paisagem
 export const MARGIN = 12;
 export const TITLE_BLOCK_H = 26;
 export const PITCH_X = 46; // largura do símbolo (24) + espaçamento (22)
@@ -15,8 +23,8 @@ export const START_X = MARGIN + 14;
 /** Coluna reservada da tabela de LEGENDA (lado direito da folha). O
  *  desenho "útil" vai de START_X até LEGEND_X0 — `layoutFromRecognition`
  *  comprime o espaçamento pra caber nessa faixa. */
-export const LEGEND_W = 50;
-export const LEGEND_X0 = PAPER.widthMm - MARGIN - LEGEND_W; // 235
+export const LEGEND_W = 58;
+export const LEGEND_X0 = PAPER.widthMm - MARGIN - LEGEND_W; // 350 em A3
 
 /** Campos editáveis da folha (carimbo/legenda) — persistidos no
  *  `DiagramSceneState.sheet`. Todos aceitam tags `{chave}` do projeto. */
@@ -80,11 +88,11 @@ export function drawTitleBlock(scene: Scene, json: TechnicalJsonMvp, sheet?: She
     fields.forEach(([label, value, frac], i) => {
       const w = tbW * frac;
       if (i > 0) scene.shapes.push({ layer: 'TITLE_BLOCK', geometry: { kind: 'line', a: { x, y }, b: { x, y: y + rowH } } });
-      scene.shapes.push({ layer: 'TITLE_BLOCK', geometry: { kind: 'text', at: { x: x + 2.5, y: y + 4.6 }, value: label, size: 2, anchor: 'start' } });
-      // valor truncado se estourar a célula (~0.52mm por caractere no tamanho 3)
-      const maxChars = Math.floor((w - 5) / 1.56);
+      scene.shapes.push({ layer: 'TITLE_BLOCK', geometry: { kind: 'text', at: { x: x + 3, y: y + 5 }, value: label, size: 2.4, anchor: 'start' } });
+      // valor truncado se estourar a célula (~0.6mm por caractere no tamanho 3.6)
+      const maxChars = Math.floor((w - 6) / 1.9);
       const shown = value.length > maxChars ? `${value.slice(0, Math.max(0, maxChars - 1))}…` : value;
-      scene.shapes.push({ layer: 'TITLE_BLOCK', geometry: { kind: 'text', at: { x: x + 2.5, y: y + 10 }, value: shown, size: 3, anchor: 'start', weight: 'bold' } });
+      scene.shapes.push({ layer: 'TITLE_BLOCK', geometry: { kind: 'text', at: { x: x + 3, y: y + 11 }, value: shown, size: 3.6, anchor: 'start', weight: 'bold' } });
       x += w;
     });
   });

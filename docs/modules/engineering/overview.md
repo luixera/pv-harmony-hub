@@ -278,6 +278,15 @@ folha; os símbolos do ramal reduzem de escala junto (até 0,6×) e o padrão de
 entrada nunca reduz. Com **planta de localização** a faixa começa mais
 abaixo (82mm) e o gap mínimo cai pra 13mm.
 
+**Prancha A3** (jul/2026 — "talvez aumentando o tamanho da folha"): `PAPER`
+passou a 420×297. Em A4 o desenho vivia no limite e três problemas eram
+sintoma disso: rótulo de módulo/micro se sobrepondo, carimbo apertado (campo
+endereço minúsculo) e a seguimentação de microinversores só cabendo com um
+ramal. Colunas em A3: PV 20 · INV 66 · CB 112 · junção 152 · geral 160 ·
+padrão 218 · medidor 268 · rede 314 (legenda a partir de 350); eixo do tronco
+em 150 e base da última fileira em 245. A seguimentação passou a caber com
+**até 3 ramais** — o formato da prancha de referência.
+
 **Geometria da prancha e dos nós** (jul/2026 — pedido do usuário "ajuste os
 nós e pontos de ligação entre os componentes"):
 
@@ -298,7 +307,13 @@ nós e pontos de ligação entre os componentes"):
   abria um Z, entrando no nó na horizontal com dois tocos de 4mm);
 - **montante das cargas em L**: sobe no x da derivação e vira em esquadro pro
   toco horizontal do quadro, no meio do vão entre os dois blocos (antes
-  raspava no tracejado do padrão de entrada).
+  raspava no tracejado do padrão de entrada);
+- **o condutor cobre o toco do símbolo** (`PORT_STUB` + `portConnectPoint`):
+  o disjuntor desenha 6mm de traço entre a borda e o primeiro contato, e o
+  condutor parava na borda — dava a impressão de linha solta antes do símbolo
+  (relato do usuário no disjuntor do QGBT). Agora o fio entra por cima desse
+  toco e a ligação vira um traço contínuo até o corpo. As alças e o snap
+  continuam usando `portPagePosition`: quem se move é só o desenho do fio.
 
 **Planta de localização** (`cadEngine/locationMap.ts`): recorte de satélite
 do local (Maps Static API, `maptype=hybrid` + marcador, comprimido a ~820px

@@ -23,6 +23,11 @@ import { useEquipmentCatalog, useSaveEquipment } from '@/hooks/useEquipmentCatal
 import { validateDiagram } from '@/utils/engineering/diagramValidator';
 import { fetchLocationMap, LOCATION_MAP_MESSAGES } from '@/utils/cadEngine/locationMap';
 
+/** Modelo de equipamento é texto livre e costuma ser longo
+ *  ("ASTRONERGY CHSM66RN(DG)/F-BH610") — encurta pra legenda não invadir o
+ *  bloco vizinho no desenho. */
+const curto = (t: string, max = 30) => (t.length > max ? `${t.slice(0, max - 1)}…` : t);
+
 /** Fase do projeto no vocabulário do motor (o cadastro é texto livre). */
 function phaseTypeOf(raw: unknown): 'monofasico' | 'bifasico' | 'trifasico' {
   const s = String(raw ?? '').toLowerCase();
@@ -333,10 +338,10 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
           inverterKind: 'microinverter',
           pvLabels: plan.branches.map((_, i) => (plan.branches.length > 1 ? `Módulos – Ramal ${i + 1}` : 'Módulos')),
           pvLegends: plan.branches.map(b => [
-            `${b.units} × ${plan.modulesPerUnitCap} = ${b.modules} módulos`, moduleModel,
+            `${b.units} × ${plan.modulesPerUnitCap} = ${b.modules} módulos`, curto(moduleModel),
           ].filter(Boolean)),
           inverterLabels: plan.branches.map((_, i) => (plan.branches.length > 1 ? `Microinversores – Ramal ${i + 1}` : 'Microinversores')),
-          inverterLegends: plan.branches.map(b => [`${b.units}× ${microModel}`, microSpecLine].filter(Boolean)),
+          inverterLegends: plan.branches.map(b => [curto(`${b.units}× ${microModel}`), microSpecLine].filter(Boolean)),
           breakerLabels: plan.branches.map((_, i) => (plan.branches.length > 1 ? `Disjuntor Ramal ${i + 1}` : 'Disjuntor Geral CA')),
           branchBreakerA: plan.branches.map(b => b.breakerA),
         });
