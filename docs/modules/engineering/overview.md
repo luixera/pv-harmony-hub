@@ -235,6 +235,12 @@ tem conceito de múltiplas pranchas).
 `buildMultiArrangementScene` (cadEngine/editableLayout.ts) desenha o
 diagrama completo pedido pelo usuário para 1..N arranjos:
 
+- **modelo dos equipamentos na legenda dos blocos** (jul/2026): o bloco FV traz
+  o arranjo + "MARCA MODELO · 610Wp" + tensão de operação, e o bloco do
+  inversor traz "MARCA MODELO" + "kW · corrente CA". O analista lê o que está
+  instalado direto no desenho. A base da última fileira (`BOTTOM`) passou a ser
+  calculada pelo nº de linhas de rótulo — com o modelo o texto ficou mais alto
+  e batia no carimbo;
 - **1 disjuntor CA por arranjo** ("Disjuntor Arranjo i") — obrigatório. Com
   **um único inversor**, esse disjuntor JÁ É o geral: o motor desenha um só
   ("Disjuntor Geral CA", legenda "(arranjo + geral)") em vez de dois em

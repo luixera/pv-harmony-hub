@@ -3,7 +3,7 @@ import { CONNECTION_INSET, PORT_STUB, SYMBOL_BBOX, SYMBOL_DEFS, SYMBOL_PORTS, Sy
 import { WARNING_PLATE_ENEL, WARNING_PLATE_GENERIC } from './warningPlates';
 import {
   CENTER_Y, DRAW_BOTTOM, DRAW_TOP, drawFrameAndHeader, drawLegendTable, drawTitleBlock,
-  LEGEND_LINE_H, LEGEND_X0, paperOf, PaperSize, PITCH_X, SheetOptions, START_X,
+  LEGEND_LINE_H, LEGEND_X0, MARGIN, paperOf, PaperSize, PITCH_X, SheetOptions, START_X, TITLE_BLOCK_H,
 } from './paper';
 import { resolveProjectTags } from '@/utils/projectValues';
 
@@ -35,6 +35,9 @@ export interface PlacedSymbol {
 }
 
 /** Distância padrão entre a base do símbolo e a 1ª linha do rótulo (mm). */
+/** Altura de cada linha de rótulo/legenda desenhada abaixo do símbolo. */
+export const LABEL_LINE_H = 3.5;
+
 export const LABEL_GAP = 3.4;
 
 /** Posição do bloco de rótulo de um símbolo (já com o deslocamento manual). */
@@ -1177,7 +1180,17 @@ export function buildMultiArrangementScene(options: {
   // LOCALIZAÇÃO no canto superior esquerdo, a faixa útil começa mais abaixo.
   const hasMap = !!options.locationMap;
   const topLimit = (hasMap ? L.MAP_TOP_LIMIT : L.TOP) + (options.rowContentAbove ?? 0); // 1ª fileira não sobe além disso
-  const BOTTOM = L.BOTTOM;              // base do último símbolo, com folga pro rótulo antes do carimbo
+  // A base da última fileira depende de quantas linhas de RÓTULO ela tem
+  // embaixo (rótulo + legendas, ~3,5mm cada): com o modelo do módulo e do
+  // inversor na legenda o texto ficou mais alto e batia no carimbo.
+  const linhasRotulo = 1 + Math.max(
+    0,
+    ...(options.pvLegends ?? []).map(l => l.length),
+    ...(options.inverterLegends ?? []).map(l => l.length),
+    2,                                   // legenda do disjuntor (corrente + nota)
+  );
+  const carimboTop = paperOf(paper).heightMm - MARGIN - TITLE_BLOCK_H;
+  const BOTTOM = Math.min(L.BOTTOM, carimboTop - 4.4 - linhasRotulo * LABEL_LINE_H);
   const avail = BOTTOM - topLimit;
   const minGap = hasMap ? 13 : 16;
   // afrouxa o espaçamento até o conjunto (fileiras + altura do último

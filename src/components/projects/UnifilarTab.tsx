@@ -352,9 +352,24 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
 
   const applySuggestion = async (opt: ProjectArrangementOption) => {
     if (!confirm(`Usar "${opt.title}" (${opt.summary})? O diagrama atual será substituído pela topologia automática com este arranjo.`)) return;
+    // MODELO dos equipamentos na legenda dos blocos — o analista da
+    // concessionária lê o que está instalado direto no desenho, sem precisar
+    // abrir o memorial (pedido do usuário; já era assim no caminho do micro).
+    const e = project.equipment;
+    const moduloModelo = curto([
+      [e?.module_brand, e?.module_model].filter(Boolean).join(' '),
+      e?.module_power ? `${e.module_power}Wp` : '',
+    ].filter(Boolean).join(' · '));
+    const inversorModelo = curto([inverterCatalog?.brand, inverterCatalog?.model].filter(Boolean).join(' ')
+      || [e?.inverter_brand, e?.inverter_model].filter(Boolean).join(' '));
+
     const pvLegends = Array.from({ length: projectInverters }, (_, i) => {
       const arr = opt.perInverter[Math.min(i, opt.perInverter.length - 1)];
-      return [arr.label, arr.operatingVoltageV ? `~${arr.operatingVoltageV}V de operação` : ''].filter(Boolean);
+      return [
+        arr.label,
+        moduloModelo,
+        arr.operatingVoltageV ? `~${arr.operatingVoltageV}V de operação` : '',
+      ].filter(Boolean);
     });
     // padrão de entrada do projeto — as regras cadastradas em Concessionárias
     const entryRule = matchEntryRule(entryRules, project.generalData?.phase_type, project.generalData?.circuit_breaker_current);
@@ -389,6 +404,13 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
       paper: pickPaper({ rows: projectInverters, hasMap: !!locationMap }),
       inverterCount: projectInverters,
       pvLegends,
+      // bloco do inversor: modelo + potência e a corrente CA que dimensionou
+      // o disjuntor daquele arranjo
+      inverterLegends: plan.branches.map(b => [
+        inversorModelo,
+        [invSpecs.powerKw ? `${invSpecs.powerKw} kW` : '', b.currentA ? `${b.currentA}A` : '']
+          .filter(Boolean).join(' · '),
+      ].filter(Boolean)),
       locationMap,
       includeGeneralBreaker: includeGeneral,
       includeLoadsReference: ruleValue(ruleMap, 'arrays.include_loads_reference', 1) !== 0,
