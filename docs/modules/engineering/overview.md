@@ -190,8 +190,17 @@ O que manda no dimensionamento:
 3. **Disjuntor do ramal** = `protections.breaker_sizing_factor` × soma das
    correntes dos micros do ramal; **geral** = fator × soma dos ramais.
 
-Funções: `isMicroinverter` (datasheet `is_microinverter` = 1, senão pelo nome —
-nunca pela potência: existe inversor de string de 2kW), `microSpecsFromTechSpecs`
+Detecção (`isMicroinverter`), nesta ordem: (1) `is_microinverter = 1` no
+datasheet do catálogo; (2) o nome contém "microinversor"; (3) **família
+conhecida no modelo E potência ≤ 3,5 kW** — HM/HMS/HMT (Hoymiles), HYX-M
+(HYXipower), IQ5–IQ9 (Enphase), DS3/QS1/YC600/YC1000 (APsystems). A potência
+sozinha NUNCA decide (existe inversor de string de 2 kW), e a família sozinha
+também não (Huawei SUN2000 de 5 kW continua string). Quando nem assim o modelo
+é reconhecido, a aba Unifilar mostra o botão **"É microinversor"**: ele passa o
+projeto pro caminho do micro e grava a marcação no catálogo, pra o próximo
+projeto com o mesmo modelo já nascer certo.
+
+Funções: `microSpecsFromTechSpecs`
 e `suggestMicroinverterPlan` → `MicroPlan` (micros, módulos por micro, ramais
 equilibrados, correntes, disjuntores, bitolas, alertas explicados).
 

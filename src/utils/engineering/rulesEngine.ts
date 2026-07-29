@@ -721,15 +721,37 @@ export interface MicroPlan {
   alerts: EngineAlert[];
 }
 
-/** É microinversor? Decide pelo datasheet (`is_microinverter`) e, sem ele,
- *  pelo nome do equipamento — nunca pela potência: existe inversor de string
- *  de 2kW, e chutar pelo porte classificaria errado. */
+/**
+ * Famílias de microinversor conhecidas — a maioria não traz "micro" no
+ * modelo (HYX-M2000, HMS-2000, IQ8, DS3…). Só valem junto do teto de
+ * potência abaixo, pra nenhum inversor de string cair aqui por engano.
+ */
+const MICRO_MODEL_PATTERNS = [
+  /\bhm[st]?-?\s?\d{3,4}/i,     // Hoymiles HM-, HMS-, HMT-
+  /\bhyx-?\s?m\d/i,             // HYXipower HYX-M2000
+  /\biq\s?[5-9]\b/i,            // Enphase IQ7/IQ8
+  /\b(ds3|qs1|yc600|yc1000)\b/i, // APsystems
+];
+/** Acima disso não é microinversor (o maior do mercado hoje é ~2,5 kW). */
+const MICRO_MAX_KW = 3.5;
+
+/**
+ * É microinversor? Ordem: (1) o datasheet manda — `is_microinverter` marcado
+ * no catálogo; (2) o nome diz "microinversor"; (3) família conhecida no
+ * modelo E potência de micro. A potência SOZINHA nunca decide: existe
+ * inversor de string de 2kW e classificar pelo porte erraria.
+ */
 export function isMicroinverter(
   ts: Record<string, unknown> | null | undefined,
   name?: string | null,
+  powerKw?: number | null,
 ): boolean {
   if (ts && Number(ts['is_microinverter']) === 1) return true;
-  return /micro\s*-?\s*inversor|microinverter/i.test(String(name ?? ''));
+  const nome = String(name ?? '');
+  if (/micro\s*-?\s*inversor|microinverter/i.test(nome)) return true;
+  const kw = Number(powerKw ?? 0);
+  if (kw > 0 && kw <= MICRO_MAX_KW && MICRO_MODEL_PATTERNS.some(re => re.test(nome))) return true;
+  return false;
 }
 
 /** Lê o `tech_specs` do catálogo na visão de microinversor. */

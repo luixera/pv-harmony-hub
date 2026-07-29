@@ -19,7 +19,7 @@ import {
   microSpecsFromTechSpecs, ruleValue, suggestBreakerPlan, suggestElectricalSizing,
   suggestMicroinverterPlan, suggestProjectArrangement,
 } from '@/utils/engineering/rulesEngine';
-import { useEquipmentCatalog } from '@/hooks/useEquipmentCatalog';
+import { useEquipmentCatalog, useSaveEquipment } from '@/hooks/useEquipmentCatalog';
 import { validateDiagram } from '@/utils/engineering/diagramValidator';
 import { fetchLocationMap, LOCATION_MAP_MESSAGES } from '@/utils/cadEngine/locationMap';
 
@@ -182,16 +182,23 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
 
   // ── Sugestões do Motor de Engenharia (Rules Engine, Fase 1) ──────────────
   const { ruleMap } = useEngineeringRuleMap();
+  const saveEquipment = useSaveEquipment();
   const [suggestOpen, setSuggestOpen] = useState(false);
 
   /** MICROINVERSOR: outro conjunto de regras (não tem janela de string — o que
    *  manda é o nº de entradas do micro e quantos cabem no ramal CA). Detecta
    *  pelo datasheet do catálogo e, sem ele, pelo nome do equipamento. */
-  const isMicro = useMemo(() => isMicroinverter(
+  // "Tratar como microinversores": escape manual pra quando o modelo não é
+  // reconhecido (marca nova, nome sem "micro"). O botão do painel também
+  // grava a marcação no catálogo, pra o próximo projeto já nascer certo.
+  const [forceMicro, setForceMicro] = useState(false);
+  const autoMicro = useMemo(() => isMicroinverter(
     inverterCatalog?.tech_specs ?? null,
     [inverterCatalog?.brand, inverterCatalog?.model, project.equipment?.inverter_brand, project.equipment?.inverter_model]
       .filter(Boolean).join(' '),
+    Number(project.equipment?.inverter_power ?? 0) || undefined,
   ), [inverterCatalog, project.equipment]);
+  const isMicro = autoMicro || forceMicro;
 
   const microPlan = useMemo(() => {
     if (!isMicro || !suggestOpen || ruleMap.size === 0) return null;
@@ -457,6 +464,45 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
             {suggestOpen ? 'Fechar' : 'Ver sugestões'}
           </button>
         </div>
+        {/* Escape manual: modelo de microinversor que o motor não reconheceu
+            (marca nova, modelo sem "micro" no nome). Um clique passa o projeto
+            pro caminho de microinversores e, se o inversor veio do catálogo,
+            deixa a marcação salva pra os próximos projetos. */}
+        {suggestOpen && !autoMicro && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+            background: '#fff', border: '1px solid #DDEEE2', borderRadius: 8, padding: '8px 12px', marginBottom: 8,
+          }}>
+            <span style={{ fontSize: 11.5, color: '#666', flex: 1, minWidth: 200 }}>
+              {forceMicro
+                ? 'Tratando como MICROINVERSORES (regras de entrada CC e ramal CA).'
+                : 'Este projeto é com microinversores? O motor não reconheceu o modelo e está calculando como inversor de string.'}
+            </span>
+            <button
+              onClick={async () => {
+                setForceMicro(v => !v);
+                if (!forceMicro && inverterCatalog) {
+                  try {
+                    await saveEquipment.mutateAsync({
+                      id: inverterCatalog.id, type: 'inverter',
+                      brand: inverterCatalog.brand, model: inverterCatalog.model, power: inverterCatalog.power,
+                      datasheet_url: inverterCatalog.datasheet_url, inmetro_url: inverterCatalog.inmetro_url,
+                      afci_url: inverterCatalog.afci_url,
+                      tech_specs: { ...(inverterCatalog.tech_specs ?? {}), is_microinverter: 1 },
+                    });
+                  } catch (e) { console.error('não deu pra marcar no catálogo', e); }
+                }
+              }}
+              style={{
+                padding: '6px 12px', borderRadius: 7, fontSize: 11.5, fontWeight: 700, cursor: 'pointer',
+                border: '1px solid #2D7A3A',
+                background: forceMicro ? '#2D7A3A' : '#fff', color: forceMicro ? '#fff' : '#2D7A3A',
+              }}
+            >
+              {forceMicro ? 'Voltar para inversor de string' : 'É microinversor'}
+            </button>
+          </div>
+        )}
         {suggestOpen && microPlan && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {microPlan.alerts.map((a, i) => (
