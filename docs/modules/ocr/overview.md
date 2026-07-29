@@ -8,22 +8,42 @@
 1. **Análise de documentos** enviados no formulário (ex.: conta de energia,
    documento do titular) para pré-preencher campos do projeto.
 2. **Leitura de e-mails** das concessionárias (Gmail), casando ao projeto pelo
-   **protocolo** e **sugerindo** a próxima etapa.
+   **protocolo**, pela **unidade consumidora** ou pelo **nome do titular**, e
+   **sugerindo** a próxima etapa.
 
 ## Componentes
 - Edge `claudinho-verifica` — análise/verificação (sugere etapa/protocolo).
 - Edge `scan-emails` — varre o Gmail por tenant (`scanTenant()`), casa e-mails a
-  protocolos (`match_emails_to_protocols(_tenant_id)`).
+  projetos (`match_emails_to_protocols(_tenant_id)`) e diz à IA por qual dado o
+  e-mail chegou (`matchContext()`).
 - Edge `test-gmail` — testa credenciais.
 - Tabelas: `agent_config` (credenciais por tenant), `email_updates`,
   `email_attachments`, `email_scan_runs`.
-- Front: `src/pages/EmailUpdates.tsx`, `useEmailUpdates`, `useAgentConfig`.
+- RPC `project_emails(_project_id)` — os e-mails **deste** projeto: os já
+  vinculados e os que ainda só *citam* o projeto (`apenas_sugerido`).
+- Helpers SQL `txt_norm(texto)` (minúsculas sem acento) e
+  `holder_name_regex(nome)` (âncora primeiro+último nome).
+- Front: `src/pages/EmailUpdates.tsx`, `useEmailUpdates`, `useAgentConfig`,
+  `src/components/projects/ProjectEmailsTab.tsx` (aba **Notificações** do modal
+  do projeto — somente leitura, com atalho para a tela de E-mails).
 
 ## Regras de negócio
 - **RN-OCR-01** — O Claudinho **não altera o projeto sozinho**: ele sugere; o
   usuário revisa e aplica. (Automação é passo futuro.)
-- **RN-OCR-02** — Casamento e-mail↔projeto é por **protocolo**, com filtro de
-  `tenant_id` (a função cruzava sem filtro — corrigido).
+- **RN-OCR-02** — Casamento e-mail↔projeto tem **três chaves**, sempre com
+  filtro de `tenant_id` (a função cruzava sem filtro — corrigido). Quando mais
+  de uma bate, vence a de maior prioridade, e `email_updates.match_type` guarda
+  qual foi (`protocol` · `uc` · `holder`):
+  1. **protocolo** (`projects.protocol_number`) — o mais forte; exige ≥4
+     caracteres e ignora o texto "sem protocolo";
+  2. **unidade consumidora** (`project_general_data.uc_number`) — exige ≥5
+     dígitos e casa o número **inteiro** (âncoras `\m…\M`), então uma UC nunca
+     casa como pedaço de um número maior;
+  3. **nome do titular** (`project_general_data.holder_name`) — exige
+     **primeiro + último** nome na mesma vizinhança (janela de 24 caracteres,
+     `holder_name_regex`), aceitando meio abreviado ("NIKSON A. SILVA"). Só o
+     primeiro nome, só o sobrenome ou nome único **não** casam.
+  Só o casamento por protocolo preenche `protocol_number`/`protocol_matched`.
 - **RN-OCR-03** — Credenciais Gmail ficam por tenant em `agent_config`; a view
   `agent_config_safe` usa `security_invoker=true` (não vaza credenciais).
 - **RN-OCR-04** — Consumo de IA é limitado por plano (`ai_usage_log`,
@@ -37,6 +57,12 @@
   **Cartão CNPJ** é a **razão social**. O prompt (`claudinho-verifica`,
   `buildAnalyzePrompt`/`buildComparePrompt`) instrui isso explicitamente. Bug
   histórico: em CNH, pegava o nome da filiação (corrigido, jul/2026).
+- **RN-OCR-06** — A aba **Notificações** do projeto (`project_emails`) mostra
+  também e-mails **ainda não vinculados** que citam o projeto
+  (`apenas_sugerido = true`) — o vínculo em si continua sendo feito pela
+  varredura. A aba é **somente leitura**: aplicar/descartar a sugestão de etapa
+  continua num lugar só, a tela `/email-updates`. A RPC é `SECURITY DEFINER` e
+  recusa quem não é do tenant do projeto (nem master).
 
 ## Deploy
 `claudinho-verifica` **não está no CI** (só scan-emails, test-gmail, log-event).
@@ -48,9 +74,10 @@ Modelo: `claude-haiku-4-5`.
 ```mermaid
 flowchart TD
   Cron[scan-emails por tenant] --> Gmail[Lê Gmail do tenant]
-  Gmail --> Match[Casa por protocolo]
+  Gmail --> Match[Casa por protocolo, UC ou titular]
   Match --> Upd[email_updates + sugestão de etapa]
   Upd --> Rev[Projetista revisa em /email-updates]
+  Upd --> Aba[Aba Notificações do projeto - leitura]
   Rev --> Apply[Aplica mudança de etapa - manual]
 ```
 

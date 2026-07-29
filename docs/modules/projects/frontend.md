@@ -14,7 +14,11 @@
 ## Componentes-chave
 - `src/components/projects/ProjectModal.tsx` — modal central do projeto; abas de
   dados, equipamentos (`EquipmentBlock` com combobox), documentos, histórico,
-  financeiro, tarefas, protocolo, revisões.
+  financeiro, tarefas, protocolo, revisões, notificações e unifilar.
+- `src/components/projects/ProjectEmailsTab.tsx` — aba **Notificações**
+  (admin/staff): os e-mails da concessionária que citam este projeto, pela RPC
+  `project_emails`. Somente leitura, com atalho para `/email-updates`. Regras do
+  casamento em [modules/ocr](../ocr/overview.md) (RN-OCR-02 e RN-OCR-06).
 - `GenerateDocumentDialog.tsx` — gera documento de template.
 - `InstallerPackageDialog.tsx` — monta e baixa o pacote do projetista.
 - `src/components/equipment/EquipmentModelCombobox.tsx` — busca no catálogo,

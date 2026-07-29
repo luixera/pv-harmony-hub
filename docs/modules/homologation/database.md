@@ -22,7 +22,9 @@
 - `get_kanban_columns`, `get_company_kanban_model_id`,
   `get_concessionaires_for_token` (público), `tenant_library_status`,
   `concessionaire_version`, `set_entry_rule_tenant` (trigger de tenant),
-  `match_emails_to_protocols(_tenant_id)`.
+  `match_emails_to_protocols(_tenant_id)` (casa por protocolo, UC ou titular e
+  devolve `match_by`/`matched_value`), `project_emails(_project_id)`,
+  `txt_norm(texto)`, `holder_name_regex(nome)`.
 
 ## Biblioteca (sync)
 Edge `sync-library` copia concessionárias + regras + pacote + templates para o

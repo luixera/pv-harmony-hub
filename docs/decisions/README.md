@@ -371,5 +371,14 @@ Registro de decisões de produto/UX (não arquiteturais — essas ficam em
   sobrescrever).
 - **Claudinho não altera o projeto sozinho**: lê o e-mail, casa pelo protocolo e
   **sugere** a etapa; a aplicação é do usuário (automação é passo futuro).
+- **O e-mail chega ao projeto por três portas** (jul/2026): protocolo, unidade
+  consumidora ou nome do titular — porque muito e-mail de concessionária vem
+  antes do protocolo existir, ou nem cita protocolo. A origem fica gravada
+  (`match_type`) e aparece na tela: "relacionado pelo nome do titular" pesa
+  diferente de "pelo protocolo". Casamento por titular exige **primeiro +
+  último** nome próximos; só o primeiro nome não vincula.
+- **A aba Notificações do projeto é somente leitura**: aplicar ou descartar a
+  sugestão de etapa continua num lugar só, a tela de E-mails — dois lugares para
+  a mesma ação vira divergência de histórico.
 - **Catálogo de equipamentos é compartilhado** entre todos os tenants (cresce
   mais rápido). Gerar documento força o cadastro no catálogo.

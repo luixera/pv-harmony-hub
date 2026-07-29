@@ -107,7 +107,7 @@ async function scanTenant(
 
     for (const row of (matchedRows || [])) {
       if (isOverBudget()) { console.log('Budget atingido na IA'); break }
-      const ai = await analyzeEmailBody(row.email_body || '', row.protocol_number, row.subject || '')
+      const ai = await analyzeEmailBody(row.email_body || '', matchContext(row), row.subject || '')
       await supabase.from('email_updates').update({
         ai_summary: ai.summary, ai_classification: ai.classification,
         ai_suggested_status: ai.suggestedStatus, ai_confidence: ai.confidence, ai_reasoning: ai.reasoning,
@@ -219,7 +219,7 @@ async function scanTenant(
 
       for (const row of (newMatchedRows || [])) {
         if (isOverBudget()) { console.log('Budget atingido na IA pós-coleta'); break }
-        const ai = await analyzeEmailBody(row.email_body || '', row.protocol_number, row.subject || '')
+        const ai = await analyzeEmailBody(row.email_body || '', matchContext(row), row.subject || '')
         await supabase.from('email_updates').update({
           ai_summary: ai.summary, ai_classification: ai.classification,
           ai_suggested_status: ai.suggestedStatus, ai_confidence: ai.confidence, ai_reasoning: ai.reasoning,
@@ -254,7 +254,7 @@ async function scanTenant(
         await supabase.from('notifications').insert({
           user_id: member.id,
           title:   '📧 Claudinho dos Emails — varredura concluída',
-          message: `${matched} protocolo(s) vinculado(s): ${counts.approved} aprovação(ões), ${counts.rejected} reprovação(ões), ${counts.pending} pendência(s).`,
+          message: `${matched} projeto(s) vinculado(s): ${counts.approved} aprovação(ões), ${counts.rejected} reprovação(ões), ${counts.pending} pendência(s).`,
           type: 'email_scan', project_id: null, read: false,
           tenant_id: tenantId,
         })
@@ -299,10 +299,19 @@ function extractParsed(parsed: any) {
   }
 }
 
-async function analyzeEmailBody(body: string, protocol: string, subject: string): Promise<EmailAnalysis> {
+/** Como este e-mail chegou no projeto — o prompt precisa saber, porque o
+ *  casamento pode ter vindo do protocolo, da UC ou do nome do titular. */
+function matchContext(row: any): string {
+  const valor = row.matched_value || row.protocol_number || ''
+  if (row.match_by === 'uc') return `unidade consumidora ${valor}`
+  if (row.match_by === 'holder') return `titular ${valor}`
+  return `protocolo ${valor}`
+}
+
+async function analyzeEmailBody(body: string, referencia: string, subject: string): Promise<EmailAnalysis> {
   const prompt = `Você é especialista em homologação fotovoltaica no Brasil.
 
-Analise o email referente ao protocolo: "${protocol}".
+Analise o email referente ao projeto identificado por: "${referencia}".
 
 ASSUNTO: ${subject}
 CORPO: ${body || '(corpo vazio)'}

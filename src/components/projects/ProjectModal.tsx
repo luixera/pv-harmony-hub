@@ -33,11 +33,12 @@ import {
   X, ExternalLink, Pencil, FileOutput, MoreVertical, Users, Trash2,
   Check, ChevronRight, Upload, Download, Send, Paperclip, FileText,
   Image, Loader2, AlertTriangle, Save, Lock, DollarSign, Clock, MapPin, Hash,
-  CheckSquare, Plus, Circle, CheckCircle2, Calendar, User as UserIcon, RotateCcw, FlaskConical,
+  CheckSquare, Plus, Circle, CheckCircle2, Calendar, User as UserIcon, RotateCcw, FlaskConical, Mail,
 } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { toast } from 'sonner';
+import { ProjectEmailsTab } from '@/components/projects/ProjectEmailsTab';
 import { supabase } from '@/integrations/supabase/client';
 import { Database } from '@/integrations/supabase/types';
 import { ProjectWithDetails } from '@/hooks/useProjects';
@@ -1692,6 +1693,10 @@ export function ProjectModal({ projectId, onClose, initialTab = 'geral' }: Proje
     ...(canEdit ? [{ id: 'tarefas', label: 'Tarefas', icon: <CheckSquare size={13} style={{ marginRight: 5 }} /> }] : []),
     { id: 'financeiro', label: 'Financeiro', icon: <DollarSign size={13} style={{ marginRight: 5 }} /> },
     { id: 'historico', label: 'Histórico', icon: <Clock size={13} style={{ marginRight: 5 }} /> },
+    // Notificações da concessionária — mesmo público da tela de E-mails
+    ...(user?.role === 'admin' || user?.role === 'staff'
+      ? [{ id: 'notificacoes', label: isMobile ? 'Notif.' : 'Notificações', icon: <Mail size={13} style={{ marginRight: 5 }} /> }]
+      : []),
     // Alpha interno do CAD Engine — restrito por enquanto ao mesmo público do
     // motor de templates de diagrama (ver useDiagramEngineAccess): projetista
     // e admin da GD Manager (o master, que é admin da GD Manager, já cai aqui).
@@ -1976,6 +1981,10 @@ export function ProjectModal({ projectId, onClose, initialTab = 'geral' }: Proje
                 {activeTab === 'historico' && (
                   <TabHistory projectId={project.id} />
                 )}
+                {activeTab === 'notificacoes' && (
+                  <ProjectEmailsTab projectId={project.id} />
+                )}
+
                 {activeTab === 'unifilar' && hasDiagramEngineAccess && (
                   <UnifilarTab project={project} />
                 )}
