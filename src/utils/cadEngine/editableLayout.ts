@@ -3,11 +3,11 @@ import { CONNECTION_INSET, PORT_STUB, SYMBOL_BBOX, SYMBOL_DEFS, SYMBOL_PORTS, Sy
 import { WARNING_PLATE_ENEL, WARNING_PLATE_GENERIC } from './warningPlates';
 import {
   CENTER_Y, DRAW_BOTTOM, DRAW_TOP, drawFrameAndHeader, drawLegendTable, drawTitleBlock,
-  LEGEND_LINE_H, LEGEND_X0, PITCH_X, SheetOptions, START_X,
+  LEGEND_LINE_H, LEGEND_X0, paperOf, PaperSize, PITCH_X, SheetOptions, START_X,
 } from './paper';
 import { resolveProjectTags } from '@/utils/projectValues';
 
-export type { SheetOptions } from './paper';
+export type { PaperSize, SheetOptions } from './paper';
 
 /**
  * Layout EDITÁVEL: o usuário pode arrastar, girar, redimensionar e ligar
@@ -1049,8 +1049,58 @@ export function inverterCountOf(state: DiagramSceneState): number {
  * - TODOS os ids são `manual-` → cena 100% editável no projeto e o
  *   reconcile() nunca recria nada por cima (mesma regra dos modelos).
  */
+/**
+ * Geometria do desenho por FOLHA. O A4 é o layout de sempre (projeto comum) e
+ * o A3 é o mesmo desenho espalhado — mesma leitura, mais respiro. Trocar de
+ * folha é trocar esta linha, não reescrever o builder.
+ */
+export const SHEET_LAYOUT = {
+  A4: {
+    X_PV: 14, X_INV: 44, X_CB: 74, X_JUNC: 104, X_GB: 110,
+    X_EB: 163, X_METER: 199, X_GRID: 231,
+    MID_TOP: 118, ROW_GAP: 36, BOTTOM: 158, TOP: 30, MAP_TOP_LIMIT: 82,
+    band: { left: 14, right: 68 },              // faixa das células do esquemático
+    map: { x: 18, y: 36, w: 54, h: 38 },
+    note: { x: 96, y: 24, size: 2.1, lines: 2 },
+  },
+  A3: {
+    X_PV: 20, X_INV: 66, X_CB: 112, X_JUNC: 152, X_GB: 160,
+    X_EB: 218, X_METER: 268, X_GRID: 314,
+    MID_TOP: 150, ROW_GAP: 44, BOTTOM: 245, TOP: 30, MAP_TOP_LIMIT: 104,
+    band: { left: 20, right: 104 },
+    map: { x: 20, y: 38, w: 72, h: 52 },
+    note: { x: 120, y: 24, size: 2.6, lines: 1 },
+  },
+} as const;
+
+/**
+ * Qual folha este projeto pede? A4 é o padrão; sobe pra A3 só quando o desenho
+ * não cabe legível — é o "se adapta ao tamanho do projeto" que o usuário pediu
+ * (A3 em tudo deixava o unifilar simples perdido numa folha enorme).
+ */
+export function pickPaper(need: {
+  /** Fileiras: nº de inversores (compacto) ou de ramais (esquemático). */
+  rows: number;
+  /** Micros por ramal — só no esquemático. */
+  unitsPerRow?: number;
+  schematic?: boolean;
+  hasMap?: boolean;
+}): PaperSize {
+  const rows = Math.max(1, need.rows);
+  if (need.schematic) {
+    // o esquemático empilha módulos sobre o micro: só 1 ramal cabe em A4
+    return rows > 1 || (need.unitsPerRow ?? 1) > 3 || need.hasMap ? 'A3' : 'A4';
+  }
+  // compacto: em A4 as fileiras começam a encolher a partir de 4 (com planta
+  // de localização, 3) — daí em diante o A3 mantém os símbolos no tamanho
+  const maxA4 = need.hasMap ? 3 : 4;
+  return rows > maxA4 ? 'A3' : 'A4';
+}
+
 export function buildMultiArrangementScene(options: {
   inverterCount: number;
+  /** Folha do desenho (padrão A4). Use `pickPaper()` pra decidir. */
+  paper?: PaperSize;
   /** Legenda do bloco FV de cada arranjo (ex.: o arranjo de strings escolhido). */
   pvLegends?: string[][];
   includeGeneralBreaker?: boolean;
@@ -1113,13 +1163,11 @@ export function buildMultiArrangementScene(options: {
   // pode ir até a margem direita da folha e sobra vão de verdade entre o QGBT
   // e o padrão de entrada (pedido do usuário: "deixe o seguimento entre o
   // QGBT Solar e o padrão de entrada um pouco maior").
-  const X_PV = 20, X_INV = 66, X_CB = 112;  // caixas de 24mm com 22mm de vão
-  const X_JUNC = 152;                       // x do nó de junção dos arranjos
-  const X_GB = 160;                         // disjuntor geral (só com 2+ arranjos)
-  const X_EB = 218;                         // disjuntor do padrão de entrada
-  const X_METER = 268, X_GRID = 314;        // tudo à esquerda da legenda (350)
-  const MID_TOP = 150;                      // y do tronco CA (portas em MID_TOP+10)
-  const ROW_GAP = 44;
+  // O tamanho da folha ACOMPANHA o projeto: A4 no caso comum, A3 só quando o
+  // desenho precisa (muitos arranjos ou seguimentação de micro com 2+ ramais).
+  const paper = options.paper ?? 'A4';
+  const L = SHEET_LAYOUT[paper];
+  const { X_PV, X_INV, X_CB, X_JUNC, X_GB, X_EB, X_METER, X_GRID, MID_TOP, ROW_GAP } = L;
   const midY = MID_TOP + 10;
 
   // Auto-reorganização: com até 3 arranjos, fileiras centradas no tronco em
@@ -1128,8 +1176,8 @@ export function buildMultiArrangementScene(options: {
   // reduzem de escala pra prancha A4 comportar tudo. Com a PLANTA DE
   // LOCALIZAÇÃO no canto superior esquerdo, a faixa útil começa mais abaixo.
   const hasMap = !!options.locationMap;
-  const topLimit = (hasMap ? 104 : 30) + (options.rowContentAbove ?? 0); // 1ª fileira não sobe além disso
-  const BOTTOM = 245;                   // base do último símbolo: sobram ~12mm pro rótulo + legenda antes do carimbo (259)
+  const topLimit = (hasMap ? L.MAP_TOP_LIMIT : L.TOP) + (options.rowContentAbove ?? 0); // 1ª fileira não sobe além disso
+  const BOTTOM = L.BOTTOM;              // base do último símbolo, com folga pro rótulo antes do carimbo
   const avail = BOTTOM - topLimit;
   const minGap = hasMap ? 13 : 16;
   // afrouxa o espaçamento até o conjunto (fileiras + altura do último
@@ -1326,25 +1374,28 @@ export function buildMultiArrangementScene(options: {
   }
 
   // Nota normativa da equipotencialização — é o que a concessionária procura
-  // quando confere o aterramento do sistema.
-  // duas linhas curtas: uma linha só passava por baixo da tabela de legenda
-  const texts: PlacedText[] = [
-    {
-      id: uid('nota-bep'),
-      value: 'NOTA: aterramento do padrão de entrada, neutro e malha de aterramento da edificação',
-      x: 120, y: 24, size: 2.6,
-    },
-    {
-      id: uid('nota-bep2'),
-      value: 'equipotencializados no BEP — NBR 5410.',
-      x: 120, y: 28.5, size: 2.6,
-    },
-  ];
+  // quando confere o aterramento do sistema. Em A4 vai em duas linhas curtas
+  // (uma linha só passaria por baixo da tabela de legenda); em A3 cabe inteira.
+  const NOTA = 'NOTA: aterramento do padrão de entrada, neutro e malha de aterramento da edificação equipotencializados no BEP — NBR 5410.';
+  const texts: PlacedText[] = L.note.lines === 1
+    ? [{ id: uid('nota-bep'), value: NOTA, x: L.note.x, y: L.note.y, size: L.note.size }]
+    : [
+        {
+          id: uid('nota-bep'),
+          value: 'NOTA: aterramento do padrão de entrada, neutro e malha de',
+          x: L.note.x, y: L.note.y, size: L.note.size,
+        },
+        {
+          id: uid('nota-bep2'),
+          value: 'aterramento da edificação equipotencializados no BEP — NBR 5410.',
+          x: L.note.x, y: L.note.y + 3.5, size: L.note.size,
+        },
+      ];
 
   // ── PLANTA DE LOCALIZAÇÃO (recorte de satélite do local) ────────────────
   if (options.locationMap) {
     // abaixo do cabeçalho da folha (título + subtítulo ocupam até ~28mm)
-    const MAP = { x: 20, y: 38, w: 72, h: 52 };
+    const MAP = L.map;
     photos.push({ id: uid('planta'), href: options.locationMap.href, ...MAP });
     if (options.locationMap.caption) {
       texts.push({
@@ -1381,12 +1432,13 @@ export function buildMultiArrangementScene(options: {
     groups.unshift({
       id: uid('group'),
       title: 'PLANTA DE LOCALIZAÇÃO',
-      x: 16, y: 33, w: 80, h: options.locationMap.caption ? 66 : 62,
+      x: L.map.x - 4, y: L.map.y - 5, w: L.map.w + 8, h: L.map.h + (options.locationMap.caption ? 14 : 10),
       style: 'solid', moveContents: true,
     });
   }
 
-  return { placements, connections, photos, texts, groups, shapes: [] };
+  // a folha escolhida viaja no estado: editor e exportadores usam a mesma
+  return { placements, connections, photos, texts, groups, shapes: [], sheet: { paper } };
 }
 
 // ── Microinversores: representação ESQUEMÁTICA (seguimentação do ramal) ──────
@@ -1398,18 +1450,26 @@ export interface MicroBranchDraw {
   breakerA?: number | null;
 }
 
-/** Faixa útil do desenho (mesma do builder) — usada pra saber se o
- *  esquemático cabe na folha antes de gerar. */
-const SCHEMATIC_BAND = { top: 30, bottom: 245, left: 20, right: 104 };
+/** Faixa das células do esquemático, por folha. */
+const schematicBand = (paper: PaperSize) => ({
+  top: SHEET_LAYOUT[paper].TOP,
+  bottom: SHEET_LAYOUT[paper].BOTTOM,
+  left: SHEET_LAYOUT[paper].band.left,
+  right: SHEET_LAYOUT[paper].band.right,
+});
 const SCHEMATIC_MIN_SCALE = 0.42;   // abaixo disso o rótulo do bloco fica ilegível
 
 /**
- * O esquemático cabe em A4? Cada ramal empilha módulos SOBRE o micro e ainda
- * precisa do barramento CA embaixo, então o desenho cresce rápido: com 1 ou 2
- * ramais sai legível, com 3+ os símbolos ficariam menores que o mínimo. A UI
- * usa isso pra avisar antes de gerar (e sugerir o compacto).
+ * O esquemático cabe NA FOLHA INFORMADA? Cada ramal empilha módulos sobre o
+ * micro e ainda precisa do barramento CA embaixo, então o desenho cresce
+ * rápido: em A4 sai legível com 1 ramal, em A3 com até 3. A UI usa isso pra
+ * escolher a folha e, quando nem A3 resolve, sugerir o compacto.
  */
-export function microSchematicFit(branches: { modulesPerUnit: number[] }[], hasMap = false): {
+export function microSchematicFit(
+  branches: { modulesPerUnit: number[] }[],
+  hasMap = false,
+  paper: PaperSize = 'A4',
+): {
   /** Cabe com símbolos legíveis? Só então a UI oferece o esquemático. */
   fits: boolean;
   /** Dá pra desenhar sem fileiras se sobrepondo (mesmo que apertado)? */
@@ -1420,16 +1480,17 @@ export function microSchematicFit(branches: { modulesPerUnit: number[] }[], hasM
   /** Explicação pra UI quando não cabe. */
   reason: string;
 } {
+  const band = schematicBand(paper);
   const rows = Math.max(1, branches.length);
   const maxUnits = Math.max(1, ...branches.map(b => Math.max(1, b.modulesPerUnit.length)));
   // largura: as células dividem a faixa da geração
-  const cellW = (SCHEMATIC_BAND.right - SCHEMATIC_BAND.left) / maxUnits;
+  const cellW = (band.right - band.left) / maxUnits;
   const sH = (cellW - 2) / 24;
   // altura: o eixo da 1ª fileira já começa `stackAbove` abaixo do topo e a
   // última precisa dos 20mm da caixa do disjuntor; entre fileiras, a pilha
   // seguinte não pode invadir a caixa da anterior (gap ≥ stackAbove + 20).
-  const top = hasMap ? 104 : SCHEMATIC_BAND.top;
-  const anchorSpan = (SCHEMATIC_BAND.bottom - 20) - top;      // eixos disponíveis
+  const top = hasMap ? SHEET_LAYOUT[paper].MAP_TOP_LIMIT : band.top;
+  const anchorSpan = (band.bottom - 20) - top;      // eixos disponíveis
   // (rows-1)·(stackAbove+20) + stackAbove ≤ anchorSpan
   const maxStack = (anchorSpan - 20 * (rows - 1)) / rows;
   const sV = (maxStack - 28) / 40;
@@ -1439,7 +1500,7 @@ export function microSchematicFit(branches: { modulesPerUnit: number[] }[], hasM
   // só cabia um). Acima disso os blocos ficariam menores que o legível e a UI
   // manda usar o compacto.
   const reason = sV < SCHEMATIC_MIN_SCALE
-    ? `O esquemático desenha cada micro com os seus módulos empilhados: ${rows} ramais não cabem legíveis nem em A3. Use o compacto.`
+    ? `O esquemático desenha cada micro com os seus módulos empilhados: ${rows} ramais não cabem legíveis nem em ${paper}. Use o compacto.`
     : sH < SCHEMATIC_MIN_SCALE
       ? `Com ${maxUnits} microinversores no mesmo ramal os blocos ficariam pequenos demais na largura da folha.`
       : '';
@@ -1470,11 +1531,16 @@ export function buildMicroSchematicScene(options: Omit<Parameters<typeof buildMu
 }): DiagramSceneState {
   const branches = options.branches.length > 0 ? options.branches : [{ modulesPerUnit: [4] }];
   const rows = branches.length;
-  const fit = microSchematicFit(branches, !!options.locationMap);
+  // folha: A4 quando o esquemático cabe nela; senão A3 (o chamador pode fixar)
+  const paper: PaperSize = options.paper
+    ?? (microSchematicFit(branches, !!options.locationMap, 'A4').fits ? 'A4' : 'A3');
+  const band = schematicBand(paper);
+  const fit = microSchematicFit(branches, !!options.locationMap, paper);
   const s = fit.scale;
 
   const base = buildMultiArrangementScene({
     ...options,
+    paper,
     inverterCount: rows,
     inverterKind: 'microinverter',
     // a pilha (módulos + micro) cresce PRA CIMA do barramento, que fica na
@@ -1504,7 +1570,7 @@ export function buildMicroSchematicScene(options: Omit<Parameters<typeof buildMu
     if (!pv || !micro || !breaker || !acConn) continue;   // topologia fora do padrão: deixa a fileira compacta
 
     const units = Math.max(1, branches[r].modulesPerUnit.length);
-    const cellW = (SCHEMATIC_BAND.right - SCHEMATIC_BAND.left) / units;
+    const cellW = (band.right - band.left) / units;
     // ATENÇÃO à geometria dos símbolos: a escala é aplicada em torno do CENTRO
     // da caixa 24×20, então o centro visual é sempre (x+12, y+10) — o canto
     // não acompanha a escala. Por isso os cálculos abaixo são todos por CENTRO.
@@ -1531,7 +1597,7 @@ export function buildMicroSchematicScene(options: Omit<Parameters<typeof buildMu
 
     let busConn: ManualConnection | null = null;
     for (let j = 0; j < units; j++) {
-      const cx = SCHEMATIC_BAND.left + cellW * j + cellW / 2;
+      const cx = band.left + cellW * j + cellW / 2;
       const x = cx - 12;                                  // centro visual = x + 12
       const mods = branches[r].modulesPerUnit[j];
       const cellPv: PlacedSymbol = {
@@ -1780,7 +1846,7 @@ export function buildSheetFurnitureScene(
   tagValues?: Record<string, string>,
   usedConductors: ConductorType[] = [],
 ): Scene {
-  const scene: Scene = { paper: { widthMm: 297, heightMm: 210 }, shapes: [], blocks: [], blockDefs: SYMBOL_DEFS };
+  const scene: Scene = { paper: paperOf(sheet?.paper), shapes: [], blocks: [], blockDefs: SYMBOL_DEFS };
   const resolve = (s: string) => (tagValues ? resolveProjectTags(s, tagValues) : s);
   drawFrameAndHeader(scene, json);
   drawTitleBlock(scene, json, resolveSheet(sheet, resolve));
@@ -1809,7 +1875,7 @@ export function buildSceneFromPlacement(
 ): Scene {
   const { placements, connections, photos, texts } = state;
   const groups = state.groups ?? [];
-  const scene: Scene = { paper: { widthMm: 297, heightMm: 210 }, shapes: [], blocks: [], blockDefs: SYMBOL_DEFS };
+  const scene: Scene = { paper: paperOf(state.sheet?.paper), shapes: [], blocks: [], blockDefs: SYMBOL_DEFS };
   drawFrameAndHeader(scene, json);
   const resolve = (s: string) => (tagValues ? resolveProjectTags(s, tagValues) : s);
 

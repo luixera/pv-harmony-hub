@@ -278,14 +278,21 @@ folha; os símbolos do ramal reduzem de escala junto (até 0,6×) e o padrão de
 entrada nunca reduz. Com **planta de localização** a faixa começa mais
 abaixo (82mm) e o gap mínimo cai pra 13mm.
 
-**Prancha A3** (jul/2026 — "talvez aumentando o tamanho da folha"): `PAPER`
-passou a 420×297. Em A4 o desenho vivia no limite e três problemas eram
-sintoma disso: rótulo de módulo/micro se sobrepondo, carimbo apertado (campo
-endereço minúsculo) e a seguimentação de microinversores só cabendo com um
-ramal. Colunas em A3: PV 20 · INV 66 · CB 112 · junção 152 · geral 160 ·
-padrão 218 · medidor 268 · rede 314 (legenda a partir de 350); eixo do tronco
-em 150 e base da última fileira em 245. A seguimentação passou a caber com
-**até 3 ramais** — o formato da prancha de referência.
+**Folha que se adapta ao projeto** (jul/2026): o diagrama nasce em **A4** e só
+sobe pra **A3** quando o desenho precisa — A3 em tudo deixava o unifilar
+simples perdido numa folha enorme (relato do usuário). Quem decide é
+`pickPaper({rows, unitsPerRow, schematic, hasMap})`: compacto vai pra A3 acima
+de 4 fileiras (3 com planta de localização); o esquemático de microinversores,
+acima de 1 ramal. A geometria de cada folha está em `SHEET_LAYOUT` (colunas,
+eixo do tronco, faixa das células, planta, nota) — trocar de folha é trocar
+uma linha, não reescrever o builder.
+
+O tamanho escolhido viaja em `DiagramSceneState.sheet.paper` e vira
+`Scene.paper`, então editor, SVG, PDF e DXF usam sempre a mesma folha.
+**Armadilha já paga**: a mobília (moldura, carimbo, legenda) lia o `PAPER`
+global enquanto a cena declarava outro tamanho — o resultado era um desenho
+maior que a página, cortado na exportação. Hoje `drawFrameAndHeader`,
+`drawTitleBlock` e `drawLegendTable` leem `scene.paper`.
 
 **Geometria da prancha e dos nós** (jul/2026 — pedido do usuário "ajuste os
 nós e pontos de ligação entre os componentes"):

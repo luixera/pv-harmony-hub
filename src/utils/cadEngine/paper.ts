@@ -2,15 +2,24 @@ import { ComponentKind, Scene, TechnicalJsonMvp } from './types';
 import { KIND_LEGEND } from './symbols';
 
 /**
- * Constantes de papel/margem compartilhadas entre o layout fixo e o editável.
- *
- * A prancha é **A3 paisagem** (jul/2026, decisão do usuário: "talvez
- * aumentando o tamanho da folha"). Em A4 o desenho vivia no limite — rótulo de
- * módulo/inversor se sobrepondo, carimbo apertado e a seguimentação de
- * microinversores só cabia com um ramal. A3 é o formato usual de unifilar de
- * GD e resolve os três de uma vez.
+ * Formatos de prancha. O tamanho **se adapta ao projeto** (pedido do usuário):
+ * A4 para o projeto comum e A3 só quando o desenho realmente precisa — muitos
+ * arranjos, ou a seguimentação de microinversores com mais de um ramal. Quem
+ * decide é `pickPaper()` no builder; o tamanho escolhido viaja na cena
+ * (`Scene.paper`) e no estado do diagrama (`sheet.paper`), então editor e
+ * exportadores usam sempre a folha certa.
  */
-export const PAPER = { widthMm: 420, heightMm: 297 }; // A3 paisagem
+export interface PaperMm { widthMm: number; heightMm: number }
+export const PAPERS: Record<"A4" | "A3", PaperMm> = {
+  A4: { widthMm: 297, heightMm: 210 },
+  A3: { widthMm: 420, heightMm: 297 },
+};
+export type PaperSize = keyof typeof PAPERS;
+
+/** Folha padrão (A4) — usada quando o diagrama não diz qual é a dele. */
+export const PAPER = PAPERS.A4;
+
+export const paperOf = (size?: PaperSize | null) => PAPERS[size ?? 'A4'] ?? PAPERS.A4;
 export const MARGIN = 12;
 export const TITLE_BLOCK_H = 26;
 export const PITCH_X = 46; // largura do símbolo (24) + espaçamento (22)
@@ -23,12 +32,16 @@ export const START_X = MARGIN + 14;
 /** Coluna reservada da tabela de LEGENDA (lado direito da folha). O
  *  desenho "útil" vai de START_X até LEGEND_X0 — `layoutFromRecognition`
  *  comprime o espaçamento pra caber nessa faixa. */
-export const LEGEND_W = 58;
-export const LEGEND_X0 = PAPER.widthMm - MARGIN - LEGEND_W; // 350 em A3
+export const LEGEND_W = 52;
+export const LEGEND_X0 = PAPER.widthMm - MARGIN - LEGEND_W; // 233 em A4 (padrão)
+/** Início da coluna da legenda na folha informada. */
+export const legendX0Of = (size?: PaperSize | null) => paperOf(size).widthMm - MARGIN - LEGEND_W;
 
 /** Campos editáveis da folha (carimbo/legenda) — persistidos no
  *  `DiagramSceneState.sheet`. Todos aceitam tags `{chave}` do projeto. */
 export interface SheetOptions {
+  /** Folha do diagrama — A4 (padrão) ou A3 quando o desenho precisa. */
+  paper?: PaperSize;
   respTecnico?: string;
   art?: string;
   revisao?: string;
@@ -40,7 +53,7 @@ export interface SheetOptions {
 export function drawFrameAndHeader(scene: Scene, json: TechnicalJsonMvp) {
   scene.shapes.push({
     layer: 'FRAME',
-    geometry: { kind: 'rect', x: MARGIN, y: MARGIN, w: PAPER.widthMm - MARGIN * 2, h: PAPER.heightMm - MARGIN * 2 },
+    geometry: { kind: 'rect', x: MARGIN, y: MARGIN, w: scene.paper.widthMm - MARGIN * 2, h: scene.paper.heightMm - MARGIN * 2 },
   });
   scene.shapes.push({
     layer: 'TEXT_LABEL',
@@ -59,9 +72,9 @@ export function drawFrameAndHeader(scene: Scene, json: TechnicalJsonMvp) {
  * editável por diagrama; valores já chegam com as tags resolvidas.
  */
 export function drawTitleBlock(scene: Scene, json: TechnicalJsonMvp, sheet?: SheetOptions) {
-  const tbY = PAPER.heightMm - MARGIN - TITLE_BLOCK_H;
+  const tbY = scene.paper.heightMm - MARGIN - TITLE_BLOCK_H;
   const tbX = MARGIN;
-  const tbW = PAPER.widthMm - MARGIN * 2;
+  const tbW = scene.paper.widthMm - MARGIN * 2;
   const rowH = TITLE_BLOCK_H / 2;
   scene.shapes.push({ layer: 'TITLE_BLOCK', geometry: { kind: 'rect', x: tbX, y: tbY, w: tbW, h: TITLE_BLOCK_H } });
   scene.shapes.push({ layer: 'TITLE_BLOCK', geometry: { kind: 'line', a: { x: tbX, y: tbY + rowH }, b: { x: tbX + tbW, y: tbY + rowH } } });
@@ -112,7 +125,8 @@ export function drawLegendTable(
   // condutores CA-únicos não precisam de linha na legenda (é o padrão do desenho inteiro)
   const conductorRows = usedConductors.length > 1 ? usedConductors : [];
   if (usedKinds.length === 0 && conductorRows.length === 0) return;
-  const x0 = LEGEND_X0;
+  // a coluna acompanha a folha da CENA (A4 ou A3)
+  const x0 = scene.paper.widthMm - MARGIN - LEGEND_W;
   const y0 = MARGIN + 18;
   const headerH = 5.5, colHeaderH = 4.5, rowH = 8;
   const conductorRowH = 5;

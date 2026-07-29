@@ -18,7 +18,7 @@ import { CONDUCTOR_COLOR, sceneToSvgInner, primitiveToSvg, blockTransform } from
 import { sceneToPdfBlob } from '@/utils/cadEngine/exportPdf';
 import { sceneToDxf } from '@/utils/cadEngine/exportDxf';
 import { KIND_LABEL, SYMBOL_BBOX, SYMBOL_DEFS, SYMBOL_PORTS } from '@/utils/cadEngine/symbols';
-import { CENTER_Y, PAPER, PITCH_X, START_X } from '@/utils/cadEngine/paper';
+import { CENTER_Y, paperOf, PITCH_X, START_X } from '@/utils/cadEngine/paper';
 import { resolveProjectTags, TEMPLATE_VARIABLES } from '@/utils/projectValues';
 import { sanitizeFileName } from '@/lib/utils';
 
@@ -94,7 +94,9 @@ export function DiagramEditor({
   const [showUnderlay, setShowUnderlay] = useState(true);
   const [generatingPdf, setGeneratingPdf] = useState(false);
   /** Janela visível da folha (zoom/pan) — viewBox do SVG em mm. */
-  const [viewBox, setViewBox] = useState({ x: 0, y: 0, w: PAPER.widthMm, h: PAPER.heightMm });
+  // folha ATIVA do diagrama (A4 por padrão; o builder marca A3 quando precisa)
+  const paperMm = paperOf(sheet.paper);
+  const [viewBox, setViewBox] = useState({ x: 0, y: 0, w: paperOf(initialState.sheet?.paper).widthMm, h: paperOf(initialState.sheet?.paper).heightMm });
   const [marquee, setMarquee] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
   const [historyTick, setHistoryTick] = useState(0); // só pra reabilitar/desabilitar os botões desfazer/refazer
   /** Guias de alinhamento (linha magenta) — aparecem quando um símbolo arrastado alinha com o centro de outro. */
@@ -178,7 +180,7 @@ export function DiagramEditor({
     setDrawnWaypoints([]);
     setSheetPanelOpen(false);
     setShowUnderlay(true);
-    setViewBox({ x: 0, y: 0, w: PAPER.widthMm, h: PAPER.heightMm });
+    setViewBox({ x: 0, y: 0, w: paperMm.widthMm, h: paperMm.heightMm });
     historyRef.current = { undo: [], redo: [] };
     currentStateRef.current = {
       placements: initialState.placements, connections: initialState.connections,
@@ -273,7 +275,7 @@ export function DiagramEditor({
 
       if (drag.type === 'pan') {
         const vb = drag.origVb;
-        const maxX = PAPER.widthMm - vb.w, maxY = PAPER.heightMm - vb.h;
+        const maxX = paperMm.widthMm - vb.w, maxY = paperMm.heightMm - vb.h;
         setViewBox({
           x: Math.max(0, Math.min(maxX, vb.x - dx)),
           y: Math.max(0, Math.min(maxY, vb.y - dy)),
@@ -1134,28 +1136,28 @@ export function DiagramEditor({
       const mmX = vb.x + (e.clientX - rect.left) * pxToMm;
       const mmY = vb.y + (e.clientY - rect.top) * pxToMm;
       const factor = e.deltaY > 0 ? 1.15 : 1 / 1.15;
-      const newW = Math.max(30, Math.min(PAPER.widthMm, vb.w * factor));
-      const newH = newW * (PAPER.heightMm / PAPER.widthMm);
+      const newW = Math.max(30, Math.min(paperMm.widthMm, vb.w * factor));
+      const newH = newW * (paperMm.heightMm / paperMm.widthMm);
       // mantém o ponto sob o cursor parado durante o zoom
       const fx = (mmX - vb.x) / vb.w, fy = (mmY - vb.y) / vb.h;
-      const nx = Math.max(0, Math.min(PAPER.widthMm - newW, mmX - fx * newW));
-      const ny = Math.max(0, Math.min(PAPER.heightMm - newH, mmY - fy * newH));
+      const nx = Math.max(0, Math.min(paperMm.widthMm - newW, mmX - fx * newW));
+      const ny = Math.max(0, Math.min(paperMm.heightMm - newH, mmY - fy * newH));
       setViewBox({ x: nx, y: ny, w: newW, h: newH });
     };
     svg.addEventListener('wheel', onWheel, { passive: false });
     return () => svg.removeEventListener('wheel', onWheel);
   }, [loaded]);
 
-  const zoomFit = () => setViewBox({ x: 0, y: 0, w: PAPER.widthMm, h: PAPER.heightMm });
+  const zoomFit = () => setViewBox({ x: 0, y: 0, w: paperMm.widthMm, h: paperMm.heightMm });
   const zoomStep = (dir: 1 | -1) => {
     const vb = viewBoxRef.current;
     const factor = dir > 0 ? 1 / 1.3 : 1.3;
-    const newW = Math.max(30, Math.min(PAPER.widthMm, vb.w * factor));
-    const newH = newW * (PAPER.heightMm / PAPER.widthMm);
+    const newW = Math.max(30, Math.min(paperMm.widthMm, vb.w * factor));
+    const newH = newW * (paperMm.heightMm / paperMm.widthMm);
     const cx = vb.x + vb.w / 2, cy = vb.y + vb.h / 2;
     setViewBox({
-      x: Math.max(0, Math.min(PAPER.widthMm - newW, cx - newW / 2)),
-      y: Math.max(0, Math.min(PAPER.heightMm - newH, cy - newH / 2)),
+      x: Math.max(0, Math.min(paperMm.widthMm - newW, cx - newW / 2)),
+      y: Math.max(0, Math.min(paperMm.heightMm - newH, cy - newH / 2)),
       w: newW, h: newH,
     });
   };
@@ -1482,7 +1484,7 @@ export function DiagramEditor({
           <button onClick={() => zoomStep(1)} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: '4px 7px', display: 'flex' }} title="Aproximar"><ZoomIn size={13} /></button>
           <button onClick={() => zoomStep(-1)} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: '4px 7px', display: 'flex' }} title="Afastar"><ZoomOut size={13} /></button>
           <button onClick={zoomFit} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: '4px 7px', display: 'flex' }} title="Ver a folha inteira"><Maximize size={13} /></button>
-          <span style={{ fontSize: 10.5, color: '#888', padding: '0 5px', minWidth: 34, textAlign: 'center' }}>{Math.round((PAPER.widthMm / viewBox.w) * 100)}%</span>
+          <span style={{ fontSize: 10.5, color: '#888', padding: '0 5px', minWidth: 34, textAlign: 'center' }}>{Math.round((paperMm.widthMm / viewBox.w) * 100)}%</span>
         </div>
 
         <button
@@ -2100,10 +2102,10 @@ export function DiagramEditor({
 
           {/* Guias de alinhamento — linha magenta quando o símbolo arrastado alinha com o centro de outro */}
           {guides?.x !== undefined && (
-            <line x1={guides.x} y1={0} x2={guides.x} y2={PAPER.heightMm} stroke="#E0329B" strokeWidth={0.25} strokeDasharray="2,1.4" pointerEvents="none" />
+            <line x1={guides.x} y1={0} x2={guides.x} y2={paperMm.heightMm} stroke="#E0329B" strokeWidth={0.25} strokeDasharray="2,1.4" pointerEvents="none" />
           )}
           {guides?.y !== undefined && (
-            <line x1={0} y1={guides.y} x2={PAPER.widthMm} y2={guides.y} stroke="#E0329B" strokeWidth={0.25} strokeDasharray="2,1.4" pointerEvents="none" />
+            <line x1={0} y1={guides.y} x2={paperMm.widthMm} y2={guides.y} stroke="#E0329B" strokeWidth={0.25} strokeDasharray="2,1.4" pointerEvents="none" />
           )}
 
           {/* Retângulo de multi-seleção em andamento */}

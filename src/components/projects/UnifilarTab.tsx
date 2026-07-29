@@ -5,7 +5,7 @@ import { buildTechnicalJsonFromProject } from '@/utils/cadEngine/buildTechnicalJ
 import {
   ConnectionEndpoint, DiagramSceneState, ManualConnection,
   buildMicroSchematicScene, buildMultiArrangementScene, initialConnections, initialPlacement,
-  inverterCountOf, isConnectionResolvable, microSchematicFit, multiplyInverterBranches,
+  inverterCountOf, isConnectionResolvable, microSchematicFit, multiplyInverterBranches, pickPaper,
 } from '@/utils/cadEngine/editableLayout';
 import { Point } from '@/utils/cadEngine/types';
 import { buildProjectValues } from '@/utils/projectValues';
@@ -334,6 +334,7 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
         })
       : buildMultiArrangementScene({
           ...common,
+          paper: pickPaper({ rows: plan.branches.length, hasMap: !!locationMap }),
           inverterCount: plan.branches.length,
           inverterKind: 'microinverter',
           pvLabels: plan.branches.map((_, i) => (plan.branches.length > 1 ? `Módulos – Ramal ${i + 1}` : 'Módulos')),
@@ -385,6 +386,7 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
     const locationMap = (await fetchLocationMap(project.generalData?.coordinates)).map;
 
     const state = buildMultiArrangementScene({
+      paper: pickPaper({ rows: projectInverters, hasMap: !!locationMap }),
       inverterCount: projectInverters,
       pvLegends,
       locationMap,
@@ -536,7 +538,9 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
                 <p style={{ fontSize: 11, color: '#666', margin: '2px 0 0' }}>• {microPlan.generalExplanation}</p>
               )}
               {(() => {
-                const fit = microSchematicFit(microPlan.branches, false);
+                // a folha acompanha o desenho: tenta A4 e só sobe pra A3 se precisar
+                const emA4 = microSchematicFit(microPlan.branches, false, 'A4');
+                const fit = emA4.fits ? emA4 : microSchematicFit(microPlan.branches, false, 'A3');
                 return (
                   <>
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 9 }}>
