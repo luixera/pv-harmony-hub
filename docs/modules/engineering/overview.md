@@ -220,7 +220,11 @@ O usuário pediu as duas, escolhidas na hora de gerar (aba Unifilar do projeto):
 - **Esquemático** (`buildMicroSchematicScene`) — a seguimentação da prancha de
   referência: cada micro desenhado com os seus módulos em cima, todos
   encadeados no **barramento CA** do ramal até o disjuntor. Reaproveita o
-  compacto inteiro e só reescreve o lado da geração.
+  compacto inteiro e só reescreve o lado da geração. O **modelo dos
+  equipamentos NÃO vai na célula** (ela tem ~20mm e o nome saía cortado): sai
+  inteiro em duas linhas no topo do desenho — "Módulos: …" e
+  "Microinversores: … · 2000W · 9,09A" — uma vez só, já que o modelo é o mesmo
+  do projeto inteiro.
 
 **Limite honesto de folha**: a seguimentação de **mais de um ramal** não cabe
 em A4 junto do padrão de entrada — o 2º ramal desceria em cima do DPS do QGBT.

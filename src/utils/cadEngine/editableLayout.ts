@@ -1470,6 +1470,8 @@ const schematicBand = (paper: PaperSize) => ({
   left: SHEET_LAYOUT[paper].band.left,
   right: SHEET_LAYOUT[paper].band.right,
 });
+/** Altura das linhas de equipamento (modelo do módulo e do micro), no topo. */
+const EQUIP_BLOCK_H = 10;
 const SCHEMATIC_MIN_SCALE = 0.42;   // abaixo disso o rótulo do bloco fica ilegível
 
 /**
@@ -1505,7 +1507,7 @@ export function microSchematicFit(
   const top = hasMap ? SHEET_LAYOUT[paper].MAP_TOP_LIMIT : band.top;
   const anchorSpan = (band.bottom - 20) - top;      // eixos disponíveis
   // (rows-1)·(stackAbove+20) + stackAbove ≤ anchorSpan
-  const maxStack = (anchorSpan - 20 * (rows - 1)) / rows;
+  const maxStack = (anchorSpan - EQUIP_BLOCK_H - 20 * (rows - 1)) / rows;
   const sV = (maxStack - 28) / 40;
   const raw = Math.min(0.85, sH, sV);
   const scale = Math.max(SCHEMATIC_MIN_SCALE, raw);
@@ -1559,7 +1561,7 @@ export function buildMicroSchematicScene(options: Omit<Parameters<typeof buildMu
     // a pilha (módulos + micro) cresce PRA CIMA do barramento, que fica na
     // altura da porta do disjuntor do ramal — assim o disjuntor não sai do
     // eixo e todo o lado da rede (tronco, QGBT, padrão) segue como no compacto
-    rowContentAbove: fit.stackAbove,
+    rowContentAbove: fit.stackAbove + EQUIP_BLOCK_H,
     rowHeightHint: fit.stackAbove,
     breakerLabels: branches.map((_, i) => (rows > 1 ? `Disjuntor Ramal ${i + 1}` : 'Disjuntor Geral CA')),
     branchBreakerA: branches.map(b => b.breakerA ?? null),
@@ -1567,6 +1569,7 @@ export function buildMicroSchematicScene(options: Omit<Parameters<typeof buildMu
 
   const placements = [...base.placements];
   const connections = [...base.connections];
+  const equipTexts: PlacedText[] = [];
   const byId = new Map(placements.map(p => [p.id, p]));
   // as fileiras saem na ordem de criação: 1 bloco FV por ramal
   const rowPvs = placements.filter(p => p.kind === 'pv-array');
@@ -1591,6 +1594,20 @@ export function buildMicroSchematicScene(options: Omit<Parameters<typeof buildMu
     const microCy = busY - (10 * s + 12);           // 12mm entre a caixa do micro e o barramento (cabe o rótulo)
     const pvCy = microCy - (20 * s + 6);
 
+    // Equipamentos do ramal: uma linha por tipo, com o modelo INTEIRO. Fica
+    // acima das células porque na célula (≈20mm) o nome não cabe.
+    const equipamentos = r > 0 ? [] : [
+      options.moduleModel ? `Módulos: ${options.moduleModel}` : '',
+      [options.microModel ? `Microinversores: ${options.microModel}` : '', ...(options.microLegend ?? [])]
+        .filter(Boolean).join(' · '),
+    ].filter(Boolean);
+    const equipTop = pvCy - 10 * s - 5 - (equipamentos.length - 1) * 4;
+    equipamentos.forEach((linha, i) => {
+      equipTexts.push({
+        id: uid('equip'), value: linha, x: band.left, y: equipTop + i * 4, size: 2.6,
+      });
+    });
+
     // fora as duas ligações da fileira compacta (FV→micro e micro→disjuntor)
     for (const id of [`${pv.id}-dc`, `${micro.id}-ac`]) {
       const idx = connections.findIndex(c => c.id === id);
@@ -1602,30 +1619,25 @@ export function buildMicroSchematicScene(options: Omit<Parameters<typeof buildMu
       if (idx >= 0) placements.splice(idx, 1);
     }
 
-    // o rótulo de cada célula não pode passar da largura dela, senão invade a
-    // célula vizinha (relato do usuário: legenda do módulo e do modelo do
-    // micro sobrepostas). ~1,45mm por caractere no corpo 2,6.
-    const maxChars = Math.max(6, Math.floor(cellW / 1.45));
-    const encurtar = (t: string) => (t.length > maxChars ? `${t.slice(0, maxChars - 1)}…` : t);
-
     let busConn: ManualConnection | null = null;
     for (let j = 0; j < units; j++) {
       const cx = band.left + cellW * j + cellW / 2;
       const x = cx - 12;                                  // centro visual = x + 12
       const mods = branches[r].modulesPerUnit[j];
+      // MODELO não entra na célula: ela tem ~20mm e o nome do equipamento é
+      // longo, então vinha cortado (relato do usuário). Ele sai inteiro na
+      // linha de equipamentos do ramal, logo acima das células.
       const cellPv: PlacedSymbol = {
         id: uid('pv-array'), kind: 'pv-array', x, y: pvCy - 10, rotation: 0, scale: s,
         label: `${mods}× módulo`,
-        legend: j === 0 && options.moduleModel ? [encurtar(options.moduleModel)] : [],
+        legend: [],
         // rótulo ACIMA do bloco: embaixo ele cairia dentro da caixa do micro
-        labelDy: -(20 * s + 4 + (j === 0 && options.moduleModel ? 3.5 : 0)),
+        labelDy: -(20 * s + 4),
       };
       const cellMicro: PlacedSymbol = {
         id: uid('microinverter'), kind: 'microinverter', x, y: microCy - 10, rotation: 0, scale: s,
         label: rows > 1 ? `MI ${r + 1}.${j + 1}` : `MI ${j + 1}`,
-        legend: j === 0
-          ? [options.microModel ?? '', ...(options.microLegend ?? [])].filter(Boolean).map(encurtar)
-          : [],
+        legend: [],
         // sobe o rótulo pra ele caber entre a caixa do micro e o barramento
         labelDy: -(10 * s + 6),
       };
@@ -1676,7 +1688,7 @@ export function buildMicroSchematicScene(options: Omit<Parameters<typeof buildMu
     delete c.waypoints;
   }
 
-  return { ...base, placements, connections };
+  return { ...base, placements, connections, texts: [...(base.texts ?? []), ...equipTexts] };
 }
 
 /**
