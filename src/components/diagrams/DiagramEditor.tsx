@@ -2052,6 +2052,11 @@ export function DiagramEditor({
                     <g
                       style={{ cursor: 'move' }}
                       onMouseDown={e => handleLabelMouseDown(e, p)}
+                      // Sem isto o clique BOLHA até o canvas, que limpa a
+                      // seleção: clicar na legenda pra editá-la abria o painel
+                      // e o fechava no mesmo clique. `stopPropagation` no
+                      // mousedown não segura o evento de click.
+                      onClick={e => e.stopPropagation()}
                       onDoubleClick={e => { e.stopPropagation(); resetLabelOffset(p.id); }}
                     >
                       {moved && (

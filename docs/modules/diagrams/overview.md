@@ -63,6 +63,16 @@ usuário: útil mais cedo, e o motor automático continua no roadmap):
 - `src/utils/cadEngine/editableLayout.ts` — `PlacedSymbol` (com `scale`), `ManualConnection` (`from`/`to` são `ConnectionEndpoint` — `symbol`/`port`/`line`/`point`, ver "Conexões vivas" —, mais `waypoints?: Point[]`), `PlacedPhoto`, `PlacedText`, `orthogonalPath`, `computeAllConnectionPoints` (resolve TODOS os condutores em ordem de dependência, com detecção de ciclo; `edgePoint()` interno recua pelo `CONNECTION_INSET`), `portPagePosition`/`findNearestPort`/`PORT_SNAP`, `pointAtT`/`nearestPointOnPolyline` (com `t`), `connectionDependsOn`, `detachDerivations`, `isConnectionResolvable`, `blockCenter` (considera a escala), `findNearestSymbol`/`SNAP_RADIUS` (snapping de clique/soltura), `snapToGrid`, `buildSceneFromPlacement` (a `Scene` a partir do estado editado + fotos + textos, resolvendo tags via `tagValues`), `buildSceneFromRecognition`/`layoutFromRecognition` (resultado da IA de reconhecimento → `DiagramSceneState`: fileira principal por `stage` + derivações `branch` empilhadas na mesma coluna, ver "Reconhecimento automático a partir de PDF" abaixo).
 - `src/utils/cadEngine/exportSvg.ts` / `exportPdf.ts` — `Scene` → SVG / PDF, com suporte a `rotation`/`scale` do bloco (PDF transforma os pontos manualmente — escala em torno do centro, depois gira, mesma ordem em ambos; SVG usa `transform="...rotate()...scale()..."` nativo via `blockTransform()`, reaproveitado ao vivo pelo canvas) e à primitiva `image` (SVG: `<image href>`; PDF: `doc.addImage`, formato detectado pelo prefixo do data URL). PDF via `jspdf`, já usado em `resumoPdf.ts` — nenhuma dependência nova. O `jspdf` é carregado por `import()` dinâmico através de `loadJsPdf()`, que aceita o construtor em `default`, em `jsPDF` ou em `default.jsPDF` — dependendo do build resolvido (ESM ou CJS) ele cai num lugar diferente, e pegar só `default` estoura "jsPDF is not a constructor".
 
+### Clique em elemento do canvas precisa parar o `click`
+
+O `<svg>` tem `onClick={handleCanvasClick}`, que **limpa a seleção** — é assim
+que se clica no vazio pra desmarcar. Todo elemento clicável (símbolo, alça,
+nó, foto, texto, e o **bloco de rótulo**) precisa de
+`onClick={e => e.stopPropagation()}`. `stopPropagation` no `onMouseDown` **não**
+resolve: são eventos diferentes, e o `click` continua borbulhando. Faltava no
+bloco de rótulo: clicar na legenda pra editá-la abria o painel de propriedades
+e o fechava no mesmo clique (jul/2026).
+
 ### Quando o download não sai
 
 Os três botões passam por `tentarBaixar()` no `DiagramEditor`, com `try/catch` e

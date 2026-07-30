@@ -212,7 +212,8 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
       totalModules: Math.max(0, Number(e?.module_quantity ?? 0) || 0),
       micro: microSpecsFromTechSpecs(inverterCatalog?.tech_specs ?? null, Number(e?.inverter_power ?? 0) || undefined),
       unitCount: projectInverters,
-      phaseType: phaseTypeOf(project.generalData?.phase_type),
+      // o micro entrega na tensão DELE; a fase da UC só limita a dedução
+      supplyPhaseType: phaseTypeOf(project.generalData?.phase_type),
       includeGeneral: ruleValue(ruleMap, 'protections.include_general_ac_breaker', 1) !== 0,
     }, ruleMap);
   }, [isMicro, suggestOpen, ruleMap, project.equipment, project.generalData, inverterCatalog, projectInverters]);
@@ -235,14 +236,15 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
   // Dimensionamento elétrico simplificado (Fase 2): bitolas, queda, disjuntor
   const sizing = useMemo(() => {
     if (!suggestOpen || ruleMap.size === 0) return null;
-    const rawPhase = String(project.generalData?.phase_type ?? '').toLowerCase();
-    const phaseType = rawPhase.includes('tri') ? 'trifasico' as const
-      : rawPhase.includes('bi') ? 'bifasico' as const : 'monofasico' as const;
+    const powerKw = Number(project.equipment?.inverter_power ?? 0) || undefined;
     return suggestElectricalSizing({
-      inverterPowerKw: Number(project.equipment?.inverter_power ?? 0) || undefined,
-      phaseType,
+      inverterPowerKw: powerKw,
+      // datasheet do inversor manda na fase/tensão da saída CA; a fase do
+      // padrão de entrada da UC só limita a dedução
+      inverterSpecs: inverterSpecsFromTechSpecs(inverterCatalog?.tech_specs ?? null, powerKw),
+      supplyPhaseType: phaseTypeOf(project.generalData?.phase_type),
     }, ruleMap);
-  }, [suggestOpen, ruleMap, project.equipment, project.generalData]);
+  }, [suggestOpen, ruleMap, project.equipment, project.generalData, inverterCatalog]);
 
   // ── Validador elétrico local (checklist do engenheiro, sem IA) ───────────
   const [validationOpen, setValidationOpen] = useState(false);
@@ -314,7 +316,7 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
       micro.powerKw ? `${micro.powerKw * 1000}W` : '',
       micro.maxAcCurrentA ? `${micro.maxAcCurrentA}A` : '',
     ].filter(Boolean).join(' · ');
-    const dcSizing = suggestElectricalSizing({ phaseType: phaseTypeOf(project.generalData?.phase_type) }, ruleMap);
+    const dcSizing = suggestElectricalSizing({ supplyPhaseType: phaseTypeOf(project.generalData?.phase_type) }, ruleMap);
     const locationMap = (await fetchLocationMap(project.generalData?.coordinates)).map;
     const common = {
       ...sheetOptions(),
@@ -380,10 +382,10 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
       ? confirm(`Colocar um disjuntor geral para seccionar os ${projectInverters} arranjos?\n\nEle é opcional (cada arranjo já tem o seu) e será dimensionado pela SOMA das correntes dos inversores.`)
       : ruleWantsGeneral;
 
-    // Proteções: disjuntor de cada arranjo pela corrente CA do inversor
-    const rawPhase = String(project.generalData?.phase_type ?? '').toLowerCase();
-    const phaseType = rawPhase.includes('tri') ? 'trifasico' as const
-      : rawPhase.includes('bi') ? 'bifasico' as const : 'monofasico' as const;
+    // Proteções: disjuntor de cada arranjo pela corrente CA do inversor.
+    // A fase da UC entra só como TETO da dedução — quem manda na corrente é a
+    // saída do inversor (ver `resolveInverterPhase`).
+    const supplyPhaseType = phaseTypeOf(project.generalData?.phase_type);
     const invSpecs = inverterSpecsFromTechSpecs(
       inverterCatalog?.tech_specs ?? null,
       Number(project.equipment?.inverter_power ?? 0) || undefined,
@@ -392,10 +394,11 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
       inverters: Array.from({ length: projectInverters }, () => ({
         powerKw: invSpecs.powerKw, acCurrentA: invSpecs.maxAcCurrentA,
       })),
-      phaseType,
+      inverterSpecs: invSpecs,
+      supplyPhaseType,
       includeGeneral,
     }, ruleMap);
-    const dcSizing = suggestElectricalSizing({ phaseType }, ruleMap);
+    const dcSizing = suggestElectricalSizing({ supplyPhaseType }, ruleMap);
     // planta de localização (recorte de satélite) — some silenciosamente se o
     // projeto não tiver coordenadas ou faltar a chave do Maps
     const locationMap = (await fetchLocationMap(project.generalData?.coordinates)).map;

@@ -70,6 +70,10 @@ export interface InverterSpecs {
   powerKw?: number;
   /** Corrente CA máxima de saída (datasheet) — base exata do disjuntor do arranjo. */
   maxAcCurrentA?: number;
+  /** Fases na SAÍDA do inversor (1, 2 ou 3) — datasheet. Ver `resolveInverterPhase`. */
+  acPhases?: number;
+  /** Tensão nominal de saída CA (datasheet), quando difere do padrão da regra. */
+  acVoltageV?: number;
 }
 
 /** Datasheet estruturado do módulo. */
@@ -467,6 +471,91 @@ function pickSection(params: {
  * pelas regras, com explicação e fonte. Alimenta o painel do projeto e,
  * na sequência, os memoriais.
  */
+export type PhaseType = 'monofasico' | 'bifasico' | 'trifasico';
+
+export interface ResolvedPhase {
+  phaseType: PhaseType;
+  voltageV: number;
+  /** De onde saiu a informação — a explicação na tela muda conforme. */
+  source: 'datasheet' | 'potencia';
+  alerts: EngineAlert[];
+}
+
+/**
+ * A fase da SAÍDA DO INVERSOR — que não é a mesma coisa que a fase do padrão
+ * de entrada da UC.
+ *
+ * Bug real (jul/2026): um SG3.0RS-L (3 kW monofásico 220 V) num padrão de
+ * entrada trifásico teve a corrente calculada como 3kW/(380×√3) = 4,6 A, em vez
+ * dos 13,6 A reais — o disjuntor saiu 10 A onde precisava de 20 A. A fase da
+ * ENTRADA da unidade consumidora não determina como o inversor entrega energia;
+ * um inversor monofásico continua monofásico num padrão trifásico.
+ *
+ * Ordem: datasheet do catálogo manda; sem ele, deduz pela potência (regra
+ * `protections.single_phase_max_kw`) e AVISA que deduziu. A dedução nunca
+ * passa do que o padrão de entrada comporta — trifásico numa UC monofásica não
+ * existe —, mas se o DATASHEET disser trifásico numa UC monofásica o motor
+ * mantém o datasheet e levanta a incompatibilidade, que é problema de projeto,
+ * não de arredondamento.
+ */
+export function resolveInverterPhase(input: {
+  specs?: InverterSpecs | null;
+  powerKw?: number;
+  /** Fases do padrão de entrada da UC (`project_general_data.phase_type`). */
+  supplyPhaseType?: PhaseType;
+  /** Override explícito, quando quem chama já sabe a fase. */
+  phaseType?: PhaseType;
+}, rules: RuleMap): ResolvedPhase {
+  const alerts: EngineAlert[] = [];
+  const monoV = ruleValue(rules, 'voltage_drop.ac_voltage_mono_v', 220);
+  const triV = ruleValue(rules, 'voltage_drop.ac_voltage_tri_v', 380);
+  const limiteMonoKw = ruleValue(rules, 'protections.single_phase_max_kw', 6);
+  const potencia = input.powerKw ?? input.specs?.powerKw;
+  const supply = input.supplyPhaseType;
+
+  const porFases = (n?: number): PhaseType | undefined =>
+    n === 3 ? 'trifasico' : n === 2 ? 'bifasico' : n === 1 ? 'monofasico' : undefined;
+
+  const doDatasheet = input.phaseType ?? porFases(input.specs?.acPhases);
+  const tensaoDatasheet = input.specs?.acVoltageV;
+
+  if (doDatasheet) {
+    const phaseType = doDatasheet;
+    if (phaseType === 'trifasico' && supply && supply !== 'trifasico') {
+      alerts.push({
+        severity: 'warning', code: 'inverter_phase_vs_supply',
+        message: `O inversor é trifásico, mas o padrão de entrada da UC está cadastrado como ${supply}.`,
+        suggestion: 'Confira o padrão de entrada do projeto ou o cadastro do inversor — um dos dois está errado.',
+      });
+    }
+    return {
+      phaseType,
+      voltageV: tensaoDatasheet ?? (phaseType === 'trifasico' ? triV : monoV),
+      source: 'datasheet',
+      alerts,
+    };
+  }
+
+  // sem datasheet: deduz pela potência, sem passar do que a UC comporta
+  let phaseType: PhaseType = (potencia ?? 0) > limiteMonoKw ? 'trifasico' : 'monofasico';
+  let limitadoPelaUC = false;
+  if (phaseType === 'trifasico' && supply && supply !== 'trifasico') {
+    phaseType = supply;
+    limitadoPelaUC = true;
+  }
+  const voltageV = tensaoDatasheet ?? (phaseType === 'trifasico' ? triV : monoV);
+  alerts.push({
+    severity: 'info', code: 'inverter_phase_estimated',
+    message: `Saída do inversor deduzida como ${phaseType} em ${voltageV}V`
+      + (potencia ? ` (${potencia}kW ${potencia > limiteMonoKw ? 'acima' : 'até'} do limite de ${limiteMonoKw}kW da regra)` : '')
+      + (limitadoPelaUC ? `, limitada ao padrão de entrada ${supply} da UC` : '')
+      + '.',
+    suggestion: 'Preencha "Fases na saída CA" do inversor no Catálogo de Equipamentos — a corrente do disjuntor depende disso.',
+    source: ruleSource(rules, 'protections.single_phase_max_kw'),
+  });
+  return { phaseType, voltageV, source: 'potencia', alerts };
+}
+
 export function suggestElectricalSizing(input: {
   stringCurrentA?: number;          // Imp do módulo (ou fallback da regra)
   stringsInParallelPerMppt?: number;// pra corrente CC por circuito (padrão 1)
@@ -474,17 +563,19 @@ export function suggestElectricalSizing(input: {
   /** Corrente CA máxima de saída do inversor (datasheet) — tem prioridade
    *  sobre o cálculo por potência, que é só uma aproximação. */
   inverterAcCurrentA?: number;
-  phaseType?: 'monofasico' | 'bifasico' | 'trifasico';
+  /** Fase da SAÍDA do inversor. Quando ausente, sai de `inverterSpecs`/potência
+   *  (ver `resolveInverterPhase`) — NÃO do padrão de entrada da UC. */
+  phaseType?: PhaseType;
+  /** Datasheet do inversor no catálogo — dá a fase e a tensão de saída reais. */
+  inverterSpecs?: InverterSpecs | null;
+  /** Fases do padrão de entrada da UC — só limita a dedução, não a define. */
+  supplyPhaseType?: PhaseType;
   dcLengthM?: number;
   acLengthM?: number;
   dcVoltageV?: number;              // tensão de operação da string (do arranjo escolhido)
 }, rules: RuleMap): ElectricalSizing {
   const alerts: EngineAlert[] = [];
   const rho = ruleValue(rules, 'cables.copper_resistivity', 0.0172);
-  const threePhase = input.phaseType === 'trifasico';
-  const acV = threePhase
-    ? ruleValue(rules, 'voltage_drop.ac_voltage_tri_v', 380)
-    : ruleValue(rules, 'voltage_drop.ac_voltage_mono_v', 220);
 
   const cablesOn = isGroupEnabled(rules, 'cables');
   const vdOn = isGroupEnabled(rules, 'voltage_drop');
@@ -522,6 +613,15 @@ export function suggestElectricalSizing(input: {
   let breakerA: number | null = null;
   let breakerExplanation: string | null = null;
   if (cablesOn && ((input.inverterPowerKw && input.inverterPowerKw > 0) || input.inverterAcCurrentA)) {
+    // a fase é a da SAÍDA DO INVERSOR (datasheet > potência), nunca a da UC
+    const fase = resolveInverterPhase({
+      specs: input.inverterSpecs, powerKw: input.inverterPowerKw,
+      supplyPhaseType: input.supplyPhaseType, phaseType: input.phaseType,
+    }, rules);
+    const threePhase = fase.phaseType === 'trifasico';
+    const acV = fase.voltageV;
+    // só avisa sobre a fase quando ela de fato entrou numa conta CA
+    if (!input.inverterAcCurrentA) alerts.push(...fase.alerts);
     // corrente REAL do datasheet quando existir; senão, calculada pela potência
     const iAc = input.inverterAcCurrentA
       ?? (input.inverterPowerKw! * 1000) / (acV * (threePhase ? Math.sqrt(3) : 1));
@@ -534,7 +634,7 @@ export function suggestElectricalSizing(input: {
     ac = {
       currentA: Math.round(iAc * 10) / 10, sectionMm2: pick.sectionMm2,
       voltageDropPct: Math.round(pick.dropPct * 100) / 100, systemV: acV, lengthM: lAc,
-      explanation: `Cabo CA ${pick.sectionMm2}mm² pra ${Math.round(iAc * 10) / 10}A (${input.inverterPowerKw}kW em ${acV}V${threePhase ? ' trifásico' : ''}) e ${lAc}m — queda ~${Math.round(pick.dropPct * 100) / 100}% (limite ${maxDropAc}%).`,
+      explanation: `Cabo CA ${pick.sectionMm2}mm² pra ${Math.round(iAc * 10) / 10}A (${input.inverterPowerKw}kW em ${acV}V ${fase.phaseType}) e ${lAc}m — queda ~${Math.round(pick.dropPct * 100) / 100}% (limite ${maxDropAc}%).`,
     };
     if (vdOn && pick.capped) {
       alerts.push({
@@ -605,14 +705,25 @@ export interface BreakerPlan {
  */
 export function suggestBreakerPlan(input: {
   inverters: { powerKw?: number; acCurrentA?: number }[];
-  phaseType?: 'monofasico' | 'bifasico' | 'trifasico';
+  /** Fase da SAÍDA do inversor — não confundir com a do padrão de entrada. */
+  phaseType?: PhaseType;
+  /** Datasheet do inversor: dá a fase e a tensão reais quando preenchido. */
+  inverterSpecs?: InverterSpecs | null;
+  /** Fases do padrão de entrada da UC — só limita a dedução. */
+  supplyPhaseType?: PhaseType;
   includeGeneral?: boolean;
 }, rules: RuleMap): BreakerPlan {
   const alerts: EngineAlert[] = [];
-  const threePhase = input.phaseType === 'trifasico';
-  const acV = threePhase
-    ? ruleValue(rules, 'voltage_drop.ac_voltage_tri_v', 380)
-    : ruleValue(rules, 'voltage_drop.ac_voltage_mono_v', 220);
+  const fase = resolveInverterPhase({
+    specs: input.inverterSpecs,
+    powerKw: input.inverters[0]?.powerKw,
+    supplyPhaseType: input.supplyPhaseType,
+    phaseType: input.phaseType,
+  }, rules);
+  const threePhase = fase.phaseType === 'trifasico';
+  const acV = fase.voltageV;
+  // a dedução só interessa quando alguma corrente foi estimada pela potência
+  if (input.inverters.some(i => !i.acCurrentA)) alerts.push(...fase.alerts);
   const factor = ruleValue(rules, 'protections.breaker_sizing_factor', 1.25);
   const protectionsOn = isGroupEnabled(rules, 'protections');
   const pickBreaker = (i: number) =>
@@ -626,7 +737,7 @@ export function suggestBreakerPlan(input: {
     return {
       currentA, breakerA, fromDatasheet,
       explanation: `Arranjo ${i + 1}: disjuntor ${breakerA}A — ${factor}× a corrente de saída de ${currentA}A `
-        + `(${fromDatasheet ? 'datasheet do inversor' : `estimada de ${inv.powerKw ?? 0}kW em ${acV}V${threePhase ? ' trifásico' : ''}`}).`,
+        + `(${fromDatasheet ? 'datasheet do inversor' : `estimada de ${inv.powerKw ?? 0}kW em ${acV}V ${fase.phaseType}`}).`,
     };
   });
 
@@ -656,10 +767,10 @@ export function suggestBreakerPlan(input: {
 
   // bitolas pra rotular os trechos (mesma conta do dimensionamento elétrico)
   const branchSizing = branches.length > 0
-    ? suggestElectricalSizing({ inverterAcCurrentA: branches[0].currentA, phaseType: input.phaseType }, rules)
+    ? suggestElectricalSizing({ inverterAcCurrentA: branches[0].currentA, phaseType: fase.phaseType }, rules)
     : null;
   const trunkSizing = branches.length > 0
-    ? suggestElectricalSizing({ inverterAcCurrentA: totalCurrentA, phaseType: input.phaseType }, rules)
+    ? suggestElectricalSizing({ inverterAcCurrentA: totalCurrentA, phaseType: fase.phaseType }, rules)
     : null;
 
   return {
@@ -789,15 +900,25 @@ export function suggestMicroinverterPlan(input: {
   micro: MicroSpecs;
   /** Micros do projeto; sem isso o motor calcula pelo nº de módulos. */
   unitCount?: number;
-  phaseType?: 'monofasico' | 'bifasico' | 'trifasico';
+  /** Fase da saída do MICRO (não a do padrão de entrada da UC). */
+  phaseType?: PhaseType;
+  /** Fases do padrão de entrada da UC — só limita a dedução. */
+  supplyPhaseType?: PhaseType;
   includeGeneral?: boolean;
 }, rules: RuleMap): MicroPlan {
   const alerts: EngineAlert[] = [];
   const round1 = (v: number) => Math.round(v * 10) / 10;
-  const threePhase = input.phaseType === 'trifasico';
-  const acV = threePhase
-    ? ruleValue(rules, 'voltage_drop.ac_voltage_tri_v', 380)
-    : ruleValue(rules, 'voltage_drop.ac_voltage_mono_v', 220);
+  // O micro entrega na tensão DELE — quase sempre monofásico 220V, mesmo numa
+  // UC trifásica. Deduzir pela fase da UC inflava a tensão e afundava a
+  // corrente do ramal (mesmo bug do inversor de string, jul/2026).
+  const fase = resolveInverterPhase({
+    specs: { powerKw: input.micro.powerKw, acVoltageV: undefined },
+    powerKw: input.micro.powerKw,
+    supplyPhaseType: input.supplyPhaseType,
+    phaseType: input.phaseType,
+  }, rules);
+  const threePhase = fase.phaseType === 'trifasico';
+  const acV = fase.voltageV;
   const factor = ruleValue(rules, 'protections.breaker_sizing_factor', 1.25);
   const pickBreaker = (i: number) =>
     STANDARD_BREAKERS.find(b => b >= i * factor) ?? STANDARD_BREAKERS[STANDARD_BREAKERS.length - 1];
@@ -898,10 +1019,10 @@ export function suggestMicroinverterPlan(input: {
   }
 
   const branchSizing = branches.length > 0
-    ? suggestElectricalSizing({ inverterAcCurrentA: branches[0].currentA, phaseType: input.phaseType }, rules)
+    ? suggestElectricalSizing({ inverterAcCurrentA: branches[0].currentA, phaseType: fase.phaseType }, rules)
     : null;
   const trunkSizing = branches.length > 0
-    ? suggestElectricalSizing({ inverterAcCurrentA: totalCurrentA, phaseType: input.phaseType }, rules)
+    ? suggestElectricalSizing({ inverterAcCurrentA: totalCurrentA, phaseType: fase.phaseType }, rules)
     : null;
 
   const summary = `${unitCount} microinversor(es) · ${modulesPerUnitCap} módulos cada · `
@@ -1025,6 +1146,8 @@ export function inverterSpecsFromTechSpecs(ts: Record<string, unknown> | null | 
     maxMpptCurrentA: num(t['max_mppt_current_a']),
     powerKw: powerKw ?? num(t['power_kw']),
     maxAcCurrentA: num(t['max_ac_current_a']),
+    acPhases: num(t['ac_phases']),
+    acVoltageV: num(t['ac_voltage_v']),
   };
 }
 

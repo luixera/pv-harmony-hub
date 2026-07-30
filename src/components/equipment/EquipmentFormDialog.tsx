@@ -27,6 +27,11 @@ const TECH_FIELDS: Record<EquipmentType, { key: string; label: string; placehold
     { key: 'max_mppt_current_a', label: 'Corrente máx./MPPT (A)', placeholder: '26' },
     // base EXATA do disjuntor de cada arranjo (sem ela, o motor estima pela potência)
     { key: 'max_ac_current_a', label: 'Corrente CA máx. de saída (A)', placeholder: '36.2' },
+    // sem isto o motor DEDUZ a fase pela potência: um inversor monofásico de
+    // 3kW numa UC trifásica já saiu calculado como trifásico (corrente 3× menor
+    // e disjuntor subdimensionado). A fase é do INVERSOR, não do padrão da UC.
+    { key: 'ac_phases', label: 'Fases na saída CA (1, 2 ou 3)', placeholder: '1' },
+    { key: 'ac_voltage_v', label: 'Tensão CA de saída (V)', placeholder: '220' },
   ],
   module: [
     { key: 'voc_v', label: 'Voc (V)', placeholder: '49.9' },

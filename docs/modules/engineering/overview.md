@@ -42,9 +42,10 @@ um fallback neutro. Toda alteração vira histórico automático
   data; preenchida por trigger no UPDATE (sem código no app).
 - **`equipment_catalog.tech_specs`** (jsonb) — datasheet estruturado:
   inversor (`mppt_count`, `strings_per_mppt`, `mppt_vmin_v`, `mppt_vmax_v`,
-  `max_dc_voltage_v`, `max_mppt_current_a`, `power_kw`), módulo (`voc_v`,
-  `vmp_v`, `isc_a`, `imp_a`, `power_w`). Sem datasheet, o motor usa as
-  regras-fallback do Grupo Strings e avisa "sugestão aproximada".
+  `max_dc_voltage_v`, `max_mppt_current_a`, `max_ac_current_a`, `ac_phases`,
+  `ac_voltage_v`, `power_kw`), módulo (`voc_v`, `vmp_v`, `isc_a`, `imp_a`,
+  `power_w`). Sem datasheet, o motor usa as regras-fallback do Grupo Strings e
+  avisa "sugestão aproximada".
 
 ## Os 12 grupos
 
@@ -109,6 +110,29 @@ a explicação diz por quê. O mesmo plano devolve as bitolas do trecho de cada
 arranjo e do tronco, que o diagrama usa como **rótulo de cada ligação**
 (bitola marcada em cada trecho: CC, CA por arranjo e tronco pós-junção). No
 projeto, "Usar esta" pergunta se o disjuntor geral entra.
+
+### A fase é do INVERSOR, não do padrão de entrada da UC
+
+`resolveInverterPhase` (jul/2026) decide como o inversor **entrega** energia —
+o que não tem relação com quantas fases a unidade consumidora **recebe**. Um
+inversor monofásico continua monofásico numa UC trifásica.
+
+Ordem de decisão:
+
+1. **`tech_specs.ac_phases`** (e `ac_voltage_v`) do catálogo — manda sempre.
+2. Sem isso, deduz pela potência: até `protections.single_phase_max_kw`
+   (padrão 6 kW) é monofásico 220 V; acima, trifásico 380 V. A dedução **avisa**
+   e nunca passa do que o padrão de entrada comporta.
+3. Se o **datasheet** disser trifásico numa UC monofásica, o motor mantém o
+   datasheet e levanta um alerta de incompatibilidade — é problema de projeto,
+   não de arredondamento.
+
+O mesmo vale no caminho de microinversor: o micro entrega na tensão dele.
+
+**Bug que originou a regra**: um SUNGROW SG3.0RS-L (3 kW monofásico 220 V) num
+padrão de entrada trifásico teve a corrente calculada como 3000/(380·√3) =
+**4,6 A** em vez dos **13,6 A** reais — o disjuntor sugerido saiu **10 A** onde
+precisava de **20 A**, e o cabo CA saiu subdimensionado junto.
 
 ## Validador elétrico local (checklist em tempo real)
 
