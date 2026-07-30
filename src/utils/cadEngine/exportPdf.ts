@@ -124,8 +124,22 @@ function drawPrimitive(
   if (dashed) doc.setLineDashPattern([], 0); // volta pro traço contínuo pras próximas primitivas
 }
 
+/**
+ * O jspdf publica builds diferentes (ESM e CJS) e, dependendo de quem resolve
+ * o pacote, o construtor cai em `default`, em `jsPDF` ou em `default.jsPDF`.
+ * Pegar só `default` quebra com "jsPDF is not a constructor" — e, como o erro
+ * acontece dentro de um `await`, o usuário não vê nada: o download simplesmente
+ * não sai.
+ */
+async function loadJsPdf(): Promise<typeof import('jspdf').default> {
+  const mod = await import('jspdf') as unknown as Record<string, unknown>;
+  const ctor = (mod.jsPDF ?? (mod.default as Record<string, unknown>)?.jsPDF ?? mod.default);
+  if (typeof ctor !== 'function') throw new Error('Não foi possível carregar o gerador de PDF (jspdf).');
+  return ctor as typeof import('jspdf').default;
+}
+
 export async function sceneToPdfBlob(scene: Scene): Promise<Blob> {
-  const { default: jsPDF } = await import('jspdf');
+  const jsPDF = await loadJsPdf();
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: [scene.paper.widthMm, scene.paper.heightMm] });
 
   for (const shape of scene.shapes) {

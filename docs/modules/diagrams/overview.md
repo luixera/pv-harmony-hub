@@ -61,7 +61,21 @@ usuário: útil mais cedo, e o motor automático continua no roadmap):
 - `src/utils/cadEngine/buildTechnicalJson.ts` — projeto → JSON técnico (reaproveita `buildProjectValues`).
 - `src/utils/cadEngine/layout.ts` — JSON técnico → `Scene` com layout fixo (posição inicial, antes de qualquer edição).
 - `src/utils/cadEngine/editableLayout.ts` — `PlacedSymbol` (com `scale`), `ManualConnection` (`from`/`to` são `ConnectionEndpoint` — `symbol`/`port`/`line`/`point`, ver "Conexões vivas" —, mais `waypoints?: Point[]`), `PlacedPhoto`, `PlacedText`, `orthogonalPath`, `computeAllConnectionPoints` (resolve TODOS os condutores em ordem de dependência, com detecção de ciclo; `edgePoint()` interno recua pelo `CONNECTION_INSET`), `portPagePosition`/`findNearestPort`/`PORT_SNAP`, `pointAtT`/`nearestPointOnPolyline` (com `t`), `connectionDependsOn`, `detachDerivations`, `isConnectionResolvable`, `blockCenter` (considera a escala), `findNearestSymbol`/`SNAP_RADIUS` (snapping de clique/soltura), `snapToGrid`, `buildSceneFromPlacement` (a `Scene` a partir do estado editado + fotos + textos, resolvendo tags via `tagValues`), `buildSceneFromRecognition`/`layoutFromRecognition` (resultado da IA de reconhecimento → `DiagramSceneState`: fileira principal por `stage` + derivações `branch` empilhadas na mesma coluna, ver "Reconhecimento automático a partir de PDF" abaixo).
-- `src/utils/cadEngine/exportSvg.ts` / `exportPdf.ts` — `Scene` → SVG / PDF, com suporte a `rotation`/`scale` do bloco (PDF transforma os pontos manualmente — escala em torno do centro, depois gira, mesma ordem em ambos; SVG usa `transform="...rotate()...scale()..."` nativo via `blockTransform()`, reaproveitado ao vivo pelo canvas) e à primitiva `image` (SVG: `<image href>`; PDF: `doc.addImage`, formato detectado pelo prefixo do data URL). PDF via `jspdf`, já usado em `resumoPdf.ts` — nenhuma dependência nova.
+- `src/utils/cadEngine/exportSvg.ts` / `exportPdf.ts` — `Scene` → SVG / PDF, com suporte a `rotation`/`scale` do bloco (PDF transforma os pontos manualmente — escala em torno do centro, depois gira, mesma ordem em ambos; SVG usa `transform="...rotate()...scale()..."` nativo via `blockTransform()`, reaproveitado ao vivo pelo canvas) e à primitiva `image` (SVG: `<image href>`; PDF: `doc.addImage`, formato detectado pelo prefixo do data URL). PDF via `jspdf`, já usado em `resumoPdf.ts` — nenhuma dependência nova. O `jspdf` é carregado por `import()` dinâmico através de `loadJsPdf()`, que aceita o construtor em `default`, em `jsPDF` ou em `default.jsPDF` — dependendo do build resolvido (ESM ou CJS) ele cai num lugar diferente, e pegar só `default` estoura "jsPDF is not a constructor".
+
+### Quando o download não sai
+
+Os três botões passam por `tentarBaixar()` no `DiagramEditor`, com `try/catch` e
+`toast` de erro. Antes disso, uma exceção no PDF morria dentro do `await`: o
+usuário clicava, o botão parava de girar e **nada** acontecia — sem arquivo e
+sem mensagem (bug de jul/2026). Dois cuidados que ficaram no código:
+
+- a `URL.createObjectURL` só é revogada 60s depois do clique; revogar na mesma
+  hora derruba o download de arquivo grande (o PDF leva as fotos embutidas);
+- se a mensagem for de módulo dinâmico que não carregou, o aviso é específico
+  ("recarregue a página"), porque a causa é uma versão nova publicada com a aba
+  aberta. A causa raiz está resolvida no deploy — ver
+  [architecture.md](../../project/architecture.md#assets-não-é-apagado-no-deploy).
 - `src/utils/projectValues.ts` — `resolveProjectTags(texto, values)`: substitui `{chave}` usando o mesmo catálogo `TEMPLATE_VARIABLES`/`buildProjectValues` dos templates .docx; tag desconhecida fica como está. `buildSampleValues()` (já existia, reaproveitado) gera dados fictícios pra prévia dos modelos.
 - `src/components/diagrams/DiagramEditor.tsx` — canvas SVG interativo compartilhado (arrastar/girar/redimensionar/ligar-e-desenhar-com-derivação/selecionar-e-arrastar-linha-inteira/adicionar componente, foto ou texto) + botões de download. Não sabe de onde vêm os dados nem pra onde vão — recebe `json`/`initialState`/`tagValues` e devolve cada mudança via `onStateChange`; quem chama decide onde persistir.
 - `src/components/projects/UnifilarTab.tsx` — usa o `DiagramEditor` com os dados do projeto real; persiste em `project_diagrams` (banco, autosave debounced; localStorage antigo é lido como fallback de migração); tem `reconcile()`/migração de formato antigo e o dropdown "Importar modelo…".

@@ -112,5 +112,18 @@ flowchart LR
   Smoke --> LogEv[Registra deploy em system_events]
 ```
 
+### `/assets` não é apagado no deploy
+
+O rsync roda em **duas passadas**: `dist/assets/` sobe **sem** `--delete` (as
+versões antigas ficam no ar) e o resto do site espelha o build com `--delete`,
+excluindo `assets/`. Um `find -mtime +30 -delete` limpa o que já está velho.
+
+O motivo é concreto: os arquivos de `/assets` têm hash no nome e partes do app
+carregam **sob demanda** (o gerador de PDF, o leitor de PDF, o html2pdf).
+Apagando os assets antigos, quem estava com a aba aberta quando saiu uma versão
+nova continua pedindo o pedaço antigo e recebe **404** — a funcionalidade morre
+sem erro visível. Foi o que derrubou o "Baixar PDF" do diagrama em jul/2026.
+Ver [modules/diagrams](../modules/diagrams/overview.md).
+
 Ver também: [tech-stack.md](tech-stack.md) · [security.md](security.md) ·
 [integrations.md](integrations.md).

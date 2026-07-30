@@ -82,11 +82,30 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -p ${{ secrets.VPS_SSH_PORT }} -H "${{ secrets.VPS_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null || echo "keyscan skipped, using StrictHostKeyChecking=no"
 
+      # Os arquivos de /assets têm hash no nome, então versões diferentes
+      # convivem. Apagá-los no deploy quebra quem está com a aba aberta: o
+      # index.html velho continua pedindo o pedaço antigo (ex.: o gerador de
+      # PDF, que carrega sob demanda) e recebe 404 — o botão simplesmente para
+      # de funcionar sem erro nenhum na tela. Por isso o --delete NÃO vale para
+      # /assets; a limpeza vem depois, só no que já está velho.
       - name: Rsync para VPS
         run: |
-          rsync -avz --delete --exclude='.env*' \
-            -e "ssh -i ~/.ssh/deploy_key -p ${{ secrets.VPS_SSH_PORT }} -o StrictHostKeyChecking=no" \
-            dist/ ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/var/www/pv-harmony-hub/dist/
+          SSH="ssh -i ~/.ssh/deploy_key -p ${{ secrets.VPS_SSH_PORT }} -o StrictHostKeyChecking=no"
+          DEST=${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/var/www/pv-harmony-hub/dist/
+          # 1) assets novos SOMAM (sem --delete): as versões antigas continuam
+          #    no ar para as abas que ainda estão abertas
+          rsync -avz -e "$SSH" dist/assets/ "$DEST"assets/
+          # 2) o resto do site espelha o build (aí sim com --delete); 'assets'
+          #    fica de fora e, por estar excluído, também não é apagado
+          rsync -avz --delete --exclude='.env*' --exclude='assets/' \
+            -e "$SSH" dist/ "$DEST"
+
+      # Assets de mais de 30 dias já não têm aba aberta apontando pra eles.
+      - name: Limpar assets antigos
+        run: |
+          ssh -i ~/.ssh/deploy_key -p ${{ secrets.VPS_SSH_PORT }} -o StrictHostKeyChecking=no \
+            ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} \
+            "find /var/www/pv-harmony-hub/dist/assets -type f -mtime +30 -delete || true"
 
       - name: Ajustar ownership
         run: |

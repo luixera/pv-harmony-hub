@@ -21,6 +21,7 @@ import { KIND_LABEL, SYMBOL_BBOX, SYMBOL_DEFS, SYMBOL_PORTS } from '@/utils/cadE
 import { CENTER_Y, paperOf, PITCH_X, START_X } from '@/utils/cadEngine/paper';
 import { resolveProjectTags, TEMPLATE_VARIABLES } from '@/utils/projectValues';
 import { sanitizeFileName } from '@/lib/utils';
+import { toast } from 'sonner';
 
 /**
  * Canvas SVG interativo do CAD Engine — arrastar, girar, redimensionar,
@@ -1373,21 +1374,49 @@ export function DiagramEditor({
   const download = (blob: Blob, filename: string) => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url; a.download = filename;
+    a.href = url; a.download = filename; a.rel = 'noopener';
     document.body.appendChild(a); a.click(); a.remove();
-    URL.revokeObjectURL(url);
+    // Revogar na mesma hora derruba a URL antes de o navegador terminar de ler
+    // o blob — em arquivo grande (o PDF leva as fotos embutidas) o download
+    // simplesmente não sai. Solta a memória depois.
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
   };
-  const handleDownloadSvg = () => {
+
+  /**
+   * Todo download passa por aqui: sem isto, uma exceção morre calada (a do PDF
+   * ainda por cima dentro de um `await`) e o usuário clica no botão, não recebe
+   * arquivo nenhum e não tem pista do motivo. Foi exatamente o que aconteceu
+   * com o "Baixar PDF" (jul/2026).
+   */
+  const tentarBaixar = async (o: string, gerar: () => Blob | Promise<Blob>, ext: string) => {
+    try {
+      download(await gerar(), `unifilar_${sanitizeFileName(downloadBaseName)}.${ext}`);
+    } catch (e) {
+      console.error(`Falha ao gerar o ${o} do diagrama:`, e);
+      const msg = (e as Error)?.message ?? String(e);
+      // versão nova publicada com a aba aberta: o pedaço de código que carrega
+      // sob demanda (o gerador de PDF) não existe mais no servidor
+      const versaoVelha = /dynamically imported module|Importing a module script failed|Failed to fetch|error loading/i.test(msg);
+      toast.error(
+        versaoVelha
+          ? `O sistema foi atualizado enquanto esta aba estava aberta. Recarregue a página (Ctrl+Shift+R) e baixe o ${o} de novo.`
+          : `Não foi possível gerar o ${o}: ${msg}`,
+        { duration: 12000 },
+      );
+    }
+  };
+
+  const handleDownloadSvg = () => tentarBaixar('SVG', () => {
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${scene.paper.widthMm} ${scene.paper.heightMm}" width="${scene.paper.widthMm}mm" height="${scene.paper.heightMm}mm" style="background:#fff">${sceneToSvgInner(scene)}</svg>`;
-    download(new Blob([svg], { type: 'image/svg+xml' }), `unifilar_${sanitizeFileName(downloadBaseName)}.svg`);
-  };
-  const handleDownloadDxf = () => {
-    const dxf = sceneToDxf(scene);
-    download(new Blob([dxf], { type: 'application/dxf' }), `unifilar_${sanitizeFileName(downloadBaseName)}.dxf`);
-  };
+    return new Blob([svg], { type: 'image/svg+xml' });
+  }, 'svg');
+
+  const handleDownloadDxf = () => tentarBaixar('DXF', () =>
+    new Blob([sceneToDxf(scene)], { type: 'application/dxf' }), 'dxf');
+
   const handleDownloadPdf = async () => {
     setGeneratingPdf(true);
-    try { download(await sceneToPdfBlob(scene), `unifilar_${sanitizeFileName(downloadBaseName)}.pdf`); }
+    try { await tentarBaixar('PDF', () => sceneToPdfBlob(scene), 'pdf'); }
     finally { setGeneratingPdf(false); }
   };
 
