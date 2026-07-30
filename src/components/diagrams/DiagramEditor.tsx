@@ -845,13 +845,34 @@ export function DiagramEditor({
     };
   };
 
-  /** Duplo-clique no rótulo devolve à posição padrão (abaixo do símbolo). */
+  /** Devolve o rótulo à posição padrão (abaixo do símbolo) — botão no painel. */
   const resetLabelOffset = (id: string) => {
     snapshot();
     setPlacements(prev => prev.map(p => (
       p.id === id ? { ...p, labelDx: undefined, labelDy: undefined } : p
     )));
   };
+
+  /**
+   * Duplo-clique no rótulo = editar o texto. É o gesto que todo mundo tenta
+   * primeiro, e antes ele reposicionava o rótulo: quem queria corrigir "10A"
+   * via o texto pular de lugar e concluía que não dava pra editar a legenda
+   * (jul/2026). Agora seleciona o componente e joga o cursor direto no campo.
+   */
+  const legendRef = useRef<HTMLTextAreaElement>(null);
+  const [focusLegendPedido, setFocusLegendPedido] = useState(false);
+  const focusLegend = (id: string) => {
+    clearSelection();
+    setSelectedId(id);
+    setSelectedIds(new Set([id]));
+    setFocusLegendPedido(true); // o campo só existe depois do próximo commit
+  };
+  useEffect(() => {
+    if (!focusLegendPedido) return;
+    const el = legendRef.current;
+    if (el) { el.focus(); el.select(); }
+    setFocusLegendPedido(false);
+  }, [focusLegendPedido]);
 
   const removeConnection = (id: string) => {
     snapshot();
@@ -2057,8 +2078,9 @@ export function DiagramEditor({
                       // e o fechava no mesmo clique. `stopPropagation` no
                       // mousedown não segura o evento de click.
                       onClick={e => e.stopPropagation()}
-                      onDoubleClick={e => { e.stopPropagation(); resetLabelOffset(p.id); }}
+                      onDoubleClick={e => { e.stopPropagation(); focusLegend(p.id); }}
                     >
+                      <title>Duplo-clique pra editar o texto · arraste pra reposicionar</title>
                       {moved && (
                         <line
                           x1={p.x + scaledW / 2} y1={p.y + scaledH}
@@ -2192,13 +2214,26 @@ export function DiagramEditor({
                 <div>
                   <label style={labelStyle}>Legenda (uma linha por item, aceita {'{tags}'})</label>
                   <textarea
+                    ref={legendRef}
                     value={sel.legend.join('\n')} onFocus={snapshot} rows={3} style={{ ...fieldStyle, resize: 'vertical' }}
                     onChange={e => {
                       const legend = e.target.value.split('\n');
                       setPlacements(prev => prev.map(p => (p.id === sel.id ? { ...p, legend } : p)));
                     }}
                   />
+                  <p style={{ fontSize: 10, color: '#999', margin: '4px 0 0' }}>
+                    Duplo-clique no texto do desenho abre este campo.
+                  </p>
                 </div>
+                {(sel.labelDx || sel.labelDy) && (
+                  <button
+                    onClick={() => resetLabelOffset(sel.id)}
+                    style={{ ...btnStyle(), justifyContent: 'center' }}
+                    title="Devolve o texto pra baixo do símbolo"
+                  >
+                    <RefreshCw size={13} /> Voltar rótulo ao lugar
+                  </button>
+                )}
                 <div>
                   <label style={labelStyle}>Tamanho ({sel.scale.toFixed(1)}×)</label>
                   <input
