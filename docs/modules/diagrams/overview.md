@@ -89,6 +89,20 @@ resolve: são eventos diferentes, e o `click` continua borbulhando. Faltava no
 bloco de rótulo: clicar na legenda pra editá-la abria o painel de propriedades
 e o fechava no mesmo clique (jul/2026).
 
+### Texto de SVG só recebe clique NO TRAÇO da letra
+
+Corolário do item acima, e a causa que faltava: em SVG o alvo de um `<text>`
+são os **glifos**, não a caixa do texto. O buraco de um "o", o vão entre
+palavras e o espaço entre duas linhas da legenda deixam o clique **passar
+direto** pro `<svg>` — que limpa a seleção. Com a legenda em 2,4 mm e a folha
+inteira na tela, acertar o traço de uma letra é sorte: o usuário clicava
+"na legenda" e o painel fechava, de forma aparentemente aleatória.
+
+Por isso o bloco de rótulo tem um `<rect fill="transparent">` cobrindo o
+retângulo do texto (largura estimada pelo maior número de caracteres). Precisa
+ser `transparent`; `fill="none"` **não** recebe ponteiro. Vale para qualquer
+texto clicável que venha a existir no canvas.
+
 ### Quando o download não sai
 
 Os três botões passam por `tentarBaixar()` no `DiagramEditor`, com `try/catch` e

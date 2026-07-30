@@ -2065,10 +2065,25 @@ export function DiagramEditor({
                 )}
                 {/* Bloco de rótulo (nome + legendas): arrastável — o usuário
                     reposiciona o texto quando o desenho aperta. Duplo-clique
-                    devolve à posição padrão. */}
+                    abre a edição da legenda. */}
                 {(() => {
                   const at = labelAnchor(p);
                   const moved = !!(p.labelDx || p.labelDy);
+                  // Área de clique do bloco. SVG só considera clique em cima do
+                  // TRAÇO das letras: o buraco de um "o", o vão entre palavras e
+                  // o espaço entre as duas linhas da legenda deixam o clique
+                  // passar direto pro canvas, que limpa a seleção. Com texto de
+                  // 2,4mm numa folha inteira na tela, acertar uma letra é sorte —
+                  // era por isso que "não dava pra editar a legenda" (jul/2026).
+                  // Este retângulo transparente (fill 'transparent', e NÃO
+                  // 'none', que não recebe clique) cobre o bloco todo.
+                  const linhas = [
+                    { txt: resolveProjectTags(p.label, values), fs: 2.6 },
+                    ...p.legend.map(l => ({ txt: resolveProjectTags(l, values), fs: 2.4 })),
+                  ];
+                  const larguraMm = Math.max(10, ...linhas.map(l => l.txt.length * l.fs * 0.55));
+                  const topoMm = at.y - 2.8;
+                  const alturaMm = 3.2 + p.legend.length * 3.4;
                   return (
                     <g
                       style={{ cursor: 'move' }}
@@ -2081,6 +2096,11 @@ export function DiagramEditor({
                       onDoubleClick={e => { e.stopPropagation(); focusLegend(p.id); }}
                     >
                       <title>Duplo-clique pra editar o texto · arraste pra reposicionar</title>
+                      <rect
+                        x={at.x - larguraMm / 2 - 1} y={topoMm}
+                        width={larguraMm + 2} height={alturaMm}
+                        fill="transparent"
+                      />
                       {moved && (
                         <line
                           x1={p.x + scaledW / 2} y1={p.y + scaledH}
