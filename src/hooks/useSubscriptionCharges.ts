@@ -83,6 +83,48 @@ export function useSettleSubscriptionCharge() {
   });
 }
 
+/**
+ * Extrato da assinatura visto pela PRÓPRIA empresa cliente (e também pelo
+ * admin, passando `companyId`). Vem da RPC `company_subscription_statement`,
+ * que já devolve o consumo da franquia — a tabela guarda o LIMITE do plano em
+ * `projects_included`, não quantos projetos foram usados.
+ *
+ * Sem cobrança gerada no mês, a lista vem vazia: nada é inventado na tela.
+ */
+export interface SubscriptionStatementRow {
+  id: string;
+  competence: string;
+  amount: number;
+  amount_paid: number;
+  status: string;
+  due_date: string | null;
+  project_limit: number | null;
+  projects_count: number;
+  excess_count: number;
+  excess_value: number;
+}
+
+export function useCompanySubscriptionStatement(companyId?: string | null) {
+  return useQuery({
+    queryKey: ['company-subscription-statement', companyId ?? 'own'],
+    queryFn: async (): Promise<SubscriptionStatementRow[]> => {
+      const { data, error } = await supabase.rpc(
+        'company_subscription_statement' as never,
+        { _company_id: companyId ?? null } as never,
+      );
+      if (error) throw error;
+      return ((data ?? []) as unknown as SubscriptionStatementRow[]).map(r => ({
+        ...r,
+        amount: Number(r.amount),
+        amount_paid: Number(r.amount_paid),
+        projects_count: Number(r.projects_count),
+        excess_count: Number(r.excess_count),
+        excess_value: Number(r.excess_value),
+      }));
+    },
+  });
+}
+
 /** Reaplica a RT nos projetos de assinatura que ficaram com valor zerado. */
 export function useRecomputeSubscriptionValues() {
   const qc = useQueryClient();

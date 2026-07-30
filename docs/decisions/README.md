@@ -377,6 +377,11 @@ Registro de decisões de produto/UX (não arquiteturais — essas ficam em
   (`match_type`) e aparece na tela: "relacionado pelo nome do titular" pesa
   diferente de "pelo protocolo". Casamento por titular exige **primeiro +
   último** nome próximos; só o primeiro nome não vincula.
+- **A empresa cliente vê a assinatura e as ARTs em blocos separados** (jul/2026):
+  na assinatura mensal ela paga duas coisas de naturezas diferentes — a
+  mensalidade uma vez por mês e a ART de cada projeto —, e juntar as duas numa
+  lista só confunde. Os totais do topo somam os dois, com a quebra por baixo,
+  senão a empresa não consegue conferir o que deve.
 - **A aba Notificações do projeto é somente leitura**: aplicar ou descartar a
   sugestão de etapa continua num lugar só, a tela de E-mails — dois lugares para
   a mesma ação vira divergência de histórico.

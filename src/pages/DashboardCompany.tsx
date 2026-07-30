@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { DashboardMap } from '@/components/maps/DashboardMap';
+import { useCompanySubscriptionStatement } from '@/hooks/useSubscriptionCharges';
 
 const statusLabels: Record<string, string> = {
   pending: 'Aguardando',
@@ -21,17 +22,22 @@ export default function DashboardCompany() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { data: allProjects = [], isLoading } = useProjects();
-  
+  const { data: assinaturas = [] } = useCompanySubscriptionStatement();
+
   // Filter projects for this company
   const companyProjects = allProjects.filter(p => p.company_id === user?.companyId);
-  
+
   const totalProjects = companyProjects.length;
-  const inProgressCount = companyProjects.filter(p => 
+  const inProgressCount = companyProjects.filter(p =>
     !['completed'].includes(p.status)
   ).length;
-  const pendingPayment = companyProjects
+  const pendingProjects = companyProjects
     .filter(p => p.financials?.payment_status !== 'paid')
     .reduce((acc, p) => acc + ((p.financials?.project_value || 0) - (p.financials?.paid_value || 0)), 0);
+  // Na assinatura mensal a mensalidade também é dívida da empresa: fora daqui,
+  // o "valor pendente" mostraria menos do que ela realmente deve.
+  const pendingSubscription = assinaturas.reduce((acc, s) => acc + (s.amount - s.amount_paid), 0);
+  const pendingPayment = pendingProjects + pendingSubscription;
 
   if (isLoading) {
     return (
@@ -112,6 +118,11 @@ export default function DashboardCompany() {
                   R$ {pendingPayment.toLocaleString('pt-BR')}
                 </p>
                 <p className="text-sm text-muted-foreground">Valor pendente</p>
+                {pendingSubscription > 0 && (
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    inclui R$ {pendingSubscription.toLocaleString('pt-BR')} de assinatura
+                  </p>
+                )}
               </div>
             </div>
           </motion.div>

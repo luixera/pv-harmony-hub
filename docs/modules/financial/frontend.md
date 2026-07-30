@@ -3,7 +3,12 @@
 ## Telas
 - `src/pages/admin/Financial.tsx` — recebíveis do tenant; seleção múltipla e
   quitação/estorno em lote.
-- `src/pages/company/Financial.tsx` — visão da empresa.
+- `src/pages/company/CompanyFinancial.tsx` — "Meu Financeiro" da empresa
+  integradora (`/company/financial`). Dois blocos separados: **Assinatura
+  mensal** (competência, valor, franquia consumida, vencimento, status) e
+  **ARTs por projeto**. Os cards do topo somam os dois e mostram a quebra. Quem
+  não tem assinatura só vê o bloco de projetos. Ver
+  [business-rules.md](business-rules.md#a-empresa-cliente-vê-a-própria-assinatura).
 - Aba financeira do `src/components/projects/ProjectModal.tsx` — valor editável,
   botão "Quitar total", histórico de pagamentos com estorno por linha.
 
