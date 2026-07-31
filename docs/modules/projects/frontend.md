@@ -48,3 +48,18 @@ Duas defesas, porque uma só não basta:
 
 Vale a regra geral: **diálogo modal renderizado dentro de um item de lista que
 pode sumir** precisa desta rede, ou ser içado para fora da lista.
+
+### Confirmação tem de ficar ACIMA dos modais próprios
+
+Os modais deste projeto são feitos à mão, com `zIndex` até **9999**
+(`ProjectModal`, `TaskDialog`, `AgentConfigDialog`, `ProtocolDialog`). O padrão
+do shadcn para `AlertDialog` é `z-50`, e o Radix leva o diálogo pro `<body>` via
+portal — então a confirmação de exclusão abria **atrás** do modal do projeto.
+Ela estava lá, funcionando, mas invisível e inalcançável; e como o Radix
+desativa o resto da página enquanto está aberta, o modal na frente também
+parava de responder.
+
+`src/components/ui/alert-dialog.tsx` fixa `z-[10050]` no overlay e no conteúdo
+(constante `Z_ACIMA_DOS_MODAIS`). Uma confirmação é, por definição, o que está
+mais à frente. **Ao criar um modal próprio novo, não passe de 9999** — ou suba
+essa constante junto.

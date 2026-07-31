@@ -4,6 +4,19 @@ import * as AlertDialogPrimitive from "@radix-ui/react-alert-dialog";
 import { cn } from "@/lib/utils";
 import { buttonVariants } from "@/components/ui/button";
 
+/**
+ * Um diálogo de CONFIRMAÇÃO é, por definição, a coisa mais à frente da tela:
+ * ele interrompe o que estava acontecendo pra perguntar algo.
+ *
+ * O padrão do shadcn é `z-50`, mas os modais próprios deste projeto usam
+ * `zIndex` até 9999 (ProjectModal, TaskDialog, AgentConfigDialog…). Como o
+ * Radix leva o diálogo pro `<body>` via portal, o `z-50` o deixava ATRÁS do
+ * modal do projeto: a confirmação de exclusão abria escondida, e o modal na
+ * frente ficava sem responder (o Radix bloqueia o resto da página enquanto o
+ * diálogo está aberto). Era o "não consigo excluir" (jul/2026).
+ */
+const Z_ACIMA_DOS_MODAIS = "z-[10050]";
+
 const AlertDialog = AlertDialogPrimitive.Root;
 
 const AlertDialogTrigger = AlertDialogPrimitive.Trigger;
@@ -16,7 +29,7 @@ const AlertDialogOverlay = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <AlertDialogPrimitive.Overlay
     className={cn(
-      "fixed inset-0 z-50 bg-black/80 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+      `fixed inset-0 ${Z_ACIMA_DOS_MODAIS} bg-black/80 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0`,
       className,
     )}
     {...props}
@@ -34,7 +47,7 @@ const AlertDialogContent = React.forwardRef<
     <AlertDialogPrimitive.Content
       ref={ref}
       className={cn(
-        "fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border bg-background p-6 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] sm:rounded-lg",
+        `fixed left-[50%] top-[50%] ${Z_ACIMA_DOS_MODAIS} grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border bg-background p-6 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] sm:rounded-lg`,
         className,
       )}
       {...props}
