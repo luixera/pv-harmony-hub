@@ -19,7 +19,14 @@
 - `src/utils/installerPackage.ts` — resolve itens → blobs → ZIP.
 
 ## RPCs
-- `staff_can_access_project`, `soft_delete_project`, `get_kanban_columns`,
+- `soft_delete_project(_project_id, _reason)` — exclusão é **lógica**
+  (`is_deleted`), registra autor/motivo e grava no histórico. Só o **master** ou
+  o **admin do MESMO tenant** do projeto. A checagem compara com
+  `profiles.tenant_id` e exige que ele não seja nulo: usar
+  `get_user_tenant_id` deixava passar, porque ele devolve NULL quando o tenant
+  está sem acesso e `NOT (admin AND tenant = NULL)` é NULL, não `true`
+  (jul/2026 — antes disso não havia checagem de tenant nenhuma).
+- `staff_can_access_project`, `get_kanban_columns`,
   `should_hide_company_name`.
 
 ## Realtime/side-effects

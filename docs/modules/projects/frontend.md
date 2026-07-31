@@ -28,3 +28,23 @@
 ## Estado
 Formulários grandes usam estado local; React Query para dados de servidor. O
 `ProjectModal` tem guarda de acesso para staff `assigned_only`.
+
+## Diálogo que some junto com quem o renderiza
+
+`DeleteProjectDialog` é renderizado **pelo card do projeto** (Kanban, modal,
+detalhe). No instante em que a exclusão dá certo, o projeto sai de `useProjects`
+(que filtra `is_deleted = false`), o card desmonta e leva o diálogo **aberto**
+junto. O Radix trava o `<body>` em `pointer-events: none` enquanto um modal está
+aberto e só libera no fechamento controlado — desmontado no meio, a tela inteira
+para de receber clique: era o "sistema trava ao excluir" (jul/2026).
+
+Duas defesas, porque uma só não basta:
+
+1. `useDeleteProject` invalida as queries num `setTimeout(…, 0)`, dando ao
+   diálogo a chance de fechar antes de a lista recarregar;
+2. `DeleteProjectDialog` restaura `document.body.style.pointerEvents` no
+   desmonte — rede de segurança para qualquer outro caminho que desmonte o
+   diálogo aberto.
+
+Vale a regra geral: **diálogo modal renderizado dentro de um item de lista que
+pode sumir** precisa desta rede, ou ser içado para fora da lista.

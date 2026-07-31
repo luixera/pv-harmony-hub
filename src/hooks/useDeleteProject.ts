@@ -17,9 +17,18 @@ export function useDeleteProject() {
       return data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['projects'] });
-      queryClient.invalidateQueries({ queryKey: ['project'] });
       toast.success('Projeto excluído com sucesso');
+      // A lista só é recarregada DEPOIS que o diálogo teve chance de fechar.
+      // Invalidando aqui, o projeto some de `useProjects` (que filtra
+      // is_deleted=false), o card do Kanban desmonta e leva junto o
+      // AlertDialog ABERTO que ele renderiza. O Radix trava o body em
+      // `pointer-events: none` enquanto o modal está aberto e só libera no
+      // fechamento controlado — desmontado no meio, a tela inteira fica sem
+      // receber clique: era o "sistema travado" ao excluir (jul/2026).
+      setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ['projects'] });
+        queryClient.invalidateQueries({ queryKey: ['project'] });
+      }, 0);
     },
     onError: (error: Error) => {
       console.error('Error deleting project:', error);

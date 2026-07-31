@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -33,6 +33,13 @@ export function DeleteProjectDialog({
 }: DeleteProjectDialogProps) {
   const [reason, setReason] = useState('');
   const deleteProject = useDeleteProject();
+
+  // Rede de segurança: quem renderiza este diálogo é o card do projeto, e o
+  // card some da lista no instante em que o projeto é excluído. Se o diálogo
+  // for desmontado ABERTO, o Radix não roda a limpeza dele e o `<body>` fica
+  // com `pointer-events: none` — a tela aparece normal mas não recebe clique
+  // nenhum. Restaurar no desmonte cobre este caso e qualquer outro igual.
+  useEffect(() => () => { document.body.style.pointerEvents = ''; }, []);
 
   const handleDelete = async () => {
     if (!reason.trim()) return;
