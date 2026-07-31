@@ -108,7 +108,18 @@ proporcional à **SOMA das correntes** dos inversores (não à soma dos
 disjuntores, que superdimensionaria); quando o geral fica abaixo dessa soma,
 a explicação diz por quê. O mesmo plano devolve as bitolas do trecho de cada
 arranjo e do tronco, que o diagrama usa como **rótulo de cada ligação**
-(bitola marcada em cada trecho: CC, CA por arranjo e tronco pós-junção). No
+(bitola marcada em cada trecho: CC, CA por arranjo e tronco pós-junção).
+
+> **A soma só existe DEPOIS do nó.** Cada ramal, do seu disjuntor até a
+> junção, carrega apenas a corrente dele — todos com a mesma bitola. Só o
+> tronco, do nó em diante, leva a soma. Por isso o caminho do 1º arranjo é
+> desenhado como **duas ligações** (`manual-ramal1-arr` até o nó e
+> `manual-trunk-arr` do nó em diante): quando era uma ligação só, ela levava o
+> rótulo do tronco e o ramal 1 saía marcado 10 mm² enquanto o ramal 2, com a
+> mesma corrente, saía 4 mm² (erro relatado em jul/2026, num projeto de
+> microinversores).
+
+No
 projeto, "Usar esta" pergunta se o disjuntor geral entra.
 
 ### A fase é do INVERSOR, não do padrão de entrada da UC

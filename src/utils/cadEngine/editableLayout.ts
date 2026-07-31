@@ -1262,17 +1262,34 @@ export function buildMultiArrangementScene(options: {
     ? { kind: 'port', id: gb.id, port: 'entrada' }
     : { kind: 'port', id: entryBreaker.id, port: 'entrada' };
   const firstCbY = cbs[0].y + 10 * rowScale; // y da PORTA (placement já snapado à grade)
+
+  // O trecho do 1º arranjo ATÉ o nó carrega só a corrente DELE — a soma só
+  // existe depois da junção. Antes isso era uma ligação única do disjuntor 1
+  // até o geral, com o rótulo do tronco: o ramal 1 saía marcado 10 mm² e o
+  // ramal 2, 4 mm², passando a mesma corrente (erro relatado, jul/2026).
+  // Por isso o caminho vira DUAS ligações, com bitolas independentes.
+  const primeiroRamal: ManualConnection | null = n > 1 ? {
+    id: 'manual-ramal1-arr',
+    from: { kind: 'port', id: cbs[0].id, port: 'saida' },
+    to: { kind: 'point', at: { x: X_JUNC, y: midY } },
+    waypoints: Math.abs(firstCbY - midY) < 0.01 ? undefined : [{ x: X_JUNC, y: firstCbY }],
+    label: options.branchSection,
+  } : null;
+  if (primeiroRamal) connections.push(primeiroRamal);
+
   const trunk: ManualConnection = {
     id: 'manual-trunk-arr',
-    from: { kind: 'port', id: cbs[0].id, port: 'saida' },
+    from: n > 1
+      ? { kind: 'point', at: { x: X_JUNC, y: midY } }
+      : { kind: 'port', id: cbs[0].id, port: 'saida' },
     to: trunkTo,
-    waypoints: n > 1 ? [{ x: X_JUNC, y: firstCbY }, { x: X_JUNC, y: midY }] : undefined,
     // depois da junção o tronco carrega a soma dos arranjos
     label: n > 1 ? options.trunkSection : options.branchSection,
   };
   connections.push(trunk);
 
-  // demais arranjos entram como DERIVAÇÃO FORMAL no nó do tronco (•)
+  // demais arranjos entram como DERIVAÇÃO FORMAL no nó (•) — que agora é o
+  // início do tronco, o ponto onde as correntes de fato se somam
   if (n > 1) {
     const byId = new Map(placements.map(p => [p.id, p]));
     const allPts = computeAllConnectionPoints(connections, byId);
