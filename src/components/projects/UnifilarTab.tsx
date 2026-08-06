@@ -16,10 +16,11 @@ import { matchEntryRule, useEntryRules } from '@/hooks/useEntryRules';
 import { useEngineeringRuleMap } from '@/hooks/useEngineeringRules';
 import {
   MicroPlan, ProjectArrangementOption, inverterSpecsFromTechSpecs, isMicroinverter,
-  microSpecsFromTechSpecs, ruleValue, suggestBreakerPlan, suggestElectricalSizing,
-  suggestMicroinverterPlan, suggestProjectArrangement,
+  microSpecsFromTechSpecs, moduleSpecsFromTechSpecs, ruleValue, suggestBreakerPlan,
+  suggestElectricalSizing, suggestMicroinverterPlan, suggestProjectArrangement,
 } from '@/utils/engineering/rulesEngine';
 import { useEquipmentCatalog, useSaveEquipment } from '@/hooks/useEquipmentCatalog';
+import { EquipmentDatasheetsPanel } from './EquipmentDatasheetsPanel';
 import { validateDiagram } from '@/utils/engineering/diagramValidator';
 import { fetchLocationMap, LOCATION_MAP_MESSAGES } from '@/utils/cadEngine/locationMap';
 
@@ -29,6 +30,37 @@ import { fetchLocationMap, LOCATION_MAP_MESSAGES } from '@/utils/cadEngine/locat
 const curto = (t: string, max = 30) => (t.length > max ? `${t.slice(0, max - 1)}…` : t);
 
 /** Fase do projeto no vocabulário do motor (o cadastro é texto livre). */
+const normTxt = (s?: string | null) => String(s ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
+
+/**
+ * Acha o equipamento no catálogo pelo vínculo salvo no projeto e, **sem ele**,
+ * por marca+modelo.
+ *
+ * O vínculo (`inverter_catalog_id`/`module_catalog_id`) só existe quando o
+ * equipamento foi escolhido no combobox. Projeto que chegou com marca/modelo
+ * digitados — ou que teve o equipamento TROCADO depois, na conferência — fica
+ * sem vínculo, e o motor seguia dizendo "sem datasheet no catálogo" mesmo com o
+ * datasheet lá, completo (relato de ago/2026). Casar pelo nome resolve os dois
+ * casos e mantém a checagem viva: se o datasheet for preenchido amanhã, a aba
+ * passa a enxergar sozinha.
+ */
+function acharNoCatalogo<T extends { id: string; brand: string; model: string }>(
+  itens: T[], id?: string | null, marca?: string | null, modelo?: string | null,
+): T | null {
+  if (id) {
+    const porId = itens.find(i => i.id === id);
+    if (porId) return porId;
+  }
+  const mo = normTxt(modelo);
+  if (!mo) return null;
+  const ma = normTxt(marca);
+  // marca+modelo primeiro; só o modelo como último recurso (marca costuma vir
+  // escrita de formas diferentes: "Growatt" / "GROWATT NEW ENERGY")
+  return itens.find(i => normTxt(i.model) === mo && normTxt(i.brand) === ma)
+    ?? itens.find(i => normTxt(i.model) === mo)
+    ?? null;
+}
+
 function phaseTypeOf(raw: unknown): 'monofasico' | 'bifasico' | 'trifasico' {
   const s = String(raw ?? '').toLowerCase();
   return s.includes('tri') ? 'trifasico' : s.includes('bi') ? 'bifasico' : 'monofasico';
@@ -180,10 +212,24 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
   // Datasheet do inversor do projeto (catálogo) — dá a corrente CA real, que é
   // a base exata do disjuntor de cada arranjo.
   const { data: inverterCatalogItems = [] } = useEquipmentCatalog('inverter');
-  const inverterCatalog = useMemo(() => {
-    const id = (project.equipment as { inverter_catalog_id?: string } | undefined)?.inverter_catalog_id;
-    return id ? inverterCatalogItems.find(i => i.id === id) ?? null : null;
-  }, [inverterCatalogItems, project.equipment]);
+  const { data: moduleCatalogItems = [] } = useEquipmentCatalog('module');
+  const equipVinculo = project.equipment as (typeof project.equipment & {
+    inverter_catalog_id?: string; module_catalog_id?: string;
+  }) | undefined;
+  const inverterCatalog = useMemo(
+    () => acharNoCatalogo(inverterCatalogItems, equipVinculo?.inverter_catalog_id,
+      project.equipment?.inverter_brand, project.equipment?.inverter_model),
+    [inverterCatalogItems, equipVinculo, project.equipment],
+  );
+  // O MÓDULO também tem datasheet (Voc/Vmp/Isc/Imp) e ele nunca era lido aqui:
+  // a janela de string saía sempre dos valores-padrão das regras, e o aviso
+  // "equipamento sem datasheet completo" nunca sumia por mais que o datasheet
+  // fosse preenchido no catálogo (relato de ago/2026).
+  const moduleCatalog = useMemo(
+    () => acharNoCatalogo(moduleCatalogItems, equipVinculo?.module_catalog_id,
+      project.equipment?.module_brand, project.equipment?.module_model),
+    [moduleCatalogItems, equipVinculo, project.equipment],
+  );
 
   // ── Sugestões do Motor de Engenharia (Rules Engine, Fase 1) ──────────────
   const { ruleMap } = useEngineeringRuleMap();
@@ -224,14 +270,19 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
     const e = project.equipment;
     const totalModules = Math.max(0, Number(e?.module_quantity ?? 0) || 0);
     const powerKw = Number(e?.inverter_power ?? 0) || undefined;
+    const invSpecs = inverterSpecsFromTechSpecs(inverterCatalog?.tech_specs ?? null, powerKw);
     return suggestProjectArrangement({
       totalModules,
-      moduleSpecs: { powerW: Number(e?.module_power ?? 0) || undefined },
-      // um item por inversor físico (specs repetidas; datasheet completo
-      // virá do catálogo — sem ele, o motor usa as regras-fallback e avisa)
-      inverters: Array.from({ length: projectInverters }, () => ({ powerKw })),
+      // Voc/Vmp/Isc/Imp do datasheet do módulo — sem eles a janela de string
+      // saía sempre dos valores-padrão das regras
+      moduleSpecs: moduleSpecsFromTechSpecs(
+        moduleCatalog?.tech_specs ?? null, Number(e?.module_power ?? 0) || undefined,
+      ),
+      // um item por inversor físico (specs repetidas do datasheet do catálogo;
+      // sem ele, o motor usa as regras-fallback e avisa)
+      inverters: Array.from({ length: projectInverters }, () => ({ ...invSpecs, powerKw })),
     }, ruleMap);
-  }, [isMicro, suggestOpen, ruleMap, project.equipment, projectInverters]);
+  }, [isMicro, suggestOpen, ruleMap, project.equipment, projectInverters, inverterCatalog, moduleCatalog]);
 
   // Dimensionamento elétrico simplificado (Fase 2): bitolas, queda, disjuntor
   const sizing = useMemo(() => {
@@ -641,6 +692,13 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
                 Nenhum arranjo válido — veja os avisos acima e ajuste o projeto ou as Regras de Engenharia.
               </p>
             )}
+            {/* Datasheets do projeto: o que o motor achou no catálogo e o que falta */}
+            <EquipmentDatasheetsPanel
+              moduleItem={moduleCatalog}
+              inverterItem={inverterCatalog}
+              moduleLabel={[project.equipment?.module_brand, project.equipment?.module_model].filter(Boolean).join(' ')}
+              inverterLabel={[project.equipment?.inverter_brand, project.equipment?.inverter_model].filter(Boolean).join(' ')}
+            />
             {/* Dimensionamento elétrico simplificado (Fase 2) */}
             {sizing && (sizing.dc || sizing.ac || sizing.breakerA || sizing.groundSectionMm2) && (
               <div style={{ background: '#fff', border: '1px solid #DDEEE2', borderRadius: 8, padding: '9px 12px' }}>

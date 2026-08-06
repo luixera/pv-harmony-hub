@@ -47,6 +47,30 @@ um fallback neutro. Toda alteração vira histórico automático
   `power_w`). Sem datasheet, o motor usa as regras-fallback do Grupo Strings e
   avisa "sugestão aproximada".
 
+### Como a aba Unifilar acha o datasheet
+
+O datasheet quase nunca chega junto com o projeto — ele é preenchido depois, na
+conferência, muitas vezes junto com a troca do equipamento que veio errado. Por
+isso a busca tem três garantias (ago/2026):
+
+1. **Relê o catálogo ao abrir a aba** (`refetchOnMount: 'always'` em
+   `useEquipmentCatalog`): datasheet preenchido agora vale agora, sem recarregar
+   a página.
+2. **Casa pelo vínculo E pelo nome** (`acharNoCatalogo` no `UnifilarTab`):
+   `inverter_catalog_id`/`module_catalog_id` só existem quando o equipamento foi
+   escolhido no combobox. Sem vínculo — ou com vínculo órfão, de um equipamento
+   trocado — cai em marca+modelo normalizados (e só no modelo como último
+   recurso, porque a marca costuma variar de escrita).
+3. **O MÓDULO também é lido do catálogo.** Antes só o inversor era: `moduleSpecs`
+   recebia apenas a potência, então Voc/Vmp/Isc/Imp nunca vinham do datasheet, a
+   janela de string saía sempre dos valores-padrão e o aviso "equipamento sem
+   datasheet completo" não sumia por mais que o datasheet fosse preenchido.
+
+O bloco **"Datasheets usados nas sugestões"** (`EquipmentDatasheetsPanel`) mostra
+qual item do catálogo foi encontrado para o módulo e para o inversor, quantos
+dados técnicos estão preenchidos, **quais faltam**, e dá acesso aos documentos
+(datasheet/INMETRO/AFCI).
+
 ## Os 12 grupos
 
 | # | group_key | O que controla | Fase |

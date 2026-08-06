@@ -27,6 +27,11 @@ const BUCKET = 'equipment-documents';
 /** Catálogo compartilhado. type opcional filtra inversor/módulo. */
 export function useEquipmentCatalog(type?: EquipmentType) {
   return useQuery({
+    // Relê o catálogo toda vez que uma tela que depende dele é aberta. O
+    // datasheet costuma ser preenchido DEPOIS do projeto entrar (na
+    // conferência): sem isto, a aba Unifilar seguia mostrando "equipamento sem
+    // datasheet" com dados de cache, mesmo já preenchido (relato de ago/2026).
+    refetchOnMount: 'always',
     queryKey: ['equipment-catalog', type ?? 'all'],
     queryFn: async (): Promise<EquipmentCatalogItem[]> => {
       let q = supabase.from('equipment_catalog' as never).select('*').order('brand').order('model');
