@@ -57,6 +57,16 @@
   **Cartão CNPJ** é a **razão social**. O prompt (`claudinho-verifica`,
   `buildAnalyzePrompt`/`buildComparePrompt`) instrui isso explicitamente. Bug
   histórico: em CNH, pegava o nome da filiação (corrigido, jul/2026).
+- **RN-OCR-07** — **A UC nunca é o CPF/CNPJ.** Além da regra no prompt, a
+  função aplica uma guarda **determinística** (`limparUcQueEhDocumento`): se o
+  `uc_number` extraído tiver os mesmos dígitos do `cpf_cnpj`, ou vier com
+  máscara de documento (`000.000.000-00` / `00.000.000/0000-00`), o campo é
+  devolvido **vazio**. Vazio é melhor que errado — UC errada faz a
+  concessionária recusar o pedido, e o campo em branco é visível pra quem
+  confere. Caso real: PRJ-66913 (ago/2026), em que o modelo leu o CPF impresso
+  na conta e devolveu o mesmo valor nos dois campos, com 92% e 91% de
+  confiança. Prompt é probabilístico; a guarda não depende de o modelo
+  obedecer.
 - **RN-OCR-06** — A aba **Notificações** do projeto (`project_emails`) mostra
   também e-mails **ainda não vinculados** que citam o projeto
   (`apenas_sugerido = true`) — o vínculo em si continua sendo feito pela
@@ -65,10 +75,10 @@
   recusa quem não é do tenant do projeto (nem master).
 
 ## Deploy
-`claudinho-verifica` **não está no CI** (só scan-emails, test-gmail, log-event).
-É publicada via MCP `deploy_edge_function` (mantendo `verify_jwt: false`, pois a
-função faz a própria checagem de Authorization). Segredo: `ANTHROPIC_API_KEY`.
-Modelo: `claude-haiku-4-5`.
+`claudinho-verifica` **entrou no CI** (ago/2026) junto de scan-emails,
+test-gmail e log-event — publicar à mão já causou uma publicação com conteúdo
+errado. `--no-verify-jwt` porque a função faz a própria checagem de
+Authorization. Segredo: `ANTHROPIC_API_KEY`. Modelo: `claude-haiku-4-5`.
 
 ## Fluxo
 ```mermaid

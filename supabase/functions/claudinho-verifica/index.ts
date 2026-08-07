@@ -63,6 +63,40 @@ interface AnalyzeResponse {
   error?: string
 }
 
+// ── Guarda determinística: UC não pode ser o CPF/CNPJ ─────────────────────────
+
+const soDigitos = (s?: string | null) => String(s ?? '').replace(/\D/g, '')
+
+/** UC escrita com máscara de documento (000.000.000-00 / 00.000.000/0000-00). */
+function pareceDocumento(bruto?: string | null): boolean {
+  const s = String(bruto ?? '').trim()
+  return /^\d{3}\.\d{3}\.\d{3}-\d{2}$/.test(s) || /^\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}$/.test(s)
+}
+
+/**
+ * Descarta a UC quando ela é, na verdade, o CPF/CNPJ do titular.
+ *
+ * Caso real (ago/2026, PRJ-66913): o modelo leu o CPF impresso na conta de
+ * energia e devolveu o MESMO valor em `cpf_cnpj` (confiança 92) e em
+ * `uc_number` (confiança 91) — o projeto ficou com "936.358.036-32" como
+ * unidade consumidora. A regra do prompt ajuda, mas prompt é probabilístico:
+ * esta checagem é determinística e não depende de o modelo obedecer.
+ *
+ * Vazio é melhor que errado: UC errada faz a concessionária recusar o pedido, e
+ * o campo em branco é visível pra quem confere.
+ */
+function limparUcQueEhDocumento(uc?: FieldResult, cpf?: FieldResult): FieldResult | undefined {
+  if (!uc?.value) return uc
+  const ucDigitos = soDigitos(uc.value)
+  const cpfDigitos = soDigitos(cpf?.value)
+  const igualAoDocumento = ucDigitos.length > 0 && ucDigitos === cpfDigitos
+  if (igualAoDocumento || pareceDocumento(uc.value)) {
+    console.warn('UC descartada por coincidir com o documento do titular:', uc.value)
+    return { value: null, confidence: 0, source: '' }
+  }
+  return uc
+}
+
 // ── Prompt de análise completa ────────────────────────────────────────────────
 
 function buildAnalyzePrompt(): string {
@@ -88,6 +122,17 @@ REGRAS IMPORTANTES:
    - Em Cartão CNPJ, o titular é a "RAZÃO SOCIAL" / "NOME EMPRESARIAL".
    - Se houver dúvida entre nome do portador e filiação, prefira o que estiver
      rotulado como "NOME" e reduza a confiança.
+10. UNIDADE CONSUMIDORA (uc_number) — atenção máxima:
+   - A UC é o número da INSTALAÇÃO na concessionária, rotulado na conta como
+     "UNIDADE CONSUMIDORA", "Nº DA INSTALAÇÃO", "CÓDIGO DO CLIENTE" ou "Nº DO
+     CLIENTE". É só dígitos, normalmente de 7 a 12.
+   - A UC **NUNCA** é o CPF nem o CNPJ. A conta de energia traz o CPF/CNPJ do
+     titular impresso perto do nome — não confunda os dois.
+   - Se o número que você acharia como UC for IGUAL ao cpf_cnpj, ou vier no
+     formato de documento (000.000.000-00 ou 00.000.000/0000-00), então você
+     NÃO achou a UC: devolva uc_number com value null e confidence 0.
+   - Preferir null a chutar: UC errada faz o pedido ser recusado pela
+     concessionária.
 
 Retorne APENAS JSON válido sem markdown, no formato exato:
 {
@@ -322,7 +367,8 @@ Deno.serve(async (req) => {
       city: parsed.city,
       state: parsed.state,
       cep: parsed.cep,
-      uc_number: parsed.uc_number,
+      // vazio é melhor que a UC preenchida com o CPF/CNPJ do titular
+      uc_number: limparUcQueEhDocumento(parsed.uc_number, parsed.cpf_cnpj),
       phase_type: parsed.phase_type,
       concessionaire_hint: parsed.concessionaire_hint,
       inverter_brand: parsed.inverter_brand,
