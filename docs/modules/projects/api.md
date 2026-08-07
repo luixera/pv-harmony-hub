@@ -15,7 +15,12 @@
 - `src/utils/projectValues.ts` — `buildProjectValues(project, overrides?)`
   (fonte única de variáveis de template).
 - `src/utils/docxGenerator.ts` — detecção de tags, geração `.docx`.
-- `src/utils/resumoPdf.ts` — cartilha RESUMO (PDF) com logo do tenant.
+- `src/utils/resumoPdf.ts` — cartilha RESUMO (PDF) com logo do tenant. As
+  coordenadas saem em **decimal e em grau/minuto/segundo** (`Coord. (GMS)`,
+  via `coordinateValues` de `projectValues.ts` — mesma conversão das tags
+  `{latitude_gms}`/`{longitude_gms}` dos templates .docx), porque é o formato
+  que as concessionárias pedem no cadastro. A linha GMS só aparece quando dá
+  pra ler as duas coordenadas.
 - `src/utils/installerPackage.ts` — resolve itens → blobs → ZIP.
 
 ## RPCs

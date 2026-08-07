@@ -2,6 +2,7 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { ProjectWithDetails } from '@/hooks/useProjects';
 import { supabase } from '@/integrations/supabase/client';
+import { coordinateValues } from '@/utils/projectValues';
 
 const GOLD = '#F5A800';
 const DARK = '#1A1A1A';
@@ -116,6 +117,13 @@ export async function generateResumoPdf(project: ProjectWithDetails): Promise<Bl
   // Localização
   y += 2; section('Localização e Protocolo');
   row('Coordenadas', g?.coordinates ?? '');
+  // Em grau/minuto/segundo também: é o formato que as concessionárias pedem no
+  // cadastro, e evita a conversão manual na hora de preencher o portal.
+  // Some quando as coordenadas não estão preenchidas ou não dão pra ler.
+  {
+    const { latitude_gms, longitude_gms } = coordinateValues(g?.coordinates);
+    if (latitude_gms && longitude_gms) row('Coord. (GMS)', `${latitude_gms}  ${longitude_gms}`);
+  }
   row('Protocolo', project.protocol_number ?? '—');
 
   // Rodapé
