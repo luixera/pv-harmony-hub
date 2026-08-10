@@ -1,0 +1,26 @@
+-- ═══════════════════════════════════════════════════════════════════════════
+-- SEGURANÇA — fecha a leitura ANÔNIMA dos documentos do formulário público.
+--
+-- Achado na auditoria de sigilo entre tenants (ago/2026):
+--
+--   policy "Anonymous can view public uploads" on storage.objects
+--   for select to PUBLIC
+--   using (bucket_id = 'project-documents' and (storage.foldername(name))[1] = 'public')
+--
+-- `to PUBLIC` = **qualquer um**, inclusive `anon`, ou seja, sem login. E a pasta
+-- `public/` recebe o que os clientes anexam no formulário público — conta de
+-- energia, documento com CPF, procuração. Estavam lá 38 arquivos de 2 tenants
+-- diferentes, legíveis por qualquer pessoa com a URL do projeto e a chave
+-- pública (que vai no bundle do site, por definição).
+--
+-- Não há uso legítimo: o formulário público **só envia** (nenhum
+-- download/list/createSignedUrl em PublicProjectForm.tsx), e as telas internas
+-- leem por URL assinada, gerada pelo usuário logado — já coberto pelas
+-- políticas "Admin/Staff can view all project documents" e "Company can view
+-- own project documents", que tratam o prefixo `public/` casando o arquivo com
+-- `documents`→`projects` e conferindo tenant/empresa.
+--
+-- A política de UPLOAD anônimo continua: é ela que faz o formulário funcionar.
+-- ═══════════════════════════════════════════════════════════════════════════
+
+drop policy if exists "Anonymous can view public uploads" on storage.objects;

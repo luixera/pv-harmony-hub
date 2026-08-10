@@ -40,6 +40,39 @@
 - Privados: `project-documents`, `concessionaire-documents`,
   `concessionaire-templates`, `equipment-documents`. Leitura por usuário
   autenticado; escrita por admin/staff.
+- **`project-documents/public/` não é público.** O prefixo só marca "veio do
+  formulário público"; a leitura passa por `documents`→`projects` e confere
+  tenant (admin/staff) ou empresa (company). O upload anônimo continua liberado
+  — é o que faz o formulário funcionar.
+
+## Auditoria de sigilo entre tenants — ago/2026
+
+Varredura empírica (não só leitura de política): simulando a sessão de um admin
+de outro tenant, contando o que cada um dos **58 objetos** de `public` devolve.
+
+- **26 tabelas com `tenant_id`: zero linhas de outro tenant.**
+- **32 demais tabelas e views: zero linhas visíveis** para quem não é do tenant
+  (inclusive as filhas de projeto, que se isolam indiretamente).
+- Compartilhado **de propósito**: `equipment_catalog` (biblioteca central),
+  `plans`, `installer_package_presets` (sem `tenant_id`, é global).
+- 65 funções `SECURITY DEFINER` expostas ao usuário logado; uma sem checagem:
+  `should_hide_company_name(_user_id)` aceita o id de qualquer usuário e
+  devolve um booleano. Vaza só isso — sem prioridade, mas fica anotado.
+
+**Achado grave, corrigido**: a política `Anonymous can view public uploads` em
+`storage.objects` era `for select to PUBLIC` sobre
+`project-documents/public/**` — ou seja, **qualquer pessoa, sem login**, lia os
+anexos do formulário público (conta de energia, documento com CPF) de **todos os
+tenants**. Medido antes de mexer: 38 arquivos de 2 tenants, visíveis para
+visitante anônimo e para o admin de outro tenant. Política removida
+(`20260810130000_storage_fecha_leitura_anonima.sql`); depois: anônimo 0, outro
+tenant 0, tenant dono 32 (os 6 restantes são do outro tenant — cujo trial,
+aliás, está vencido, então ele não acessa nada mesmo).
+
+Fora de escopo desta varredura (é **dentro** do tenant, não entre tenants):
+projetista `assigned_only` consegue dar `UPDATE` em projeto não atribuído
+(política `Admin/Staff can update projects`) e ler no storage documentos de
+projeto não atribuído.
 
 ## Monitoramento
 - Tabela `system_events` (kind: `error`, `security`, `audit`, `signup`,
