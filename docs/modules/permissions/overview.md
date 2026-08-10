@@ -60,3 +60,37 @@ Detalhe de implementação: o gatilho de auditoria (`fn_audit_row`) gravava o
 evento de DELETE de `tenants` apontando para o próprio tenant, o que violava a
 FK e tornava a exclusão impossível. No DELETE de `tenants` o evento agora vai
 sem `tenant_id` (o id continua em `entity_id`).
+
+## Projetista ligado a EMPRESAS (ago/2026)
+
+Além de `staff_access_mode` (`global` / `assigned_only`) e `hide_company_name`,
+o projetista pode ser **ligado a empresas** (`staff_companies`, N:N).
+
+**Regra**: quem é `assigned_only` enxerga os projetos atribuídos a ele
+**MAIS** todos os projetos das empresas ligadas a ele — incluindo os que
+chegarem depois. É um vínculo permanente, não uma atribuição em lote: a dor era
+"não ter que ficar atribuindo projeto a projeto" (pedido do usuário).
+
+- No modo `global` o vínculo é ignorado (ele já vê tudo) e não é gravado.
+- O projetista **não tem empresa própria**: `profiles.company_id` continua
+  sendo do papel `company`. O vínculo é uma tabela à parte.
+- **As demais permissões não mudaram**: Financeiro, Relatórios e E-mails
+  seguem como estavam. O vínculo só amplia o que já era filtrado por
+  `assigned_only`.
+
+**Onde é aplicado**
+- `staff_can_access_project` (RLS) — a checagem de verdade.
+- `useProjects` — lista/Kanban/mapa: `id IN (atribuídos) OR company_id IN (empresas)`.
+- `useCompanies` — projetista restrito só enxerga as empresas dele. Como criar
+  projeto passa por "ver como empresa" na tela de Empresas, isso é também o que
+  limita **para quais empresas ele cria projeto**.
+
+**Conflito com "ocultar nome da empresa"**: as duas funções valem juntas. Com o
+nome oculto o sistema mostra "Cliente" em tudo — então, com **2+ empresas
+ligadas e nome oculto**, o projetista não consegue escolher a empresa e **não
+cria projeto** (decisão do usuário). Com uma empresa só, cria normalmente. A
+tela de usuários avisa quando essa combinação é escolhida.
+
+**Leitura tolerante a falha**: as consultas a `staff_companies` devolvem lista
+vazia se a tabela não existir ou o RLS negar. Sem vínculo, o comportamento é o
+de antes — uma falha aqui nunca ABRE acesso.

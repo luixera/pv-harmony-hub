@@ -38,6 +38,7 @@ export function useProjects() {
       const { data: { user: authUser } } = await supabase.auth.getUser();
 
       let assignedProjectIds: string[] | null = null;
+      let staffCompanyIds: string[] = [];
       let myTenantId: string | null = null;
 
       if (authUser) {
@@ -56,11 +57,23 @@ export function useProjects() {
             .eq('staff_user_id', authUser.id);
 
           assignedProjectIds = (assignments || []).map(a => a.project_id);
+
+          // Empresas ligadas ao projetista: todo projeto delas conta como
+          // atribuído, inclusive os que chegarem depois — é o que dispensa
+          // atribuir um a um (pedido do usuário, ago/2026). Falha de leitura
+          // não abre acesso: sem vínculo, vale só a atribuição individual.
+          const { data: vinculos, error: erroVinculos } = await supabase
+            .from('staff_companies' as never)
+            .select('company_id')
+            .eq('staff_user_id', authUser.id);
+          if (erroVinculos) console.warn('staff_companies indisponível:', erroVinculos.message);
+          staffCompanyIds = ((vinculos ?? []) as unknown as { company_id: string }[])
+            .map(v => v.company_id);
         }
       }
 
-      // Staff com assigned_only e sem projetos atribuídos → retorna vazio
-      if (assignedProjectIds !== null && assignedProjectIds.length === 0) {
+      // Staff restrito sem NENHUM projeto atribuído e sem empresa ligada → vazio
+      if (assignedProjectIds !== null && assignedProjectIds.length === 0 && staffCompanyIds.length === 0) {
         return [];
       }
 
@@ -80,9 +93,12 @@ export function useProjects() {
       // a visão global é exclusiva do console /painel.
       if (myTenantId) queryBuilder = queryBuilder.eq('tenant_id', myTenantId);
 
-      // Filtrar apenas projetos atribuídos ao staff
-      if (assignedProjectIds !== null && assignedProjectIds.length > 0) {
-        queryBuilder = queryBuilder.in('id', assignedProjectIds);
+      // Staff restrito: projetos atribuídos a ele OU de uma empresa ligada a ele
+      if (assignedProjectIds !== null) {
+        const condicoes: string[] = [];
+        if (assignedProjectIds.length > 0) condicoes.push(`id.in.(${assignedProjectIds.join(',')})`);
+        if (staffCompanyIds.length > 0) condicoes.push(`company_id.in.(${staffCompanyIds.join(',')})`);
+        if (condicoes.length > 0) queryBuilder = queryBuilder.or(condicoes.join(','));
       }
 
       const { data: projects, error } = await queryBuilder;

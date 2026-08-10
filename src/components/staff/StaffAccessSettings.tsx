@@ -8,32 +8,51 @@ type StaffAccessMode = Database['public']['Enums']['staff_access_mode'];
 interface StaffAccessSettingsProps {
   staffAccessMode: StaffAccessMode | null;
   hideCompanyName: boolean;
-  onChange: (settings: { staffAccessMode: StaffAccessMode; hideCompanyName: boolean }) => void;
+  /** Empresas ligadas ao projetista (só valem no modo "apenas atribuídos"). */
+  companyIds?: string[];
+  /** Empresas do tenant, pra montar a lista. */
+  companies?: { id: string; name: string }[];
+  onChange: (settings: {
+    staffAccessMode: StaffAccessMode;
+    hideCompanyName: boolean;
+    companyIds: string[];
+  }) => void;
   disabled?: boolean;
 }
 
 export function StaffAccessSettings({
   staffAccessMode,
   hideCompanyName,
+  companyIds = [],
+  companies = [],
   onChange,
   disabled = false,
 }: StaffAccessSettingsProps) {
   const [mode, setMode] = useState<StaffAccessMode>(staffAccessMode || 'global');
   const [hideCompany, setHideCompany] = useState(hideCompanyName || false);
+  const [empresas, setEmpresas] = useState<string[]>(companyIds);
 
   useEffect(() => {
     setMode(staffAccessMode || 'global');
     setHideCompany(hideCompanyName || false);
   }, [staffAccessMode, hideCompanyName]);
 
+  useEffect(() => { setEmpresas(companyIds); }, [companyIds.join(',')]);
+
   const handleModeChange = (value: StaffAccessMode) => {
     setMode(value);
-    onChange({ staffAccessMode: value, hideCompanyName: hideCompany });
+    onChange({ staffAccessMode: value, hideCompanyName: hideCompany, companyIds: empresas });
   };
 
   const handleHideCompanyChange = (checked: boolean) => {
     setHideCompany(checked);
-    onChange({ staffAccessMode: mode, hideCompanyName: checked });
+    onChange({ staffAccessMode: mode, hideCompanyName: checked, companyIds: empresas });
+  };
+
+  const alternarEmpresa = (id: string) => {
+    const proximo = empresas.includes(id) ? empresas.filter(e => e !== id) : [...empresas, id];
+    setEmpresas(proximo);
+    onChange({ staffAccessMode: mode, hideCompanyName: hideCompany, companyIds: proximo });
   };
 
   return (
@@ -66,6 +85,55 @@ export function StaffAccessSettings({
           ))}
         </div>
       </div>
+
+      {/* Empresas do projetista — só fazem sentido no modo restrito, porque no
+          global ele já enxerga tudo. Ligar uma empresa vale pra TODO projeto
+          dela, inclusive os que chegarem depois: é o que dispensa atribuir
+          projeto a projeto. */}
+      {mode === 'assigned_only' && (
+        <div className="space-y-2">
+          <Label>Empresas atendidas por este projetista</Label>
+          <p className="text-xs text-muted-foreground">
+            Ele passa a ver todos os projetos das empresas marcadas — os de hoje e os
+            que chegarem depois — além dos projetos atribuídos a ele individualmente.
+          </p>
+          {companies.length === 0 ? (
+            <p className="text-xs text-muted-foreground italic">Nenhuma empresa cadastrada.</p>
+          ) : (
+            <div className="max-h-40 overflow-y-auto rounded-md border border-input divide-y divide-border/50">
+              {companies.map(c => (
+                <button
+                  key={c.id}
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => alternarEmpresa(c.id)}
+                  className={[
+                    'w-full flex items-center gap-2 px-3 py-2 text-left text-sm transition-colors',
+                    empresas.includes(c.id) ? 'bg-primary/10 text-foreground' : 'hover:bg-muted',
+                    disabled ? 'opacity-50 cursor-not-allowed' : '',
+                  ].join(' ')}
+                >
+                  <span
+                    className={[
+                      'w-4 h-4 rounded border flex items-center justify-center text-[10px] shrink-0',
+                      empresas.includes(c.id) ? 'bg-primary border-primary text-primary-foreground' : 'border-input',
+                    ].join(' ')}
+                  >
+                    {empresas.includes(c.id) ? '✓' : ''}
+                  </span>
+                  {c.name}
+                </button>
+              ))}
+            </div>
+          )}
+          {empresas.length > 1 && hideCompany && (
+            <p className="text-xs text-amber-600">
+              Com o nome da empresa oculto e mais de uma empresa marcada, este projetista
+              não poderá criar projetos — não teria como escolher a empresa certa.
+            </p>
+          )}
+        </div>
+      )}
 
       <div className="flex items-center justify-between">
         <div className="space-y-0.5">

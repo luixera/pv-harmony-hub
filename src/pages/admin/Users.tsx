@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,6 +16,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { StaffAccessSettings } from '@/components/staff/StaffAccessSettings';
+import { useStaffCompanies, useSaveStaffCompanies } from '@/hooks/useStaffCompanies';
 import { Database } from '@/integrations/supabase/types';
 
 type StaffAccessMode = Database['public']['Enums']['staff_access_mode'];
@@ -43,6 +44,14 @@ export default function Users() {
   const updateUser = useUpdateUser();
   const deleteUser = useDeleteUser();
   const queryClient = useQueryClient();
+  // Empresas ligadas ao projetista em edição — carregadas do banco e jogadas no
+  // formulário quando chegam (o handleEdit é síncrono e não pode esperar).
+  const { data: vinculosDoStaff = [] } = useStaffCompanies(editingUser?.id);
+  const saveStaffCompanies = useSaveStaffCompanies();
+  useEffect(() => {
+    if (!editingUser) return;
+    setFormData(f => ({ ...f, staffCompanyIds: vinculosDoStaff.map(v => v.company_id) }));
+  }, [editingUser?.id, vinculosDoStaff.map(v => v.company_id).join(',')]);
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -52,6 +61,7 @@ export default function Users() {
     isActive: true,
     staffAccessMode: 'global' as StaffAccessMode,
     hideCompanyName: false,
+    staffCompanyIds: [] as string[],
   });
   const filteredUsers = users.filter(user => user.name.toLowerCase().includes(search.toLowerCase()) || user.email.toLowerCase().includes(search.toLowerCase()));
   const getCompanyName = (companyId?: string | null) => {
@@ -80,6 +90,7 @@ export default function Users() {
       isActive: true,
       staffAccessMode: 'global',
       hideCompanyName: false,
+      staffCompanyIds: [],
     });
     setIsDialogOpen(true);
   };
@@ -102,6 +113,9 @@ export default function Users() {
       isActive: user.active ?? true,
       staffAccessMode: (user as any).staff_access_mode || 'global',
       hideCompanyName: (user as any).hide_company_name || false,
+      // as empresas ligadas chegam pela query e entram no formulário no efeito
+      // abaixo (a lista é buscada por `useStaffCompanies`)
+      staffCompanyIds: [],
     });
     setIsDialogOpen(true);
   };
@@ -143,6 +157,14 @@ export default function Users() {
         }
         
         await updateUser.mutateAsync(updateData);
+        if (formData.role === 'staff') {
+          // No modo global ele já vê tudo — o vínculo por empresa só faz
+          // sentido (e só é gravado) no modo restrito.
+          await saveStaffCompanies.mutateAsync({
+            staffUserId: editingUser.id,
+            companyIds: formData.staffAccessMode === 'assigned_only' ? formData.staffCompanyIds : [],
+          });
+        }
         toast.success('Usuário atualizado!');
       } else {
         // Create new user via edge function
@@ -419,10 +441,13 @@ export default function Users() {
               <StaffAccessSettings
                 staffAccessMode={formData.staffAccessMode}
                 hideCompanyName={formData.hideCompanyName}
-                onChange={({ staffAccessMode, hideCompanyName }) => setFormData({
+                companyIds={formData.staffCompanyIds}
+                companies={companies}
+                onChange={({ staffAccessMode, hideCompanyName, companyIds }) => setFormData({
                   ...formData,
                   staffAccessMode,
                   hideCompanyName,
+                  staffCompanyIds: companyIds,
                 })}
               />
             )}

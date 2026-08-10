@@ -10,10 +10,24 @@ type CompanyInsert = Database['public']['Tables']['companies']['Insert'];
 export function useCompanies() {
   const { user } = useAuth();
   const tenantId = user?.tenantId ?? null;
+  // Projetista restrito enxerga só as empresas ligadas a ele. É o que também
+  // limita PRA QUAIS empresas ele consegue criar projeto, já que criar passa
+  // por "ver como empresa" na tela de Empresas (ago/2026).
+  const staffRestrito = user?.role === 'staff' && user?.staffAccessMode === 'assigned_only';
 
   return useQuery({
-    queryKey: ['companies', tenantId],
+    queryKey: ['companies', tenantId, staffRestrito ? user?.id : 'todas'],
     queryFn: async (): Promise<Company[]> => {
+      let permitidas: string[] | null = null;
+      if (staffRestrito && user?.id) {
+        const { data: vinculos, error: erroVinculos } = await supabase
+          .from('staff_companies' as never)
+          .select('company_id')
+          .eq('staff_user_id', user.id);
+        if (erroVinculos) console.warn('staff_companies indisponível:', erroVinculos.message);
+        permitidas = ((vinculos ?? []) as unknown as { company_id: string }[]).map(v => v.company_id);
+      }
+
       let query = supabase
         .from('companies')
         .select('*')
@@ -21,6 +35,10 @@ export function useCompanies() {
 
       // Painel normal = apenas o próprio tenant (o master veria todos via RLS).
       if (tenantId) query = query.eq('tenant_id', tenantId);
+      if (permitidas !== null) {
+        if (permitidas.length === 0) return [];
+        query = query.in('id', permitidas);
+      }
 
       const { data, error } = await query;
 
