@@ -289,7 +289,8 @@
       "Bash(npx -y supabase db query --linked -f \"C:/Users/luiza/AppData/Local/Temp/claude/C--Users-luiza-Desktop-DADOS-DESENVOLVIMENTO---GD-MANAGER-ENERGY-pv-harmony-hub-main-pv-harmony-hub-main/c6037dea-bb2d-4fc9-b604-c0b2169c5d1d/scratchpad/aud5.sql\")",
       "Bash(npx -y supabase db query --linked -f \"C:/Users/luiza/AppData/Local/Temp/claude/C--Users-luiza-Desktop-DADOS-DESENVOLVIMENTO---GD-MANAGER-ENERGY-pv-harmony-hub-main-pv-harmony-hub-main/c6037dea-bb2d-4fc9-b604-c0b2169c5d1d/scratchpad/aud6.sql\")",
       "Bash(npx -y supabase db query --linked -f __TRACKED_VAR__/verifica_storage.sql)",
-      "Bash(npx -y supabase db query --linked -f \"supabase/migrations/20260810130000_storage_fecha_leitura_anonima.sql\")"
+      "Bash(npx -y supabase db query --linked -f \"supabase/migrations/20260810130000_storage_fecha_leitura_anonima.sql\")",
+      "Bash(git commit -q -m 'docs\\(permissoes\\): registra o bloqueio do modal aceitando empresa ligada *)"
     ]
   }
 }

@@ -98,6 +98,9 @@ chegarem depois. É um vínculo permanente, não uma atribuição em lote: a dor
   política, subconsulta a outra tabela com RLS reavalia a RLS daquela tabela — e
   em `projects` daria recursão.
 - `useProjects` — lista/Kanban/mapa: `id IN (atribuídos) OR company_id IN (empresas)`.
+- `ProjectModal` — o bloqueio "Projeto não atribuído a você" também aceita
+  projeto de empresa ligada, e só decide **depois** que projeto, atribuições e
+  vínculos carregaram (senão nega durante o carregamento).
 - `useCompanies` — projetista restrito só enxerga as empresas dele. Como criar
   projeto passa por "ver como empresa" na tela de Empresas, isso é também o que
   limita **para quais empresas ele cria projeto**.
