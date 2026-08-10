@@ -79,13 +79,24 @@ chegarem depois. É um vínculo permanente, não uma atribuição em lote: a dor
   `assigned_only`.
 
 **Onde é aplicado**
-- `staff_can_access_project` (RLS) — a checagem de verdade. Ela virou um
-  invólucro: chama `staff_can_access_project_base` (que guarda a regra que
-  existia antes, cópia literal) **ou** verifica se o projeto é de uma empresa
-  ligada ao projetista. Foi feito assim porque o corpo versionado no repositório
-  podia estar defasado em relação ao banco — copiar em vez de reescrever evita
-  apagar regra de produção sem perceber. **Ao mexer na regra de acesso, mexa na
-  `_base`**, não no invólucro.
+- **RLS: as 11 políticas de leitura do projetista restrito** — `projects`,
+  `documents`, `comments`, `financials`, `project_equipment`,
+  `project_financials`, `project_general_data`, `project_history`,
+  `project_revisions`, `revision_equipment`, `revision_general_data`. Cada uma
+  ganhou um `OR public.staff_ligado_ao_projeto(auth.uid(), …)` (nas de revisão,
+  `staff_ligado_a_revisao`), **preservando o corpo antigo literalmente** — ele é
+  lido de `pg_get_expr` e só recebe o OR, nunca é redigitado.
+  Em `projects` o ramo novo repete `is_deleted = false`, senão projeto excluído
+  voltaria a aparecer.
+- ⚠️ **`staff_can_access_project` não é usada por política nenhuma.** Foi a
+  armadilha desta implementação: o vínculo estava gravado, a função já devolvia
+  `true`, e o projetista não via nada — porque as políticas checam
+  `project_assignments` no próprio corpo. A função (e sua `_base`) continua
+  existindo para uso em código; **ao mexer no acesso do projetista, mexa nas
+  políticas**, não só nela.
+- A checagem do vínculo mora em função `SECURITY DEFINER`: dentro de uma
+  política, subconsulta a outra tabela com RLS reavalia a RLS daquela tabela — e
+  em `projects` daria recursão.
 - `useProjects` — lista/Kanban/mapa: `id IN (atribuídos) OR company_id IN (empresas)`.
 - `useCompanies` — projetista restrito só enxerga as empresas dele. Como criar
   projeto passa por "ver como empresa" na tela de Empresas, isso é também o que
