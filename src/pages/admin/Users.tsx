@@ -188,6 +188,23 @@ export default function Users() {
         if (data?.error) {
           throw new Error(data.error);
         }
+
+        // A edge function cria o login, mas não conhece as configurações de
+        // staff. Sem este passo, o modo de acesso, o "ocultar empresa" e as
+        // empresas marcadas na hora da CRIAÇÃO eram silenciosamente perdidos —
+        // só valiam se o admin editasse o usuário depois (ago/2026).
+        const novoId = data?.user?.id as string | undefined;
+        if (novoId && formData.role === 'staff') {
+          await updateUser.mutateAsync({
+            id: novoId,
+            staff_access_mode: formData.staffAccessMode,
+            hide_company_name: formData.hideCompanyName,
+          } as never);
+          await saveStaffCompanies.mutateAsync({
+            staffUserId: novoId,
+            companyIds: formData.staffAccessMode === 'assigned_only' ? formData.staffCompanyIds : [],
+          });
+        }
         queryClient.invalidateQueries({ queryKey: ['users'] });
         toast.success('Usuário criado com sucesso!');
       }

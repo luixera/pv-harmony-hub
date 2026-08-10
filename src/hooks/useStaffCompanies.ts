@@ -65,6 +65,7 @@ export function useMinhasEmpresasDeStaff() {
 /** Substitui a lista de empresas de um projetista pela informada. */
 export function useSaveStaffCompanies() {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
   return useMutation({
     mutationFn: async ({ staffUserId, companyIds }: { staffUserId: string; companyIds: string[] }) => {
       const atuais = await buscarVinculos(staffUserId);
@@ -79,9 +80,17 @@ export function useSaveStaffCompanies() {
         if (error) throw error;
       }
       if (inserir.length > 0) {
-        // tenant_id e created_by são preenchidos por trigger
+        // `tenant_id` vai explícito: o gatilho que o preencheria pode não estar
+        // no ambiente, e aí o insert quebrava com "null value in column
+        // tenant_id violates not-null" (ago/2026). O admin e o projetista são
+        // sempre do mesmo tenant, e o gatilho de conferência no banco garante
+        // que a empresa também é.
         const { error } = await supabase.from('staff_companies' as never)
-          .insert(inserir.map(company_id => ({ staff_user_id: staffUserId, company_id })) as never);
+          .insert(inserir.map(company_id => ({
+            staff_user_id: staffUserId,
+            company_id,
+            tenant_id: user?.tenantId ?? null,
+          })) as never);
         if (error) throw error;
       }
     },
