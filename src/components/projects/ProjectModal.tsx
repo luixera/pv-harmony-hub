@@ -23,6 +23,7 @@ import { InstallerPackageDialog } from './InstallerPackageDialog';
 import { Package as PackageIcon } from 'lucide-react';
 import { StaffAssignmentDialog } from './StaffAssignmentDialog';
 import { useProjectAssignments } from '@/hooks/useProjectAssignments';
+import { useMinhasEmpresasDeStaff } from '@/hooks/useStaffCompanies';
 import { logSystemEvent } from '@/lib/systemLog';
 import { EquipmentModelCombobox } from '@/components/equipment/EquipmentModelCombobox';
 import { UnifilarTab } from './UnifilarTab';
@@ -1610,10 +1611,17 @@ export function ProjectModal({ projectId, onClose, initialTab = 'geral' }: Proje
   const { data: project, isLoading } = useProject(projectId);
   const { data: assignments = [], isLoading: loadingAssignments } = useProjectAssignments(projectId);
   // Projetista com acesso restrito só pode abrir projetos atribuídos a ele
-  // (ele pode chegar aqui por outras telas, como a de e-mails do Claudinho).
+  // (ele pode chegar aqui por outras telas, como a de e-mails do Claudinho)
+  // **ou** de uma empresa ligada a ele — o vínculo vale igual à atribuição, e
+  // sem isto o projeto aparecia na lista e o modal barrava na cara (ago/2026).
   const restrictedStaff = isStaff && user?.staffAccessMode === 'assigned_only';
+  const { data: minhasEmpresas = [], isLoading: loadingEmpresas } = useMinhasEmpresasDeStaff();
+  const daMinhaEmpresa =
+    !!project?.company_id && minhasEmpresas.some(v => v.company_id === project.company_id);
   const accessDenied =
-    restrictedStaff && !loadingAssignments && !assignments.some(a => a.staff_user_id === user?.id);
+    restrictedStaff && !loadingAssignments && !loadingEmpresas && !isLoading
+    && !assignments.some(a => a.staff_user_id === user?.id)
+    && !daMinhaEmpresa;
 
   useEffect(() => {
     if (accessDenied && projectId) {
