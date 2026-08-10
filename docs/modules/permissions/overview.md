@@ -79,7 +79,13 @@ chegarem depois. É um vínculo permanente, não uma atribuição em lote: a dor
   `assigned_only`.
 
 **Onde é aplicado**
-- `staff_can_access_project` (RLS) — a checagem de verdade.
+- `staff_can_access_project` (RLS) — a checagem de verdade. Ela virou um
+  invólucro: chama `staff_can_access_project_base` (que guarda a regra que
+  existia antes, cópia literal) **ou** verifica se o projeto é de uma empresa
+  ligada ao projetista. Foi feito assim porque o corpo versionado no repositório
+  podia estar defasado em relação ao banco — copiar em vez de reescrever evita
+  apagar regra de produção sem perceber. **Ao mexer na regra de acesso, mexa na
+  `_base`**, não no invólucro.
 - `useProjects` — lista/Kanban/mapa: `id IN (atribuídos) OR company_id IN (empresas)`.
 - `useCompanies` — projetista restrito só enxerga as empresas dele. Como criar
   projeto passa por "ver como empresa" na tela de Empresas, isso é também o que
