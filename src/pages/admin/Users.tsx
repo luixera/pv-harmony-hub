@@ -46,12 +46,16 @@ export default function Users() {
   const queryClient = useQueryClient();
   // Empresas ligadas ao projetista em edição — carregadas do banco e jogadas no
   // formulário quando chegam (o handleEdit é síncrono e não pode esperar).
-  const { data: vinculosDoStaff = [] } = useStaffCompanies(editingUser?.id);
+  const { data: vinculosDoStaff = [], isFetched: vinculosCarregados } = useStaffCompanies(editingUser?.id);
   const saveStaffCompanies = useSaveStaffCompanies();
+  // `isDialogOpen` PRECISA estar nas dependências: ao reabrir o MESMO usuário,
+  // o formulário zera a lista mas nem o id nem a lista do servidor mudam — sem
+  // isso o efeito não roda, as empresas aparecem desmarcadas e o próximo
+  // "Salvar" apaga os vínculos de verdade (relato de ago/2026).
   useEffect(() => {
-    if (!editingUser) return;
+    if (!isDialogOpen || !editingUser) return;
     setFormData(f => ({ ...f, staffCompanyIds: vinculosDoStaff.map(v => v.company_id) }));
-  }, [editingUser?.id, vinculosDoStaff.map(v => v.company_id).join(',')]);
+  }, [isDialogOpen, editingUser?.id, vinculosDoStaff.map(v => v.company_id).join(',')]);
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -157,7 +161,11 @@ export default function Users() {
         }
         
         await updateUser.mutateAsync(updateData);
-        if (formData.role === 'staff') {
+        // Só mexe nos vínculos se a lista atual já veio do servidor. Salvar
+        // antes disso mandaria uma lista vazia e APAGARIA os vínculos que
+        // existem — vazio aqui tem de significar "o admin desmarcou tudo",
+        // nunca "ainda não carregou".
+        if (formData.role === 'staff' && vinculosCarregados) {
           // No modo global ele já vê tudo — o vínculo por empresa só faz
           // sentido (e só é gravado) no modo restrito.
           await saveStaffCompanies.mutateAsync({
@@ -345,7 +353,10 @@ export default function Users() {
 
       {/* User Form Dialog — modal=false so Select dropdowns (company) are not blocked by DismissableLayer */}
       <Dialog modal={false} open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="sm:max-w-md">
+        {/* Altura limitada à janela e rolagem interna: com a lista de empresas
+            o formulário passou a estourar a tela e o rodapé com os botões
+            ficava fora do alcance (relato de ago/2026). */}
+        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               {editingUser ? 'Editar Usuário' : 'Novo Usuário'}
