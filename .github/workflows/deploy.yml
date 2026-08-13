@@ -50,6 +50,16 @@ jobs:
             --project-ref yqsqrdndvsnhbsoaoilf \
             --no-verify-jwt
 
+      # Leitor de datasheet do Motor de Engenharia. Faz a própria checagem do
+      # header Authorization e consome cota de IA (consume_ai_quota).
+      - name: Deploy datasheet-extract
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          supabase functions deploy datasheet-extract \
+            --project-ref yqsqrdndvsnhbsoaoilf \
+            --no-verify-jwt
+
       # Sem verify-jwt: o login que falhou ainda não tem sessão. A proteção
       # é a lista fechada de ações + limite por IP dentro da própria função.
       - name: Deploy log-event

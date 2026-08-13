@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { FileText, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
-import { EquipmentCatalogItem, getEquipmentDocUrl } from '@/hooks/useEquipmentCatalog';
+import { FileText, CheckCircle2, AlertCircle, Loader2, Wand2 } from 'lucide-react';
+import { EquipmentCatalogItem, getEquipmentDocUrl, useSaveEquipment } from '@/hooks/useEquipmentCatalog';
+import { useDatasheetExtract } from '@/hooks/useDatasheetExtract';
 
 /**
  * Datasheets do projeto, na aba Unifilar: mostra QUAL item do catálogo o motor
@@ -49,6 +50,9 @@ function LinhaEquipamento({
   descricaoProjeto: string;
 }) {
   const [abrindo, setAbrindo] = useState<string | null>(null);
+  const [recado, setRecado] = useState<{ tom: 'ok' | 'erro'; texto: string } | null>(null);
+  const extrair = useDatasheetExtract();
+  const salvar = useSaveEquipment();
   const specs = item?.tech_specs ?? null;
   const preenchidos = CAMPOS[tipo].filter(c => {
     const v = specs?.[c.chave];
@@ -64,6 +68,43 @@ function LinhaEquipamento({
       if (url) window.open(url, '_blank', 'noopener');
     } finally { setAbrindo(null); }
   };
+
+  /**
+   * Lê o datasheet anexado e grava os dados que faltam no catálogo. Fica aqui,
+   * e não só no cadastro do equipamento, porque é AQUI que o projetista
+   * descobre o que falta — mandá-lo a outra tela para digitar 4 números que já
+   * estão no PDF é exatamente o atrito que o motor deveria eliminar.
+   *
+   * Só COMPLETA: o que já estava preenchido à mão prevalece sobre a leitura.
+   */
+  const lerDoDatasheet = async () => {
+    if (!item?.datasheet_url) return;
+    setRecado(null);
+    try {
+      const r = await extrair.mutateAsync({
+        type: tipo,
+        brand: item.brand,
+        model: item.model,
+        power: item.power,
+        datasheetPath: item.datasheet_url,
+      });
+      const mesclado: Record<string, number> = { ...r.specs, ...(item.tech_specs ?? {}) };
+      await salvar.mutateAsync({
+        id: item.id, type: tipo, brand: item.brand, model: item.model, power: item.power,
+        datasheet_url: item.datasheet_url, inmetro_url: item.inmetro_url, afci_url: item.afci_url,
+        tech_specs: mesclado,
+      });
+      const novos = Object.keys(r.specs).filter(k => (item.tech_specs ?? {})[k] == null);
+      setRecado({
+        tom: 'ok',
+        texto: `${novos.length} campo(s) preenchido(s)${r.coluna ? ` — ${r.coluna}` : ''}.`
+          + (r.warnings.length > 0 ? ` ⚠ ${r.warnings[0]}` : ''),
+      });
+    } catch (e) {
+      setRecado({ tom: 'erro', texto: e instanceof Error ? e.message : 'Não foi possível ler o datasheet' });
+    }
+  };
+  const lendo = extrair.isPending || salvar.isPending;
 
   return (
     <div style={{ padding: '7px 0', borderTop: '1px solid #F0F0F0' }}>
@@ -92,6 +133,21 @@ function LinhaEquipamento({
               falta: {faltando.map(f => f.rotulo).join(', ')}
             </span>
           )}
+          {faltando.length > 0 && item.datasheet_url && (
+            <button
+              onClick={lerDoDatasheet}
+              disabled={lendo}
+              title="Lê o datasheet anexado e preenche os dados que faltam"
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 3, padding: '1px 6px', borderRadius: 5,
+                border: '1px solid #C9E3D5', background: '#F1FAF5', color: '#0F6E56',
+                fontSize: 10.5, fontWeight: 700, cursor: lendo ? 'default' : 'pointer', opacity: lendo ? 0.6 : 1,
+              }}
+            >
+              {lendo ? <Loader2 size={9} className="animate-spin" /> : <Wand2 size={9} />}
+              {lendo ? 'lendo…' : 'preencher pelo datasheet'}
+            </button>
+          )}
           {DOCS.map(d => {
             const caminho = item[d.campo] as string | null;
             if (!caminho) return null;
@@ -111,6 +167,15 @@ function LinhaEquipamento({
             );
           })}
         </div>
+      )}
+
+      {recado && (
+        <p style={{
+          fontSize: 10.5, margin: '3px 0 0', paddingLeft: 19,
+          color: recado.tom === 'ok' ? '#0F6E56' : '#B3261E',
+        }}>
+          {recado.texto}
+        </p>
       )}
     </div>
   );

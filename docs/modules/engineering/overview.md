@@ -205,6 +205,54 @@ inversor/MPPT — a MESMA melhor opção do "Usar esta"),
 registradas no catálogo de variáveis (categoria "Engenharia (Motor)").
 Sem dados/regra, resolvem vazias (o documento sai mesmo assim).
 
+## Leitura automática do datasheet (ago/2026)
+
+O motor avisava "0 de 4 dados técnicos" para um módulo cujo datasheet estava
+anexado e completo: o dado existia, ninguém tinha digitado no catálogo.
+Digitar 4 campos por módulo e 8 por inversor, para cada equipamento novo, não
+escala — então a edge function **`datasheet-extract`** lê o PDF e devolve o
+`tech_specs`.
+
+**REGRA DE LEITURA — vale para todo módulo e todo inversor:**
+
+1. **Datasheet é de FAMÍLIA, não de um modelo.** `RM-600-630W-182R/132TB`
+   cobre 600, 605, 610, 615, 620, 625 e 630 Wp; `SG3.0/4.0/5.0/6.0RS-L` cobre
+   quatro inversores. A tabela traz **uma coluna por modelo/potência**: a
+   primeira coluna diz qual é a grandeza, as seguintes trazem o valor de cada
+   modelo. Lê-se a **coluna do equipamento cadastrado** — escolhida pela
+   `power` do item no catálogo (ou deduzida do nome, ex.: `RM-620W` → 620 Wp).
+2. **Módulo: só a tabela STC** ("CARACTERÍSTICAS ELÉTRICAS (STC)", 1000 W/m²,
+   25 °C, AM 1,5). **Nunca** NOCT/NMOT (800 W/m², valores menores) nem a
+   tabela bifacial ("Especificações (BNPI)", "BPI", ganho bifacial — valores
+   ~10% MAIORES, que furariam string e cabo).
+3. **Não interpolar.** Se a coluna exata do alvo não existir, devolve vazio e
+   diz quais colunas existem, em vez de aproximar pela vizinha.
+
+**Conferências no servidor** (a leitura é palpite informado, não fonte da
+verdade — o filtro fica no servidor porque é o único ponto por onde toda
+leitura passa):
+
+- faixa plausível por campo (ex.: `voc_v` 10–100 V) — fora disso, descarta;
+- coerência física do módulo: `Voc > Vmp` e `Isc > Imp`;
+- **`Vmp × Imp ≈ potência nominal` (tolerância 3%)** — é o que derruba a
+  tabela bifacial (11% de erro) e a coluna 20 W distante (3,1%). Colunas
+  **vizinhas** (passo de 5 Wp, 0,8%) não são separáveis por aritmética: por
+  isso a tela mostra **de qual coluna** a IA leu, para conferência humana;
+- inversor: faixa de MPPT não invertida e `V máx. MPPT ≤ V CC máx.`.
+  As conferências de par olham o valor **cru**, antes do filtro de faixa —
+  senão, numa faixa invertida (mín. 560 / máx. 40) o 40 cairia sozinho e o
+  560 sobreviveria como "mínimo".
+
+Campo descartado = campo ausente: o motor volta ao valor-padrão das Regras e
+avisa. Nunca entra número duvidoso no cálculo.
+
+**Onde fica o botão** — nos dois lugares: no cadastro do equipamento
+(preenche os campos para conferência antes de salvar) e **na aba Unifilar**,
+ao lado de "falta: Voc, Vmp…" (lê e grava, e as sugestões recalculam). O
+segundo existe porque é ali que o projetista descobre o que falta; mandá-lo a
+outra tela para digitar números que já estão no PDF é o atrito que o motor
+deveria eliminar. A leitura só **completa**: valor digitado à mão prevalece.
+
 ## Arquivos
 
 - `src/utils/engineering/rulesEngine.ts` — o motor (funções PURAS,
@@ -217,6 +265,11 @@ Sem dados/regra, resolvem vazias (o documento sai mesmo assim).
   → ≥2 opções completas + alertas), `buildRuleMap`/`ruleValue`,
   `inverterSpecsFromTechSpecs`/`moduleSpecsFromTechSpecs` (leitura
   tolerante do jsonb).
+- `supabase/functions/datasheet-extract/index.ts` — leitor de datasheet
+  (regra de família + STC + conferências no servidor, acima). Deployada pelo
+  CI, consome cota de IA como `datasheet_extract`.
+- `src/hooks/useDatasheetExtract.ts` — chama a função com o arquivo escolhido
+  ou com o datasheet já salvo no storage; nunca grava sozinho.
 - `src/hooks/useEngineeringRules.ts` — fetch/update/histórico (casts
   `as never` — tabela fora dos types gerados, mesmo padrão do console).
 - `src/pages/admin/EngineeringRules.tsx` — a tela: cards recolhíveis por

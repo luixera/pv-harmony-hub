@@ -4,7 +4,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { useSaveEquipment, useAfciDaMarca, EquipmentType, EquipmentCatalogItem } from '@/hooks/useEquipmentCatalog';
-import { Upload, Loader2, SlidersHorizontal, ChevronDown, ChevronRight } from 'lucide-react';
+import { Upload, Loader2, SlidersHorizontal, ChevronDown, ChevronRight, Wand2 } from 'lucide-react';
+import { useDatasheetExtract, DatasheetExtractResult } from '@/hooks/useDatasheetExtract';
 
 const UNIT: Record<EquipmentType, string> = { inverter: 'kW', module: 'Wp' };
 
@@ -73,6 +74,35 @@ export function EquipmentFormDialog({ type, editing, initialBrand, initialModel,
   const isInverter = type === 'inverter';
   // AFCI é documento da marca: se a marca já tem, não precisa anexar de novo.
   const { data: afciHerdado } = useAfciDaMarca(isInverter ? brand : '');
+
+  // ── Leitura do datasheet pela IA ────────────────────────────────────────
+  const extrair = useDatasheetExtract();
+  const [leitura, setLeitura] = useState<DatasheetExtractResult | null>(null);
+  const [erroLeitura, setErroLeitura] = useState<string | null>(null);
+
+  const lerDatasheet = async () => {
+    setErroLeitura(null);
+    setLeitura(null);
+    try {
+      const r = await extrair.mutateAsync({
+        type, brand, model,
+        power: power.trim() === '' ? null : Number(power.replace(',', '.')),
+        file: datasheetFile,
+        datasheetPath: editing?.datasheet_url ?? null,
+      });
+      // preenche só o que veio; o que já estava digitado e não veio, fica
+      setSpecs(prev => {
+        const novo = { ...prev };
+        for (const [k, v] of Object.entries(r.specs)) novo[k] = String(v);
+        return novo;
+      });
+      if (r.specs.is_microinverter === 1) setIsMicro(true);
+      setSpecsOpen(true);
+      setLeitura(r);
+    } catch (e) {
+      setErroLeitura(e instanceof Error ? e.message : 'Não foi possível ler o datasheet');
+    }
+  };
 
   const handleSave = async () => {
     if (!brand.trim() || !model.trim()) return;
@@ -159,6 +189,45 @@ export function EquipmentFormDialog({ type, editing, initialBrand, initialModel,
                   Com estes dados, as sugestões de strings do motor ficam exatas
                   (sem eles, o motor usa os valores-padrão das Regras de Engenharia e avisa).
                 </p>
+
+                {/* Leitura automática: o dado já está no datasheet anexado —
+                    digitar 4 (módulo) ou 8 (inversor) campos por equipamento
+                    não escala. Preenche os campos abaixo para conferência; só
+                    grava quando o usuário salvar. */}
+                <div className="rounded-md border border-dashed border-primary/40 bg-primary/5 px-2 py-2 space-y-1.5">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Button
+                      type="button" size="sm" variant="outline"
+                      onClick={lerDatasheet}
+                      disabled={extrair.isPending || (!datasheetFile && !editing?.datasheet_url) || !model.trim()}
+                    >
+                      {extrair.isPending
+                        ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                        : <Wand2 className="w-3.5 h-3.5 mr-1.5" />}
+                      {extrair.isPending ? 'Lendo o datasheet…' : 'Preencher lendo o datasheet'}
+                    </Button>
+                    {!datasheetFile && !editing?.datasheet_url && (
+                      <span className="text-[11px] text-muted-foreground">anexe o datasheet acima</span>
+                    )}
+                  </div>
+                  {leitura && (
+                    <div className="text-[11px] space-y-0.5">
+                      <p className="text-emerald-700">
+                        {Object.keys(leitura.specs).length} campo(s) preenchido(s)
+                        {leitura.coluna ? <> — lido de <strong>{leitura.coluna}</strong></> : null}. Confira antes de salvar.
+                      </p>
+                      {leitura.warnings.map((w, i) => (
+                        <p key={i} className="text-amber-700">⚠ {w}</p>
+                      ))}
+                    </div>
+                  )}
+                  {erroLeitura && <p className="text-[11px] text-destructive">{erroLeitura}</p>}
+                  <p className="text-[11px] text-muted-foreground">
+                    Datasheet de família (ex.: <em>RM-600-630W</em>) tem uma coluna por potência —
+                    a leitura usa a coluna da potência cadastrada acima, sempre na tabela STC.
+                    Confira a potência antes de ler.
+                  </p>
+                </div>
                 {isInverter && (
                   <label className="flex items-start gap-2 rounded-md border border-border px-2 py-2 cursor-pointer">
                     <input
