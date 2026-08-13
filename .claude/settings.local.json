@@ -293,7 +293,8 @@
       "Bash(git commit -q -m 'docs\\(permissoes\\): registra o bloqueio do modal aceitando empresa ligada *)",
       "Bash(npx -y supabase functions list --project-ref yqsqrdndvsnhbsoaoilf)",
       "Bash(npx -y supabase db query --linked -f __TRACKED_VAR__/q_cost2.sql)",
-      "Bash(npx -y supabase db query --linked -f __TRACKED_VAR__/q_prj.sql)"
+      "Bash(npx -y supabase db query --linked -f __TRACKED_VAR__/q_prj.sql)",
+      "Bash(npx -y supabase db query --linked -f \"supabase/migrations/20260810150000_project_diagram_versions.sql\")"
     ]
   }
 }

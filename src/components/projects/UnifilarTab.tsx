@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, FlaskConical, LayoutTemplate, Lightbulb, Loader2, MapPin, ShieldCheck } from 'lucide-react';
+import { AlertTriangle, Archive, FlaskConical, LayoutTemplate, Lightbulb, Loader2, MapPin, ShieldCheck } from 'lucide-react';
 import { ProjectWithDetails } from '@/hooks/useProjects';
 import { buildTechnicalJsonFromProject } from '@/utils/cadEngine/buildTechnicalJson';
 import {
@@ -11,6 +11,9 @@ import { Point } from '@/utils/cadEngine/types';
 import { buildProjectValues } from '@/utils/projectValues';
 import { DiagramEditor } from '@/components/diagrams/DiagramEditor';
 import { useProjectDiagram, useSaveProjectDiagram } from '@/hooks/useProjectDiagram';
+import {
+  useDiagramVersions, useSaveDiagramVersion, useDeleteDiagramVersion, fetchDiagramVersionScene,
+} from '@/hooks/useDiagramVersions';
 import { useDiagramTemplates } from '@/hooks/useDiagramTemplates';
 import { matchEntryRule, useEntryRules } from '@/hooks/useEntryRules';
 import { useEngineeringRuleMap } from '@/hooks/useEngineeringRules';
@@ -203,6 +206,74 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
     debounceRef.current = window.setTimeout(() => {
       saveDiagram.mutate({ projectId: project.id, sceneData: state });
     }, 800);
+  };
+
+  // ── Versões salvas do diagrama ─────────────────────────────────────────
+  const { data: versoes = [] } = useDiagramVersions(project.id);
+  const salvarVersao = useSaveDiagramVersion();
+  const apagarVersao = useDeleteDiagramVersion();
+  const [salvandoVersao, setSalvandoVersao] = useState(false);
+
+  const cenaAtual = () => liveState ?? initialState;
+  /** Vazia = só a folha (sem componente): não vale guardar nem sobrescrever. */
+  const temConteudo = (s: DiagramSceneState | null) => (s?.placements ?? []).length > 0;
+
+  /**
+   * Guarda o diagrama atual ANTES de uma ação que o substitui inteiro.
+   * É o resguardo que faltava: gerar pelo motor ou aplicar um modelo apagava o
+   * desenho pronto sem volta — foi assim que um clique errado em
+   * "é microinversor" levou um unifilar embora (ago/2026).
+   * Best-effort: se falhar, a ação principal continua (só registra no console).
+   */
+  const guardarAntesDeSubstituir = async (motivo: string) => {
+    const atual = cenaAtual();
+    if (!temConteudo(atual)) return;
+    try {
+      await salvarVersao.mutateAsync({
+        projectId: project.id, sceneData: atual, origin: 'auto',
+        name: `Antes de ${motivo}`,
+      });
+    } catch (e) { console.error('não deu pra guardar a versão anterior', e); }
+  };
+
+  const salvarVersaoAtual = async () => {
+    const atual = cenaAtual();
+    if (!temConteudo(atual)) { alert('Não há diagrama para salvar ainda.'); return; }
+    const nome = prompt('Nome desta versão:', `Versão de ${new Date().toLocaleDateString('pt-BR')}`);
+    if (nome === null) return;
+    setSalvandoVersao(true);
+    try {
+      await salvarVersao.mutateAsync({
+        projectId: project.id, sceneData: atual, origin: 'manual',
+        name: nome.trim() || `Versão de ${new Date().toLocaleDateString('pt-BR')}`,
+      });
+    } catch (e) {
+      console.error(e);
+      alert('Não foi possível salvar a versão.');
+    } finally { setSalvandoVersao(false); }
+  };
+
+  const restaurarVersao = async (id: string, nome: string) => {
+    if (!confirm(`Restaurar "${nome}"? O diagrama atual será substituído — mas guardo uma cópia dele antes.`)) return;
+    try {
+      const cena = await fetchDiagramVersionScene(id);
+      if (!cena) { alert('Não foi possível ler esta versão.'); return; }
+      await guardarAntesDeSubstituir(`restaurar "${nome}"`);
+      setApplied(prev => ({ v: (prev?.v ?? 0) + 1, state: cena }));
+    } catch (e) {
+      console.error(e);
+      alert('Não foi possível restaurar esta versão.');
+    }
+  };
+
+  const excluirVersao = async (id: string, nome: string) => {
+    if (!confirm(`Excluir a versão "${nome}"? Isso não mexe no diagrama atual.`)) return;
+    try {
+      await apagarVersao.mutateAsync({ id, projectId: project.id });
+    } catch (e) {
+      console.error(e);
+      alert('Não foi possível excluir esta versão.');
+    }
   };
 
   const projectInverters = Math.max(1, Number(project.equipment?.inverter_quantity ?? 1) || 1);
@@ -405,6 +476,7 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
           breakerLabels: plan.branches.map((_, i) => (plan.branches.length > 1 ? `Disjuntor Ramal ${i + 1}` : 'Disjuntor Geral CA')),
           branchBreakerA: plan.branches.map(b => b.breakerA),
         });
+    await guardarAntesDeSubstituir('gerar o diagrama de microinversores');
     setApplied(prev => ({ v: (prev?.v ?? 0) + 1, state }));
     setSuggestOpen(false);
   };
@@ -489,11 +561,12 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
       warningVariant: (project.concessionaireName ?? '').toLowerCase().includes('enel') ? 'enel' : 'generic',
       utilityName: project.concessionaireName ?? undefined,
     });
+    await guardarAntesDeSubstituir('gerar o diagrama pelo motor');
     setApplied(prev => ({ v: (prev?.v ?? 0) + 1, state }));
     setSuggestOpen(false);
   };
 
-  const applyTemplate = () => {
+  const applyTemplate = async () => {
     const t = templates.find(x => x.id === templatePick);
     if (!t) return;
     if (!confirm(`Aplicar o modelo "${t.name}" a este projeto? O diagrama atual deste projeto será substituído (o modelo em si não é alterado).`)) return;
@@ -506,6 +579,7 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
         else alert('Não deu pra replicar automaticamente (topologia do modelo fora do padrão 1 ramal → 1 inversor) — o modelo foi aplicado como está.');
       }
     }
+    await guardarAntesDeSubstituir(`aplicar o modelo "${t.name}"`);
     setApplied(prev => ({ v: (prev?.v ?? 0) + 1, state }));
     setTemplatePick('');
   };
@@ -805,6 +879,70 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
           </div>
         )}
       </div>
+
+      {/* Diagramas salvos: o vigente é sobrescrito pelo autosave e por qualquer
+          regeração; aqui ficam os instantâneos para voltar atrás. */}
+      <div style={{ background: '#F7F9FB', border: '1px solid #E3E9EF', borderRadius: 10, padding: '10px 14px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <Archive size={14} style={{ color: '#3D5A73', flexShrink: 0 }} />
+          <span style={{ fontSize: 12, fontWeight: 700, color: '#1A1A1A' }}>Diagramas salvos</span>
+          <span style={{ fontSize: 11, color: '#777', flex: 1, minWidth: 180 }}>
+            {versoes.length === 0
+              ? 'Nenhuma versão guardada ainda.'
+              : `${versoes.length} versão(ões). O diagrama aberto continua sendo o vigente.`}
+          </span>
+          <button
+            onClick={salvarVersaoAtual}
+            disabled={salvandoVersao}
+            style={{
+              padding: '5px 11px', borderRadius: 7, fontSize: 11.5, fontWeight: 700,
+              border: '1px solid #3D5A73', background: '#fff', color: '#3D5A73',
+              cursor: salvandoVersao ? 'default' : 'pointer', opacity: salvandoVersao ? 0.6 : 1,
+            }}
+          >
+            {salvandoVersao ? 'Salvando…' : 'Salvar versão atual'}
+          </button>
+        </div>
+        {versoes.length > 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 8 }}>
+            {versoes.map(v => (
+              <div key={v.id} style={{
+                display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+                background: '#fff', border: '1px solid #E3E9EF', borderRadius: 8, padding: '5px 10px',
+              }}>
+                <span style={{ fontSize: 11.5, color: '#1A1A1A', fontWeight: 600, flex: 1, minWidth: 160 }}>
+                  {v.name}
+                  {v.origin === 'auto' && (
+                    <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, color: '#6B7B8C' }}>automático</span>
+                  )}
+                </span>
+                <span style={{ fontSize: 10.5, color: '#777' }}>
+                  {new Date(v.created_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}
+                </span>
+                <button
+                  onClick={() => restaurarVersao(v.id, v.name)}
+                  style={{
+                    padding: '2px 8px', borderRadius: 6, fontSize: 10.5, fontWeight: 700, cursor: 'pointer',
+                    border: '1px solid #2D7A3A', background: '#fff', color: '#2D7A3A',
+                  }}
+                >
+                  Restaurar
+                </button>
+                <button
+                  onClick={() => excluirVersao(v.id, v.name)}
+                  style={{
+                    padding: '2px 8px', borderRadius: 6, fontSize: 10.5, fontWeight: 700, cursor: 'pointer',
+                    border: '1px solid #E0C4C4', background: '#fff', color: '#B3261E',
+                  }}
+                >
+                  Excluir
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       <div style={{
         display: 'flex', alignItems: 'center', gap: 8, background: '#FFF7E6',
         border: '1px solid #FDE4A8', borderRadius: 10, padding: '10px 14px',
