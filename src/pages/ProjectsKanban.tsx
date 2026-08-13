@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback, memo } from 'react';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
-import { useProjects, useUpdateProjectStatus } from '@/hooks/useProjects';
+import { useProjects, useUpdateProjectStatus, useArchiveProject } from '@/hooks/useProjects';
 import { useCompanies } from '@/hooks/useCompanies';
 import { useEnergyConcessionaires } from '@/hooks/useEnergyConcessionaires';
 import { useCompanyDisplay } from '@/hooks/useCompanyDisplay';
@@ -20,7 +20,7 @@ import { NewRevisionDialog } from '@/components/revisions/NewRevisionDialog';
 import { ProtocolDialog, ProtocolData } from '@/components/projects/ProtocolDialog';
 import { useRegisterProtocol } from '@/hooks/useProjectProtocol';
 import { useSearchParams } from 'react-router-dom';
-import { Search, Building2, Zap, MapPin, Loader2, ChevronRight, ArrowRight, AlertCircle, DollarSign, MoreVertical, Trash2, Users, FileOutput, ExternalLink, XCircle, Clock, Hash } from 'lucide-react';
+import { Search, Building2, Zap, MapPin, Loader2, ChevronRight, ArrowRight, AlertCircle, DollarSign, MoreVertical, Trash2, Users, FileOutput, ExternalLink, XCircle, Clock, Hash, Archive, ArchiveRestore } from 'lucide-react';
 import { useProjectRevisions, useProjectRevisionSummary } from '@/hooks/useProjectRevisions';
 import { Database } from '@/integrations/supabase/types';
 import { ProjectModal } from '@/components/projects/ProjectModal';
@@ -151,6 +151,17 @@ const KanbanCardContent = memo(function KanbanCardContent({
         <span className="text-xs font-mono text-primary">{project.code}</span>
         <div className="flex items-center gap-1">
           <RevisionBadge projectId={project.id} />
+          {/* só aparece com "Mostrar arquivados" ligado — fora disso o card nem
+              está na lista */}
+          {(project as { archived_at?: string | null }).archived_at && (
+            <span
+              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium"
+              style={{ background: '#EEF2F6', color: '#3D5A73', border: '0.5px solid #CBD5E1' }}
+            >
+              <Archive className="w-2.5 h-2.5" />
+              Arquivado
+            </span>
+          )}
           {isStale && (
             <Tooltip>
               <TooltipTrigger asChild>
@@ -287,6 +298,8 @@ function CardMenu({
   const [showStaff, setShowStaff] = useState(false);
   const [showGenDoc, setShowGenDoc] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
+  const arquivar = useArchiveProject();
+  const estaArquivado = !!(project as { archived_at?: string | null }).archived_at;
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -351,6 +364,15 @@ function CardMenu({
 
           {menuBtn(<Users size={12} />, 'Atribuir projetista', () => setShowStaff(true))}
           {menuBtn(<FileOutput size={12} />, 'Gerar documento', () => setShowGenDoc(true))}
+          {/* Arquivar não é excluir: sai do quadro e da visão da empresa, mas
+              continua inteiro no sistema e nos números do Financeiro. */}
+          {estaArquivado
+            ? menuBtn(<ArchiveRestore size={12} />, 'Desarquivar', () => arquivar.mutate({ projectId: project.id, archived: false }))
+            : menuBtn(<Archive size={12} />, 'Arquivar projeto', () => {
+                if (confirm(`Arquivar ${project.code}? Ele sai do Kanban e da visão da empresa, mas continua no sistema e no Financeiro. Dá pra desarquivar depois.`)) {
+                  arquivar.mutate({ projectId: project.id, archived: true });
+                }
+              })}
           {isAdmin && (
             <>
               <div style={{ height: 1, background: '#F0F0F0', margin: '4px 0' }} />
@@ -413,7 +435,12 @@ export default function ProjectsKanban() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
 
-  const { data: projects = [], isLoading } = useProjects();
+  // Arquivar é de admin/projetista; a empresa cliente nem vê o projeto
+  // arquivado (isso é regra de RLS), então nem faz sentido oferecer o botão.
+  const podeArquivar = user?.role === 'admin' || user?.role === 'staff';
+  const [mostrarArquivados, setMostrarArquivados] = useState(false);
+
+  const { data: projects = [], isLoading } = useProjects({ incluirArquivados: mostrarArquivados });
   const { data: companies = [] } = useCompanies();
   const { data: concessionaires = [] } = useEnergyConcessionaires();
   const { getCompanyDisplayName, shouldHideCompanyName } = useCompanyDisplay();
@@ -641,6 +668,28 @@ export default function ProjectsKanban() {
                 {noValueFilter && (
                   <span className="ml-1 bg-white/30 text-inherit rounded-full px-1.5 text-[11px] font-bold">
                     {projects.filter(hasNoValue).length}
+                  </span>
+                )}
+              </Button>
+            )}
+
+            {/* Arquivados ficam fora do quadro; este botão os traz de volta.
+                Só admin e projetista arquivam — a empresa nem enxerga. */}
+            {podeArquivar && (
+              <Button
+                variant={mostrarArquivados ? 'default' : 'outline'}
+                size="sm"
+                className="h-11 gap-2 font-medium"
+                onClick={() => setMostrarArquivados(v => !v)}
+                title={mostrarArquivados
+                  ? 'Voltar a esconder os projetos arquivados'
+                  : 'Mostrar também os projetos arquivados'}
+              >
+                <Archive className="w-4 h-4" />
+                {mostrarArquivados ? 'Ocultar arquivados' : 'Mostrar arquivados'}
+                {mostrarArquivados && (
+                  <span className="ml-1 bg-white/30 text-inherit rounded-full px-1.5 text-[11px] font-bold">
+                    {projects.filter(p => (p as { archived_at?: string | null }).archived_at).length}
                   </span>
                 )}
               </Button>

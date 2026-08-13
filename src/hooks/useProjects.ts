@@ -30,9 +30,19 @@ export interface ProjectWithDetails extends Project {
   concessionaireName?: string;
 }
 
-export function useProjects() {
+/**
+ * Lista de projetos das telas de trabalho (Kanban, lista, mapa, dashboards).
+ *
+ * `incluirArquivados` traz também os arquivados — some do dia a dia sem sumir
+ * do sistema (pedido do usuário, ago/2026). **Financeiro e Relatórios não
+ * passam por aqui**: eles leem `projects` por consultas próprias e continuam
+ * contando o arquivado, que foi a decisão — arquivar é organização visual e
+ * não pode mexer em número de cobrança.
+ */
+export function useProjects(opcoes?: { incluirArquivados?: boolean }) {
+  const incluirArquivados = opcoes?.incluirArquivados ?? false;
   return useQuery({
-    queryKey: ['projects'],
+    queryKey: ['projects', incluirArquivados ? 'com-arquivados' : 'ativos'],
     queryFn: async (): Promise<ProjectWithDetails[]> => {
       // ── Verificar se o usuário é staff com acesso restrito ──────────────
       const { data: { user: authUser } } = await supabase.auth.getUser();
@@ -87,6 +97,9 @@ export function useProjects() {
         `)
         .eq('is_deleted', false)
         .order('created_at', { ascending: false });
+
+      // Arquivado sai do dia a dia (continua no banco e no Financeiro)
+      if (!incluirArquivados) queryBuilder = queryBuilder.is('archived_at', null);
 
       // O painel normal é sempre do PRÓPRIO tenant. Sem isto, o master veria os
       // projetos de todos os tenants (o RLS libera cross-tenant para is_master);
@@ -498,6 +511,45 @@ export function useCreateProject() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['projects'] });
+    },
+  });
+}
+
+/**
+ * Arquiva / desarquiva um projeto.
+ *
+ * Passa por RPC (`set_project_archived`) e não por UPDATE direto: a política
+ * de UPDATE de `projects` exige apenas ser admin OU staff, **sem olhar de quem
+ * é o projeto** — pela RPC o tenant é conferido no servidor, e o papel também.
+ * Registra no histórico do projeto para não virar sumiço inexplicado.
+ */
+export function useArchiveProject() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ projectId, archived }: { projectId: string; archived: boolean }) => {
+      const { error } = await supabase.rpc('set_project_archived' as never, {
+        _project_id: projectId, _archived: archived,
+      } as never);
+      if (error) throw error;
+      await supabase.from('project_history').insert({
+        project_id: projectId,
+        action: archived ? 'Projeto arquivado' : 'Projeto desarquivado',
+        description: archived
+          ? 'Saiu do Kanban e da visão da empresa. Continua no Financeiro e nos Relatórios.'
+          : 'Voltou a aparecer no Kanban e para a empresa.',
+      });
+    },
+    onSuccess: (_, { archived }) => {
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      queryClient.invalidateQueries({ queryKey: ['project-history'] });
+      toast.success(archived ? 'Projeto arquivado' : 'Projeto desarquivado');
+    },
+    onError: (e: unknown) => {
+      console.error('useArchiveProject', e);
+      const msg = e instanceof Error && /tenant|projetista/i.test(e.message)
+        ? e.message
+        : 'Não foi possível arquivar o projeto';
+      toast.error(msg);
     },
   });
 }
