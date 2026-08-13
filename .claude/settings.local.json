@@ -292,7 +292,8 @@
       "Bash(npx -y supabase db query --linked -f \"supabase/migrations/20260810130000_storage_fecha_leitura_anonima.sql\")",
       "Bash(git commit -q -m 'docs\\(permissoes\\): registra o bloqueio do modal aceitando empresa ligada *)",
       "Bash(npx -y supabase functions list --project-ref yqsqrdndvsnhbsoaoilf)",
-      "Bash(npx -y supabase db query --linked -f __TRACKED_VAR__/q_cost2.sql)"
+      "Bash(npx -y supabase db query --linked -f __TRACKED_VAR__/q_cost2.sql)",
+      "Bash(npx -y supabase db query --linked -f __TRACKED_VAR__/q_prj.sql)"
     ]
   }
 }

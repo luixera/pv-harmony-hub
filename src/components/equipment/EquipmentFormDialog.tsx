@@ -116,8 +116,15 @@ export function EquipmentFormDialog({ type, editing, initialBrand, initialModel,
       .filter(([k]) => relevantes.has(k))
       .map(([k, v]) => [k, Number(String(v).replace(',', '.'))] as const)
       .filter(([, v]) => Number.isFinite(v) && v > 0);
-    // marcador de microinversor vai como 1 (o tech_specs só guarda números)
+    // marcador de microinversor vai como 1 (o tech_specs só guarda números).
+    // Desmarcado, grava 0 SE o item já tinha o marcador — 0 significa
+    // "conferido: não é micro" e segura a detecção por nome. Sem isso, salvar
+    // o equipamento apagaria uma correção feita na aba Unifilar e o modelo
+    // voltaria a ser detectado como micro. Item sem marcador continua sem.
     if (isInverter && isMicro) techEntries.push(['is_microinverter', 1]);
+    else if (isInverter && editing?.tech_specs?.['is_microinverter'] != null) {
+      techEntries.push(['is_microinverter', 0]);
+    }
     const tech_specs = techEntries.length > 0 ? Object.fromEntries(techEntries) : null;
     const id = await save.mutateAsync({
       id: editing?.id, type, brand, model, power: powerNum,

@@ -242,14 +242,20 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
   // "Tratar como microinversores": escape manual pra quando o modelo não é
   // reconhecido (marca nova, nome sem "micro"). O botão do painel também
   // grava a marcação no catálogo, pra o próximo projeto já nascer certo.
-  const [forceMicro, setForceMicro] = useState(false);
+  // `null` = segue a detecção automática; true/false = decisão do usuário nesta
+  // sessão. Antes era um booleano só (`forceMicro`), e ligar era caminho sem
+  // volta: o clique gravava `is_microinverter: 1` no catálogo, a detecção
+  // automática passava a valer, e o próprio botão de desfazer sumia da tela
+  // (só aparecia quando NÃO era detectado). Um clique errado ficava preso, no
+  // projeto e no catálogo (relato do usuário, ago/2026).
+  const [microOverride, setMicroOverride] = useState<boolean | null>(null);
   const autoMicro = useMemo(() => isMicroinverter(
     inverterCatalog?.tech_specs ?? null,
     [inverterCatalog?.brand, inverterCatalog?.model, project.equipment?.inverter_brand, project.equipment?.inverter_model]
       .filter(Boolean).join(' '),
     Number(project.equipment?.inverter_power ?? 0) || undefined,
   ), [inverterCatalog, project.equipment]);
-  const isMicro = autoMicro || forceMicro;
+  const isMicro = microOverride ?? autoMicro;
 
   const microPlan = useMemo(() => {
     if (!isMicro || !suggestOpen || ruleMap.size === 0) return null;
@@ -547,42 +553,47 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
             {suggestOpen ? 'Fechar' : 'Ver sugestões'}
           </button>
         </div>
-        {/* Escape manual: modelo de microinversor que o motor não reconheceu
-            (marca nova, modelo sem "micro" no nome). Um clique passa o projeto
-            pro caminho de microinversores e, se o inversor veio do catálogo,
-            deixa a marcação salva pra os próximos projetos. */}
-        {suggestOpen && !autoMicro && (
+        {/* Escape manual NOS DOIS SENTIDOS: modelo de micro que o motor não
+            reconheceu, e também o contrário — inversor de string tratado como
+            micro (por detecção errada ou por clique sem querer). Fica sempre
+            visível enquanto as sugestões estão abertas, senão a correção some
+            junto com o erro. A decisão vai pro catálogo (1 ou 0), pra o
+            próximo projeto do mesmo modelo já nascer certo. */}
+        {suggestOpen && (
           <div style={{
             display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
             background: '#fff', border: '1px solid #DDEEE2', borderRadius: 8, padding: '8px 12px', marginBottom: 8,
           }}>
             <span style={{ fontSize: 11.5, color: '#666', flex: 1, minWidth: 200 }}>
-              {forceMicro
-                ? 'Tratando como MICROINVERSORES (regras de entrada CC e ramal CA).'
-                : 'Este projeto é com microinversores? O motor não reconheceu o modelo e está calculando como inversor de string.'}
+              {isMicro
+                ? 'Tratando como MICROINVERSORES (regras de entrada CC e ramal CA). Não é o caso deste projeto?'
+                : 'Este projeto é com microinversores? O motor está calculando como inversor de string.'}
             </span>
             <button
               onClick={async () => {
-                setForceMicro(v => !v);
-                if (!forceMicro && inverterCatalog) {
+                const novo = !isMicro;
+                setMicroOverride(novo);
+                // grava a decisão no catálogo: 1 = é micro, 0 = conferido que
+                // NÃO é (o 0 vence a detecção por nome — ver isMicroinverter)
+                if (inverterCatalog) {
                   try {
                     await saveEquipment.mutateAsync({
                       id: inverterCatalog.id, type: 'inverter',
                       brand: inverterCatalog.brand, model: inverterCatalog.model, power: inverterCatalog.power,
                       datasheet_url: inverterCatalog.datasheet_url, inmetro_url: inverterCatalog.inmetro_url,
                       afci_url: inverterCatalog.afci_url,
-                      tech_specs: { ...(inverterCatalog.tech_specs ?? {}), is_microinverter: 1 },
+                      tech_specs: { ...(inverterCatalog.tech_specs ?? {}), is_microinverter: novo ? 1 : 0 },
                     });
-                  } catch (e) { console.error('não deu pra marcar no catálogo', e); }
+                  } catch (e) { console.error('não deu pra gravar a marcação no catálogo', e); }
                 }
               }}
               style={{
                 padding: '6px 12px', borderRadius: 7, fontSize: 11.5, fontWeight: 700, cursor: 'pointer',
                 border: '1px solid #2D7A3A',
-                background: forceMicro ? '#2D7A3A' : '#fff', color: forceMicro ? '#fff' : '#2D7A3A',
+                background: isMicro ? '#2D7A3A' : '#fff', color: isMicro ? '#fff' : '#2D7A3A',
               }}
             >
-              {forceMicro ? 'Voltar para inversor de string' : 'É microinversor'}
+              {isMicro ? 'Não é microinversor' : 'É microinversor'}
             </button>
           </div>
         )}

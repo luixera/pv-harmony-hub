@@ -858,6 +858,11 @@ export function isMicroinverter(
   powerKw?: number | null,
 ): boolean {
   if (ts && Number(ts['is_microinverter']) === 1) return true;
+  // `0` é "conferido: NÃO é micro" e vence as heurísticas de nome/família.
+  // Sem isto, quem corrigisse uma detecção errada veria o modelo ser
+  // redetectado no projeto seguinte, sem entender por quê. Chave ausente
+  // continua sendo "não se sabe" (segue para as heurísticas).
+  if (ts && ts['is_microinverter'] != null && Number(ts['is_microinverter']) === 0) return false;
   const nome = String(name ?? '');
   if (/micro\s*-?\s*inversor|microinverter/i.test(nome)) return true;
   const kw = Number(powerKw ?? 0);
