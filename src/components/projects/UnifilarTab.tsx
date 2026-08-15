@@ -21,7 +21,7 @@ import {
   MicroPlan, ProjectArrangementOption, inverterSpecsFromTechSpecs, isMicroinverter,
   microSpecsFromTechSpecs, moduleSpecsFromTechSpecs, ruleValue, suggestBreakerPlan,
   suggestElectricalSizing, suggestMicroinverterPlan, suggestProjectArrangement,
-  mpptBreakdownLabel, stringTableRows,
+  stringTableRows,
 } from '@/utils/engineering/rulesEngine';
 import { useEquipmentCatalog, useSaveEquipment } from '@/hooks/useEquipmentCatalog';
 import { EquipmentDatasheetsPanel } from './EquipmentDatasheetsPanel';
@@ -495,17 +495,11 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
     const inversorModelo = curto([inverterCatalog?.brand, inverterCatalog?.model].filter(Boolean).join(' ')
       || [e?.inverter_brand, e?.inverter_model].filter(Boolean).join(' '));
 
-    const pvLegends = Array.from({ length: projectInverters }, (_, i) => {
-      const arr = opt.perInverter[Math.min(i, opt.perInverter.length - 1)];
-      return [
-        arr.label,
-        // divisão por MPPT escrita no bloco: "MPPT 1: 2 × 11 mód. · MPPT 2: …"
-        // (o desenho por string, um bloco cada, fica para o multifilar)
-        mpptBreakdownLabel(arr),
-        moduloModelo,
-        arr.operatingVoltageV ? `~${arr.operatingVoltageV}V de operação` : '',
-      ].filter(Boolean);
-    });
+    // Legenda do bloco FV: SÓ o modelo do módulo.
+    // A distribuição (quantas strings, quantos módulos, em qual MPPT) mora na
+    // tabela ARRANJO FOTOVOLTAICO da coluna direita — repeti-la aqui rendia
+    // três linhas de texto por bloco, competindo com o desenho (ago/2026).
+    const pvLegends = Array.from({ length: projectInverters }, () => [moduloModelo].filter(Boolean));
     // padrão de entrada do projeto — as regras cadastradas em Concessionárias
     const entryRule = matchEntryRule(entryRules, project.generalData?.phase_type, project.generalData?.circuit_breaker_current);
 

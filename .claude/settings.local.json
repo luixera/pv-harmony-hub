@@ -332,7 +332,9 @@
       "Bash(node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\).on\\('end',\\(\\)=>{const r=JSON.parse\\(d\\);console.log\\('ok:',r.ok,'| enviados:',r.enviados,'| erros:',r.erros\\);\\(r.results||[]\\).filter\\(x=>x.status!=='ja_existia'\\).forEach\\(x=>console.log\\(' ',x.status,x.arquivo||'',x.error||''\\)\\);}\\)\")",
       "Bash(npx -y supabase storage ls \"ss:///concessionaire-templates/72842d39-d85c-4246-8e32-b9c820ea1e7f/\" --linked --experimental)",
       "Bash(node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\).on\\('end',\\(\\)=>JSON.parse\\(d\\).paths.forEach\\(p=>console.log\\('  '+p\\)\\)\\)\")",
-      "Bash(node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\).on\\('end',\\(\\)=>{const r=JSON.parse\\(d\\);const rem=\\(r.results||[]\\).filter\\(x=>x.status==='duplicados_removidos'\\);console.log\\('grupos limpos:',rem.length,'| arquivos removidos:',rem.reduce\\(\\(s,x\\)=>s+x.quantos,0\\),'| erros:',r.erros\\);}\\)\")"
+      "Bash(node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\).on\\('end',\\(\\)=>{const r=JSON.parse\\(d\\);const rem=\\(r.results||[]\\).filter\\(x=>x.status==='duplicados_removidos'\\);console.log\\('grupos limpos:',rem.length,'| arquivos removidos:',rem.reduce\\(\\(s,x\\)=>s+x.quantos,0\\),'| erros:',r.erros\\);}\\)\")",
+      "Bash(git merge --no-ff -q unifilar-folha-nova -m 'merge: folha nova do unifilar + automacao dos documentos da ENEL *)",
+      "Bash(sed -i \"24s/  mpptBreakdownLabel, stringTableRows,/  stringTableRows,/\" src/components/projects/UnifilarTab.tsx)"
     ]
   }
 }
