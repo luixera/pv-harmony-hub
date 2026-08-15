@@ -1168,3 +1168,53 @@ export function moduleSpecsFromTechSpecs(ts: Record<string, unknown> | null | un
     powerW: powerW ?? num(t['power_w']),
   };
 }
+
+// ── Apresentação da distribuição de strings (ago/2026) ──────────────────────
+// A divisão das strings vivia numa frase só ("2 strings × 11 módulos") dentro
+// da legenda do bloco FV — com 3 MPPTs e strings desiguais, ninguém enxergava
+// QUAL string entra em QUAL MPPT, que é exatamente o que o analista confere.
+// Estas duas funções são puras: uma vira legenda no desenho, a outra vira
+// tabela na prancha.
+//
+// FUTURO (decidido com o usuário): diagrama MULTIFILAR com um bloco por
+// string, cada uma ligada à sua entrada de MPPT. Isto aqui é o passo escrito.
+
+/** Legenda curta por inversor: "MPPT 1: 2 × 11 mód. · MPPT 2: 1 × 10 mód." */
+export function mpptBreakdownLabel(arr: StringArrangement): string {
+  const partes: string[] = [];
+  let i = 0;
+  arr.stringsPerMppt.forEach((qtd, m) => {
+    if (qtd <= 0) return;
+    const tamanhos = arr.stringSizes.slice(i, i + qtd);
+    i += qtd;
+    if (tamanhos.length === 0) return;
+    const iguais = tamanhos.every(t => t === tamanhos[0]);
+    // strings iguais viram "2 × 11"; desiguais são listadas ("11 + 10")
+    const desc = iguais
+      ? `${tamanhos.length} × ${tamanhos[0]} mód.`
+      : `${tamanhos.join(' + ')} mód.`;
+    partes.push(`MPPT ${m + 1}: ${desc}`);
+  });
+  return partes.join(' · ');
+}
+
+/** Tabela ARRANJO FOTOVOLTAICO: uma linha por string, com os módulos dela. */
+export function stringTableRows(perInverter: StringArrangement[]): [string, string][] {
+  const linhas: [string, string][] = [];
+  const varios = perInverter.length > 1;
+  perInverter.forEach((arr, inv) => {
+    const prefixo = varios ? `INV ${inv + 1} · ` : '';
+    let s = 0;
+    arr.stringsPerMppt.forEach((qtd, m) => {
+      for (let k = 0; k < qtd && s < arr.stringSizes.length; k++, s++) {
+        linhas.push([`${prefixo}MPPT ${m + 1} · S${k + 1}`, `${arr.stringSizes[s]} módulos`]);
+      }
+    });
+    // sobra: quando `stringsPerMppt` não cobre todas as strings (defensivo —
+    // um arranjo sem distribuição declarada ainda precisa aparecer na tabela)
+    for (; s < arr.stringSizes.length; s++) {
+      linhas.push([`${prefixo}String ${s + 1}`, `${arr.stringSizes[s]} módulos`]);
+    }
+  });
+  return linhas;
+}

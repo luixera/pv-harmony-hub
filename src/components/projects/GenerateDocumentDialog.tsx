@@ -18,6 +18,7 @@ import { ProjectWithDetails } from '@/hooks/useProjects';
 import { RevisionGeneralData, RevisionEquipment } from '@/hooks/useProjectRevisions';
 import { useDocumentPreview } from '@/hooks/useDocumentPreview';
 import { detectTemplateTags, generateDocxFromTemplate } from '@/utils/docxGenerator';
+import { gerarFormularioEnel, baixarArquivo } from '@/utils/formFill/gerarFormularioEnel';
 import { useEntryRules, matchEntryRule, entryRuleValues } from '@/hooks/useEntryRules';
 import { useEngineeringRuleMap } from '@/hooks/useEngineeringRules';
 import { engineeringTemplateValues } from '@/utils/engineering/templateValues';
@@ -231,6 +232,25 @@ export function GenerateDocumentDialog({
 
     try {
       const buffer = await downloadTemplateBuffer(selectedTemplate.path);
+
+      // ── Formulários que não são .docx ──────────────────────────────────────
+      // Os anexos da ENEL são PDF sem campos preenchíveis (escrevemos por cima,
+      // em coordenadas) e a planilha de registro é .xlsx (escrevemos por
+      // célula). Nenhum dos dois passa pelo motor de tags, então saem prontos
+      // direto para download, sem a etapa de prévia/edição.
+      const extensao = selectedTemplate.name.toLowerCase().split('.').pop() ?? '';
+      if (extensao === 'pdf' || extensao === 'xlsx') {
+        const gerado = await gerarFormularioEnel(buffer, selectedTemplate.name, buildProjectValues());
+        if (!gerado) {
+          toast.error('Este formulário ainda não tem mapa de preenchimento cadastrado.');
+          return;
+        }
+        baixarArquivo(gerado.bytes, gerado.nomeArquivo, gerado.mime);
+        toast.success(`${gerado.rotulo} preenchido com os dados do projeto`);
+        onOpenChange(false);
+        return;
+      }
+
       const { hasTags, tags } = await detectTemplateTags(buffer);
       console.log('[GenerateDoc] hasTags:', hasTags, '| tags:', tags);
 
