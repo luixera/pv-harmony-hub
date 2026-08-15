@@ -2,8 +2,8 @@ import { ComponentKind, Point, Scene, TechnicalJsonMvp } from './types';
 import { CONNECTION_INSET, PORT_STUB, SYMBOL_BBOX, SYMBOL_DEFS, SYMBOL_PORTS, SymbolPort } from './symbols';
 import { WARNING_PLATE_ENEL, WARNING_PLATE_GENERIC } from './warningPlates';
 import {
-  CENTER_Y, DRAW_BOTTOM, DRAW_TOP, drawFrameAndHeader, drawLegendTable, drawTitleBlock,
-  LEGEND_LINE_H, LEGEND_X0, MARGIN, paperOf, PaperSize, PITCH_X, SheetOptions, START_X, TITLE_BLOCK_H,
+  CENTER_Y, DRAW_BOTTOM, DRAW_TOP, drawFrameAndHeader, drawInfoTables, drawLegendTable, drawTitleBlock,
+  LEGEND_LINE_H, LEGEND_W, LEGEND_X0, MARGIN, paperOf, PaperSize, PITCH_X, SheetOptions, START_X, TITLE_BLOCK_H,
 } from './paper';
 import { resolveProjectTags } from '@/utils/projectValues';
 
@@ -1088,8 +1088,16 @@ export function pickPaper(need: {
   unitsPerRow?: number;
   schematic?: boolean;
   hasMap?: boolean;
+  /** Prancha com DADOS TÉCNICOS + MEMÓRIA DE CÁLCULO na coluna direita. */
+  hasTables?: boolean;
 }): PaperSize {
   const rows = Math.max(1, need.rows);
+  // As duas tabelas ocupam ~110 mm da coluna direita, e em A4 essa coluna só
+  // tem folga até a altura onde correm medidor e rede — as tabelas sairiam
+  // truncadas ou por cima do desenho. Em A3 a coluna inteira fica livre e o
+  // desenho termina bem antes dela. Por isso a prancha com memória de cálculo
+  // é A3 — é também o formato das pranchas de referência.
+  if (need.hasTables) return 'A3';
   if (need.schematic) {
     // o esquemático empilha módulos sobre o micro: só 1 ramal cabe em A4
     return rows > 1 || (need.unitsPerRow ?? 1) > 3 || need.hasMap ? 'A3' : 'A4';
@@ -1132,6 +1140,13 @@ export function buildMultiArrangementScene(options: {
    *  coordenadas pra legenda. Entra no canto superior esquerdo e empurra as
    *  fileiras pra baixo. */
   locationMap?: { href: string; caption?: string };
+  /** Chamada da planta: ponto no local + seta + caixa com UC e coordenadas.
+   *  Desenhada como elemento do diagrama (arrastável e sai no DXF), não
+   *  gravada dentro da imagem. */
+  locationCallout?: { uc?: string; coords?: string };
+  /** Campos da folha: carimbo completo, tabelas de dados/memória e notas.
+   *  Ficam gravados no diagrama e seguem editáveis. */
+  sheet?: Partial<SheetOptions>;
   /** Símbolo do conversor de cada fileira — 'inverter' (padrão) ou
    *  'microinverter'. Com microinversor a FILEIRA é um RAMAL CA (vários
    *  micros encadeados no mesmo tronco), não um arranjo de strings. */
@@ -1423,11 +1438,44 @@ export function buildMultiArrangementScene(options: {
       ];
 
   // ── PLANTA DE LOCALIZAÇÃO (recorte de satélite do local) ────────────────
+  const plantaShapes: PlacedShape[] = [];
   if (options.locationMap) {
     // abaixo do cabeçalho da folha (título + subtítulo ocupam até ~28mm)
     const MAP = L.map;
     photos.push({ id: uid('planta'), href: options.locationMap.href, ...MAP });
-    if (options.locationMap.caption) {
+
+    // O recorte é CENTRADO na coordenada do projeto, então o centro da imagem
+    // é o ponto da UC. A chamada (ponto + seta + caixa) é desenhada como
+    // elemento do diagrama, não gravada no JPEG: assim o projetista arrasta a
+    // caixa se ela cair sobre o telhado, e tudo sai no DXF do AutoCAD.
+    const centro = { x: MAP.x + MAP.w / 2, y: MAP.y + MAP.h / 2 };
+    const callout = options.locationCallout;
+    const linhas = [callout?.uc ? `UC ${callout.uc}` : '', callout?.coords ?? ''].filter(Boolean);
+
+    // ponto marcado no local exato
+    plantaShapes.push({
+      id: uid('shape'), shape: 'ellipse',
+      x: centro.x - 1.1, y: centro.y - 1.1, w: 2.2, h: 2.2,
+    });
+
+    if (linhas.length > 0) {
+      const caixaY = MAP.y + MAP.h + 3.5;
+      const caixaH = 3.4 + linhas.length * 3.4;
+      // caixa embaixo da imagem (fundo branco da folha = texto legível sempre)
+      plantaShapes.push({ id: uid('shape'), shape: 'rect', x: MAP.x, y: caixaY, w: MAP.w, h: caixaH });
+      // seta da caixa até o ponto, atravessando a imagem
+      plantaShapes.push({
+        id: uid('shape'), shape: 'arrow',
+        x: MAP.x + MAP.w / 2, y: caixaY,
+        w: centro.x - (MAP.x + MAP.w / 2), h: centro.y - caixaY,
+      });
+      linhas.forEach((linha, i) => {
+        texts.push({
+          id: uid('planta-legenda'), value: linha,
+          x: MAP.x + 2, y: caixaY + 4.6 + i * 3.4, size: i === 0 ? 2.3 : 2.1,
+        });
+      });
+    } else if (options.locationMap.caption) {
       texts.push({
         id: uid('planta-legenda'), value: options.locationMap.caption,
         x: MAP.x, y: MAP.y + MAP.h + 5, size: 2.2,
@@ -1462,13 +1510,22 @@ export function buildMultiArrangementScene(options: {
     groups.unshift({
       id: uid('group'),
       title: 'PLANTA DE LOCALIZAÇÃO',
-      x: L.map.x - 4, y: L.map.y - 5, w: L.map.w + 8, h: L.map.h + (options.locationMap.caption ? 14 : 10),
+      x: L.map.x - 4, y: L.map.y - 5, w: L.map.w + 8,
+      // a caixa da chamada (UC + coordenadas) fica abaixo da imagem, dentro do grupo
+      h: L.map.h + (options.locationCallout ? 22 : options.locationMap.caption ? 14 : 10),
       style: 'solid', moveContents: true,
     });
   }
 
   // a folha escolhida viaja no estado: editor e exportadores usam a mesma
-  return { placements, connections, photos, texts, groups, shapes: [], sheet: { paper } };
+  return {
+    placements, connections, photos, texts, groups,
+    // ponto + seta + caixa da planta de situação
+    shapes: plantaShapes,
+    // carimbo, tabelas e notas viajam junto com o desenho: quem gerou já
+    // preencheu, e a partir daí é conteúdo editável do diagrama
+    sheet: { paper, ...(options.sheet ?? {}) },
+  };
 }
 
 // ── Microinversores: representação ESQUEMÁTICA (seguimentação do ramal) ──────
@@ -1866,11 +1923,26 @@ export function usedKindsOf(placements: PlacedSymbol[]): ComponentKind[] {
 }
 
 function resolveSheet(sheet: SheetOptions | undefined, resolve: (s: string) => string): SheetOptions {
+  const r = (s?: string) => (s ? resolve(s) : undefined);
   return {
-    respTecnico: sheet?.respTecnico ? resolve(sheet.respTecnico) : undefined,
-    art: sheet?.art ? resolve(sheet.art) : undefined,
-    revisao: sheet?.revisao ? resolve(sheet.revisao) : undefined,
+    respTecnico: r(sheet?.respTecnico),
+    art: r(sheet?.art),
+    revisao: r(sheet?.revisao),
     showLegend: sheet?.showLegend,
+    // carimbo completo + tabelas + notas: também aceitam tags {chave}
+    empresa: r(sheet?.empresa),
+    tituloDesenho: r(sheet?.tituloDesenho),
+    uc: r(sheet?.uc),
+    numeroDesenho: r(sheet?.numeroDesenho),
+    escala: r(sheet?.escala),
+    unidade: r(sheet?.unidade),
+    folha: r(sheet?.folha),
+    dadosTecnicos: sheet?.dadosTecnicos?.map(([k, v]) => [resolve(k), resolve(v)] as [string, string]),
+    memoriaCalculo: sheet?.memoriaCalculo?.map(([k, v]) => [resolve(k), resolve(v)] as [string, string]),
+    arranjoStrings: sheet?.arranjoStrings?.map(([k, v]) => [resolve(k), resolve(v)] as [string, string]),
+    showTables: sheet?.showTables,
+    notas: sheet?.notas?.map(resolve),
+    showNotes: sheet?.showNotes,
   };
 }
 
@@ -1891,8 +1963,11 @@ export function buildSheetFurnitureScene(
   const scene: Scene = { paper: paperOf(sheet?.paper), shapes: [], blocks: [], blockDefs: SYMBOL_DEFS };
   const resolve = (s: string) => (tagValues ? resolveProjectTags(s, tagValues) : s);
   drawFrameAndHeader(scene, json);
-  drawTitleBlock(scene, json, resolveSheet(sheet, resolve));
-  if (sheet?.showLegend !== false) drawLegendTable(scene, usedKinds, usedConductors);
+  const resolvido = resolveSheet(sheet, resolve);
+  drawTitleBlock(scene, json, resolvido);
+  // as tabelas ocupam o topo da coluna direita e devolvem onde a legenda começa
+  const legendaY = drawInfoTables(scene, resolvido);
+  if (sheet?.showLegend !== false) drawLegendTable(scene, usedKinds, usedConductors, legendaY);
   return scene;
 }
 
@@ -1990,7 +2065,11 @@ export function buildSceneFromPlacement(
     });
   }
 
-  drawTitleBlock(scene, json, resolveSheet(state.sheet, resolve));
-  if (state.sheet?.showLegend !== false) drawLegendTable(scene, usedKindsOf(placements), usedConductorsOf(connections));
+  const sheetResolvido = resolveSheet(state.sheet, resolve);
+  drawTitleBlock(scene, json, sheetResolvido);
+  const legendaY = drawInfoTables(scene, sheetResolvido);
+  if (state.sheet?.showLegend !== false) {
+    drawLegendTable(scene, usedKindsOf(placements), usedConductorsOf(connections), legendaY);
+  }
   return scene;
 }

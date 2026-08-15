@@ -21,6 +21,7 @@ import {
   MicroPlan, ProjectArrangementOption, inverterSpecsFromTechSpecs, isMicroinverter,
   microSpecsFromTechSpecs, moduleSpecsFromTechSpecs, ruleValue, suggestBreakerPlan,
   suggestElectricalSizing, suggestMicroinverterPlan, suggestProjectArrangement,
+  mpptBreakdownLabel, stringTableRows,
 } from '@/utils/engineering/rulesEngine';
 import { useEquipmentCatalog, useSaveEquipment } from '@/hooks/useEquipmentCatalog';
 import { EquipmentDatasheetsPanel } from './EquipmentDatasheetsPanel';
@@ -498,6 +499,9 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
       const arr = opt.perInverter[Math.min(i, opt.perInverter.length - 1)];
       return [
         arr.label,
+        // divisão por MPPT escrita no bloco: "MPPT 1: 2 × 11 mód. · MPPT 2: …"
+        // (o desenho por string, um bloco cada, fica para o multifilar)
+        mpptBreakdownLabel(arr),
         moduloModelo,
         arr.operatingVoltageV ? `~${arr.operatingVoltageV}V de operação` : '',
       ].filter(Boolean);
@@ -532,10 +536,58 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
     // projeto não tiver coordenadas ou faltar a chave do Maps
     const locationMap = (await fetchLocationMap(project.generalData?.coordinates)).map;
 
+    // ── Folha: carimbo, tabelas e notas ────────────────────────────────────
+    // Tudo aqui já foi calculado pelo motor; a prancha só passa a MOSTRAR.
+    // É o que separa um desenho bonito de um documento de engenharia: o
+    // analista confere a memória de cálculo sem abrir o memorial.
+    const fase = invSpecs.acPhases === 3 ? 'Trifásico' : invSpecs.acPhases === 2 ? 'Bifásico' : 'Monofásico';
+    const dadosTecnicos: [string, string][] = ([
+      ['Potência (CC)', values.potencia_total],
+      ['Módulos FV', e?.module_quantity && e?.module_power ? `${e.module_quantity} × ${e.module_power} Wp` : ''],
+      ['Mod. módulo', [e?.module_brand, e?.module_model].filter(Boolean).join(' ')],
+      ['Inversores', invSpecs.powerKw ? `${projectInverters} × ${invSpecs.powerKw} kW` : String(projectInverters)],
+      ['Mod. inversor', [inverterCatalog?.brand ?? e?.inverter_brand, inverterCatalog?.model ?? e?.inverter_model].filter(Boolean).join(' ')],
+      ['Arranjo', opt.summary],
+      ['Ligação', [fase, invSpecs.acVoltageV ? `${invSpecs.acVoltageV} V` : ''].filter(Boolean).join(' ')],
+      ['Corrente CA', plan.branches[0]?.currentA ? `${projectInverters} × ${plan.branches[0].currentA} A` : ''],
+      ['Disj. padrão entrada', entryRule?.disjuntor ? `${entryRule.disjuntor} A${entryRule.categoria ? ` · cat. ${entryRule.categoria}` : ''}` : ''],
+      ['Condutor CC', dcSizing.dc ? `${dcSizing.dc.sectionMm2} mm²` : ''],
+      ['Condutor CA (ramal)', plan.branchSectionMm2 ? `${plan.branchSectionMm2} mm²` : ''],
+      ['Tronco CA', plan.trunkSectionMm2 ? `${plan.trunkSectionMm2} mm²` : ''],
+      ['Distribuidora', project.concessionaireName ?? ''],
+    ] as [string, string][]).filter(([, v]) => v && v.trim() !== '');
+
+    const memoriaCalculo: [string, string][] = ([
+      ['Inversores', String(projectInverters)],
+      ['Corrente CA / inversor', plan.branches[0]?.currentA ? `${plan.branches[0].currentA} A` : ''],
+      ['Disj. por arranjo', plan.branches[0]?.breakerA ? `${plan.branches[0].breakerA} A` : ''],
+      ['Corrente total', plan.totalCurrentA ? `${plan.totalCurrentA} A` : ''],
+      ['Disjuntor geral', plan.generalBreakerA ? `${plan.generalBreakerA} A` : ''],
+      ['Bitola CC', dcSizing.dc ? `${dcSizing.dc.sectionMm2} mm² · queda ${dcSizing.dc.voltageDropPct}%` : ''],
+      ['Bitola CA (ramal)', plan.branchSectionMm2 ? `${plan.branchSectionMm2} mm²` : ''],
+      ['Bitola CA (tronco)', plan.trunkSectionMm2 ? `${plan.trunkSectionMm2} mm²` : ''],
+      ['Tensão de operação', opt.perInverter[0]?.operatingVoltageV ? `${opt.perInverter[0].operatingVoltageV} V` : ''],
+      ['Tensão a frio (Voc)', opt.perInverter[0]?.coldVoltageV ? `${opt.perInverter[0].coldVoltageV} V` : ''],
+    ] as [string, string][]).filter(([, v]) => v && v.trim() !== '');
+
     const state = buildMultiArrangementScene({
-      paper: pickPaper({ rows: projectInverters, hasMap: !!locationMap }),
+      paper: pickPaper({ rows: projectInverters, hasMap: !!locationMap, hasTables: dadosTecnicos.length > 0 }),
       inverterCount: projectInverters,
       pvLegends,
+      locationCallout: values.uc || values.latitude_gms
+        ? {
+            uc: values.uc || undefined,
+            coords: [values.latitude_gms, values.longitude_gms].filter(Boolean).join('  ') || undefined,
+          }
+        : undefined,
+      sheet: {
+        empresa: project.companyName ?? undefined,
+        uc: values.uc || undefined,
+        dadosTecnicos,
+        memoriaCalculo,
+        // uma linha por string, com os módulos dela
+        arranjoStrings: stringTableRows(opt.perInverter),
+      },
       // bloco do inversor: modelo + potência e a corrente CA que dimensionou
       // o disjuntor daquele arranjo
       inverterLegends: plan.branches.map(b => [
