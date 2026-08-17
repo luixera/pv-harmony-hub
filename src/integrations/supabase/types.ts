@@ -1577,6 +1577,9 @@ export type Database = {
         | "completed"
         | "pendencia"
         | "vistoria_solicitada"
+        | "aguardando_instalacao"
+        | "vistoria_sem_protocolo"
+        | "vistoria_reprovada"
       staff_access_mode: "global" | "assigned_only"
       user_role: "admin" | "staff" | "company"
     }
@@ -1755,6 +1758,9 @@ export const Constants = {
         "completed",
         "pendencia",
         "vistoria_solicitada",
+        "aguardando_instalacao",
+        "vistoria_sem_protocolo",
+        "vistoria_reprovada",
       ],
       staff_access_mode: ["global", "assigned_only"],
       user_role: ["admin", "staff", "company"],

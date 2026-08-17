@@ -10,6 +10,10 @@ export const VALID_PROJECT_STATUSES = [
   'approved',
   'pendencia',
   'vistoria_solicitada',
+  // etapas do acompanhamento pos-aprovacao (ago/2026)
+  'aguardando_instalacao',
+  'vistoria_sem_protocolo',
+  'vistoria_reprovada',
   'completed',
 ]
 
@@ -40,6 +44,9 @@ export const PROJECT_STATUS_LABELS: Record<string, string> = {
   approved: 'Aprovado',
   pendencia: 'Pendência',
   vistoria_solicitada: 'Vistoria Solicitada',
+  aguardando_instalacao: 'Aguardando Instalação',
+  vistoria_sem_protocolo: 'Vistoria sem Protocolo',
+  vistoria_reprovada: 'Vistoria Reprovada',
   completed: 'Concluído',
 }
 

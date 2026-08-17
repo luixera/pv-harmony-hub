@@ -334,7 +334,12 @@
       "Bash(node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\).on\\('end',\\(\\)=>JSON.parse\\(d\\).paths.forEach\\(p=>console.log\\('  '+p\\)\\)\\)\")",
       "Bash(node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\).on\\('end',\\(\\)=>{const r=JSON.parse\\(d\\);const rem=\\(r.results||[]\\).filter\\(x=>x.status==='duplicados_removidos'\\);console.log\\('grupos limpos:',rem.length,'| arquivos removidos:',rem.reduce\\(\\(s,x\\)=>s+x.quantos,0\\),'| erros:',r.erros\\);}\\)\")",
       "Bash(git merge --no-ff -q unifilar-folha-nova -m 'merge: folha nova do unifilar + automacao dos documentos da ENEL *)",
-      "Bash(sed -i \"24s/  mpptBreakdownLabel, stringTableRows,/  stringTableRows,/\" src/components/projects/UnifilarTab.tsx)"
+      "Bash(sed -i \"24s/  mpptBreakdownLabel, stringTableRows,/  stringTableRows,/\" src/components/projects/UnifilarTab.tsx)",
+      "Bash(npx -y supabase storage cp ss:///concessionaire-templates/__TRACKED_VAR__/1786758857204_ANEXO_1_SOLICITACAO_ACESSO.pdf /tmp/baixado.pdf --linked --experimental)",
+      "Bash(npx -y supabase db query --linked -f \"supabase/migrations/20260816120100_kanban_etapas_pos_aprovacao.sql\")",
+      "Bash(node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\).on\\('end',\\(\\)=>{const r=JSON.parse\\(d.slice\\(d.indexOf\\('{'\\)\\)\\);\\(r.rows||[]\\).forEach\\(x=>console.log\\(String\\(x.order_index\\).padStart\\(2\\)+' | '+x.status_key.padEnd\\(24\\)+' | '+x.status_label.padEnd\\(24\\)+' | parado apos '+\\(x.stale_days??'-'\\)+'d'+\\(x.is_rejection_stage?' | REPROVACAO':''\\)\\)\\);}\\)\")",
+      "Bash(cp src/integrations/supabase/types.ts /tmp/types-backup.ts)",
+      "Bash(npx -y supabase gen types typescript --linked)"
     ]
   }
 }

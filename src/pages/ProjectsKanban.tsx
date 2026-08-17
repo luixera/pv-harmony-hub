@@ -47,6 +47,9 @@ const statusVariants: Record<string, string> = {
   approved: 'approved',
   pendencia: 'pending',
   vistoria_solicitada: 'progress',
+  aguardando_instalacao: 'progress',
+  vistoria_sem_protocolo: 'pending',
+  vistoria_reprovada: 'pending',
   completed: 'approved',
 };
 
@@ -58,6 +61,9 @@ const STATUS_LABELS: Record<string, string> = {
   approved: 'Aprovado',
   pendencia: 'Pendência',
   vistoria_solicitada: 'Vistoria Solicitada',
+  aguardando_instalacao: 'Aguardando Instalação',
+  vistoria_sem_protocolo: 'Vistoria sem Protocolo',
+  vistoria_reprovada: 'Vistoria Reprovada',
   completed: 'Concluído',
 };
 
