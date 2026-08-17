@@ -23,6 +23,7 @@ import { InstallerPackageDialog } from './InstallerPackageDialog';
 import { Package as PackageIcon } from 'lucide-react';
 import { StaffAssignmentDialog } from './StaffAssignmentDialog';
 import { useProjectAssignments } from '@/hooks/useProjectAssignments';
+import { useDefaultKanbanModel } from '@/hooks/useKanbanConfig';
 import { useMinhasEmpresasDeStaff } from '@/hooks/useStaffCompanies';
 import { logSystemEvent } from '@/lib/systemLog';
 import { EquipmentModelCombobox } from '@/components/equipment/EquipmentModelCombobox';
@@ -153,18 +154,17 @@ function ProgressBar({ currentStatus, canChange, onChangeStatus }: {
   canChange: boolean;
   onChangeStatus: (s: ProjectStatus) => void;
 }) {
-  // Fetch kanban columns dynamically so rejection stage is included
-  const { data: kanbanCols = [] } = useQuery({
-    queryKey: ['kanban-columns-ordered'],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from('kanban_columns')
-        .select('id, status_key, status_label, order_index, color, is_rejection_stage')
-        .order('order_index', { ascending: true });
-      return data || [];
-    },
-    staleTime: 1000 * 60 * 10,
-  });
+  // As etapas vêm do MESMO modelo que o quadro usa (`useDefaultKanbanModel`).
+  //
+  // Antes havia aqui uma consulta própria a `kanban_columns`, e ela dava três
+  // problemas ao mesmo tempo (relato do usuário, ago/2026): guardava o
+  // resultado por 10 minutos, então mudar a configuração não refletia aqui;
+  // usava uma chave de cache que NENHUMA mutação da tela de configuração
+  // invalidava, então nem ao recarregar a lista chegava; e lia as colunas sem
+  // filtrar por modelo — com dois modelos cadastrados, misturaria as etapas
+  // dos dois. Uma fonte só resolve os três.
+  const { data: kanbanModel } = useDefaultKanbanModel();
+  const kanbanCols = kanbanModel?.columns ?? [];
 
   // Fall back to hardcoded steps while columns load
   const steps = kanbanCols.length > 0

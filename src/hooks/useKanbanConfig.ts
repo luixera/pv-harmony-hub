@@ -125,6 +125,7 @@ export function useCreateKanbanModel() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['kanban-models'] });
+      queryClient.invalidateQueries({ queryKey: ['default-kanban-model'] });
       toast({
         title: 'Modelo criado',
         description: 'O novo modelo de Kanban foi criado com sucesso.'
@@ -155,7 +156,11 @@ export function useUpdateKanbanModel() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['kanban-models'] });
+      queryClient.invalidateQueries({ queryKey: ['default-kanban-model'] });
       queryClient.invalidateQueries({ queryKey: ['kanban-model'] });
+      // o modal do projeto e o quadro leem o MODELO PADRAO: sem isto, mudar a
+      // configuracao nao refletia nas telas (relato do usuario, ago/2026)
+      queryClient.invalidateQueries({ queryKey: ['default-kanban-model'] });
     }
   });
 }
@@ -189,6 +194,9 @@ export function useCreateKanbanColumn() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['kanban-model'] });
+      // o modal do projeto e o quadro leem o MODELO PADRAO: sem isto, mudar a
+      // configuracao nao refletia nas telas (relato do usuario, ago/2026)
+      queryClient.invalidateQueries({ queryKey: ['default-kanban-model'] });
     },
     onError: (error) => {
       toast({
@@ -215,6 +223,9 @@ export function useUpdateKanbanColumn() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['kanban-model'] });
+      // o modal do projeto e o quadro leem o MODELO PADRAO: sem isto, mudar a
+      // configuracao nao refletia nas telas (relato do usuario, ago/2026)
+      queryClient.invalidateQueries({ queryKey: ['default-kanban-model'] });
       toast({
         title: 'Coluna salva',
         description: 'As configurações da coluna foram salvas com sucesso.'
@@ -245,6 +256,9 @@ export function useDeleteKanbanColumn() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['kanban-model'] });
+      // o modal do projeto e o quadro leem o MODELO PADRAO: sem isto, mudar a
+      // configuracao nao refletia nas telas (relato do usuario, ago/2026)
+      queryClient.invalidateQueries({ queryKey: ['default-kanban-model'] });
       toast({
         title: 'Coluna removida',
         description: 'A coluna foi removida com sucesso.'
@@ -277,6 +291,9 @@ export function useUpdateColumnOrder() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['kanban-model'] });
+      // o modal do projeto e o quadro leem o MODELO PADRAO: sem isto, mudar a
+      // configuracao nao refletia nas telas (relato do usuario, ago/2026)
+      queryClient.invalidateQueries({ queryKey: ['default-kanban-model'] });
     }
   });
 }
@@ -341,6 +358,7 @@ export function useDuplicateKanbanModel() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['kanban-models'] });
+      queryClient.invalidateQueries({ queryKey: ['default-kanban-model'] });
       toast({
         title: 'Modelo duplicado',
         description: 'O modelo foi duplicado com sucesso.'
@@ -462,6 +480,9 @@ export function useUpdateColumnRejectionStage() {
     onSuccess: (_, vars) => {
       queryClient.invalidateQueries({ queryKey: ['kanban-model', vars.modelId] });
       queryClient.invalidateQueries({ queryKey: ['kanban-model'] });
+      // o modal do projeto e o quadro leem o MODELO PADRAO: sem isto, mudar a
+      // configuracao nao refletia nas telas (relato do usuario, ago/2026)
+      queryClient.invalidateQueries({ queryKey: ['default-kanban-model'] });
       queryClient.invalidateQueries({ queryKey: ['default-kanban-model'] });
       queryClient.invalidateQueries({ queryKey: ['rejection-column'] });
       if (vars.isRejectionStage) {
