@@ -11,6 +11,7 @@ import { Point } from '@/utils/cadEngine/types';
 import { buildProjectValues } from '@/utils/projectValues';
 import { DiagramEditor } from '@/components/diagrams/DiagramEditor';
 import { useProjectDiagram, useSaveProjectDiagram } from '@/hooks/useProjectDiagram';
+import { useProjectRevisions } from '@/hooks/useProjectRevisions';
 import {
   useDiagramVersions, useSaveDiagramVersion, useDeleteDiagramVersion, fetchDiagramVersionScene,
 } from '@/hooks/useDiagramVersions';
@@ -177,7 +178,46 @@ function loadLegacyLocalState(projectId: string): SavedLayout | null {
   } catch { return null; }
 }
 
-export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
+export function UnifilarTab({ project: projetoRecebido }: { project: ProjectWithDetails }) {
+  // ── Qual revisão o diagrama representa ─────────────────────────────────────
+  // Trocar o inversor numa revisão mudava o projeto mas NÃO o diagrama: o
+  // gerador seguia lendo o equipamento anterior, e o desenho saía dimensionado
+  // para o que não vai ser instalado (relato do usuário, ago/2026).
+  //
+  // A escolha troca a FONTE do componente inteiro, em vez de mexer nos ~23
+  // pontos que leem `project.equipment` — assim motor, validador, legendas e
+  // exportação enxergam todos o mesmo conjunto, sem risco de um ficar para trás.
+  const { data: revisoes = [] } = useProjectRevisions(projetoRecebido.id);
+  const [revisaoEscolhida, setRevisaoEscolhida] = useState<string>('atual');
+
+  const project = useMemo<ProjectWithDetails>(() => {
+    if (revisaoEscolhida === 'atual') return projetoRecebido;
+    if (revisaoEscolhida === 'original') {
+      return {
+        ...projetoRecebido,
+        equipment: projetoRecebido.original?.equipment ?? projetoRecebido.equipment,
+        generalData: projetoRecebido.original?.generalData ?? projetoRecebido.generalData,
+      };
+    }
+    const rev = revisoes.find(r => r.id === revisaoEscolhida);
+    if (!rev) return projetoRecebido;
+    // sobrepõe sobre o ORIGINAL (a revisão guarda só o que ela mudou)
+    const juntar = <T,>(base: T | undefined, novo: unknown): T | undefined => {
+      if (!novo) return base;
+      const saida: Record<string, unknown> = { ...(base as Record<string, unknown> ?? {}) };
+      for (const [k, v] of Object.entries(novo as Record<string, unknown>)) {
+        if (k === 'id' || k === 'revision_id' || k === 'project_id') continue;
+        if (v !== null && v !== undefined && v !== '') saida[k] = v;
+      }
+      return saida as T;
+    };
+    return {
+      ...projetoRecebido,
+      equipment: juntar(projetoRecebido.original?.equipment ?? projetoRecebido.equipment, rev.equipment),
+      generalData: juntar(projetoRecebido.original?.generalData ?? projetoRecebido.generalData, rev.general_data),
+    };
+  }, [projetoRecebido, revisaoEscolhida, revisoes]);
+
   const json = useMemo(() => buildTechnicalJsonFromProject(project), [project]);
   const values = useMemo(() => buildProjectValues(project), [project]);
   const { data: dbScene, isLoading } = useProjectDiagram(project.id);
@@ -651,6 +691,41 @@ export function UnifilarTab({ project }: { project: ProjectWithDetails }) {
 
   const banner = (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
+      {/* De qual revisão é este diagrama. Só aparece quando o projeto tem
+          revisão — sem revisão não há escolha a fazer. */}
+      {revisoes.length > 0 && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+          background: '#FFF7E6', border: '1px solid #FDE4A8', borderRadius: 10, padding: '9px 14px',
+        }}>
+          <span style={{ fontSize: 12, color: '#854F0B', fontWeight: 700 }}>
+            Este diagrama é da:
+          </span>
+          <select
+            value={revisaoEscolhida}
+            onChange={e => setRevisaoEscolhida(e.target.value)}
+            style={{
+              padding: '5px 10px', borderRadius: 7, border: '1px solid #E0C48A',
+              background: '#fff', color: '#1A1A1A', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+            }}
+          >
+            <option value="atual">
+              Revisão atual{projetoRecebido.currentRevisionNumber ? ` (Rev. ${projetoRecebido.currentRevisionNumber})` : ''}
+            </option>
+            {revisoes.map(r => (
+              <option key={r.id} value={r.id}>
+                Revisão {r.revision_number}{r.is_current ? ' — vigente' : ''}
+              </option>
+            ))}
+            <option value="original">Original (antes das revisões)</option>
+          </select>
+          <span style={{ fontSize: 11, color: '#8A6D3B', flex: 1, minWidth: 200 }}>
+            Muda o equipamento que o motor usa para dimensionar. Depois de trocar,
+            gere o diagrama de novo — o desenho salvo não se atualiza sozinho.
+          </span>
+        </div>
+      )}
+
       {/* Sugestões do Motor de Engenharia — arranjos prontos pra escolher em 1 clique */}
       <div style={{
         display: 'flex', flexDirection: 'column', gap: 8, background: '#F3FAF4',
