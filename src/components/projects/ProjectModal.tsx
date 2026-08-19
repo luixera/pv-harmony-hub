@@ -186,8 +186,12 @@ function ProgressBar({ currentStatus, canChange, onChangeStatus }: {
         const dotColor = step.isRejection ? '#E24B4A' : '#F5A800';
         return (
           <div key={step.key} style={{ display: 'flex', alignItems: 'flex-start', flex: isLast ? 0 : 1, minWidth: isLast ? 'auto' : 0 }}>
-            {/* Step column: circle + label */}
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+            {/* Step column: circle + label.
+                Largura FIXA: o rótulo é livre (o usuário nomeia a etapa como
+                quiser) e antes saía em linha única sem limite, empurrando a
+                coluna e escrevendo por cima da etapa vizinha — "PENDÊNCIA
+                DOCUMENTAL / AGUARDANDO…" cobria a etapa seguinte inteira. */}
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, width: 92, flexShrink: 0 }}>
               <button
                 onClick={() => canChange && onChangeStatus(step.key as ProjectStatus)}
                 disabled={!canChange}
@@ -205,11 +209,19 @@ function ProgressBar({ currentStatus, canChange, onChangeStatus }: {
               >
                 {done && <Check size={11} strokeWidth={3} />}
               </button>
-              <span style={{
-                fontSize: 9, fontWeight: done ? 500 : active ? 600 : 400, whiteSpace: 'nowrap',
-                color: done ? dotColor : active ? (step.isRejection ? '#E24B4A' : '#fff') : 'rgba(255,255,255,0.3)',
-                letterSpacing: '0.01em',
-              }}>
+              <span
+                title={step.label}
+                style={{
+                  fontSize: 9, fontWeight: done ? 500 : active ? 600 : 400,
+                  color: done ? dotColor : active ? (step.isRejection ? '#E24B4A' : '#fff') : 'rgba(255,255,255,0.3)',
+                  letterSpacing: '0.01em',
+                  // quebra em até 2 linhas e corta com reticências no que passar;
+                  // o texto completo fica no `title` (aparece ao passar o mouse)
+                  width: '100%', textAlign: 'center', lineHeight: 1.25,
+                  display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+                  overflow: 'hidden', overflowWrap: 'anywhere',
+                }}
+              >
                 {step.label}
               </span>
             </div>
