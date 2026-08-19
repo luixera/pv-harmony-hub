@@ -30,6 +30,11 @@ export interface ProjectWithDetails extends Project {
   concessionaireName?: string;
   /** Nº da revisão vigente — `generalData`/`equipment` já vêm dela (useProject). */
   currentRevisionNumber?: number;
+  /** Dados como estavam ANTES de qualquer revisão (só em `useProject`). */
+  original?: {
+    generalData?: ProjectGeneralData;
+    equipment?: ProjectEquipment;
+  };
 }
 
 /**
@@ -214,6 +219,13 @@ export function useProject(id: string | undefined) {
         concessionaireName: (project.energy_concessionaires as { name: string } | null)?.name,
         /** Nº da revisão vigente, quando o projeto tem revisão. */
         currentRevisionNumber: rev?.revision_number,
+        // Dados ORIGINAIS, sem a sobreposição da revisão — é o que a tela usa
+        // para deixar consultar "como era antes" (a revisão some com eles do
+        // card, e o usuário precisa dos dois).
+        original: {
+          generalData: generalDataRes.data || undefined,
+          equipment: equipmentRes.data || undefined,
+        },
       };
     },
     enabled: !!id,

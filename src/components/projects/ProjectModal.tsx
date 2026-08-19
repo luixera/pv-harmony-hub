@@ -383,6 +383,65 @@ function EquipmentBlock<T extends Record<string, string>>({
   );
 }
 
+/**
+ * "Antes da Revisão N" — o que o projeto tinha ANTES da revisão vigente.
+ *
+ * O card de equipamentos passou a mostrar a revisão atual (que é o correto:
+ * é ela que vale para diagrama e documentos), e com isso o dado original
+ * sumia da tela. Este bloco devolve o histórico sem obrigar a trocar de aba:
+ * lista SÓ o que mudou, de → para (pedido do usuário, ago/2026).
+ */
+const CAMPOS_EQUIP: [string, string][] = [
+  ['inverter_brand', 'Inversor — Marca'],
+  ['inverter_model', 'Inversor — Modelo'],
+  ['inverter_power', 'Inversor — Potência (kW)'],
+  ['inverter_quantity', 'Inversor — Quantidade'],
+  ['module_brand', 'Módulos — Marca'],
+  ['module_model', 'Módulos — Modelo'],
+  ['module_power', 'Módulos — Potência (Wp)'],
+  ['module_quantity', 'Módulos — Quantidade'],
+  ['total_installed_power', 'Potência total (kWp)'],
+];
+
+function AntesDaRevisao({ original, atual, numero }: {
+  original: Record<string, unknown>;
+  atual: Record<string, unknown> | undefined;
+  numero: number;
+}) {
+  const mudancas = CAMPOS_EQUIP
+    .map(([chave, rotulo]) => ({
+      rotulo,
+      de: original?.[chave] ?? null,
+      para: atual?.[chave] ?? null,
+    }))
+    .filter(m => String(m.de ?? '') !== String(m.para ?? ''));
+
+  if (mudancas.length === 0) return null;
+
+  return (
+    <div style={{ marginTop: 14, border: '1px solid #E6E6E6', borderRadius: 8, overflow: 'hidden' }}>
+      <div style={{ padding: '7px 12px', background: '#FAFAFA', borderBottom: '1px solid #EEE' }}>
+        <span style={{ fontSize: 11, fontWeight: 700, color: '#555' }}>
+          Antes da Revisão {numero}
+        </span>
+        <span style={{ fontSize: 10.5, color: '#999', marginLeft: 8 }}>
+          {mudancas.length} alteração(ões) — o card acima mostra o que vale hoje
+        </span>
+      </div>
+      <div style={{ padding: '6px 12px' }}>
+        {mudancas.map(m => (
+          <div key={m.rotulo} style={{ display: 'flex', gap: 8, flexWrap: 'wrap', padding: '3px 0', fontSize: 11.5 }}>
+            <span style={{ color: '#777', minWidth: 175 }}>{m.rotulo}</span>
+            <span style={{ color: '#B3261E', textDecoration: 'line-through' }}>{String(m.de ?? '—')}</span>
+            <span style={{ color: '#999' }}>→</span>
+            <span style={{ color: '#0F6E56', fontWeight: 600 }}>{String(m.para ?? '—')}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function TabGeneral({ project, isEditing, onSave, onCancel, onEdit }: {
   project: ProjectWithDetails;
   isEditing: boolean;
@@ -664,6 +723,13 @@ function TabGeneral({ project, isEditing, onSave, onCancel, onEdit }: {
           <div style={{ marginTop: 14, display: 'inline-flex', alignItems: 'center', gap: 6, background: '#FEF3D0', borderRadius: 8, padding: '12px 20px' }}>
             <span style={{ fontSize: 14, fontWeight: 600, color: '#854F0B' }}>Potência total: {totalPower.toFixed(2)} kWp</span>
           </div>
+        )}
+        {project.currentRevisionNumber && project.original?.equipment && (
+          <AntesDaRevisao
+            original={project.original.equipment as unknown as Record<string, unknown>}
+            atual={project.equipment as unknown as Record<string, unknown> | undefined}
+            numero={project.currentRevisionNumber}
+          />
         )}
       </div>
 
