@@ -442,6 +442,61 @@ function AntesDaRevisao({ original, atual, numero }: {
   );
 }
 
+/**
+ * Anexo dentro do comentário. Imagem vira MINIATURA clicável; o resto continua
+ * como link com clipe.
+ *
+ * O nome do arquivo sozinho não diz nada quando a conversa tem várias fotos da
+ * obra — a miniatura resolve sem precisar abrir uma a uma (pedido do usuário,
+ * ago/2026). A URL é assinada e temporária, por isso é buscada por anexo e só
+ * quando é imagem.
+ */
+function AnexoDoComentario({ nome, doc, onAbrir }: {
+  nome: string;
+  doc: { file_url: string; file_name: string } | null;
+  onAbrir: () => void;
+}) {
+  const ehImagem = /\.(png|jpe?g|gif|webp|bmp|avif)$/i.test(nome);
+  const { data: url } = useDocumentUrl(ehImagem && doc ? doc.file_url : undefined);
+
+  if (doc && ehImagem && url) {
+    return (
+      <button
+        onClick={onAbrir}
+        title={`Abrir ${nome}`}
+        style={{
+          display: 'block', padding: 0, margin: '4px 0', border: '1px solid #E6E6E6',
+          borderRadius: 8, overflow: 'hidden', background: '#fff', cursor: 'pointer', lineHeight: 0,
+        }}
+      >
+        <img
+          src={url}
+          alt={nome}
+          style={{ maxWidth: 220, maxHeight: 160, objectFit: 'cover', display: 'block' }}
+        />
+      </button>
+    );
+  }
+
+  return (
+    <button
+      onClick={onAbrir}
+      disabled={!doc}
+      title={doc ? 'Abrir arquivo' : 'Arquivo não encontrado'}
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 5,
+        background: 'none', border: 'none', padding: '2px 0',
+        font: 'inherit', textAlign: 'left',
+        color: doc ? '#185FA5' : '#999',
+        textDecoration: doc ? 'underline' : 'none',
+        cursor: doc ? 'pointer' : 'default',
+      }}
+    >
+      <Paperclip size={12} style={{ flexShrink: 0 }} /> {nome}
+    </button>
+  );
+}
+
 function TabGeneral({ project, isEditing, onSave, onCancel, onEdit }: {
   project: ProjectWithDetails;
   isEditing: boolean;
@@ -1001,6 +1056,25 @@ function TabComments({ project }: { project: ProjectWithDetails }) {
     setAttachments(a => [...a, ...arr]);
   };
 
+  /**
+   * Colar com Ctrl+V — print de tela, foto copiada do explorador, arquivo.
+   *
+   * Imagem vinda da área de transferência chega SEM nome útil (o navegador
+   * manda "image.png" toda vez). Renomeia com data e hora, senão a aba
+   * Documentos vira uma pilha de "image.png" indistinguíveis.
+   */
+  const handlePaste = (e: React.ClipboardEvent) => {
+    const arquivos = Array.from(e.clipboardData?.files ?? []);
+    if (arquivos.length === 0) return;
+    e.preventDefault();
+    const carimbo = format(new Date(), 'yyyy-MM-dd_HH-mm-ss');
+    addFiles(arquivos.map(f => (
+      /^image\.\w+$/i.test(f.name)
+        ? new File([f], `colado_${carimbo}.${f.name.split('.').pop()}`, { type: f.type })
+        : f
+    )));
+  };
+
   const handleSend = async () => {
     if (!canSend) return;
     setIsSending(true);
@@ -1040,7 +1114,13 @@ function TabComments({ project }: { project: ProjectWithDetails }) {
 
   // Drag-and-drop handlers
   const handleDragOver  = (e: React.DragEvent) => { e.preventDefault(); setIsDragging(true); };
-  const handleDragLeave = (e: React.DragEvent) => { e.preventDefault(); setIsDragging(false); };
+  // Só desliga o realce quando o ponteiro sai do PAINEL, não a cada elemento
+  // filho que ele atravessa — senão pisca o tempo todo durante o arrasto.
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+    setIsDragging(false);
+  };
   const handleDrop      = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
@@ -1057,7 +1137,23 @@ function TabComments({ project }: { project: ProjectWithDetails }) {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+    // Arrastar e colar valem no PAINEL INTEIRO, não só na faixa de escrever:
+    // quem arrasta uma foto mira na conversa, não num campo de 40px de altura
+    // (pedido do usuário, ago/2026). `onPaste` aqui pega o Ctrl+V mesmo quando
+    // o cursor não está dentro do campo de texto.
+    <div
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+      onPaste={handlePaste}
+      style={{
+        display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0,
+        position: 'relative',
+        outline: isDragging ? '2px dashed #F5A800' : 'none',
+        outlineOffset: -2,
+        background: isDragging ? '#FFFBF0' : undefined,
+      }}
+    >
       {/* Lista de comentários */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '12px 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
         {comments.length === 0 && (
@@ -1083,22 +1179,12 @@ function TabComments({ project }: { project: ProjectWithDetails }) {
                       const name = att[1];
                       const doc = resolveDoc(name);
                       return (
-                        <button
+                        <AnexoDoComentario
                           key={idx}
-                          onClick={() => doc && setPreviewDoc(doc)}
-                          disabled={!doc}
-                          title={doc ? 'Abrir arquivo' : 'Arquivo não encontrado'}
-                          style={{
-                            display: 'inline-flex', alignItems: 'center', gap: 5,
-                            background: 'none', border: 'none', padding: '2px 0',
-                            font: 'inherit', textAlign: 'left',
-                            color: doc ? '#185FA5' : '#999',
-                            textDecoration: doc ? 'underline' : 'none',
-                            cursor: doc ? 'pointer' : 'default',
-                          }}
-                        >
-                          <Paperclip size={12} style={{ flexShrink: 0 }} /> {name}
-                        </button>
+                          nome={name}
+                          doc={doc}
+                          onAbrir={() => doc && setPreviewDoc(doc)}
+                        />
                       );
                     }
                     return <div key={idx} style={{ whiteSpace: 'pre-wrap' }}>{line}</div>;
@@ -1110,11 +1196,8 @@ function TabComments({ project }: { project: ProjectWithDetails }) {
         })}
       </div>
 
-      {/* Área de input com drag-and-drop */}
+      {/* Área de input — arrastar/colar são tratados no painel inteiro (acima) */}
       <div
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
         style={{
           borderTop: `1px solid ${isDragging ? '#F5A800' : '#F0F0F0'}`,
           padding: '12px 16px',
