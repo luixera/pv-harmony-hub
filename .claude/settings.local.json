@@ -343,7 +343,8 @@
       "Bash(awk 'NR<650 && /^function |^const [A-Z][A-Za-z]* = /{n=NR; l=$0} END{}' src/components/projects/ProjectModal.tsx)",
       "Bash(awk -F: '$1<650')",
       "Bash(awk -F: '$1<660')",
-      "Bash(npx -y supabase db query --linked -f \"supabase/migrations/20260816130000_comentarios_com_anexos.sql\")"
+      "Bash(npx -y supabase db query --linked -f \"supabase/migrations/20260816130000_comentarios_com_anexos.sql\")",
+      "Bash(npx -y supabase db query --linked -f __TRACKED_VAR__/t.sql)"
     ]
   }
 }

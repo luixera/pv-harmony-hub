@@ -555,6 +555,41 @@ function TabGeneral({ project, isEditing, onSave, onCancel, onEdit }: {
   const [coordinates, setCoordinates] = useState<string>(gd?.coordinates || '');
   const [isGeocoding, setIsGeocoding] = useState(false);
 
+  // O `useState` acima roda UMA vez, na montagem. Sem isto o card congelava no
+  // primeiro valor que chegou — normalmente o do cache — e nunca acompanhava a
+  // atualização: com revisão, mostrava o equipamento ANTIGO enquanto o bloco
+  // "Antes da Revisão" já calculava com o novo, e os dois se contradiziam na
+  // mesma tela (relato do usuário, ago/2026 — PRJ-49561).
+  //
+  // Não re-semeia durante a edição: sobrescreveria o que está sendo digitado.
+  useEffect(() => {
+    if (isEditing) return;
+    setForm({
+      holder_name: gd?.holder_name || '',
+      holder_cpf_cnpj: gd?.holder_cpf_cnpj || '',
+      uc_number: gd?.uc_number || '',
+      holder_phone: gd?.holder_phone || '',
+      holder_email: gd?.holder_email || '',
+      circuit_breaker_current: gd?.circuit_breaker_current || '',
+      address: gd?.address || '',
+      address_number: gd?.address_number || '',
+      address_complement: gd?.address_complement || '',
+      neighborhood: gd?.neighborhood || '',
+      cep: gd?.cep || '',
+      city: gd?.city || '',
+      state: gd?.state || '',
+      inverter_brand: eq?.inverter_brand || '',
+      inverter_model: eq?.inverter_model || '',
+      inverter_power: eq?.inverter_power?.toString() || '',
+      inverter_quantity: eq?.inverter_quantity?.toString() || '',
+      module_brand: eq?.module_brand || '',
+      module_model: eq?.module_model || '',
+      module_power: eq?.module_power?.toString() || '',
+      module_quantity: eq?.module_quantity?.toString() || '',
+    });
+    setCoordinates(gd?.coordinates || '');
+  }, [gd, eq, isEditing]);
+
   const totalPower = (parseFloat(form.module_power || '0') * parseInt(form.module_quantity || '0', 10)) / 1000;
 
   const field = (label: string, key: keyof typeof form) => (
