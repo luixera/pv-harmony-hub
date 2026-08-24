@@ -1,5 +1,6 @@
 import PizZip from 'pizzip';
 import Docxtemplater from 'docxtemplater';
+import ImageModule from 'docxtemplater-image-module-free';
 
 // ── Parsing de tags em .docx (robusto a runs fragmentados do Word) ────────────
 //
@@ -462,6 +463,34 @@ export function insertTagAtOccurrence(
  * @param values          Key-value map matching the template tags (keys without braces).
  * @returns               A Blob with the filled document ready for download.
  */
+
+/**
+ * Módulo de imagem do docxtemplater — habilita tags de FOTO no template.
+ *
+ * A tag se escreve com % no template: {%foto_padrao_entrada}. O valor tem de
+ * ser uma data URL (data:image/...;base64,...), que é como as fotos do projeto
+ * chegam aqui — assim a geração não depende de rede na hora de montar o .docx.
+ *
+ * Tamanho fixo em 450x330 px (~12x9 cm impressos): foto de padrão de entrada é
+ * ilustrativa, e deixar o Word decidir resultava em imagem estourando a
+ * margem. Quem precisar de outro tamanho redimensiona no Word depois.
+ */
+function imageModule() {
+  return new ImageModule({
+    centered: false,
+    getImage(tagValue: string) {
+      const base64 = String(tagValue).split(',').pop() ?? '';
+      const bin = atob(base64);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      return bytes;
+    },
+    getSize() {
+      return [450, 330];
+    },
+  });
+}
+
 export async function generateDocxFromTemplate(
   templateBuffer: ArrayBuffer,
   values: Record<string, string>,
@@ -487,6 +516,7 @@ export async function generateDocxFromTemplate(
     nullGetter() {
       return '';
     },
+    modules: [imageModule()],
   });
 
   try {

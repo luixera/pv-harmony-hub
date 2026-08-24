@@ -20,6 +20,8 @@ import { useDocumentPreview } from '@/hooks/useDocumentPreview';
 import { detectTemplateTags, generateDocxFromTemplate } from '@/utils/docxGenerator';
 import { gerarFormularioEnel, baixarArquivo } from '@/utils/formFill/gerarFormularioEnel';
 import { useEquipmentCatalog } from '@/hooks/useEquipmentCatalog';
+import { useDocuments } from '@/hooks/useDocuments';
+import { supabase } from '@/integrations/supabase/client';
 import { useEntryRules, matchEntryRule, entryRuleValues } from '@/hooks/useEntryRules';
 import { useEngineeringRuleMap } from '@/hooks/useEngineeringRules';
 import { engineeringTemplateValues } from '@/utils/engineering/templateValues';
@@ -163,6 +165,37 @@ export function GenerateDocumentDialog({
   // catálogo compartilhado — de onde vem o nº do INMETRO de cada modelo
   const { data: catalogo = [] } = useEquipmentCatalog();
 
+  // ── Foto do padrão de entrada, para embutir no memorial ────────────────────
+  // O documento já é coletado no projeto (tipo "Foto do padrão de entrada").
+  // Aqui ele é baixado e virado em data URL: o módulo de imagem do
+  // docxtemplater precisa dos bytes na hora de montar o .docx, e assim a
+  // geração não depende de rede nem de URL assinada que expira.
+  const { data: documentos = [] } = useDocuments(project.id);
+  const [fotoPadrao, setFotoPadrao] = useState('');
+
+  useEffect(() => {
+    if (!open) return;
+    const foto = documentos.find(d => d.document_type === 'entrance_standard_photo');
+    if (!foto) { setFotoPadrao(''); return; }
+    let cancelado = false;
+    (async () => {
+      try {
+        const { data } = await supabase.storage.from('project-documents').download(foto.file_url);
+        if (!data || cancelado) return;
+        const url: string = await new Promise((res, rej) => {
+          const r = new FileReader();
+          r.onload = () => res(r.result as string);
+          r.onerror = rej;
+          r.readAsDataURL(data);
+        });
+        if (!cancelado) setFotoPadrao(url);
+      } catch (e) {
+        console.warn('[GenerateDoc] não deu para carregar a foto do padrão:', e);
+      }
+    })();
+    return () => { cancelado = true; };
+  }, [open, documentos]);
+
   const preview    = useDocumentPreview();
   const previewRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
@@ -228,6 +261,8 @@ export function GenerateDocumentDialog({
       // projeto guarda só marca/modelo. Resolve aqui, onde o catálogo está
       // disponível, em vez de duplicar o número em cada projeto.
       ...inmetroValues(e),
+      // tag de IMAGEM: no template escreve-se {%foto_padrao_entrada}
+      foto_padrao_entrada: fotoPadrao,
     };
   };
 

@@ -71,6 +71,7 @@ export const TEMPLATE_VARIABLES: TemplateVariable[] = [
   { key: 'geracao_estimada',  desc: 'Geração média mensal prevista (menor potência entre módulos e inversores × 120)', category: 'Equipamentos', example: '720 kWh' },
   { key: 'geracao_estimada_kwh', desc: 'Geração média mensal prevista — só o número', category: 'Equipamentos', example: '720' },
   { key: 'inmetro_modulo',    desc: 'Nº do registro INMETRO do módulo (vem do Catálogo)',   category: 'Equipamentos', example: '008649/2024' },
+  { key: 'foto_padrao_entrada', desc: 'FOTO do padrão de entrada — no template escreva {%foto_padrao_entrada}', category: 'Equipamentos', example: '(imagem)' },
   { key: 'inmetro_inversor',  desc: 'Nº do registro INMETRO do inversor (vem do Catálogo)', category: 'Equipamentos', example: '004521/2023' },
   { key: 'kwp',               desc: 'Potência total (só o número)',      category: 'Equipamentos', example: '6' },
   // Padrão de entrada (regras da concessionária, resolvidas por fase + disjuntor)
