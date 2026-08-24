@@ -13,6 +13,8 @@ export interface EquipmentCatalogItem {
   power: number | null;
   datasheet_url: string | null;
   inmetro_url: string | null;
+  /** Nº do registro INMETRO do modelo (ex.: 008649/2024) — vai nos documentos. */
+  inmetro_number: string | null;
   /** Certificado AFCI — somente inversores. */
   afci_url: string | null;
   /** Datasheet estruturado pro Motor de Engenharia (MPPTs, tensões, Voc/Vmp...). */
@@ -104,6 +106,7 @@ interface SaveEquipmentInput {
   afciFile?: File | null;
   datasheet_url?: string | null;
   inmetro_url?: string | null;
+  inmetro_number?: string | null;
   afci_url?: string | null;
   /** Dados técnicos do Motor de Engenharia — `undefined` não mexe no que está salvo. */
   tech_specs?: Record<string, number> | null;
@@ -167,6 +170,7 @@ export function useSaveEquipment() {
         datasheet_url,
         inmetro_url,
         afci_url,
+        inmetro_number: input.inmetro_number?.trim() || null,
         ...(input.tech_specs !== undefined ? { tech_specs: input.tech_specs } : {}),
       };
 

@@ -59,6 +59,7 @@ export function EquipmentFormDialog({ type, editing, initialBrand, initialModel,
   const [datasheetFile, setDatasheetFile] = useState<File | null>(null);
   const [inmetroFile, setInmetroFile] = useState<File | null>(null);
   const [afciFile, setAfciFile] = useState<File | null>(null);
+  const [inmetroNumber, setInmetroNumber] = useState(editing?.inmetro_number ?? '');
   const dsRef = useRef<HTMLInputElement>(null);
   const inRef = useRef<HTMLInputElement>(null);
   const afciRef = useRef<HTMLInputElement>(null);
@@ -129,6 +130,7 @@ export function EquipmentFormDialog({ type, editing, initialBrand, initialModel,
     const id = await save.mutateAsync({
       id: editing?.id, type, brand, model, power: powerNum,
       datasheetFile, inmetroFile, afciFile,
+      inmetro_number: inmetroNumber,
       datasheet_url: editing?.datasheet_url ?? null,
       inmetro_url: editing?.inmetro_url ?? null,
       afci_url: editing?.afci_url ?? null,
@@ -158,6 +160,16 @@ export function EquipmentFormDialog({ type, editing, initialBrand, initialModel,
 
           <FileRow label="Datasheet (PDF ou imagem)" file={datasheetFile} existing={editing?.datasheet_url} inputRef={dsRef} onPick={setDatasheetFile} />
           <FileRow label="Certificado INMETRO (PDF ou imagem)" file={inmetroFile} existing={editing?.inmetro_url} inputRef={inRef} onPick={setInmetroFile} />
+          {/* O NÚMERO é o que vai escrito no memorial e nos formulários da
+              concessionária; o arquivo acima é o comprovante. */}
+          <div className="space-y-2">
+            <Label>Nº do registro INMETRO</Label>
+            <Input
+              value={inmetroNumber}
+              onChange={e => setInmetroNumber(e.target.value)}
+              placeholder="Ex: 008649/2024"
+            />
+          </div>
           {isInverter && (
             <>
               <FileRow

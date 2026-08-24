@@ -68,6 +68,10 @@ export const TEMPLATE_VARIABLES: TemplateVariable[] = [
   { key: 'qtd_modulos',       desc: 'Quantidade de módulos',             category: 'Equipamentos', example: '10' },
   { key: 'area_ocupada',      desc: 'Área ocupada pelos módulos (qtd × 3 m²)', category: 'Equipamentos', example: '30 m²' },
   { key: 'potencia_total',    desc: 'Potência total instalada',          category: 'Equipamentos', example: '6 kWp' },
+  { key: 'geracao_estimada',  desc: 'Geração média mensal prevista (menor potência entre módulos e inversores × 120)', category: 'Equipamentos', example: '720 kWh' },
+  { key: 'geracao_estimada_kwh', desc: 'Geração média mensal prevista — só o número', category: 'Equipamentos', example: '720' },
+  { key: 'inmetro_modulo',    desc: 'Nº do registro INMETRO do módulo (vem do Catálogo)',   category: 'Equipamentos', example: '008649/2024' },
+  { key: 'inmetro_inversor',  desc: 'Nº do registro INMETRO do inversor (vem do Catálogo)', category: 'Equipamentos', example: '004521/2023' },
   { key: 'kwp',               desc: 'Potência total (só o número)',      category: 'Equipamentos', example: '6' },
   // Padrão de entrada (regras da concessionária, resolvidas por fase + disjuntor)
   { key: 'categoria_padrao',  desc: 'Categoria do padrão de entrada',    category: 'Padrão de entrada', example: 'B1' },
@@ -269,6 +273,44 @@ export function decimalToUTM(lat: number, lon: number): UtmCoordinate | null {
   };
 }
 
+/**
+ * GERAÇÃO ESTIMADA — média mensal prevista, em kWh.
+ *
+ * Regra do usuário (ago/2026): pega a MENOR potência entre o conjunto de
+ * módulos (kWp) e o de inversores (kW) e multiplica por 120.
+ *
+ * Usar a menor das duas é o que evita prometer o que o sistema não entrega:
+ * com 12 kWp de módulos e 8 kW de inversor, quem limita a geração é o
+ * inversor; no caso oposto, quem limita são os módulos.
+ */
+export function estimatedGenerationValues(e: {
+  module_power?: number | null;
+  module_quantity?: number | null;
+  inverter_power?: number | null;
+  inverter_quantity?: number | null;
+  total_installed_power?: number | null;
+}): Record<string, string> {
+  const kwpModulos = e.module_power && e.module_quantity
+    ? (Number(e.module_power) * Number(e.module_quantity)) / 1000
+    : Number(e.total_installed_power ?? 0);
+  const kwInversores = e.inverter_power
+    ? Number(e.inverter_power) * Number(e.inverter_quantity ?? 1)
+    : 0;
+
+  // sem um dos dois lados não há o que comparar: usa o que existir
+  const base = kwpModulos > 0 && kwInversores > 0
+    ? Math.min(kwpModulos, kwInversores)
+    : (kwpModulos || kwInversores);
+  if (!base || !isFinite(base)) return { geracao_estimada: '', geracao_estimada_kwh: '' };
+
+  const kwh = base * 120;
+  const formatado = kwh.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  return {
+    geracao_estimada: `${formatado} kWh`,
+    geracao_estimada_kwh: formatado,
+  };
+}
+
 /** Variáveis derivadas de coordenadas (decimais + SIRGAS/DMS + UTM). */
 export function coordinateValues(raw: string | null | undefined): Record<string, string> {
   const { lat, lon } = parseCoordinates(raw);
@@ -387,6 +429,7 @@ export function buildProjectValues(
     area_ocupada:      moduleOccupiedArea(e.module_quantity),
     potencia_total:    e.total_installed_power != null ? `${e.total_installed_power} kWp` : '',
     kwp:               String(e.total_installed_power ?? ''),
+    ...estimatedGenerationValues(e),
     data:              today,
     data_emissao:      today,
     data_atual:        today,

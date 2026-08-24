@@ -19,6 +19,7 @@ import { RevisionGeneralData, RevisionEquipment } from '@/hooks/useProjectRevisi
 import { useDocumentPreview } from '@/hooks/useDocumentPreview';
 import { detectTemplateTags, generateDocxFromTemplate } from '@/utils/docxGenerator';
 import { gerarFormularioEnel, baixarArquivo } from '@/utils/formFill/gerarFormularioEnel';
+import { useEquipmentCatalog } from '@/hooks/useEquipmentCatalog';
 import { useEntryRules, matchEntryRule, entryRuleValues } from '@/hooks/useEntryRules';
 import { useEngineeringRuleMap } from '@/hooks/useEngineeringRules';
 import { engineeringTemplateValues } from '@/utils/engineering/templateValues';
@@ -159,6 +160,8 @@ export function GenerateDocumentDialog({
   );
   const { data: entryRules = [] } = useEntryRules(project.concessionaire_id ?? undefined);
   const { ruleMap } = useEngineeringRuleMap();
+  // catálogo compartilhado — de onde vem o nº do INMETRO de cada modelo
+  const { data: catalogo = [] } = useEquipmentCatalog();
 
   const preview    = useDocumentPreview();
   const previewRef = useRef<HTMLDivElement>(null);
@@ -178,6 +181,30 @@ export function GenerateDocumentDialog({
   // Delega para a fonte única de variáveis (a mesma usada pelo pacote do
   // projetista), só acrescentando o que é específico daqui: os dados da
   // revisão selecionada e as colunas do padrão de entrada da concessionária.
+  /**
+   * Nº do INMETRO do módulo e do inversor, buscados no Catálogo.
+   *
+   * Casa pelo vínculo quando ele ainda bate com o modelo escrito no projeto, e
+   * cai para marca+modelo quando não bate — mesma precaução da aba Unifilar:
+   * editar o equipamento à mão troca o texto e deixa o vínculo velho para trás.
+   */
+  const inmetroValues = (e: { inverter_brand?: string | null; inverter_model?: string | null;
+                              module_brand?: string | null; module_model?: string | null } | null | undefined) => {
+    const norm = (s?: string | null) => (s ?? '').trim().toUpperCase();
+    const acha = (tipo: 'inverter' | 'module', marca?: string | null, modelo?: string | null) => {
+      const mo = norm(modelo);
+      if (!mo) return null;
+      const doTipo = catalogo.filter(i => i.type === tipo);
+      return doTipo.find(i => norm(i.model) === mo && norm(i.brand) === norm(marca))
+          ?? doTipo.find(i => norm(i.model) === mo)
+          ?? null;
+    };
+    return {
+      inmetro_modulo: acha('module', e?.module_brand, e?.module_model)?.inmetro_number ?? '',
+      inmetro_inversor: acha('inverter', e?.inverter_brand, e?.inverter_model)?.inmetro_number ?? '',
+    };
+  };
+
   const buildProjectValues = (): Record<string, string> => {
     const g = revisionData?.general_data ?? project.generalData;
     const e = revisionData?.equipment ?? project.equipment;
@@ -197,6 +224,10 @@ export function GenerateDocumentDialog({
         generalData: revisionData?.general_data,
         equipment:   revisionData?.equipment,
       }),
+      // O nº do INMETRO é do MODELO e mora no Catálogo de Equipamentos — o
+      // projeto guarda só marca/modelo. Resolve aqui, onde o catálogo está
+      // disponível, em vez de duplicar o número em cada projeto.
+      ...inmetroValues(e),
     };
   };
 
