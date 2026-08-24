@@ -344,7 +344,9 @@
       "Bash(awk -F: '$1<650')",
       "Bash(awk -F: '$1<660')",
       "Bash(npx -y supabase db query --linked -f \"supabase/migrations/20260816130000_comentarios_com_anexos.sql\")",
-      "Bash(npx -y supabase db query --linked -f __TRACKED_VAR__/t.sql)"
+      "Bash(npx -y supabase db query --linked -f __TRACKED_VAR__/t.sql)",
+      "Bash(awk -F: '$1>500 && $1<720')",
+      "Bash(awk -F: '$1>500 && $1<760')"
     ]
   }
 }

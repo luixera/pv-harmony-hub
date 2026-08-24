@@ -44,6 +44,11 @@ export const TEMPLATE_VARIABLES: TemplateVariable[] = [
   { key: 'longitude',         desc: 'Longitude (grau decimal)',          category: 'Endereço e UC', example: '-47.0626' },
   { key: 'latitude_gms',      desc: 'Latitude em SIRGAS 2000 (grau/min/seg)',  category: 'Endereço e UC', example: '22°54\'35.6"S' },
   { key: 'longitude_gms',     desc: 'Longitude em SIRGAS 2000 (grau/min/seg)', category: 'Endereço e UC', example: '47°03\'45.4"O' },
+  { key: 'utm_fuso',          desc: 'UTM — fuso com a faixa',            category: 'Endereço e UC', example: '23K' },
+  { key: 'utm_latitude',      desc: 'UTM — latitude (coordenada N, norte)', category: 'Endereço e UC', example: '7.465.123,45 m' },
+  { key: 'utm_longitude',     desc: 'UTM — longitude (coordenada E, leste)', category: 'Endereço e UC', example: '287.456,78 m' },
+  { key: 'utm_hemisferio',    desc: 'UTM — hemisfério (N ou S)',         category: 'Endereço e UC', example: 'S' },
+  { key: 'coordenadas_utm',   desc: 'UTM completo numa linha só',        category: 'Endereço e UC', example: '23K 287.456,78 m E, 7.465.123,45 m N' },
   { key: 'rural',             desc: 'Área rural? (Sim/Não)',             category: 'Endereço e UC', example: 'Não' },
   { key: 'uc',                desc: 'Número da UC',                      category: 'Endereço e UC', example: '4001234567' },
   { key: 'numero_uc',         desc: 'Número da UC — alias de {uc}',      category: 'Endereço e UC', example: '4001234567' },
@@ -187,14 +192,105 @@ export function parseCoordinates(raw: string | null | undefined): { lat: number 
   return { lat: isFinite(lat) ? lat : null, lon: isFinite(lon) ? lon : null };
 }
 
-/** Variáveis derivadas de coordenadas (decimais + SIRGAS/DMS). */
+/**
+ * Converte grau decimal em UTM (SIRGAS 2000 / WGS 84 — mesmo elipsoide na
+ * prática, diferença abaixo de 1 m).
+ *
+ * Algumas concessionárias pedem a localização em UTM nos formulários, e o
+ * cadastro só guarda grau decimal. Converter aqui evita o projetista ter de
+ * recorrer a site externo e digitar de novo — que é onde o erro entra.
+ *
+ * Devolve `null` fora da faixa em que o UTM é definido (|lat| > 84).
+ */
+export interface UtmCoordinate {
+  /** Fuso com a letra da faixa, como aparece nos formulários: "23K". */
+  zone: string;
+  /** Número do fuso, sem a letra. */
+  zoneNumber: number;
+  /** 'N' ou 'S'. */
+  hemisphere: 'N' | 'S';
+  /** Metros a leste (E). */
+  easting: number;
+  /** Metros ao norte (N). */
+  northing: number;
+}
+
+export function decimalToUTM(lat: number, lon: number): UtmCoordinate | null {
+  if (!isFinite(lat) || !isFinite(lon) || Math.abs(lat) > 84) return null;
+
+  const a = 6378137;                 // semieixo maior (GRS80/WGS84)
+  const f = 1 / 298.257223563;
+  const e2 = 2 * f - f * f;          // primeira excentricidade ao quadrado
+  const e4 = e2 * e2, e6 = e4 * e2;
+  const ep2 = e2 / (1 - e2);         // segunda excentricidade
+  const k0 = 0.9996;                 // fator de escala do UTM
+
+  const zoneNumber = Math.floor((lon + 180) / 6) + 1;
+  const lambda0 = ((zoneNumber - 1) * 6 - 180 + 3) * Math.PI / 180;
+  const phi = lat * Math.PI / 180;
+  const lambda = lon * Math.PI / 180;
+
+  const sinPhi = Math.sin(phi), cosPhi = Math.cos(phi), tanPhi = Math.tan(phi);
+  const N = a / Math.sqrt(1 - e2 * sinPhi * sinPhi);
+  const T = tanPhi * tanPhi;
+  const C = ep2 * cosPhi * cosPhi;
+  const A = cosPhi * (lambda - lambda0);
+
+  const M = a * (
+    (1 - e2 / 4 - 3 * e4 / 64 - 5 * e6 / 256) * phi
+    - (3 * e2 / 8 + 3 * e4 / 32 + 45 * e6 / 1024) * Math.sin(2 * phi)
+    + (15 * e4 / 256 + 45 * e6 / 1024) * Math.sin(4 * phi)
+    - (35 * e6 / 3072) * Math.sin(6 * phi)
+  );
+
+  const easting = k0 * N * (
+    A + (1 - T + C) * A ** 3 / 6
+    + (5 - 18 * T + T * T + 72 * C - 58 * ep2) * A ** 5 / 120
+  ) + 500000;
+
+  let northing = k0 * (M + N * tanPhi * (
+    A * A / 2 + (5 - T + 9 * C + 4 * C * C) * A ** 4 / 24
+    + (61 - 58 * T + T * T + 600 * C - 330 * ep2) * A ** 6 / 720
+  ));
+  // no hemisfério sul o UTM soma 10.000 km para não trabalhar com negativo
+  if (lat < 0) northing += 10000000;
+
+  // letra da faixa de latitude (padrão MGRS), de 80°S a 84°N em passos de 8°
+  const letras = 'CDEFGHJKLMNPQRSTUVWX';
+  const indice = Math.floor((lat + 80) / 8);
+  const letra = letras[Math.min(Math.max(indice, 0), letras.length - 1)];
+
+  return {
+    zone: `${zoneNumber}${letra}`,
+    zoneNumber,
+    hemisphere: lat < 0 ? 'S' : 'N',
+    easting: Math.round(easting * 100) / 100,
+    northing: Math.round(northing * 100) / 100,
+  };
+}
+
+/** Variáveis derivadas de coordenadas (decimais + SIRGAS/DMS + UTM). */
 export function coordinateValues(raw: string | null | undefined): Record<string, string> {
   const { lat, lon } = parseCoordinates(raw);
+  const utm = lat != null && lon != null ? decimalToUTM(lat, lon) : null;
+  const metros = (v: number) => v.toFixed(2).replace('.', ',');
+
   return {
     latitude:      lat != null ? String(lat) : '',
     longitude:     lon != null ? String(lon) : '',
     latitude_gms:  lat != null ? decimalToDMS(lat, 'lat') : '',
     longitude_gms: lon != null ? decimalToDMS(lon, 'lon') : '',
+    // UTM em tags SEPARADAS, como a concessionária pede no formulário.
+    // "latitude"/"longitude" em UTM são, tecnicamente, N (norte) e E (leste) —
+    // os nomes seguem o que aparece nos formulários, e a descrição no catálogo
+    // de variáveis deixa a equivalência explícita.
+    utm_fuso:      utm ? utm.zone : '',
+    utm_latitude:  utm ? `${metros(utm.northing)} m` : '',
+    utm_longitude: utm ? `${metros(utm.easting)} m` : '',
+    utm_hemisferio: utm ? utm.hemisphere : '',
+    coordenadas_utm: utm
+      ? `${utm.zone} ${metros(utm.easting)} m E, ${metros(utm.northing)} m N`
+      : '',
   };
 }
 
