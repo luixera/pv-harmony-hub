@@ -52,13 +52,23 @@ const normTxt = (s?: string | null) => String(s ?? '').trim().toLowerCase().repl
 function acharNoCatalogo<T extends { id: string; brand: string; model: string }>(
   itens: T[], id?: string | null, marca?: string | null, modelo?: string | null,
 ): T | null {
+  const mo = normTxt(modelo);
+  const ma = normTxt(marca);
+
   if (id) {
     const porId = itens.find(i => i.id === id);
-    if (porId) return porId;
+    // O vínculo só vale se ainda BATER com o que está escrito no projeto.
+    //
+    // Editar o equipamento à mão troca marca/modelo, mas não mexe no
+    // `inverter_catalog_id` — o vínculo fica apontando para o equipamento
+    // antigo. Confiar nele às cegas fazia o motor dimensionar com a ficha
+    // técnica do inversor ERRADO, sem nenhum aviso: no PRJ-49561 o texto dizia
+    // SUNGROW SG7.5RS-L e o vínculo trazia o GROWATT NEO 2250M-X2
+    // (relato do usuário, ago/2026).
+    if (porId && (!mo || normTxt(porId.model) === mo)) return porId;
   }
-  const mo = normTxt(modelo);
+
   if (!mo) return null;
-  const ma = normTxt(marca);
   // marca+modelo primeiro; só o modelo como último recurso (marca costuma vir
   // escrita de formas diferentes: "Growatt" / "GROWATT NEW ENERGY")
   return itens.find(i => normTxt(i.model) === mo && normTxt(i.brand) === ma)
@@ -710,7 +720,8 @@ export function UnifilarTab({ project: projetoRecebido }: { project: ProjectWith
             }}
           >
             <option value="atual">
-              Revisão atual{projetoRecebido.currentRevisionNumber ? ` (Rev. ${projetoRecebido.currentRevisionNumber})` : ''}
+              Equipamento atual do projeto
+              {projetoRecebido.currentRevisionNumber ? ` (após a Rev. ${projetoRecebido.currentRevisionNumber})` : ''}
             </option>
             {revisoes.map(r => (
               <option key={r.id} value={r.id}>
