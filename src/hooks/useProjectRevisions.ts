@@ -255,24 +255,48 @@ export function useCreateRevision() {
 
       if (revError) throw revError;
 
-      // 6. Copiar dados gerais
-      if (payload.general_data && Object.keys(payload.general_data).length > 0) {
-        await supabase
-          .from('revision_general_data')
-          .insert({
-            revision_id: newRevision.id,
-            ...payload.general_data,
-          });
+      // 6/7. A revisão guarda o estado ANTERIOR; a base recebe o NOVO.
+      //
+      // Antes era o contrário: os valores digitados no formulário iam para a
+      // revisão e `project_equipment` nunca era tocado. Resultado: a base
+      // ficava defasada e o diagrama/formulários saíam com o equipamento
+      // velho, mesmo depois da revisão trocar tudo (relato do usuário,
+      // ago/2026 — PRJ-45053).
+      //
+      // Regra do negócio: o projeto sempre tem o equipamento VIGENTE na base;
+      // a revisão é o registro do que existia antes dela.
+      const limpar = (linha: Record<string, unknown> | null | undefined) => {
+        if (!linha) return null;
+        const { id: _id, project_id: _p, created_at: _c, updated_at: _u, ...resto } = linha;
+        return resto;
+      };
+
+      const [{ data: baseGeral }, { data: baseEquip }] = await Promise.all([
+        supabase.from('project_general_data').select('*').eq('project_id', payload.project_id).maybeSingle(),
+        supabase.from('project_equipment').select('*').eq('project_id', payload.project_id).maybeSingle(),
+      ]);
+
+      const geralAnterior = limpar(baseGeral as Record<string, unknown> | null);
+      if (geralAnterior) {
+        await supabase.from('revision_general_data')
+          .insert({ revision_id: newRevision.id, ...geralAnterior } as never);
+      }
+      const equipAnterior = limpar(baseEquip as Record<string, unknown> | null);
+      if (equipAnterior) {
+        await supabase.from('revision_equipment')
+          .insert({ revision_id: newRevision.id, ...equipAnterior } as never);
       }
 
-      // 7. Copiar equipamentos
+      // ...e o que foi digitado na revisão passa a ser o vigente do projeto
+      if (payload.general_data && Object.keys(payload.general_data).length > 0) {
+        await supabase.from('project_general_data')
+          .update(payload.general_data as never)
+          .eq('project_id', payload.project_id);
+      }
       if (payload.equipment && Object.keys(payload.equipment).length > 0) {
-        await supabase
-          .from('revision_equipment')
-          .insert({
-            revision_id: newRevision.id,
-            ...payload.equipment,
-          });
+        await supabase.from('project_equipment')
+          .update(payload.equipment as never)
+          .eq('project_id', payload.project_id);
       }
 
       // 8. Registrar no histórico do projeto (não-crítico — não falha a operação)
