@@ -814,9 +814,9 @@ function TabGeneral({ project, isEditing, onSave, onCancel, onEdit }: {
             <span style={{ fontSize: 14, fontWeight: 600, color: '#854F0B' }}>Potência total: {totalPower.toFixed(2)} kWp</span>
           </div>
         )}
-        {project.currentRevisionNumber && project.original?.equipment && (
+        {project.currentRevisionNumber && project.previous?.equipment && (
           <AntesDaRevisao
-            original={project.original.equipment as unknown as Record<string, unknown>}
+            original={project.previous.equipment as unknown as Record<string, unknown>}
             atual={project.equipment as unknown as Record<string, unknown> | undefined}
             numero={project.currentRevisionNumber}
           />

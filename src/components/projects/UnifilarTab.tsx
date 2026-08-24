@@ -195,8 +195,8 @@ export function UnifilarTab({ project: projetoRecebido }: { project: ProjectWith
     if (revisaoEscolhida === 'original') {
       return {
         ...projetoRecebido,
-        equipment: projetoRecebido.original?.equipment ?? projetoRecebido.equipment,
-        generalData: projetoRecebido.original?.generalData ?? projetoRecebido.generalData,
+        equipment: projetoRecebido.previous?.equipment ?? projetoRecebido.equipment,
+        generalData: projetoRecebido.previous?.generalData ?? projetoRecebido.generalData,
       };
     }
     const rev = revisoes.find(r => r.id === revisaoEscolhida);
@@ -213,8 +213,8 @@ export function UnifilarTab({ project: projetoRecebido }: { project: ProjectWith
     };
     return {
       ...projetoRecebido,
-      equipment: juntar(projetoRecebido.original?.equipment ?? projetoRecebido.equipment, rev.equipment),
-      generalData: juntar(projetoRecebido.original?.generalData ?? projetoRecebido.generalData, rev.general_data),
+      equipment: juntar(projetoRecebido.previous?.equipment ?? projetoRecebido.equipment, rev.equipment),
+      generalData: juntar(projetoRecebido.previous?.generalData ?? projetoRecebido.generalData, rev.general_data),
     };
   }, [projetoRecebido, revisaoEscolhida, revisoes]);
 
@@ -717,7 +717,7 @@ export function UnifilarTab({ project: projetoRecebido }: { project: ProjectWith
                 Revisão {r.revision_number}{r.is_current ? ' — vigente' : ''}
               </option>
             ))}
-            <option value="original">Original (antes das revisões)</option>
+            <option value="original">Equipamento anterior (guardado na revisão)</option>
           </select>
           <span style={{ fontSize: 11, color: '#8A6D3B', flex: 1, minWidth: 200 }}>
             Muda o equipamento que o motor usa para dimensionar. Depois de trocar,

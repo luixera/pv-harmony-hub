@@ -28,10 +28,14 @@ export interface ProjectWithDetails extends Project {
   financialRecord?: FinancialRecord;
   companyName?: string;
   concessionaireName?: string;
-  /** Nº da revisão vigente — `generalData`/`equipment` já vêm dela (useProject). */
+  /** Nº da revisão vigente, quando o projeto tem revisão. */
   currentRevisionNumber?: number;
-  /** Dados como estavam ANTES de qualquer revisão (só em `useProject`). */
-  original?: {
+  /**
+   * Estado ANTERIOR, guardado na revisão vigente (só em `useProject`).
+   * `generalData`/`equipment` acima são sempre o ATUAL — é o que vale para
+   * formulário e diagrama.
+   */
+  previous?: {
     generalData?: ProjectGeneralData;
     equipment?: ProjectEquipment;
   };
@@ -179,13 +183,18 @@ export function useProject(id: string | undefined) {
         supabase.from('financials').select('id, project_id, project_value, amount_paid, status, due_date').eq('project_id', id).maybeSingle(),
       ]);
 
-      // ── Revisão atual manda ────────────────────────────────────────────────
-      // Criar revisão grava só em `revision_general_data`/`revision_equipment`;
-      // as tabelas base do projeto ficam com os dados ORIGINAIS de propósito
-      // (é o histórico). Só que tudo lia a base — então trocar o inversor numa
-      // revisão não aparecia no modal, e pior: o diagrama unifilar e os
-      // formulários da concessionária sairiam com o equipamento ANTIGO
-      // (relato do usuário, ago/2026 — PRJ-45053).
+      // ── A BASE e o estado ATUAL ────────────────────────────────────────────
+      // Regra do negocio (usuario, ago/2026): o projeto chega com equipamento
+      // preenchido; ele pode ser trocado numa revisao OU editado manualmente a
+      // qualquer momento. Nos dois casos  passa a valer —
+      // e ele que alimenta formulario e diagrama unifilar.
+      //
+      // A REVISAO guarda o estado ANTERIOR, para mostrar o que mudou.
+      //
+      // Numa rodada anterior eu inverti isso (fazia a revisao sobrepor a base)
+      // e o card passou a exibir equipamento velho como se fosse o vigente.
+      // Confirmado no PRJ-49561 pelo historico: criado 07/08 com GROWATT,
+      // revisao em 21/08, edicao manual em 24/08 trocando para SUNGROW.
       const { data: revisaoAtual } = await supabase
         .from('project_revisions')
         .select('id, revision_number, general_data:revision_general_data(*), equipment:revision_equipment(*)')
@@ -193,38 +202,23 @@ export function useProject(id: string | undefined) {
         .eq('is_current', true)
         .maybeSingle();
 
-      // Sobrepõe campo a campo, ignorando o que vier vazio: a revisão pode
-      // trazer só o que mudou, e um nulo dela não pode apagar o dado da base.
-      const sobrepor = <T extends Record<string, unknown>>(base: T | null, novo: unknown): T | undefined => {
-        const revisao = Array.isArray(novo) ? novo[0] : novo;
-        if (!revisao) return base || undefined;
-        const saida: Record<string, unknown> = { ...(base ?? {}) };
-        for (const [chave, valor] of Object.entries(revisao as Record<string, unknown>)) {
-          // ids e vínculos são da revisão, não do projeto — não podem vazar
-          if (chave === 'id' || chave === 'revision_id' || chave === 'project_id') continue;
-          if (valor !== null && valor !== undefined && valor !== '') saida[chave] = valor;
-        }
-        return saida as T;
-      };
-
       const rev = revisaoAtual as { revision_number?: number; general_data?: unknown; equipment?: unknown } | null;
+      const primeiro = (v: unknown) => (Array.isArray(v) ? v[0] : v) ?? undefined;
 
       return {
         ...project,
-        generalData: sobrepor(generalDataRes.data, rev?.general_data),
-        equipment: sobrepor(equipmentRes.data, rev?.equipment),
+        generalData: generalDataRes.data || undefined,
+        equipment: equipmentRes.data || undefined,
         financials: financialsRes.data || undefined,
         financialRecord: financialRecordRes.data as FinancialRecord | undefined,
         companyName: (project.companies as { name: string } | null)?.name,
         concessionaireName: (project.energy_concessionaires as { name: string } | null)?.name,
-        /** Nº da revisão vigente, quando o projeto tem revisão. */
+        /** No da revisao vigente, quando o projeto tem revisao. */
         currentRevisionNumber: rev?.revision_number,
-        // Dados ORIGINAIS, sem a sobreposição da revisão — é o que a tela usa
-        // para deixar consultar "como era antes" (a revisão some com eles do
-        // card, e o usuário precisa dos dois).
-        original: {
-          generalData: generalDataRes.data || undefined,
-          equipment: equipmentRes.data || undefined,
+        // Estado ANTERIOR guardado na revisao vigente — e o "antes" do card.
+        previous: {
+          generalData: primeiro(rev?.general_data) as ProjectGeneralData | undefined,
+          equipment: primeiro(rev?.equipment) as ProjectEquipment | undefined,
         },
       };
     },
