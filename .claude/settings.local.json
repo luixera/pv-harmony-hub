@@ -347,7 +347,8 @@
       "Bash(npx -y supabase db query --linked -f __TRACKED_VAR__/t.sql)",
       "Bash(awk -F: '$1>500 && $1<720')",
       "Bash(awk -F: '$1>500 && $1<760')",
-      "Bash(node -e \"console.log\\('modulo:', require\\('./node_modules/docxtemplater-image-module-free/package.json'\\).version\\)\")"
+      "Bash(node -e \"console.log\\('modulo:', require\\('./node_modules/docxtemplater-image-module-free/package.json'\\).version\\)\")",
+      "Bash(grep -o '<dataValidation [^>]*>.\\\\{0,200\\\\}' xl/worksheets/sheet1.xml)"
     ]
   }
 }

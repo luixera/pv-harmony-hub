@@ -46,7 +46,15 @@ export async function gerarFormularioEnel(
       rotulo: 'Anexo 4',
     };
   }
-  if (nome.includes('FORMULARIO_REGISTRO') || nome.endsWith('.XLSX')) {
+  // ATENÇÃO: casa SÓ o formulário de registro da ENEL.
+  //
+  // Aqui havia um pega-tudo (`|| nome.endsWith('.XLSX')`) que mandava QUALQUER
+  // planilha para o mapa da ENEL. Com o formulário da CEMIG anexado, o sistema
+  // escrevia os valores nas células da ENEL — que na planilha da CEMIG caem em
+  // lugares sem relação — e o arquivo saía com aparência de "não preenchido"
+  // (relato do usuário, ago/2026). Planilha sem mapa agora devolve `null`, e a
+  // tela avisa em vez de entregar um arquivo errado.
+  if (nome.includes('FORMULARIO_REGISTRO') || nome.includes('REGISTRO_CENTRAL')) {
     return {
       bytes: preencherXlsx(modelo, REGISTRO_CENTRAL_ENEL, v),
       nomeArquivo: `FORMULARIO_REGISTRO_ENEL_${sufixo}.xlsx`,
