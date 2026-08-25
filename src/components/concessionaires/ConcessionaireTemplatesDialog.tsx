@@ -223,12 +223,17 @@ export function ConcessionaireTemplatesDialog({
         <div className="space-y-4">
           {/* Upload (admin only) */}
           {isAdmin && (
+            // Word para o memorial (com tags), PDF e planilha para os
+            // formulários da distribuidora — estes o sistema preenche por
+            // posição, não por tag. A validação de tipo já aceitava os três;
+            // só o seletor de arquivo estava travado em .docx, e por isso a
+            // planilha da CEMIG não conseguia ser enviada (usuário, ago/2026).
             <div>
               <input
                 ref={fileInputRef}
                 type="file"
                 multiple
-                accept=".docx"
+                accept=".docx,.pdf,.xlsx,.xls"
                 onChange={handleFileChange}
                 className="hidden"
               />
@@ -242,7 +247,7 @@ export function ConcessionaireTemplatesDialog({
                 ) : (
                   <Upload className="w-4 h-4" />
                 )}
-                Enviar Template (.docx)
+                Enviar Template (.docx, .pdf ou .xlsx)
               </Button>
             </div>
           )}
@@ -400,7 +405,7 @@ export function ConcessionaireTemplatesDialog({
               </div>
             </div>
             <p className="text-xs text-muted-foreground">
-              Clique em uma variável para copiar e cole no arquivo .docx. Elas serão substituídas pelos dados do projeto ao gerar o documento.
+              Clique em uma variável para copiar e cole no arquivo .docx. Elas serão substituídas pelos dados do projeto ao gerar o documento. Formulários em PDF e planilha não usam tags: são preenchidos por posição, com um mapa próprio de cada distribuidora.
             </p>
             <div className="max-h-56 overflow-y-auto space-y-3 pr-1">
               {categories.length === 0 ? (
