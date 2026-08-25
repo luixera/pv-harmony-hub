@@ -497,9 +497,27 @@ export default function ProjectsKanban() {
 
   const filteredProjects = useMemo(() => projects.filter(project => {
     const holderName = project.generalData?.holder_name || project.title || '';
-    const matchesSearch =
-      project.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      holderName.toLowerCase().includes(searchTerm.toLowerCase());
+    // Busca também por PROTOCOLO e UC (pedido do usuário, ago/2026) — são os
+    // números pelos quais a concessionária e o cliente se referem ao projeto.
+    //
+    // Compara duas vezes: o texto como está e SÓ OS DÍGITOS. Protocolo e UC são
+    // digitados com ponto, traço ou espaço conforme a origem, e sem normalizar
+    // uma busca por "3015292846" não acharia "3.015.292.846".
+    const termo = searchTerm.trim().toLowerCase();
+    const digitos = termo.replace(/\D/g, '');
+    const protocolo = (project as { protocol_number?: string | null }).protocol_number ?? '';
+    const uc = project.generalData?.uc_number ?? '';
+    const contem = (v: string) => v.toLowerCase().includes(termo);
+    const contemDigitos = (v: string) =>
+      digitos.length >= 3 && v.replace(/\D/g, '').includes(digitos);
+
+    const matchesSearch = termo === ''
+      || contem(project.code)
+      || contem(holderName)
+      || contem(protocolo)
+      || contem(uc)
+      || contemDigitos(protocolo)
+      || contemDigitos(uc);
     const matchesCompany = companyFilter === 'all' || project.company_id === companyFilter;
     const matchesUtility = utilityFilter === 'all' || project.concessionaire_id === utilityFilter;
     const matchesStatus = mobileStatusFilter === 'all' || project.status === mobileStatusFilter;
@@ -608,7 +626,7 @@ export default function ProjectsKanban() {
             <div className="relative flex-1 min-w-[200px]">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
-                placeholder="Buscar projetos..."
+                placeholder="Buscar por código, titular, protocolo ou UC..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-10 bg-muted/50 h-11 text-base"
