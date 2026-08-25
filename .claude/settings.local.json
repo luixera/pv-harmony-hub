@@ -348,7 +348,11 @@
       "Bash(awk -F: '$1>500 && $1<720')",
       "Bash(awk -F: '$1>500 && $1<760')",
       "Bash(node -e \"console.log\\('modulo:', require\\('./node_modules/docxtemplater-image-module-free/package.json'\\).version\\)\")",
-      "Bash(grep -o '<dataValidation [^>]*>.\\\\{0,200\\\\}' xl/worksheets/sheet1.xml)"
+      "Bash(grep -o '<dataValidation [^>]*>.\\\\{0,200\\\\}' xl/worksheets/sheet1.xml)",
+      "Bash(npx -y supabase functions deploy seed-cemig-forms --project-ref yqsqrdndvsnhbsoaoilf --no-verify-jwt)",
+      "Bash(node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\).on\\('end',\\(\\)=>{const r=JSON.parse\\(d\\);console.log\\('ok:',r.ok,'| concessionarias:',r.concessionarias,'| enviados:',r.enviados,'| erros:',r.erros\\);\\(r.results||[]\\).forEach\\(x=>console.log\\('  ',x.status,x.arquivo||'',x.error||''\\)\\);}\\)\")",
+      "Bash(node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\).on\\('end',\\(\\)=>{const r=JSON.parse\\(d\\);console.log\\('  enviados:',r.enviados,'\\(esperado 0\\) | ja existiam:',\\(r.results||[]\\).filter\\(x=>x.status==='ja_existia'\\).length\\);}\\)\")",
+      "Bash(npx -y supabase storage ls \"ss:///concessionaire-templates/132bd3ca-0a6a-478b-a4e7-c55ca6b35ee2/\" --linked --experimental)"
     ]
   }
 }

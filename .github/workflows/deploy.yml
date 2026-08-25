@@ -71,6 +71,16 @@ jobs:
             --project-ref yqsqrdndvsnhbsoaoilf \
             --no-verify-jwt
 
+      # Semeia o formulário oficial da CEMIG nas concessionárias. Mesmo molde
+      # do seed-enel-forms: idempotente, com {"overwrite":true} para trocar.
+      - name: Deploy seed-cemig-forms
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          supabase functions deploy seed-cemig-forms \
+            --project-ref yqsqrdndvsnhbsoaoilf \
+            --no-verify-jwt
+
       # Sem verify-jwt: o login que falhou ainda não tem sessão. A proteção
       # é a lista fechada de ações + limite por IP dentro da própria função.
       - name: Deploy log-event
