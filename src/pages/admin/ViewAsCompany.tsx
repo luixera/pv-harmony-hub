@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { motion } from 'framer-motion';
@@ -7,6 +7,8 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useProjects } from '@/hooks/useProjects';
+import { useDefaultKanbanModel } from '@/hooks/useKanbanConfig';
+import { projectStatusLabel } from '@/lib/statusMapping';
 
 interface ViewingCompany {
   id: string;
@@ -42,7 +44,7 @@ export default function ViewAsCompany() {
   const { data: allProjects = [], isLoading } = useProjects();
   
   // Filter projects for this company
-  const companyProjects = company 
+  const companyProjects = company
     ? allProjects.filter(p => p.company_id === company.id)
     : [];
   
@@ -71,14 +73,60 @@ export default function ViewAsCompany() {
     navigate('/new-project');
   };
 
-  const statusLabels: Record<string, string> = {
-    pending: 'Aguardando',
-    analysis: 'Em Análise',
-    documentation: 'Documentação',
-    approval: 'Aprovação',
-    approved: 'Aprovado',
-    completed: 'Concluído',
-  };
+  // O nome da etapa vem da CONFIGURAÇÃO do Kanban, não de uma lista fixa.
+  //
+  // Aqui havia um mapa chumbado no código: quem renomeou "Documentação" para
+  // "Em desenvolvimento" no Kanban continuava vendo o nome velho nesta tela, e
+  // as etapas criadas depois (pendência, vistoria...) nem apareciam — caía no
+  // código cru do status (relato do usuário, ago/2026).
+  const { data: kanbanModel } = useDefaultKanbanModel();
+  const statusLabels = useMemo(() => {
+    const mapa: Record<string, string> = {};
+    for (const c of kanbanModel?.columns ?? []) mapa[c.status_key] = c.status_label;
+    return mapa;
+  }, [kanbanModel]);
+  /** Rótulo da etapa: configuração → catálogo do sistema → o próprio código. */
+  const rotuloEtapa = (status: string) =>
+    statusLabels[status] ?? projectStatusLabel(status);
+
+  // ── Filtro por etapa e ordenação (só a TABELA; os cartões do topo
+  //    continuam contando a empresa inteira) ────────────────────────────────
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [ordem, setOrdem] = useState<'titular_asc' | 'titular_desc' | 'codigo' | 'etapa'>('titular_asc');
+
+  const titularDe = (p: { generalData?: { holder_name?: string | null }; title?: string | null }) =>
+    (p.generalData?.holder_name || p.title || '').trim();
+
+  const projetosNaTabela = useMemo(() => {
+    const lista = statusFilter === 'all'
+      ? companyProjects
+      : companyProjects.filter(p => p.status === statusFilter);
+    const ordemDasEtapas = new Map<string, number>(
+      (kanbanModel?.columns ?? []).map((c, i) => [c.status_key as string, i]),
+    );
+    // `localeCompare` com pt-BR: sem isso "Ângela" cai depois de "Zuleica",
+    // porque a ordem crua do JavaScript compara pelo código do caractere
+    return [...lista].sort((a, b) => {
+      switch (ordem) {
+        case 'titular_desc': return titularDe(b).localeCompare(titularDe(a), 'pt-BR');
+        case 'codigo':       return (a.code || '').localeCompare(b.code || '', 'pt-BR');
+        case 'etapa':        return (ordemDasEtapas.get(a.status) ?? 99) - (ordemDasEtapas.get(b.status) ?? 99)
+                                 || titularDe(a).localeCompare(titularDe(b), 'pt-BR');
+        default:             return titularDe(a).localeCompare(titularDe(b), 'pt-BR');
+      }
+    });
+  }, [companyProjects, statusFilter, ordem, kanbanModel]);
+
+  /** Etapas que realmente existem nos projetos desta empresa, na ordem do quadro. */
+  const etapasDisponiveis = useMemo(() => {
+    const usadas = new Set<string>(companyProjects.map(p => p.status as string));
+    const doQuadro = (kanbanModel?.columns ?? [])
+      .filter(c => usadas.has(c.status_key))
+      .map(c => c.status_key);
+    // etapa de projeto que não está no quadro atual não pode sumir do filtro
+    const fora = [...usadas].filter(s => !doQuadro.includes(s));
+    return [...doQuadro, ...fora];
+  }, [companyProjects, kanbanModel]);
 
   if (!company) {
     return null;
@@ -189,9 +237,40 @@ export default function ViewAsCompany() {
           transition={{ delay: 0.3 }}
           className="kpi-card"
         >
-          <h3 className="text-lg font-semibold text-card-foreground mb-6">Projetos da Empresa</h3>
-          
-          {companyProjects.length > 0 ? (
+          <div className="flex items-center justify-between gap-3 flex-wrap mb-6">
+            <h3 className="text-lg font-semibold text-card-foreground">
+              Projetos da Empresa
+              {statusFilter !== 'all' && (
+                <span className="ml-2 text-sm font-normal text-muted-foreground">
+                  — {projetosNaTabela.length} de {companyProjects.length}
+                </span>
+              )}
+            </h3>
+            <div className="flex items-center gap-2 flex-wrap">
+              <select
+                value={statusFilter}
+                onChange={e => setStatusFilter(e.target.value)}
+                className="h-9 rounded-md border border-border bg-background px-3 text-sm"
+              >
+                <option value="all">Todas as etapas</option>
+                {etapasDisponiveis.map(s => (
+                  <option key={s} value={s}>{rotuloEtapa(s)}</option>
+                ))}
+              </select>
+              <select
+                value={ordem}
+                onChange={e => setOrdem(e.target.value as typeof ordem)}
+                className="h-9 rounded-md border border-border bg-background px-3 text-sm"
+              >
+                <option value="titular_asc">Titular (A → Z)</option>
+                <option value="titular_desc">Titular (Z → A)</option>
+                <option value="etapa">Agrupado por etapa</option>
+                <option value="codigo">Código do projeto</option>
+              </select>
+            </div>
+          </div>
+
+          {projetosNaTabela.length > 0 ? (
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
@@ -204,7 +283,7 @@ export default function ViewAsCompany() {
                   </tr>
                 </thead>
                 <tbody>
-                  {companyProjects.map((project) => (
+                  {projetosNaTabela.map((project) => (
                     <tr 
                       key={project.id}
                       className="border-b border-border/50 hover:bg-muted/30 cursor-pointer transition-colors"
@@ -222,7 +301,7 @@ export default function ViewAsCompany() {
                           project.status === 'completed' ? 'completed' :
                           'progress'
                         }>
-                          {statusLabels[project.status] || project.status}
+                          {rotuloEtapa(project.status)}
                         </Badge>
                       </td>
                       <td className="py-3 px-4 text-sm text-muted-foreground">
