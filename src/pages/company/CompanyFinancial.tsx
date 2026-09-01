@@ -6,7 +6,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useFinancialsByCompany } from "@/hooks/useFinancials";
 import { useCompanySubscriptionStatement } from "@/hooks/useSubscriptionCharges";
 import { useNavigate } from "react-router-dom";
-import { DollarSign, TrendingUp, Clock, Calendar, Loader2, Repeat, FileSignature } from "lucide-react";
+import { DollarSign, TrendingUp, Clock, Loader2, Repeat, FileSignature } from "lucide-react";
 import { motion } from "framer-motion";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -38,10 +38,12 @@ const statusLabels: Record<string, string> = {
   paid: 'Pago'
 };
 
+// O tom 500 sobre o card branco fica lavado e quase ilegível; o 700 mantém a
+// mesma cor de significado (amarelo/azul/verde) com contraste de leitura.
 const statusColors: Record<string, string> = {
-  pending: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
-  partial: 'bg-blue-500/10 text-blue-500 border-blue-500/20',
-  paid: 'bg-green-500/10 text-green-500 border-green-500/20'
+  pending: 'bg-yellow-500/10 text-yellow-700 border-yellow-600/30',
+  partial: 'bg-blue-500/10 text-blue-700 border-blue-600/30',
+  paid: 'bg-green-500/10 text-green-700 border-green-600/30'
 };
 
 export default function CompanyFinancial() {
@@ -183,13 +185,12 @@ export default function CompanyFinancial() {
             <CardContent>
               <Table>
                 <TableHeader>
-                  <TableRow>
+                  <TableRow className="bg-muted/40 hover:bg-muted/40">
                     <TableHead>Competência</TableHead>
                     <TableHead className="text-right">Mensalidade</TableHead>
                     <TableHead className="text-right">Pago</TableHead>
                     <TableHead className="text-right">Em Aberto</TableHead>
                     <TableHead>Projetos do mês</TableHead>
-                    <TableHead>Vencimento</TableHead>
                     <TableHead>Status</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -226,15 +227,6 @@ export default function CompanyFinancial() {
                           )}
                         </TableCell>
                         <TableCell>
-                          <div className="flex items-center gap-2">
-                            <Calendar className="h-4 w-4 text-muted-foreground" />
-                            {s.due_date
-                              ? format(new Date(`${s.due_date}T00:00:00`), 'dd/MM/yyyy', { locale: ptBR })
-                              : '-'
-                            }
-                          </div>
-                        </TableCell>
-                        <TableCell>
                           <Badge variant="outline" className={statusColors[s.status] ?? statusColors.pending}>
                             {statusLabels[s.status] ?? s.status}
                           </Badge>
@@ -269,12 +261,11 @@ export default function CompanyFinancial() {
             ) : (
               <Table>
                 <TableHeader>
-                  <TableRow>
+                  <TableRow className="bg-muted/40 hover:bg-muted/40">
                     <TableHead>Projeto</TableHead>
                     <TableHead className="text-right">Valor</TableHead>
                     <TableHead className="text-right">Pago</TableHead>
                     <TableHead className="text-right">Em Aberto</TableHead>
-                    <TableHead>Vencimento</TableHead>
                     <TableHead>Status</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -304,15 +295,6 @@ export default function CompanyFinancial() {
                         </TableCell>
                         <TableCell className={`text-right font-medium ${pending > 0 ? 'text-yellow-600' : ''}`}>
                           {formatCurrency(pending)}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <Calendar className="h-4 w-4 text-muted-foreground" />
-                            {f.due_date
-                              ? format(new Date(f.due_date), 'dd/MM/yyyy', { locale: ptBR })
-                              : '-'
-                            }
-                          </div>
                         </TableCell>
                         <TableCell>
                           <Badge variant="outline" className={statusColors[f.payment_status]}>
