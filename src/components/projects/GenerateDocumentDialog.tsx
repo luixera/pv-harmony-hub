@@ -22,7 +22,7 @@ import { gerarFormularioEnel, baixarArquivo } from '@/utils/formFill/gerarFormul
 import { useEquipmentCatalog } from '@/hooks/useEquipmentCatalog';
 import { useDocuments } from '@/hooks/useDocuments';
 import { supabase } from '@/integrations/supabase/client';
-import { useEntryRules, matchEntryRule, entryRuleValues } from '@/hooks/useEntryRules';
+import { useEntryRules, resolveEntryRule, entryRuleValues } from '@/hooks/useEntryRules';
 import { useEngineeringRuleMap } from '@/hooks/useEngineeringRules';
 import { engineeringTemplateValues } from '@/utils/engineering/templateValues';
 import { buildProjectValues as buildProjectValues_ } from '@/utils/projectValues';
@@ -241,7 +241,7 @@ export function GenerateDocumentDialog({
   const buildProjectValues = (): Record<string, string> => {
     const g = revisionData?.general_data ?? project.generalData;
     const e = revisionData?.equipment ?? project.equipment;
-    const entryRule = matchEntryRule(entryRules, g?.phase_type, g?.circuit_breaker_current);
+    const entryRule = resolveEntryRule(entryRules, g);
 
     return {
       ...entryRuleValues(entryRule),

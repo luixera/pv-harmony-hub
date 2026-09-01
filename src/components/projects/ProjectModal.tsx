@@ -501,22 +501,33 @@ function AnexoDoComentario({ nome, doc, onAbrir }: {
 /**
  * Categoria do padrão de entrada em que o projeto se enquadra.
  *
- * Não é um campo gravado: é derivado das regras da concessionária
+ * Por padrão é derivada das regras da concessionária
  * (`concessionaire_entry_rules`) cruzando FASE + DISJUNTOR do projeto, pela
- * mesma `matchEntryRule` que o diagrama unifilar e a geração de documentos
- * usam — se divergisse daquilo, a tela mentiria sobre o desenho.
+ * mesma `resolveEntryRule` que o diagrama unifilar, a geração de documentos e
+ * o pacote do instalador usam — se divergisse daquilo, a tela mentiria sobre
+ * o desenho.
  *
- * O casamento tem saídas aproximadas (sem fase, sem disjuntor, disjuntor acima
- * da maior categoria). Em vez de esconder, cada uma é dita em uma linha: o
- * projetista precisa saber quando a classificação é um palpite.
+ * Mas pode ser DEFINIDA À MÃO: no aumento de carga pedido junto com o projeto
+ * solar, a UC sai de 63A bifásico e vai para 80A trifásico, e é a categoria
+ * nova que vale. A escolha grava `entry_rule_id` e vence a automática em todos
+ * os consumidores; a tela continua mostrando o que a regra diria, para a
+ * diferença ficar à vista.
+ *
+ * O casamento automático tem saídas aproximadas (sem fase, sem disjuntor,
+ * disjuntor acima da maior categoria). Em vez de esconder, cada uma é dita em
+ * uma linha: o projetista precisa saber quando a classificação é um palpite.
  */
 function EntryStandardBadge({
   concessionaireId, concessionaireName, phaseType, breakerCurrent,
+  entryRuleId, isEditing, onChangeEntryRule,
 }: {
   concessionaireId?: string;
   concessionaireName: string;
   phaseType: string;
   breakerCurrent: string;
+  entryRuleId: string;
+  isEditing: boolean;
+  onChangeEntryRule: (id: string) => void;
 }) {
   const { data: rules = [], isLoading } = useEntryRules(concessionaireId);
 
@@ -548,13 +559,20 @@ function EntryStandardBadge({
     ), 'aviso');
   }
 
-  const rule = matchEntryRule(rules, phaseType, breakerCurrent);
+  const automatica = matchEntryRule(rules, phaseType, breakerCurrent);
+  const escolhida = entryRuleId ? rules.find(r => r.id === entryRuleId) ?? null : null;
+  const rule = escolhida ?? automatica;
   if (!rule) return caixa(nota('Nenhuma categoria compatível encontrada nas regras desta concessionária.'), 'aviso');
 
   const amps = parseInt((breakerCurrent || '').replace(/[^\d]/g, ''), 10);
   const semFase = !phaseType;
   const semDisjuntor = isNaN(amps);
-  const acimaDoMaior = !semDisjuntor && rule.disjuntor < amps;
+  // Os avisos de classificação aproximada só valem quando ela está no comando.
+  const automatico = !escolhida;
+  const acimaDoMaior = automatico && !semDisjuntor && rule.disjuntor < amps;
+
+  const descrever = (r: typeof rule) =>
+    `${r.categoria} · ${r.disjuntor}A${r.classe ? ` · ${r.classe}` : ''}`;
 
   const chip = (rotulo: string, valor: string) => (
     <div key={rotulo}>
@@ -581,26 +599,70 @@ function EntryStandardBadge({
           Categoria {rule.categoria}
         </span>
         <span style={{ fontSize: 12, color: '#8a8a8a' }}>
-          pela regra da {concessionaireName || 'concessionária'}
+          {automatico
+            ? `pela regra da ${concessionaireName || 'concessionária'}`
+            : 'definida à mão (aumento de carga)'}
         </span>
       </div>
+
+      {isEditing && (
+        <div style={{ marginTop: 10 }}>
+          <p style={{ fontSize: 10, color: '#aaa', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', margin: '0 0 4px' }}>
+            Categoria do projeto
+          </p>
+          <select
+            value={entryRuleId}
+            onChange={e => onChangeEntryRule(e.target.value)}
+            style={{ width: '100%', maxWidth: 380, padding: '6px 8px', borderRadius: 6, border: '1px solid #E0E0E0', fontSize: 13, color: '#1A1A1A', outline: 'none', boxSizing: 'border-box', background: '#fff' }}
+          >
+            <option value="">
+              {automatica
+                ? `Automático pela fase e disjuntor — ${descrever(automatica)}`
+                : 'Automático pela fase e disjuntor'}
+            </option>
+            {rules.map(r => (
+              <option key={r.id} value={r.id}>{descrever(r)}</option>
+            ))}
+          </select>
+          <p style={{ fontSize: 11, color: '#8a8a8a', margin: '6px 0 0', lineHeight: 1.5 }}>
+            Use quando houver aumento de carga junto com o projeto: a categoria
+            escolhida passa a valer no diagrama unifilar, nos formulários e no
+            memorial.
+          </p>
+        </div>
+      )}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 10, marginTop: 10 }}>
         {detalhes}
       </div>
 
-      {semFase && semDisjuntor
+      {/* Escolhida à mão: mostra o que a regra diria, para a diferença aparecer. */}
+      {!automatico && automatica && automatica.id !== rule.id && nota(
+        `Pela fase e disjuntor cadastrados (${phaseType ? phaseLabelOf(phaseType) : 'sem fase'}` +
+        `${semDisjuntor ? '' : `, ${amps}A`}), a classificação automática seria ${descrever(automatica)}.`
+      )}
+
+      {automatico && (semFase && semDisjuntor
         ? nota('Classificação aproximada: o projeto está sem a fase e sem o disjuntor, então esta é a primeira categoria da lista.')
         : semFase
           ? nota('Classificação aproximada: sem a fase informada, o enquadramento usou só o disjuntor.')
           : semDisjuntor
             ? nota('Classificação aproximada: sem o disjuntor informado, esta é a menor categoria da fase.')
-            : null}
+            : null)}
       {acimaDoMaior && nota(
         `Atenção: o disjuntor do projeto (${amps}A) passa da maior categoria cadastrada para esta fase (${rule.disjuntor}A).`
       )}
     </>
   );
+}
+
+/** Rótulo legível da fase gravada (monofasico → Monofásico). */
+function phaseLabelOf(raw: string): string {
+  const s = String(raw ?? '').toLowerCase();
+  if (s.includes('tri')) return 'trifásico';
+  if (s.includes('bi')) return 'bifásico';
+  if (s.includes('mono')) return 'monofásico';
+  return raw;
 }
 
 function TabGeneral({ project, isEditing, onSave, onCancel, onEdit }: {
@@ -642,6 +704,7 @@ function TabGeneral({ project, isEditing, onSave, onCancel, onEdit }: {
     holder_email: gd?.holder_email || '',
     circuit_breaker_current: gd?.circuit_breaker_current || '',
     phase_type: gd?.phase_type || '',
+    entry_rule_id: (gd as any)?.entry_rule_id || '',
     address: gd?.address || '',
     address_number: gd?.address_number || '',
     address_complement: gd?.address_complement || '',
@@ -679,6 +742,7 @@ function TabGeneral({ project, isEditing, onSave, onCancel, onEdit }: {
       holder_email: gd?.holder_email || '',
       circuit_breaker_current: gd?.circuit_breaker_current || '',
       phase_type: gd?.phase_type || '',
+      entry_rule_id: (gd as any)?.entry_rule_id || '',
       address: gd?.address || '',
       address_number: gd?.address_number || '',
       address_complement: gd?.address_complement || '',
@@ -821,6 +885,9 @@ function TabGeneral({ project, isEditing, onSave, onCancel, onEdit }: {
           concessionaireName={(project as any).concessionaireName || ''}
           phaseType={form.phase_type}
           breakerCurrent={form.circuit_breaker_current}
+          entryRuleId={form.entry_rule_id}
+          isEditing={isEditing}
+          onChangeEntryRule={id => setForm(f => ({ ...f, entry_rule_id: id }))}
         />
       </div>
 
@@ -1061,6 +1128,7 @@ function TabGeneral({ project, isEditing, onSave, onCancel, onEdit }: {
                 holder_email: form.holder_email,
                 circuit_breaker_current: form.circuit_breaker_current,
                 phase_type: form.phase_type || null,
+                entry_rule_id: form.entry_rule_id || null,
                 address: form.address,
                 address_number: form.address_number,
                 address_complement: form.address_complement,

@@ -26,6 +26,18 @@ Códigos e rótulos (`src/lib/statusMapping.ts`):
   (`concessionaire_entry_rules`): categoria por fase + disjuntor, com colunas
   customizáveis (ex.: "Demanda"). Essas colunas viram **variáveis de template**
   conhecidas. A regra vale para qualquer concessionária.
+- **RN-HOM-05a** — A categoria do projeto é **derivada** (fase + disjuntor) por
+  `matchEntryRule`, mas pode ser **definida à mão** em
+  `project_general_data.entry_rule_id` — caso do **aumento de carga** junto com
+  o projeto solar (a UC sai de 63A bifásico e vai para 80A trifásico, e é a
+  categoria nova que vale). Todo consumidor usa `resolveEntryRule`
+  (escolhida > automática): modal do projeto, diagrama unifilar, geração de
+  documentos e pacote do instalador. Nulo = automática; regra apagada da
+  concessionária → volta sozinho para a automática.
+- **RN-HOM-05b** — A tela nunca esconde classificação aproximada: sem
+  concessionária, sem regras cadastradas, sem fase, sem disjuntor e disjuntor
+  acima da maior categoria da fase são ditos explicitamente. Com categoria
+  escolhida à mão, mostra também o que a automática diria.
 - **RN-HOM-06** — Templates são `.docx` por concessionária
   (`concessionaire_templates`); ao subir versão de mesmo nome, o sistema pergunta
   se exclui a antiga.

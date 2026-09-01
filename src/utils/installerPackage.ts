@@ -8,7 +8,7 @@ import { buildProjectValues } from '@/utils/projectValues';
 import { generateResumoPdf } from '@/utils/resumoPdf';
 import { generateDocxFromTemplate } from '@/utils/docxGenerator';
 import { downloadTemplateBuffer } from '@/hooks/useConcessionaireTemplates';
-import { fetchEntryRules, matchEntryRule, entryRuleValues } from '@/hooks/useEntryRules';
+import { fetchEntryRules, resolveEntryRule, entryRuleValues } from '@/hooks/useEntryRules';
 
 export interface PhotoCandidate {
   projectCode: string;
@@ -147,7 +147,7 @@ async function buildPackageValues(project: ProjectWithDetails): Promise<Record<s
   const values = buildProjectValues(project);
   if (project.concessionaire_id) {
     const rules = await fetchEntryRules(project.concessionaire_id);
-    const rule = matchEntryRule(rules, project.generalData?.phase_type, project.generalData?.circuit_breaker_current);
+    const rule = resolveEntryRule(rules, project.generalData);
     Object.assign(values, entryRuleValues(rule));
   }
   return values;

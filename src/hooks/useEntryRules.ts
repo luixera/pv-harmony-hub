@@ -175,6 +175,33 @@ export function matchEntryRule(
   return fit ?? sorted[sorted.length - 1] ?? null;
 }
 
+/**
+ * Categoria que vale para o projeto: a escolhida à mão vence a automática.
+ *
+ * Existe por causa do **aumento de carga** pedido junto com o projeto solar —
+ * a UC sai de 63A bifásico e vai para 80A trifásico, e é a categoria NOVA que
+ * tem de sair no diagrama, nos formulários e no memorial. Sem isto a tela
+ * mostraria uma coisa e o documento imprimiria outra.
+ *
+ * Todo consumidor de categoria deve passar por aqui, e não por
+ * `matchEntryRule` direto. Regra apagada da concessionária → cai sozinho na
+ * classificação automática.
+ */
+export function resolveEntryRule(
+  rules: EntryRule[],
+  generalData: {
+    entry_rule_id?: string | null;
+    phase_type?: string | null;
+    circuit_breaker_current?: string | null;
+  } | null | undefined,
+): EntryRule | null {
+  const escolhida = generalData?.entry_rule_id
+    ? rules.find(r => r.id === generalData.entry_rule_id) ?? null
+    : null;
+  if (escolhida) return escolhida;
+  return matchEntryRule(rules, generalData?.phase_type, generalData?.circuit_breaker_current);
+}
+
 /** Converte a regra encontrada nas variáveis de template do padrão de entrada. */
 export function entryRuleValues(rule: EntryRule | null): Record<string, string> {
   const values: Record<string, string> = {

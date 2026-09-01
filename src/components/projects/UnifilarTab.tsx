@@ -16,7 +16,7 @@ import {
   useDiagramVersions, useSaveDiagramVersion, useDeleteDiagramVersion, fetchDiagramVersionScene,
 } from '@/hooks/useDiagramVersions';
 import { useDiagramTemplates } from '@/hooks/useDiagramTemplates';
-import { matchEntryRule, useEntryRules } from '@/hooks/useEntryRules';
+import { resolveEntryRule, useEntryRules } from '@/hooks/useEntryRules';
 import { useEngineeringRuleMap } from '@/hooks/useEngineeringRules';
 import {
   MicroPlan, ProjectArrangementOption, inverterSpecsFromTechSpecs, isMicroinverter,
@@ -467,7 +467,7 @@ export function UnifilarTab({ project: projetoRecebido }: { project: ProjectWith
 
   /** Dados do padrão de entrada/medidor/placa — iguais nos dois caminhos. */
   const sheetOptions = () => {
-    const entryRule = matchEntryRule(entryRules, project.generalData?.phase_type, project.generalData?.circuit_breaker_current);
+    const entryRule = resolveEntryRule(entryRules, project.generalData);
     return {
       entryBreakerLegend: entryRule
         ? [[`${entryRule.disjuntor}A`, entryRule.categoria ? `cat. ${entryRule.categoria}` : ''].filter(Boolean).join(' · '),
@@ -551,7 +551,7 @@ export function UnifilarTab({ project: projetoRecebido }: { project: ProjectWith
     // três linhas de texto por bloco, competindo com o desenho (ago/2026).
     const pvLegends = Array.from({ length: projectInverters }, () => [moduloModelo].filter(Boolean));
     // padrão de entrada do projeto — as regras cadastradas em Concessionárias
-    const entryRule = matchEntryRule(entryRules, project.generalData?.phase_type, project.generalData?.circuit_breaker_current);
+    const entryRule = resolveEntryRule(entryRules, project.generalData);
 
     // Disjuntor geral: pergunta ao usuário (a regra decide só o padrão da caixa)
     const ruleWantsGeneral = ruleValue(ruleMap, 'protections.include_general_ac_breaker', 1) !== 0;
