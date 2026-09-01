@@ -46,6 +46,7 @@ import { Database } from '@/integrations/supabase/types';
 import { ProjectWithDetails } from '@/hooks/useProjects';
 import { useProjectTasks, useUpdateTask, Task, TaskPriority } from '@/hooks/useTasks';
 import { TaskDialog } from '@/components/tasks/TaskDialog';
+import { matchEntryRule, useEntryRules } from '@/hooks/useEntryRules';
 
 type ProjectStatus = Database['public']['Enums']['project_status'];
 type DocumentType = Database['public']['Enums']['document_type'];
@@ -497,6 +498,111 @@ function AnexoDoComentario({ nome, doc, onAbrir }: {
   );
 }
 
+/**
+ * Categoria do padrão de entrada em que o projeto se enquadra.
+ *
+ * Não é um campo gravado: é derivado das regras da concessionária
+ * (`concessionaire_entry_rules`) cruzando FASE + DISJUNTOR do projeto, pela
+ * mesma `matchEntryRule` que o diagrama unifilar e a geração de documentos
+ * usam — se divergisse daquilo, a tela mentiria sobre o desenho.
+ *
+ * O casamento tem saídas aproximadas (sem fase, sem disjuntor, disjuntor acima
+ * da maior categoria). Em vez de esconder, cada uma é dita em uma linha: o
+ * projetista precisa saber quando a classificação é um palpite.
+ */
+function EntryStandardBadge({
+  concessionaireId, concessionaireName, phaseType, breakerCurrent,
+}: {
+  concessionaireId?: string;
+  concessionaireName: string;
+  phaseType: string;
+  breakerCurrent: string;
+}) {
+  const { data: rules = [], isLoading } = useEntryRules(concessionaireId);
+
+  const caixa = (conteudo: React.ReactNode, tom: 'ok' | 'aviso' = 'ok') => (
+    <div style={{
+      marginTop: 14, padding: '10px 14px', borderRadius: 8,
+      background: tom === 'ok' ? '#FFFBF0' : '#FAFAFA',
+      border: `0.5px solid ${tom === 'ok' ? '#F5A800' : '#E0E0E0'}`,
+    }}>
+      <p style={{ fontSize: 11, color: '#aaa', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 6px' }}>
+        Padrão de entrada
+      </p>
+      {conteudo}
+    </div>
+  );
+
+  const nota = (txt: string) => (
+    <p style={{ fontSize: 11, color: '#8a8a8a', margin: '6px 0 0', lineHeight: 1.5 }}>{txt}</p>
+  );
+
+  if (!concessionaireId) {
+    return caixa(nota('Concessionária ainda não definida no projeto — sem ela não dá para classificar o padrão de entrada.'), 'aviso');
+  }
+  if (isLoading) return null;
+  if (rules.length === 0) {
+    return caixa(nota(
+      `${concessionaireName || 'Esta concessionária'} não tem regras de padrão de entrada cadastradas. ` +
+      'Cadastre em Concessionárias → Padrão de entrada para o projeto ser classificado.'
+    ), 'aviso');
+  }
+
+  const rule = matchEntryRule(rules, phaseType, breakerCurrent);
+  if (!rule) return caixa(nota('Nenhuma categoria compatível encontrada nas regras desta concessionária.'), 'aviso');
+
+  const amps = parseInt((breakerCurrent || '').replace(/[^\d]/g, ''), 10);
+  const semFase = !phaseType;
+  const semDisjuntor = isNaN(amps);
+  const acimaDoMaior = !semDisjuntor && rule.disjuntor < amps;
+
+  const chip = (rotulo: string, valor: string) => (
+    <div key={rotulo}>
+      <p style={{ fontSize: 10, color: '#aaa', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', margin: 0 }}>{rotulo}</p>
+      <p style={{ fontSize: 13, fontWeight: 600, color: '#1A1A1A', margin: '2px 0 0' }}>{valor}</p>
+    </div>
+  );
+
+  const detalhes = [
+    chip('Disjuntor da categoria', `${rule.disjuntor}A`),
+    ...(rule.bitola ? [chip('Bitola', `${rule.bitola} mm²`)] : []),
+    ...(rule.classe ? [chip('Classe', rule.classe)] : []),
+    ...(rule.caixa_medicao ? [chip('Caixa de medição', rule.caixa_medicao)] : []),
+    ...Object.entries(rule.extra ?? {}).map(([label, val]) => chip(label, val)),
+  ];
+
+  return caixa(
+    <>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+        <span style={{
+          fontSize: 15, fontWeight: 700, color: '#1A1A1A', background: '#FEF3D0',
+          border: '0.5px solid #F5A800', borderRadius: 6, padding: '2px 10px',
+        }}>
+          Categoria {rule.categoria}
+        </span>
+        <span style={{ fontSize: 12, color: '#8a8a8a' }}>
+          pela regra da {concessionaireName || 'concessionária'}
+        </span>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 10, marginTop: 10 }}>
+        {detalhes}
+      </div>
+
+      {semFase && semDisjuntor
+        ? nota('Classificação aproximada: o projeto está sem a fase e sem o disjuntor, então esta é a primeira categoria da lista.')
+        : semFase
+          ? nota('Classificação aproximada: sem a fase informada, o enquadramento usou só o disjuntor.')
+          : semDisjuntor
+            ? nota('Classificação aproximada: sem o disjuntor informado, esta é a menor categoria da fase.')
+            : null}
+      {acimaDoMaior && nota(
+        `Atenção: o disjuntor do projeto (${amps}A) passa da maior categoria cadastrada para esta fase (${rule.disjuntor}A).`
+      )}
+    </>
+  );
+}
+
 function TabGeneral({ project, isEditing, onSave, onCancel, onEdit }: {
   project: ProjectWithDetails;
   isEditing: boolean;
@@ -535,6 +641,7 @@ function TabGeneral({ project, isEditing, onSave, onCancel, onEdit }: {
     holder_phone: gd?.holder_phone || '',
     holder_email: gd?.holder_email || '',
     circuit_breaker_current: gd?.circuit_breaker_current || '',
+    phase_type: gd?.phase_type || '',
     address: gd?.address || '',
     address_number: gd?.address_number || '',
     address_complement: gd?.address_complement || '',
@@ -571,6 +678,7 @@ function TabGeneral({ project, isEditing, onSave, onCancel, onEdit }: {
       holder_phone: gd?.holder_phone || '',
       holder_email: gd?.holder_email || '',
       circuit_breaker_current: gd?.circuit_breaker_current || '',
+      phase_type: gd?.phase_type || '',
       address: gd?.address || '',
       address_number: gd?.address_number || '',
       address_complement: gd?.address_complement || '',
@@ -604,6 +712,39 @@ function TabGeneral({ project, isEditing, onSave, onCancel, onEdit }: {
       ) : (
         form[key]
           ? <p style={{ fontSize: 14, fontWeight: 500, color: '#1A1A1A', overflowWrap: 'anywhere', wordBreak: 'break-word' }}>{form[key]}</p>
+          : <em style={{ color: '#ccc', fontSize: 13 }}>Não informado</em>
+      )}
+    </div>
+  );
+
+  // Fase do padrão de entrada. Os valores gravados são sempre minúsculos e sem
+  // acento (monofasico/bifasico/trifasico) — é o que o NewProject grava e o que
+  // o Kanban e o Motor de Engenharia comparam. `phase_type` está em SKIP_KEYS
+  // do textCase, então o upperize do salvamento não encosta nele.
+  const PHASE_OPTIONS: [string, string][] = [
+    ['monofasico', 'Monofásico'],
+    ['bifasico', 'Bifásico'],
+    ['trifasico', 'Trifásico'],
+  ];
+  const phaseLabel = (raw: string) =>
+    PHASE_OPTIONS.find(([v]) => v === raw)?.[1]
+    ?? (raw ? raw.charAt(0).toUpperCase() + raw.slice(1) : '');
+
+  const phaseField = () => (
+    <div style={{ minWidth: 0 }}>
+      <p style={{ fontSize: 11, color: '#aaa', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>Fase</p>
+      {isEditing ? (
+        <select
+          value={form.phase_type}
+          onChange={e => setForm(f => ({ ...f, phase_type: e.target.value }))}
+          style={{ width: '100%', padding: '6px 8px', borderRadius: 6, border: '1px solid #E0E0E0', fontSize: 13, color: '#1A1A1A', outline: 'none', boxSizing: 'border-box', background: '#fff' }}
+        >
+          <option value="">Não informado</option>
+          {PHASE_OPTIONS.map(([val, label]) => <option key={val} value={val}>{label}</option>)}
+        </select>
+      ) : (
+        form.phase_type
+          ? <p style={{ fontSize: 14, fontWeight: 500, color: '#1A1A1A' }}>{phaseLabel(form.phase_type)}</p>
           : <em style={{ color: '#ccc', fontSize: 13 }}>Não informado</em>
       )}
     </div>
@@ -657,22 +798,30 @@ function TabGeneral({ project, isEditing, onSave, onCancel, onEdit }: {
           </div>
           {field('CPF / CNPJ', 'holder_cpf_cnpj')}
           {field('Número UC', 'uc_number')}
-          {/* Row 2: Telefone, Email, Disjuntor, UF */}
+          {/* Row 2: Telefone, Email, Disjuntor, Fase */}
           {field('Telefone', 'holder_phone')}
           {field('E-mail', 'holder_email')}
           {field('Disjuntor (A)', 'circuit_breaker_current')}
+          {phaseField()}
+          {/* Row 3: UF, Endereço(span2), Número */}
           {field('UF', 'state')}
-          {/* Row 3: Endereço(span2), Número, Complemento */}
           <div style={{ gridColumn: 'span 2' }}>
             {field('Endereço', 'address')}
           </div>
           {field('Número', 'address_number')}
+          {/* Row 4: Complemento, Bairro, CEP, Cidade */}
           {field('Complemento', 'address_complement')}
-          {/* Row 4: Bairro, CEP, Cidade */}
           {field('Bairro', 'neighborhood')}
           {field('CEP', 'cep')}
           {field('Cidade', 'city')}
         </div>
+
+        <EntryStandardBadge
+          concessionaireId={(project as any).concessionaire_id ?? undefined}
+          concessionaireName={(project as any).concessionaireName || ''}
+          phaseType={form.phase_type}
+          breakerCurrent={form.circuit_breaker_current}
+        />
       </div>
 
       {/* ── Seção Protocolo ─────────────────────────────────────────────────── */}
@@ -911,6 +1060,7 @@ function TabGeneral({ project, isEditing, onSave, onCancel, onEdit }: {
                 holder_phone: form.holder_phone,
                 holder_email: form.holder_email,
                 circuit_breaker_current: form.circuit_breaker_current,
+                phase_type: form.phase_type || null,
                 address: form.address,
                 address_number: form.address_number,
                 address_complement: form.address_complement,
