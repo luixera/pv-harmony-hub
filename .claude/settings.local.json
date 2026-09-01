@@ -352,7 +352,13 @@
       "Bash(npx -y supabase functions deploy seed-cemig-forms --project-ref yqsqrdndvsnhbsoaoilf --no-verify-jwt)",
       "Bash(node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\).on\\('end',\\(\\)=>{const r=JSON.parse\\(d\\);console.log\\('ok:',r.ok,'| concessionarias:',r.concessionarias,'| enviados:',r.enviados,'| erros:',r.erros\\);\\(r.results||[]\\).forEach\\(x=>console.log\\('  ',x.status,x.arquivo||'',x.error||''\\)\\);}\\)\")",
       "Bash(node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\).on\\('end',\\(\\)=>{const r=JSON.parse\\(d\\);console.log\\('  enviados:',r.enviados,'\\(esperado 0\\) | ja existiam:',\\(r.results||[]\\).filter\\(x=>x.status==='ja_existia'\\).length\\);}\\)\")",
-      "Bash(npx -y supabase storage ls \"ss:///concessionaire-templates/132bd3ca-0a6a-478b-a4e7-c55ca6b35ee2/\" --linked --experimental)"
+      "Bash(npx -y supabase storage ls \"ss:///concessionaire-templates/132bd3ca-0a6a-478b-a4e7-c55ca6b35ee2/\" --linked --experimental)",
+      "Bash(npx -y supabase db query --linked -f \"C:/Users/luiza/AppData/Local/Temp/claude/C--Users-luiza-Desktop-DADOS-DESENVOLVIMENTO---GD-MANAGER-ENERGY-pv-harmony-hub-main-pv-harmony-hub-main/d13f144e-b872-4aa5-8701-ed8dea13ee4e/scratchpad/inspect_tasks.sql\")",
+      "Bash(npx -y supabase db query --linked -f \"C:/Users/luiza/AppData/Local/Temp/claude/C--Users-luiza-Desktop-DADOS-DESENVOLVIMENTO---GD-MANAGER-ENERGY-pv-harmony-hub-main-pv-harmony-hub-main/d13f144e-b872-4aa5-8701-ed8dea13ee4e/scratchpad/trg.sql\")",
+      "Bash(npx -y supabase db query --linked -f \"C:/Users/luiza/AppData/Local/Temp/claude/C--Users-luiza-Desktop-DADOS-DESENVOLVIMENTO---GD-MANAGER-ENERGY-pv-harmony-hub-main-pv-harmony-hub-main/d13f144e-b872-4aa5-8701-ed8dea13ee4e/scratchpad/cols2.sql\")",
+      "Bash(npx -y supabase db query --linked -f \"C:/Users/luiza/AppData/Local/Temp/claude/C--Users-luiza-Desktop-DADOS-DESENVOLVIMENTO---GD-MANAGER-ENERGY-pv-harmony-hub-main-pv-harmony-hub-main/d13f144e-b872-4aa5-8701-ed8dea13ee4e/scratchpad/fn.sql\")",
+      "Bash(npx -y supabase db query --linked -f supabase/migrations/20260901120000_task_automations.sql)",
+      "Bash(npx -y supabase db query --linked -f \"C:/Users/luiza/AppData/Local/Temp/claude/C--Users-luiza-Desktop-DADOS-DESENVOLVIMENTO---GD-MANAGER-ENERGY-pv-harmony-hub-main-pv-harmony-hub-main/d13f144e-b872-4aa5-8701-ed8dea13ee4e/scratchpad/test_rls.sql\")"
     ]
   }
 }
