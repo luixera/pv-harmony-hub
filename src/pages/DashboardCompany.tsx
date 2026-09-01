@@ -8,21 +8,28 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { DashboardMap } from '@/components/maps/DashboardMap';
 import { useCompanySubscriptionStatement } from '@/hooks/useSubscriptionCharges';
+import { useDefaultKanbanModel } from '@/hooks/useKanbanConfig';
+import { projectStatusLabel } from '@/lib/statusMapping';
 
-const statusLabels: Record<string, string> = {
-  pending: 'Aguardando',
-  analysis: 'Em Análise',
-  documentation: 'Documentação',
-  approval: 'Aprovação',
-  approved: 'Aprovado',
-  completed: 'Concluído',
-};
+/**
+ * O nome da etapa vem da CONFIGURAÇÃO do Kanban.
+ *
+ * Havia aqui um mapa fixo com 6 etapas. Renomear a etapa no Kanban não
+ * refletia, e as etapas criadas depois (pendência, vistoria, aguardando
+ * instalação) caíam num rótulo VAZIO — a badge aparecia em branco na tela da
+ * empresa (relato do usuário, ago/2026).
+ */
 
 export default function DashboardCompany() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { data: allProjects = [], isLoading } = useProjects();
   const { data: assinaturas = [] } = useCompanySubscriptionStatement();
+  const { data: kanbanModel } = useDefaultKanbanModel();
+  /** Etapa: configuração do quadro → catálogo do sistema → código cru. */
+  const rotuloEtapa = (status: string) =>
+    (kanbanModel?.columns ?? []).find(c => c.status_key === status)?.status_label
+      ?? projectStatusLabel(status);
 
   // Filter projects for this company
   const companyProjects = allProjects.filter(p => p.company_id === user?.companyId);
@@ -184,7 +191,7 @@ export default function DashboardCompany() {
                           project.status === 'completed' ? 'completed' :
                           'progress'
                         }>
-                          {statusLabels[project.status]}
+                          {rotuloEtapa(project.status)}
                         </Badge>
                       </td>
                       <td className="py-3 px-4 text-sm text-muted-foreground">
