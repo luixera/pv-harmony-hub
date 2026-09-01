@@ -213,8 +213,24 @@ const KanbanCardContent = memo(function KanbanCardContent({
         {project.generalData?.holder_name || project.title}
       </h4>
       <div className="flex items-center gap-2 text-xs text-muted-foreground mb-2">
-        <Building2 className="w-3 h-3" />
+        <Building2 className="w-3 h-3 shrink-0" />
         <span className="truncate">{companyDisplayName}</span>
+        {/* Concessionária: o mesmo selo do cabeçalho do modal, em tom escuro —
+            lá o fundo é preto e o #F5A800 se lê; aqui o card é claro. */}
+        {project.concessionaireName && (
+          <span
+            title={`Concessionária: ${project.concessionaireName}`}
+            style={{
+              marginLeft: 'auto', flexShrink: 0,
+              fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 20,
+              background: 'rgba(245,168,0,0.12)', color: '#8A5300',
+              border: '0.5px solid rgba(245,168,0,0.35)',
+              whiteSpace: 'nowrap', maxWidth: 110, overflow: 'hidden', textOverflow: 'ellipsis',
+            }}
+          >
+            {project.concessionaireName}
+          </span>
+        )}
       </div>
       <div className="flex items-center gap-2 text-xs text-muted-foreground mb-3">
         <MapPin className="w-3 h-3" />

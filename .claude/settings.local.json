@@ -361,7 +361,9 @@
       "Bash(npx -y supabase db query --linked -f \"C:/Users/luiza/AppData/Local/Temp/claude/C--Users-luiza-Desktop-DADOS-DESENVOLVIMENTO---GD-MANAGER-ENERGY-pv-harmony-hub-main-pv-harmony-hub-main/d13f144e-b872-4aa5-8701-ed8dea13ee4e/scratchpad/test_rls.sql\")",
       "Bash(npx -y supabase db query --linked -f \"C:/Users/luiza/AppData/Local/Temp/claude/C--Users-luiza-Desktop-DADOS-DESENVOLVIMENTO---GD-MANAGER-ENERGY-pv-harmony-hub-main-pv-harmony-hub-main/d13f144e-b872-4aa5-8701-ed8dea13ee4e/scratchpad/match.sql\")",
       "Bash(npx -y supabase db query --linked -f \"C:/Users/luiza/AppData/Local/Temp/claude/C--Users-luiza-Desktop-DADOS-DESENVOLVIMENTO---GD-MANAGER-ENERGY-pv-harmony-hub-main-pv-harmony-hub-main/d13f144e-b872-4aa5-8701-ed8dea13ee4e/scratchpad/gaps.sql\")",
-      "Bash(npx -y supabase db query --linked -f supabase/migrations/20260901160000_entry_rule_override.sql)"
+      "Bash(npx -y supabase db query --linked -f supabase/migrations/20260901160000_entry_rule_override.sql)",
+      "Bash(curl -s -m 25 https://homologamanager.com.br/)",
+      "Bash(curl -s -m 60 https://homologamanager.com.br/assets/index-DwzcS4Ty.js)"
     ]
   }
 }
