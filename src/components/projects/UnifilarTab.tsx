@@ -379,6 +379,10 @@ export function UnifilarTab({ project: projetoRecebido }: { project: ProjectWith
   ), [inverterCatalog, project.equipment]);
   const isMicro = microOverride ?? autoMicro;
 
+  // Teto de micros por ramal escolhido na mão. Nulo = o padrão do motor (o
+  // mais conservador entre datasheet e regra).
+  const [microPerBranch, setMicroPerBranch] = useState<number | null>(null);
+
   const microPlan = useMemo(() => {
     if (!isMicro || !suggestOpen || ruleMap.size === 0) return null;
     const e = project.equipment;
@@ -389,8 +393,9 @@ export function UnifilarTab({ project: projetoRecebido }: { project: ProjectWith
       // o micro entrega na tensão DELE; a fase da UC só limita a dedução
       supplyPhaseType: phaseTypeOf(project.generalData?.phase_type),
       includeGeneral: ruleValue(ruleMap, 'protections.include_general_ac_breaker', 1) !== 0,
+      forceMaxPerBranch: microPerBranch ?? undefined,
     }, ruleMap);
-  }, [isMicro, suggestOpen, ruleMap, project.equipment, project.generalData, inverterCatalog, projectInverters]);
+  }, [isMicro, suggestOpen, ruleMap, project.equipment, project.generalData, inverterCatalog, projectInverters, microPerBranch]);
 
   const engineResult = useMemo(() => {
     if (isMicro) return null;   // o caminho de microinversor tem painel próprio
@@ -824,6 +829,36 @@ export function UnifilarTab({ project: projetoRecebido }: { project: ProjectWith
                 Projeto com microinversores: {microPlan.summary}
               </p>
               <p style={{ fontSize: 11, color: '#666', margin: '3px 0 0' }}>{microPlan.maxPerBranchReason}</p>
+
+              {/* Datasheet e regra divergem: o motor mostra os dois e deixa o
+                  projetista optar, em vez de escolher calado (relato do
+                  usuário, set/2026 — "as regras permitem 3 no mesmo ramal,
+                  mas o motor não traz essa opção"). */}
+              {microPlan.perBranchOptions.length > 1 && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 7 }}>
+                  <span style={{ fontSize: 11, color: '#666' }}>Micros por ramal:</span>
+                  {microPlan.perBranchOptions.map(o => {
+                    const ativo = o.value === microPlan.maxPerBranch;
+                    return (
+                      <button
+                        key={o.value}
+                        onClick={() => setMicroPerBranch(o.value)}
+                        title={`${o.branchCount} ramal(is) · ${o.currentA}A por ramal cheio · ${o.source}`
+                          + (o.fitsCurrent ? '' : ' · acima da corrente prevista pro ramal')}
+                        style={{
+                          padding: '3px 10px', borderRadius: 999, fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                          border: `1px solid ${ativo ? '#2D7A3A' : '#DDD'}`,
+                          background: ativo ? '#2D7A3A' : '#fff',
+                          color: ativo ? '#fff' : '#555',
+                        }}
+                      >
+                        {o.value} ({o.branchCount} ramal{o.branchCount > 1 ? 'is' : ''}){o.fitsCurrent ? '' : ' ⚠'}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
               {microPlan.branches.map((b, i) => (
                 <p key={i} style={{ fontSize: 11, color: '#666', margin: '2px 0 0' }}>• {b.explanation}</p>
               ))}

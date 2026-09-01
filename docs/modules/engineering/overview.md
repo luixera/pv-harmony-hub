@@ -293,12 +293,22 @@ O que manda no dimensionamento:
 1. **Entradas CC do micro** = módulos por unidade (HMS-2000 **4T** → 4).
    Datasheet (`dc_inputs`) > regra `microinverters.default_modules_per_unit` (4).
 2. **Micros por RAMAL CA** — os micros são encadeados no mesmo cabo tronco até
-   o disjuntor do ramal. Datasheet (`micro_max_per_branch`) > regra
-   `microinverters.default_max_per_branch` (**3**, decisão do usuário).
+   o disjuntor do ramal. Os tetos são o do datasheet (`micro_max_per_branch`)
+   e o da regra `microinverters.default_max_per_branch` (**3**, decisão do
+   usuário). **Quando os dois divergem, o motor não escolhe calado**: adota o
+   mais conservador (o do datasheet) e devolve os dois em `perBranchOptions`,
+   com fonte, nº de ramais resultante e se a corrente comporta; a aba Unifilar
+   mostra os dois como botões e `forceMaxPerBranch` aplica a escolha.
+   *Por que:* o número do datasheet vale para um **disjuntor de ramal
+   suposto** — quem engrossa o tronco e sobe o disjuntor cabe mais. Escolher
+   pelo projetista contrariava o princípio do motor (sugere e explica, nunca
+   decide sozinho) e foi relatado como defeito pelo usuário (set/2026:
+   datasheet 2, regra 3, corrente do ramal em 32A comportando os 3, e a opção
+   de 3 nunca aparecia).
    A corrente do ramal **não reduz** esse número por conta própria: se
-   `nº × corrente` passar de `microinverters.branch_max_current` (25A), o motor
+   `nº × corrente` passar de `microinverters.branch_max_current`, o motor
    **avisa** e sugere as duas saídas (aumentar a corrente/bitola do ramal ou
-   baixar o nº de micros). Motor sugere e explica, nunca decide sozinho.
+   baixar o nº de micros) — a opção continua sendo oferecida, marcada com ⚠.
 3. **Disjuntor do ramal** = `protections.breaker_sizing_factor` × soma das
    correntes dos micros do ramal; **geral** = fator × soma dos ramais.
 

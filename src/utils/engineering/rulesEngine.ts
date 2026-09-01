@@ -813,6 +813,25 @@ export interface MicroBranch {
   explanation: string;
 }
 
+/**
+ * Um teto possível de micros por ramal, com a fonte e se a corrente comporta.
+ *
+ * Existe porque datasheet e regra do tenant podem divergir — e o número do
+ * datasheet vale para um disjuntor de ramal suposto, então subir o tronco
+ * legitimamente permite mais micros. O motor oferece os dois e explica.
+ */
+export interface MicroPerBranchOption {
+  value: number;
+  /** Quantos ramais o projeto teria com este teto. */
+  branchCount: number;
+  /** Corrente de um ramal cheio com este teto. */
+  currentA: number;
+  /** Cabe na "corrente máxima do ramal" das Regras de Engenharia? */
+  fitsCurrent: boolean;
+  /** "datasheet do microinversor", 'regra "máx…"', ou os dois. */
+  source: string;
+}
+
 export interface MicroPlan {
   /** Micros do projeto. */
   unitCount: number;
@@ -821,6 +840,8 @@ export interface MicroPlan {
   /** Teto de micros por ramal efetivamente usado, e de onde ele veio. */
   maxPerBranch: number;
   maxPerBranchReason: string;
+  /** Tetos oferecidos ao projetista (datasheet × regra), quando divergem. */
+  perBranchOptions: MicroPerBranchOption[];
   branches: MicroBranch[];
   totalCurrentA: number;
   generalBreakerA: number | null;
@@ -896,9 +917,11 @@ function splitEvenly(total: number, parts: number): number[] {
  * Plano de um projeto com MICROINVERSORES: quantos micros, quantos módulos em
  * cada um, como eles se dividem em ramais e o disjuntor de cada ramal.
  *
- * O teto de micros por ramal é o MENOR entre a regra do banco / datasheet do
- * fabricante e o que a corrente do ramal aguenta — o segundo protege contra
- * uma regra folgada demais num micro potente.
+ * O teto de micros por ramal vem do datasheet do fabricante e/ou da regra do
+ * tenant. Quando os dois divergem, o motor NÃO escolhe calado: usa o mais
+ * conservador e devolve os dois em `perBranchOptions`, para o projetista optar
+ * (`forceMaxPerBranch`). A corrente do ramal nunca reduz o número sozinha —
+ * se o ramal cheio passar da corrente prevista, sai alerta explicando.
  */
 export function suggestMicroinverterPlan(input: {
   totalModules: number;
@@ -910,6 +933,8 @@ export function suggestMicroinverterPlan(input: {
   /** Fases do padrão de entrada da UC — só limita a dedução. */
   supplyPhaseType?: PhaseType;
   includeGeneral?: boolean;
+  /** Teto de micros por ramal escolhido pelo projetista (vence o padrão). */
+  forceMaxPerBranch?: number;
 }, rules: RuleMap): MicroPlan {
   const alerts: EngineAlert[] = [];
   const round1 = (v: number) => Math.round(v * 10) / 10;
@@ -974,14 +999,55 @@ export function suggestMicroinverterPlan(input: {
   const unitCurrentA = round1(
     input.micro.maxAcCurrentA ?? ((input.micro.powerKw ?? 0) * 1000) / (acV * (threePhase ? Math.sqrt(3) : 1)),
   );
-  // QUEM MANDA é o limite declarado (datasheet do micro > regra do tenant) —
-  // decisão do usuário. A corrente do ramal não reduz o número por conta
-  // própria: se estourar, o motor AVISA e explica o que fazer (princípio do
-  // motor: sugere e explica, nunca decide no lugar do projetista).
-  const maxPerBranch = Math.max(1, Math.floor(input.micro.maxPerBranch ?? ruleValue(rules, 'microinverters.default_max_per_branch', 3)));
+  // A corrente do ramal não reduz o número por conta própria: se estourar, o
+  // motor AVISA e explica o que fazer (princípio do motor: sugere e explica,
+  // nunca decide no lugar do projetista).
+  //
+  // O datasheet declara o máximo por ramal PARA UM DISJUNTOR SUPOSTO — quem
+  // engrossa o tronco e sobe o disjuntor cabe mais. Por isso o teto do
+  // datasheet e o da regra viram OPÇÕES explicadas, em vez de o datasheet
+  // ganhar calado: era o caso relatado pelo usuário (datasheet 2, regra 3,
+  // corrente do ramal em 32A comportando os 3 — e o motor nunca oferecia 3).
   const branchMaxA = ruleValue(rules, 'microinverters.branch_max_current', 25);
-  const maxPerBranchReason = `${maxPerBranch} micro(s) por ramal — `
-    + `${input.micro.maxPerBranch ? 'limite do datasheet do microinversor' : 'regra "máx. de microinversores por ramal"'}.`;
+  const datasheetCap = input.micro.maxPerBranch != null
+    ? Math.max(1, Math.floor(input.micro.maxPerBranch))
+    : null;
+  const ruleCap = Math.max(1, Math.floor(ruleValue(rules, 'microinverters.default_max_per_branch', 3)));
+
+  const fonteDoTeto = (v: number): string => {
+    const fontes: string[] = [];
+    if (datasheetCap === v) fontes.push('datasheet do microinversor');
+    if (ruleCap === v) fontes.push('regra "máx. de microinversores por ramal"');
+    return fontes.join(' e ') || 'escolha do projetista';
+  };
+
+  // Teto acima do nº de micros do projeto não muda nada — vira o próprio total.
+  const candidatos = [...new Set(
+    [datasheetCap, ruleCap]
+      .filter((v): v is number => v != null)
+      .map(v => Math.min(v, Math.max(1, unitCount))),
+  )].sort((a, b) => a - b);
+
+  const perBranchOptions: MicroPerBranchOption[] = candidatos.map(v => ({
+    value: v,
+    branchCount: Math.max(1, Math.ceil(unitCount / v)),
+    currentA: round1(v * unitCurrentA),
+    fitsCurrent: unitCurrentA <= 0 || round1(v * unitCurrentA) <= branchMaxA,
+    source: fonteDoTeto(v),
+  }));
+
+  // Padrão continua o mais conservador (o datasheet, quando existe); o
+  // projetista pode pedir outro dos candidatos.
+  const padrao = datasheetCap ?? ruleCap;
+  const pedido = input.forceMaxPerBranch != null
+    ? Math.max(1, Math.floor(input.forceMaxPerBranch))
+    : null;
+  const maxPerBranch = Math.max(1, Math.min(pedido ?? padrao, Math.max(1, unitCount)));
+
+  const maxPerBranchReason = `${maxPerBranch} micro(s) por ramal — ${fonteDoTeto(maxPerBranch)}.`
+    + (perBranchOptions.length > 1
+      ? ` As Regras de Engenharia e o datasheet divergem (${candidatos.join(' e ')} por ramal): dá para escolher.`
+      : '');
   const fullBranchA = round1(maxPerBranch * unitCurrentA);
   if (unitCurrentA > 0 && fullBranchA > branchMaxA) {
     const cabem = Math.max(1, Math.floor(branchMaxA / unitCurrentA));
@@ -1034,7 +1100,7 @@ export function suggestMicroinverterPlan(input: {
     + `${branchCount} ramal(is) de até ${maxPerBranch}`;
 
   return {
-    unitCount, modulesPerUnitCap, maxPerBranch, maxPerBranchReason, branches,
+    unitCount, modulesPerUnitCap, maxPerBranch, maxPerBranchReason, perBranchOptions, branches,
     totalCurrentA, generalBreakerA, generalExplanation,
     branchSectionMm2: branchSizing?.ac?.sectionMm2 ?? null,
     trunkSectionMm2: trunkSizing?.ac?.sectionMm2 ?? null,
