@@ -85,6 +85,14 @@ interface ProjectModalProps {
   projectId: string;
   onClose: () => void;
   initialTab?: string;
+  /**
+   * Simulação do ambiente da empresa ("Ver como empresa"). O modal decide o que
+   * mostrar pelo PAPEL de quem abriu; sem este aviso, o admin simulando via a
+   * si mesmo — com Unifilar, Financeiro, Histórico e as ferramentas da equipe —
+   * e a tela deixava de cumprir o que promete, que é conferir a experiência do
+   * cliente (relato do usuário, set/2026).
+   */
+  viewAsCompany?: boolean;
 }
 
 // ── Document Preview ───────────────────────────────────────────────────────────
@@ -2023,14 +2031,17 @@ function TabTarefas({ projectId, canEdit }: { projectId: string; canEdit: boolea
 }
 
 // ── Main Modal ─────────────────────────────────────────────────────────────────
-export function ProjectModal({ projectId, onClose, initialTab = 'geral' }: ProjectModalProps) {
+export function ProjectModal({ projectId, onClose, initialTab = 'geral', viewAsCompany = false }: ProjectModalProps) {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { getCompanyDisplayName } = useCompanyDisplay();
   const { isMobile, isTablet } = useWindowSize();
-  const isAdmin = user?.role === 'admin';
-  const isStaff = user?.role === 'staff';
-  const hasDiagramEngineAccess = useDiagramEngineAccess();
+  // Simulando a empresa, ninguém é admin nem projetista: tudo o que depende
+  // disso (abas, botões, edição, exclusão) se fecha de uma vez, sem depender de
+  // eu lembrar de cada ponto.
+  const isAdmin = user?.role === 'admin' && !viewAsCompany;
+  const isStaff = user?.role === 'staff' && !viewAsCompany;
+  const hasDiagramEngineAccess = useDiagramEngineAccess() && !viewAsCompany;
   const canEdit = isAdmin || isStaff;
 
   const { data: project, isLoading } = useProject(projectId);
@@ -2128,10 +2139,13 @@ export function ProjectModal({ projectId, onClose, initialTab = 'geral' }: Proje
     // (decisão do usuário, set/2026). Financeiro dela vive em /company/financial,
     // e o Histórico registra ação interna da equipe. Antes disto a busca da
     // Topbar já abria o modal para a empresa com estas duas abas à mostra.
-    ...(canEdit ? [{ id: 'financeiro', label: 'Financeiro', icon: <DollarSign size={13} style={{ marginRight: 5 }} /> }] : []),
+    // Financeiro é só do ADMIN: o projetista não deve ver valor de projeto
+    // (decisão do usuário, set/2026) — a tela /admin/financial já era
+    // exclusiva dele, e esta aba era a brecha que restava.
+    ...(isAdmin ? [{ id: 'financeiro', label: 'Financeiro', icon: <DollarSign size={13} style={{ marginRight: 5 }} /> }] : []),
     ...(canEdit ? [{ id: 'historico', label: 'Histórico', icon: <Clock size={13} style={{ marginRight: 5 }} /> }] : []),
     // Notificações da concessionária — mesmo público da tela de E-mails
-    ...(user?.role === 'admin' || user?.role === 'staff'
+    ...(canEdit
       ? [{ id: 'notificacoes', label: isMobile ? 'Notif.' : 'Notificações', icon: <Mail size={13} style={{ marginRight: 5 }} /> }]
       : []),
     // Alpha interno do CAD Engine — restrito por enquanto ao mesmo público do
@@ -2423,7 +2437,10 @@ export function ProjectModal({ projectId, onClose, initialTab = 'geral' }: Proje
                 {activeTab === 'tarefas' && (
                   <TabTarefas projectId={project.id} canEdit={canEdit} />
                 )}
-                {activeTab === 'financeiro' && (
+                {/* `isAdmin` também aqui, e não só no botão da aba: `initialTab`
+                    pode chegar por fora, e o conteúdo não deve depender de a
+                    aba ter sido escondida. */}
+                {activeTab === 'financeiro' && isAdmin && (
                   <TabFinanceiro project={project} isAdmin={isAdmin} />
                 )}
                 {activeTab === 'historico' && (

@@ -236,8 +236,14 @@ export default function ViewAsCompany() {
         </motion.div>
       </div>
 
+      {/* viewAsCompany: aqui o modal tem de mostrar o que o CLIENTE vê, não o
+          que o admin veria — é para isso que esta tela existe. */}
       {modalProjectId && (
-        <ProjectModal projectId={modalProjectId} onClose={() => setModalProjectId(null)} />
+        <ProjectModal
+          projectId={modalProjectId}
+          onClose={() => setModalProjectId(null)}
+          viewAsCompany
+        />
       )}
     </MainLayout>
   );
