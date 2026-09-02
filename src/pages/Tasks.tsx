@@ -15,6 +15,7 @@ import {
   Pencil,
   PlayCircle,
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTasks, useUpdateTask, Task, TaskStatus, TaskPriority } from '@/hooks/useTasks';
 import { TaskDialog } from '@/components/tasks/TaskDialog';
@@ -126,10 +127,20 @@ interface TaskCardProps {
 
 function TaskCard({ task, onEdit }: TaskCardProps) {
   const updateTask = useUpdateTask();
+  const navigate = useNavigate();
   const priority = PRIORITY_CFG[task.priority];
   const overdue = isOverdue(task.due_date, task.status);
   const today = isDueToday(task.due_date);
   const isDone = task.status === 'completed';
+
+  // Atalho para o projeto da tarefa: o quadro já sabe abrir o modal sozinho
+  // pelo parâmetro ?openProject=<id> (mesmo caminho usado por outros pontos do
+  // sistema), então não é preciso uma rota nova. Tarefa solta — sem projeto —
+  // continua sem clique, para não dar um "link morto".
+  const projectId = task.project?.id ?? null;
+  const abrirProjeto = projectId
+    ? () => navigate(`/projects?openProject=${projectId}`)
+    : undefined;
 
   function handleToggleComplete() {
     if (isDone) return;
@@ -161,9 +172,10 @@ function TaskCard({ task, onEdit }: TaskCardProps) {
 
       {/* Content */}
       <div className="flex-1 px-4 py-3.5 flex items-start gap-3 min-w-0">
-        {/* Checkbox */}
+        {/* Checkbox — para o clique aqui e no menu, senão concluir a tarefa
+            também navegaria para o projeto. */}
         <button
-          onClick={handleToggleComplete}
+          onClick={e => { e.stopPropagation(); handleToggleComplete(); }}
           disabled={isDone || updateTask.isPending}
           className="mt-0.5 flex-shrink-0 text-gray-300 hover:text-green-500 transition-colors disabled:cursor-default"
         >
@@ -174,10 +186,21 @@ function TaskCard({ task, onEdit }: TaskCardProps) {
           )}
         </button>
 
-        {/* Main info */}
-        <div className="flex-1 min-w-0">
+        {/* Main info — clicável quando a tarefa tem projeto */}
+        <div
+          className={cn('flex-1 min-w-0', abrirProjeto && 'cursor-pointer')}
+          onClick={abrirProjeto}
+          role={abrirProjeto ? 'link' : undefined}
+          tabIndex={abrirProjeto ? 0 : undefined}
+          onKeyDown={abrirProjeto ? e => { if (e.key === 'Enter') abrirProjeto(); } : undefined}
+          title={abrirProjeto ? `Abrir o projeto ${task.project?.code}` : undefined}
+        >
           <div className="flex items-start justify-between gap-2">
-            <p className={cn('text-sm font-medium text-gray-900 leading-snug', isDone && 'line-through text-gray-400')}>
+            <p className={cn(
+              'text-sm font-medium text-gray-900 leading-snug',
+              abrirProjeto && 'hover:underline',
+              isDone && 'line-through text-gray-400',
+            )}>
               {task.title}
             </p>
 
@@ -215,9 +238,12 @@ function TaskCard({ task, onEdit }: TaskCardProps) {
               </span>
             )}
 
-            {/* Project */}
+            {/* Projeto — é o alvo do atalho, então destoa do cinza dos outros
+                selos para anunciar que dali se chega a algum lugar. */}
             {task.project && (
-              <span className="inline-flex items-center gap-1 text-[11px] text-gray-400">
+              <span
+                className="inline-flex items-center gap-1 text-[11px] font-medium text-[#8A5300] bg-[rgba(245,168,0,0.12)] border border-[rgba(245,168,0,0.35)] rounded-full px-2 py-0.5 hover:bg-[rgba(245,168,0,0.22)] transition-colors"
+              >
                 <FolderOpen className="w-3 h-3" />
                 {task.project.code}
               </span>
