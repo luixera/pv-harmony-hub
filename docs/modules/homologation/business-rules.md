@@ -38,6 +38,16 @@ Códigos e rótulos (`src/lib/statusMapping.ts`):
   concessionária, sem regras cadastradas, sem fase, sem disjuntor e disjuntor
   acima da maior categoria da fase são ditos explicitamente. Com categoria
   escolhida à mão, mostra também o que a automática diria.
+- **RN-HOM-05c** — A **empresa integradora pede a vistoria** pelo modal do
+  projeto, e o botão só libera com o projeto na etapa **Aprovado**. O pedido
+  cria tarefa (prazo 3 dias, prioridade alta) para **o admin do tenant e para
+  o projetista responsável**, avisa os dois no sino e registra em comentários
+  e histórico. **Não move o card** — quem muda a etapa é a equipe. Um pedido
+  em aberto por vez (`tasks.origin = 'vistoria_request'`). Tudo decidido no
+  servidor pela RPC `solicitar_vistoria` (SECURITY DEFINER), porque a empresa
+  não tem nem deve ter permissão para criar tarefa para outra pessoa;
+  `vistoria_status` informa a tela, já que a empresa não enxerga as tarefas
+  dos outros.
 - **RN-HOM-06** — Templates são `.docx` por concessionária
   (`concessionaire_templates`); ao subir versão de mesmo nome, o sistema pergunta
   se exclui a antiga.

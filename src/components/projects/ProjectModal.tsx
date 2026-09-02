@@ -36,6 +36,7 @@ import {
   Check, ChevronRight, Upload, Download, Send, Paperclip, FileText,
   Image, Loader2, AlertTriangle, Save, Lock, DollarSign, Clock, MapPin, Hash,
   CheckSquare, Plus, Circle, CheckCircle2, Calendar, User as UserIcon, RotateCcw, FlaskConical, Mail,
+  Search,
 } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -47,6 +48,7 @@ import { ProjectWithDetails } from '@/hooks/useProjects';
 import { useProjectTasks, useUpdateTask, Task, TaskPriority } from '@/hooks/useTasks';
 import { TaskDialog } from '@/components/tasks/TaskDialog';
 import { matchEntryRule, useEntryRules } from '@/hooks/useEntryRules';
+import { useVistoriaStatus, useSolicitarVistoria } from '@/hooks/useVistoria';
 
 type ProjectStatus = Database['public']['Enums']['project_status'];
 type DocumentType = Database['public']['Enums']['document_type'];
@@ -2044,6 +2046,10 @@ export function ProjectModal({ projectId, onClose, initialTab = 'geral', viewAsC
   const hasDiagramEngineAccess = useDiagramEngineAccess() && !viewAsCompany;
   const canEdit = isAdmin || isStaff;
 
+  // Pedido de vistoria: só faz sentido consultar na visão do cliente.
+  const { data: vistoria } = useVistoriaStatus(projectId, !canEdit);
+  const solicitarVistoria = useSolicitarVistoria();
+
   const { data: project, isLoading } = useProject(projectId);
   const { data: assignments = [], isLoading: loadingAssignments } = useProjectAssignments(projectId);
   // Projetista com acesso restrito só pode abrir projetos atribuídos a ele
@@ -2263,6 +2269,42 @@ export function ProjectModal({ projectId, onClose, initialTab = 'geral', viewAsC
 
                   {/* Right: action buttons */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                    {/* Pedido de vistoria — ação DO CLIENTE. Só aparece na visão
+                        da empresa; quem clica de fato precisa ser a empresa dona
+                        (no "Ver como empresa" fica à mostra, mas desabilitado,
+                        porque ali o admin está conferindo a tela, não pedindo). */}
+                    {!canEdit && vistoria?.permitido && (() => {
+                      const jaAberta = !!vistoria.aberta;
+                      const naEtapa = !!vistoria.etapa_ok;
+                      const souEmpresa = user?.role === 'company' && !viewAsCompany;
+                      const liberado = naEtapa && !jaAberta && souEmpresa;
+                      const motivo = jaAberta
+                        ? `Vistoria já solicitada${vistoria.em ? ` em ${new Date(vistoria.em).toLocaleDateString('pt-BR')}` : ''}`
+                        : !naEtapa
+                          ? 'Disponível quando o projeto chegar à etapa Aprovado'
+                          : !souEmpresa
+                            ? 'Ação disponível no acesso da empresa'
+                            : 'Avisa a equipe de que o projeto está pronto para a vistoria';
+                      return (
+                        <button
+                          onClick={() => { if (liberado) solicitarVistoria.mutate(project.id); }}
+                          disabled={!liberado || solicitarVistoria.isPending}
+                          title={motivo}
+                          style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 5,
+                            padding: '7px 14px', borderRadius: 8, border: 'none',
+                            fontSize: 12, fontWeight: 600,
+                            background: liberado ? '#F5A800' : 'rgba(255,255,255,0.10)',
+                            color: liberado ? '#1A1A1A' : 'rgba(255,255,255,0.55)',
+                            cursor: liberado ? 'pointer' : 'not-allowed',
+                          }}
+                        >
+                          <Search size={13} />
+                          {!isMobile && (jaAberta ? 'Vistoria solicitada' : 'Solicitar vistoria')}
+                        </button>
+                      );
+                    })()}
+
                     {canEdit && (
                       <button
                         onClick={() => { setIsEditing(v => !v); setActiveTab('geral'); }}
