@@ -530,6 +530,10 @@ function EntryStandardBadge({
   onChangeEntryRule: (id: string) => void;
 }) {
   const { data: rules = [], isLoading } = useEntryRules(concessionaireId);
+  const { user: usuarioAtual } = useAuth();
+  // Quem NÃO administra concessionárias não deve receber instrução de ir
+  // cadastrá-las: para a empresa integradora, a tela nem existe no menu.
+  const podeConfigurar = usuarioAtual?.role === 'admin' || usuarioAtual?.role === 'staff';
 
   const caixa = (conteudo: React.ReactNode, tom: 'ok' | 'aviso' = 'ok') => (
     <div style={{
@@ -549,13 +553,20 @@ function EntryStandardBadge({
   );
 
   if (!concessionaireId) {
-    return caixa(nota('Concessionária ainda não definida no projeto — sem ela não dá para classificar o padrão de entrada.'), 'aviso');
+    return caixa(nota(
+      podeConfigurar
+        ? 'Concessionária ainda não definida no projeto — sem ela não dá para classificar o padrão de entrada.'
+        : 'A concessionária deste projeto ainda não foi definida pela equipe, então o padrão de entrada não está classificado.'
+    ), 'aviso');
   }
   if (isLoading) return null;
   if (rules.length === 0) {
     return caixa(nota(
-      `${concessionaireName || 'Esta concessionária'} não tem regras de padrão de entrada cadastradas. ` +
-      'Cadastre em Concessionárias → Padrão de entrada para o projeto ser classificado.'
+      podeConfigurar
+        ? `${concessionaireName || 'Esta concessionária'} não tem regras de padrão de entrada cadastradas. `
+          + 'Cadastre em Concessionárias → Padrão de entrada para o projeto ser classificado.'
+        : `A classificação do padrão de entrada da ${concessionaireName || 'concessionária'} ainda não está `
+          + 'disponível. O cadastro é feito pela equipe responsável pela homologação.'
     ), 'aviso');
   }
 
