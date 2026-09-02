@@ -14,7 +14,6 @@ import DashboardAdmin from "./pages/DashboardAdmin";
 import DashboardStaff from "./pages/DashboardStaff";
 import DashboardCompany from "./pages/DashboardCompany";
 import ProjectsKanban from "./pages/ProjectsKanban";
-import ProjectDetail from "./pages/ProjectDetail";
 import NewProject from "./pages/NewProject";
 import ProjectSuccess from "./pages/ProjectSuccess";
 import NotFound from "./pages/NotFound";
@@ -25,6 +24,8 @@ import PublicProjectForm from "./pages/PublicProjectForm";
 import PublicFormSuccess from "./pages/PublicFormSuccess";
 import Financial from "./pages/admin/Financial";
 import CompanyFinancial from "./pages/company/CompanyFinancial";
+import CompanyProjects from "./pages/company/CompanyProjects";
+import ProjectModalPage from "./pages/ProjectModalPage";
 import FormConfig from "./pages/admin/FormConfig";
 import KanbanConfig from "./pages/admin/KanbanConfig";
 import EnergyConcessionaires from "./pages/admin/EnergyConcessionaires";
@@ -77,10 +78,10 @@ function AppRoutes() {
       <Route path="/dashboard-staff" element={<ProtectedRoute allowedRoles={['staff']}><DashboardStaff /></ProtectedRoute>} />
       <Route path="/dashboard-company" element={<ProtectedRoute allowedRoles={['company']}><DashboardCompany /></ProtectedRoute>} />
       <Route path="/projects" element={<ProtectedRoute allowedRoles={['admin', 'staff']}><ProjectsKanban /></ProtectedRoute>} />
-      <Route path="/project/:id" element={<ProtectedRoute><ProjectDetail /></ProtectedRoute>} />
+      <Route path="/project/:id" element={<ProtectedRoute><ProjectModalPage /></ProtectedRoute>} />
       <Route path="/new-project" element={<ProtectedRoute allowedRoles={['company', 'admin']}><NewProject /></ProtectedRoute>} />
       <Route path="/project-success" element={<ProtectedRoute allowedRoles={['company', 'admin']}><ProjectSuccess /></ProtectedRoute>} />
-      <Route path="/company/projects" element={<ProtectedRoute allowedRoles={['company']}><DashboardCompany /></ProtectedRoute>} />
+      <Route path="/company/projects" element={<ProtectedRoute allowedRoles={['company']}><CompanyProjects /></ProtectedRoute>} />
       <Route path="/admin/companies" element={<ProtectedRoute allowedRoles={['admin']}><Companies /></ProtectedRoute>} />
       <Route path="/admin/users" element={<ProtectedRoute allowedRoles={['admin']}><Users /></ProtectedRoute>} />
       <Route path="/admin/view-as-company" element={<ProtectedRoute allowedRoles={['admin']}><ViewAsCompany /></ProtectedRoute>} />

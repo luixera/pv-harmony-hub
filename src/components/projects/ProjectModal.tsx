@@ -2113,8 +2113,12 @@ export function ProjectModal({ projectId, onClose, initialTab = 'geral' }: Proje
     { id: 'geral', label: isMobile ? 'Geral' : 'Geral & Comentários', icon: <FileText size={13} style={{ marginRight: 5 }} /> },
     { id: 'documentos', label: 'Documentos', icon: <Paperclip size={13} style={{ marginRight: 5 }} /> },
     ...(canEdit ? [{ id: 'tarefas', label: 'Tarefas', icon: <CheckSquare size={13} style={{ marginRight: 5 }} /> }] : []),
-    { id: 'financeiro', label: 'Financeiro', icon: <DollarSign size={13} style={{ marginRight: 5 }} /> },
-    { id: 'historico', label: 'Histórico', icon: <Clock size={13} style={{ marginRight: 5 }} /> },
+    // A empresa integradora fica só com Geral & Comentários e Documentos
+    // (decisão do usuário, set/2026). Financeiro dela vive em /company/financial,
+    // e o Histórico registra ação interna da equipe. Antes disto a busca da
+    // Topbar já abria o modal para a empresa com estas duas abas à mostra.
+    ...(canEdit ? [{ id: 'financeiro', label: 'Financeiro', icon: <DollarSign size={13} style={{ marginRight: 5 }} /> }] : []),
+    ...(canEdit ? [{ id: 'historico', label: 'Histórico', icon: <Clock size={13} style={{ marginRight: 5 }} /> }] : []),
     // Notificações da concessionária — mesmo público da tela de E-mails
     ...(user?.role === 'admin' || user?.role === 'staff'
       ? [{ id: 'notificacoes', label: isMobile ? 'Notif.' : 'Notificações', icon: <Mail size={13} style={{ marginRight: 5 }} /> }]
@@ -2242,21 +2246,31 @@ export function ProjectModal({ projectId, onClose, initialTab = 'geral' }: Proje
                         <Pencil size={13} /> {!isMobile && 'Editar'}
                       </button>
                     )}
-                    <button
-                      onClick={() => setShowInstaller(true)}
-                      title="Baixar pacote instalador"
-                      style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '7px 14px', borderRadius: 8, border: 'none', background: 'rgba(255,255,255,0.10)', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
-                    >
-                      <PackageIcon size={13} /> {!isMobile && 'Pacote'}
-                    </button>
-                    <button
-                      onClick={() => setShowGenDoc(true)}
-                      style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '7px 14px', borderRadius: 8, border: 'none', background: '#F5A800', color: '#1A1A1A', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
-                    >
-                      <FileOutput size={13} /> {!isMobile && 'Gerar Doc.'}
-                    </button>
+                    {/* Ferramentas da equipe. Ficaram sem trava de papel enquanto
+                        a empresa só alcançava o modal pela busca da Topbar; agora
+                        que o modal é o caminho normal dela (set/2026), apareceriam
+                        para o cliente: geração de documento da concessionária,
+                        pacote do instalador e atribuição de projetista. */}
+                    {canEdit && (
+                      <button
+                        onClick={() => setShowInstaller(true)}
+                        title="Baixar pacote instalador"
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '7px 14px', borderRadius: 8, border: 'none', background: 'rgba(255,255,255,0.10)', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+                      >
+                        <PackageIcon size={13} /> {!isMobile && 'Pacote'}
+                      </button>
+                    )}
+                    {canEdit && (
+                      <button
+                        onClick={() => setShowGenDoc(true)}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '7px 14px', borderRadius: 8, border: 'none', background: '#F5A800', color: '#1A1A1A', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+                      >
+                        <FileOutput size={13} /> {!isMobile && 'Gerar Doc.'}
+                      </button>
+                    )}
 
                     {/* ⋯ menu */}
+                    {canEdit && (
                     <div ref={moreRef} style={{ position: 'relative' }}>
                       <button
                         onClick={() => setShowMoreMenu(v => !v)}
@@ -2269,9 +2283,9 @@ export function ProjectModal({ projectId, onClose, initialTab = 'geral' }: Proje
                           <button onClick={() => { setShowMoreMenu(false); setShowStaffDialog(true); }} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '10px 14px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 12, color: '#333', textAlign: 'left' }}>
                             <Users size={13} /> Atribuir Projetista
                           </button>
-                          <button onClick={() => { setShowMoreMenu(false); navigate(`/project/${project.id}`); onClose(); }} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '10px 14px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 12, color: '#333', textAlign: 'left' }}>
-                            <ExternalLink size={13} /> Ver página completa
-                          </button>
+                          {/* "Ver página completa" levava ao ProjectDetail, que
+                              foi aposentado (set/2026): agora /project/:id abre
+                              este mesmo modal, então o item só daria uma volta. */}
                           {isAdmin && (
                             <>
                               <div style={{ height: 1, background: '#F0F0F0', margin: '4px 0' }} />
@@ -2283,6 +2297,7 @@ export function ProjectModal({ projectId, onClose, initialTab = 'geral' }: Proje
                         </div>
                       )}
                     </div>
+                    )}
 
                     {/* × close */}
                     <button

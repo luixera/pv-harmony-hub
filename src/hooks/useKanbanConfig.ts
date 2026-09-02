@@ -538,6 +538,48 @@ export function useStaleProjects() {
   });
 }
 
+/**
+ * Modelo de Kanban que vale para UMA empresa: o atribuído a ela em
+ * `company_kanban_model` e, na falta, o modelo padrão do tenant.
+ *
+ * O quadro da empresa e o "Ver como empresa" leem daqui para mostrar as MESMAS
+ * etapas que o quadro interno — foi a divergência que fez os status aparecerem
+ * errados no acesso da empresa (relato do usuário, ago/2026).
+ */
+export function useCompanyKanbanModel(companyId: string | undefined) {
+  const { data: padrao, isLoading: carregandoPadrao } = useDefaultKanbanModel();
+
+  const atribuido = useQuery({
+    queryKey: ['company-kanban-model', companyId],
+    queryFn: async (): Promise<KanbanModel | null> => {
+      if (!companyId) return null;
+      const { data: vinculo, error } = await supabase
+        .from('company_kanban_model')
+        .select('kanban_model_id')
+        .eq('company_id', companyId)
+        .maybeSingle();
+      if (error) throw error;
+      if (!vinculo?.kanban_model_id) return null;
+
+      const [{ data: model }, { data: columns }] = await Promise.all([
+        supabase.from('kanban_models').select('*').eq('id', vinculo.kanban_model_id).maybeSingle(),
+        supabase.from('kanban_columns').select('*')
+          .eq('kanban_model_id', vinculo.kanban_model_id)
+          .order('order_index', { ascending: true }),
+      ]);
+      if (!model) return null;
+      return { ...model, columns: columns || [] } as KanbanModel;
+    },
+    enabled: !!companyId,
+    staleTime: 60_000,
+  });
+
+  return {
+    data: atribuido.data ?? padrao ?? null,
+    isLoading: (!!companyId && atribuido.isLoading) || carregandoPadrao,
+  };
+}
+
 // Get default/active kanban model
 export function useDefaultKanbanModel() {
   return useQuery({
