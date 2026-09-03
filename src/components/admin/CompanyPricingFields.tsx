@@ -18,6 +18,8 @@ export interface PricingState {
   pricing_monthly_value: string;
   pricing_monthly_limit: string;
   pricing_excess_value: string;
+  /** Dia do vencimento da mensalidade (1-31). Vazio = ultimo dia do mes. */
+  pricing_due_day: string;
 }
 
 export const emptyPricing: PricingState = {
@@ -29,6 +31,7 @@ export const emptyPricing: PricingState = {
   pricing_monthly_value: '',
   pricing_monthly_limit: '',
   pricing_excess_value: '',
+  pricing_due_day: '',
 };
 
 const TYPES: { value: PricingType; label: string; desc: string; icon: React.ElementType }[] = [
@@ -65,6 +68,10 @@ export function pricingToPayload(p: PricingState): Record<string, unknown> {
     pricing_monthly_value: p.pricing_type === 'monthly' ? num(p.pricing_monthly_value) : null,
     pricing_monthly_limit: p.pricing_type === 'monthly' ? (p.pricing_monthly_limit.trim() === '' ? null : parseInt(p.pricing_monthly_limit)) : null,
     pricing_excess_value: p.pricing_type === 'monthly' ? num(p.pricing_excess_value) : null,
+    // Vencimento so faz sentido na assinatura; vazio = ultimo dia do mes
+    pricing_due_day: p.pricing_type === 'monthly' && p.pricing_due_day.trim() !== ''
+      ? Math.min(31, Math.max(1, parseInt(p.pricing_due_day, 10) || 1))
+      : null,
   };
 }
 
@@ -89,6 +96,7 @@ export function pricingFromCompany(c: Record<string, unknown> | null | undefined
     pricing_flat_tiers: flatTiers.length ? flatTiers : [{ from: '', to: '', price: '' }],
     pricing_monthly_value: s(c.pricing_monthly_value),
     pricing_monthly_limit: s(c.pricing_monthly_limit),
+    pricing_due_day: s(c.pricing_due_day),
     pricing_excess_value: s(c.pricing_excess_value),
   };
 }
@@ -216,6 +224,16 @@ export function CompanyPricingFields({ value, onChange }: { value: PricingState;
               <Label className="text-xs">Projetos cobertos/mês</Label>
               <Input inputMode="numeric" value={value.pricing_monthly_limit} onChange={e => set({ pricing_monthly_limit: e.target.value })} placeholder="20" />
             </div>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-1">
+              <Label className="text-xs">Dia do vencimento</Label>
+              <Input inputMode="numeric" value={value.pricing_due_day}
+                onChange={e => set({ pricing_due_day: e.target.value.replace(/[^0-9]/g, '').slice(0, 2) })}
+                placeholder="30" />
+              <p className="text-[10px] text-muted-foreground">Vazio = último dia do mês. Dia 30 em fevereiro cai no dia 28.</p>
+            </div>
+            <div className="space-y-1" />
           </div>
           <div className="space-y-1">
             <Label className="text-xs">Valor por projeto excedente (R$)</Label>
