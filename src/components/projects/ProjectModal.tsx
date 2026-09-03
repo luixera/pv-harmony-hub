@@ -24,6 +24,7 @@ import { Package as PackageIcon } from 'lucide-react';
 import { StaffAssignmentDialog } from './StaffAssignmentDialog';
 import { useProjectAssignments } from '@/hooks/useProjectAssignments';
 import { useDefaultKanbanModel } from '@/hooks/useKanbanConfig';
+import { useStatusLabel } from '@/hooks/useStatusLabel';
 import { useMinhasEmpresasDeStaff } from '@/hooks/useStaffCompanies';
 import { logSystemEvent } from '@/lib/systemLog';
 import { EquipmentModelCombobox } from '@/components/equipment/EquipmentModelCombobox';
@@ -54,6 +55,8 @@ type ProjectStatus = Database['public']['Enums']['project_status'];
 type DocumentType = Database['public']['Enums']['document_type'];
 
 const STATUS_STEPS: ProjectStatus[] = ['pending', 'analysis', 'documentation', 'approval', 'approved', 'completed'];
+/** Reserva do stepper enquanto as colunas do Kanban carregam. O rotulo que o
+ *  usuario ve vem de useStatusLabel — a coluna do quadro. */
 const STATUS_LABELS: Record<string, string> = {
   pending: 'Aguardando',
   analysis: 'Em Análise',
@@ -2044,6 +2047,7 @@ export function ProjectModal({ projectId, onClose, initialTab = 'geral', viewAsC
   const isAdmin = user?.role === 'admin' && !viewAsCompany;
   const isStaff = user?.role === 'staff' && !viewAsCompany;
   const hasDiagramEngineAccess = useDiagramEngineAccess() && !viewAsCompany;
+  const rotuloEtapa = useStatusLabel();
   const canEdit = isAdmin || isStaff;
 
   // Pedido de vistoria: só faz sentido consultar na visão do cliente.
@@ -2244,7 +2248,7 @@ export function ProjectModal({ projectId, onClose, initialTab = 'geral', viewAsC
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
                       {/* status badge */}
                       <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 20, background: sCfg.bg, color: sCfg.color }}>
-                        {STATUS_LABELS[project.status]}
+                        {rotuloEtapa(project.status)}
                       </span>
                       {/* concessionaire badge */}
                       {project.concessionaireName && (

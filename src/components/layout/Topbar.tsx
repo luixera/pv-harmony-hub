@@ -16,6 +16,7 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { supabase } from '@/integrations/supabase/client';
 import { useNotifications, useMarkAsRead, useMarkAllAsRead } from '@/hooks/useNotifications';
 import { ProjectModal } from '@/components/projects/ProjectModal';
+import { useStatusLabel } from '@/hooks/useStatusLabel';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
@@ -23,10 +24,6 @@ interface TopbarProps {
   onMenuClick?: () => void;
 }
 
-const STATUS_LABELS: Record<string, string> = {
-  pending: 'Aguardando', analysis: 'Em Análise', documentation: 'Documentação',
-  approval: 'Aprovação', approved: 'Aprovado', completed: 'Concluído',
-};
 
 interface SearchResult {
   id: string;
@@ -37,6 +34,7 @@ interface SearchResult {
 
 // ── Global Search ──────────────────────────────────────────────────────────────
 function GlobalSearch({ onOpenModal }: { onOpenModal: (id: string) => void }) {
+  const rotuloEtapa = useStatusLabel();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
@@ -156,7 +154,7 @@ function GlobalSearch({ onOpenModal }: { onOpenModal: (id: string) => void }) {
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
                     <span style={{ fontFamily: 'monospace', fontSize: 12, fontWeight: 700, color: '#F5A800' }}>{r.code}</span>
-                    <span style={{ fontSize: 10, padding: '1px 7px', borderRadius: 20, background: '#F0F0F0', color: '#666', fontWeight: 600 }}>{STATUS_LABELS[r.status] || r.status}</span>
+                    <span style={{ fontSize: 10, padding: '1px 7px', borderRadius: 20, background: '#F0F0F0', color: '#666', fontWeight: 600 }}>{rotuloEtapa(r.status)}</span>
                   </div>
                   <p style={{ fontSize: 12, color: '#555', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.holder_name}</p>
                 </div>

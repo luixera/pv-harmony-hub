@@ -2,7 +2,8 @@ import { useState, useRef, useCallback } from 'react';
 import { useCompanies } from '@/hooks/useCompanies';
 import { useFinancialReport, FinancialReportFilters } from '@/hooks/useFinancialReport';
 import { useWindowSize } from '@/hooks/useWindowSize';
-import { PROJECT_STATUS_LABELS, VALID_PROJECT_STATUSES } from '@/lib/statusMapping';
+import { VALID_PROJECT_STATUSES } from '@/lib/statusMapping';
+import { useStatusLabel } from '@/hooks/useStatusLabel';
 import { formatCurrency } from '@/lib/utils';
 import { X, Download, Printer, Loader2, SlidersHorizontal } from 'lucide-react';
 import { format } from 'date-fns';
@@ -14,7 +15,8 @@ const fmt = formatCurrency;
 // tinha uma cópia própria SEM "Pendência" e "Vistoria Solicitada", então esses
 // projetos não podiam ser filtrados e apareciam com o código cru no extrato.
 const STATUS_OPTIONS = VALID_PROJECT_STATUSES;
-const STATUS_LABELS = PROJECT_STATUS_LABELS;
+// A lista de etapas continua vindo do catalogo (e o que o banco aceita),
+// mas o ROTULO exibido e o da coluna do Kanban — ver useStatusLabel.
 const STATUS_BADGE: Record<string, { bg: string; color: string }> = {
   pending:             { bg: '#F0F0F0', color: '#666' },
   analysis:            { bg: '#E6F1FB', color: '#185FA5' },
@@ -34,6 +36,7 @@ interface FinancialReportModalProps {
 }
 
 export function FinancialReportModal({ onClose }: FinancialReportModalProps) {
+  const rotuloEtapa = useStatusLabel();
   const { data: companies = [] } = useCompanies();
   const { isMobile, isTablet } = useWindowSize();
   const previewRef = useRef<HTMLDivElement>(null);
@@ -82,7 +85,7 @@ export function FinancialReportModal({ onClose }: FinancialReportModalProps) {
   }
   // uma tarja por etapa: o extrato tem de deixar explícito o recorte usado
   for (const s of applied.statuses ?? []) {
-    activeChips.push({ key: `status-${s}`, label: STATUS_LABELS[s] ?? s });
+    activeChips.push({ key: `status-${s}`, label: rotuloEtapa(s) });
   }
   if (applied.paymentStatus) activeChips.push({ key: 'paymentStatus', label: PAY_LABELS[applied.paymentStatus] });
   if (applied.dateFrom) activeChips.push({ key: 'dateFrom', label: `De: ${applied.dateFrom}` });
@@ -236,7 +239,7 @@ export function FinancialReportModal({ onClose }: FinancialReportModalProps) {
                           color: on ? '#854F0B' : '#777',
                         }}
                       >
-                        {STATUS_LABELS[k]}
+                        {rotuloEtapa(k)}
                       </button>
                     );
                   })}
@@ -358,7 +361,7 @@ export function FinancialReportModal({ onClose }: FinancialReportModalProps) {
                                 <td style={{ padding: '7px 8px', color: '#555' }}>{row.concessionaireName}</td>
                                 <td style={{ padding: '7px 8px' }}>
                                   <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 20, background: sb.bg, color: sb.color }}>
-                                    {assinatura ? 'Assinatura' : STATUS_LABELS[row.status] || row.status}
+                                    {assinatura ? 'Assinatura' : rotuloEtapa(row.status)}
                                   </span>
                                 </td>
                                 <td style={{ padding: '7px 8px', color: '#333', fontWeight: 600 }}>{fmt(row.projectValue)}</td>

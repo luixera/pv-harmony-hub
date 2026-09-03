@@ -371,7 +371,8 @@
       "Bash(npx -y supabase db query --linked -f supabase/migrations/20260902140000_projetista_sem_financeiro.sql)",
       "Bash(npx -y supabase db query --linked -f \"C:/Users/luiza/AppData/Local/Temp/claude/C--Users-luiza-Desktop-DADOS-DESENVOLVIMENTO---GD-MANAGER-ENERGY-pv-harmony-hub-main-pv-harmony-hub-main/d13f144e-b872-4aa5-8701-ed8dea13ee4e/scratchpad/test_staff_fin.sql\")",
       "Bash(npx -y supabase db query --linked -f supabase/migrations/20260902160000_solicitar_vistoria.sql)",
-      "Bash(npx -y supabase db query --linked -f \"C:/Users/luiza/AppData/Local/Temp/claude/C--Users-luiza-Desktop-DADOS-DESENVOLVIMENTO---GD-MANAGER-ENERGY-pv-harmony-hub-main-pv-harmony-hub-main/d13f144e-b872-4aa5-8701-ed8dea13ee4e/scratchpad/test_vistoria.sql\")"
+      "Bash(npx -y supabase db query --linked -f \"C:/Users/luiza/AppData/Local/Temp/claude/C--Users-luiza-Desktop-DADOS-DESENVOLVIMENTO---GD-MANAGER-ENERGY-pv-harmony-hub-main-pv-harmony-hub-main/d13f144e-b872-4aa5-8701-ed8dea13ee4e/scratchpad/test_vistoria.sql\")",
+      "Bash(npx -y supabase db query --linked -f \"C:/Users/luiza/AppData/Local/Temp/claude/C--Users-luiza-Desktop-DADOS-DESENVOLVIMENTO---GD-MANAGER-ENERGY-pv-harmony-hub-main-pv-harmony-hub-main/d13f144e-b872-4aa5-8701-ed8dea13ee4e/scratchpad/af.sql\")"
     ]
   }
 }

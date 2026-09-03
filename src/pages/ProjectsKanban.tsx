@@ -53,19 +53,6 @@ const statusVariants: Record<string, string> = {
   completed: 'approved',
 };
 
-const STATUS_LABELS: Record<string, string> = {
-  pending: 'Pendente',
-  analysis: 'Em Análise',
-  documentation: 'Documentação',
-  approval: 'Aprovação',
-  approved: 'Aprovado',
-  pendencia: 'Pendência',
-  vistoria_solicitada: 'Vistoria Solicitada',
-  aguardando_instalacao: 'Aguardando Instalação',
-  vistoria_sem_protocolo: 'Vistoria sem Protocolo',
-  vistoria_reprovada: 'Vistoria Reprovada',
-  completed: 'Concluído',
-};
 
 // Uses project_financials (canonical table). financialRecord is the legacy `financials` table.
 function hasNoValue(project: { financials?: { project_value?: number | null } | null }) {

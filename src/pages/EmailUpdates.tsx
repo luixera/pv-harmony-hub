@@ -17,6 +17,7 @@ import {
 import { useAgentConfig } from '@/hooks/useAgentConfig';
 import { AgentConfigDialog } from '@/components/email/AgentConfigDialog';
 import { cn } from '@/lib/utils';
+import { useStatusLabel } from '@/hooks/useStatusLabel';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -59,16 +60,6 @@ const SUGGESTION_CFG: Record<string, { label: string; color: string; bg: string;
   vistoria_solicitada:{ label: 'Vistoria Solicitada', color: '#185FA5', bg: '#E6F1FB', border: '#378ADD' },
 };
 
-const STATUS_LABELS: Record<string, string> = {
-  approved:            'Aprovado',
-  pendencia:           'Pendência',
-  vistoria_solicitada: 'Vistoria Solicitada',
-  pending:             'Pendente',
-  analysis:            'Em Análise',
-  documentation:       'Documentação',
-  approval:            'Aprovação',
-  completed:           'Concluído',
-};
 
 // ── Contador regressivo ───────────────────────────────────────────────────────
 
@@ -142,6 +133,7 @@ function gmailLink(update: EmailUpdate): string {
 }
 
 function EmailCard({ update, onOpenProject }: { update: EmailUpdate; onOpenProject: (id: string) => void }) {
+  const rotuloEtapa = useStatusLabel();
   const [expanded, setExpanded]       = useState(false);
   const [showBody, setShowBody]       = useState(false);
   const applySuggestion  = useApplySuggestion();
@@ -378,7 +370,7 @@ function EmailCard({ update, onOpenProject }: { update: EmailUpdate; onOpenProje
                   </p>
                   <p style={{ fontSize: 12, color: '#1A1A1A', margin: '0 0 10px' }}>
                     Mover projeto <strong>{update.project?.code}</strong> de{' '}
-                    <strong>{STATUS_LABELS[update.project?.status || ''] || update.project?.status}</strong>{' '}
+                    <strong>{rotuloEtapa(update.project?.status)}</strong>{' '}
                     para <strong>{suggestion.label}</strong>
                   </p>
                   <div style={{ display: 'flex', gap: 8 }}>

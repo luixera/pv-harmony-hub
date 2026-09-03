@@ -10,19 +10,13 @@ import { useNavigate } from 'react-router-dom';
 import { DashboardMap } from '@/components/maps/DashboardMap';
 import { ProjectModal } from '@/components/projects/ProjectModal';
 import ProjectsMonthlyChart from '@/components/dashboard/ProjectsMonthlyChart';
-
-const statusLabels: Record<string, string> = {
-  pending: 'Aguardando',
-  analysis: 'Em Análise',
-  documentation: 'Documentação',
-  approval: 'Aprovação',
-  approved: 'Aprovado',
-  completed: 'Concluído',
-};
+import { useStatusLabel, useStatusOrder } from '@/hooks/useStatusLabel';
 
 export default function DashboardAdmin() {
   const navigate = useNavigate();
   const { data: projects = [], isLoading } = useProjects();
+  const rotuloEtapa = useStatusLabel();
+  const etapas = useStatusOrder();
   const [modalProjectId, setModalProjectId] = useState<string | null>(null);
   const [hideOpenValue, setHideOpenValue] = useState(false);
   
@@ -176,24 +170,42 @@ export default function DashboardAdmin() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }} className="kpi-card">
             <h3 className="text-lg font-semibold text-card-foreground mb-6">Distribuição por Status</h3>
+            {/* As etapas são as COLUNAS DO KANBAN, na ordem do quadro. Antes
+                havia uma lista de seis etapas escrita à mão: quem renomeava a
+                coluna via o nome de fábrica, e Pendência, Vistoria Solicitada e
+                Vistoria Reprovada nem entravam na conta (relato do usuário,
+                set/2026). A última linha recolhe projetos em etapa que saiu do
+                quadro, para nenhum sumir do total. */}
             <div className="space-y-4">
-              {[
-                { status: 'Aguardando', count: projects.filter(p => p.status === 'pending').length, color: 'bg-muted' },
-                { status: 'Em Análise', count: projects.filter(p => p.status === 'analysis').length, color: 'bg-kanban-analysis' },
-                { status: 'Documentação', count: projects.filter(p => p.status === 'documentation').length, color: 'bg-kanban-progress' },
-                { status: 'Aprovação', count: projects.filter(p => p.status === 'approval').length, color: 'bg-kanban-progress' },
-                { status: 'Aprovado', count: projects.filter(p => p.status === 'approved').length, color: 'bg-kanban-approved' },
-                { status: 'Concluído', count: projects.filter(p => p.status === 'completed').length, color: 'bg-kanban-completed' },
-              ].map((item) => (
-                <div key={item.status} className="flex items-center gap-4">
-                  <div className={`w-3 h-3 rounded-full ${item.color}`} />
-                  <span className="text-sm text-muted-foreground flex-1">{item.status}</span>
-                  <span className="text-sm font-semibold text-card-foreground">{item.count}</span>
-                  <div className="w-24 h-2 bg-muted rounded-full overflow-hidden">
-                    <div className={`h-full ${item.color} transition-all duration-500`} style={{ width: `${projects.length > 0 ? (item.count / projects.length) * 100 : 0}%` }} />
+              {(() => {
+                const chaves = new Set(etapas.map(e => e.key));
+                const linhas = etapas.map(e => ({
+                  chave: e.key,
+                  rotulo: e.label,
+                  cor: e.color || '#CBD5E1',
+                  count: projects.filter(p => p.status === e.key).length,
+                }));
+                const foraDoQuadro = projects.filter(p => !chaves.has(p.status as string)).length;
+                if (foraDoQuadro > 0) {
+                  linhas.push({ chave: '__fora__', rotulo: 'Fora do quadro atual', cor: '#CBD5E1', count: foraDoQuadro });
+                }
+                return linhas.map(item => (
+                  <div key={item.chave} className="flex items-center gap-4">
+                    <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: item.cor }} />
+                    <span className="text-sm text-muted-foreground flex-1 truncate" title={item.rotulo}>{item.rotulo}</span>
+                    <span className="text-sm font-semibold text-card-foreground">{item.count}</span>
+                    <div className="w-24 h-2 bg-muted rounded-full overflow-hidden flex-shrink-0">
+                      <div
+                        className="h-full transition-all duration-500"
+                        style={{
+                          width: `${projects.length > 0 ? (item.count / projects.length) * 100 : 0}%`,
+                          background: item.cor,
+                        }}
+                      />
+                    </div>
                   </div>
-                </div>
-              ))}
+                ));
+              })()}
             </div>
           </motion.div>
 
@@ -258,7 +270,7 @@ export default function DashboardAdmin() {
                         project.status === 'completed' ? 'completed' :
                         'progress'
                       }>
-                        {statusLabels[project.status]}
+                        {rotuloEtapa(project.status)}
                       </Badge>
                     </td>
                     <td className="py-3 px-4 text-sm text-right font-medium text-card-foreground">

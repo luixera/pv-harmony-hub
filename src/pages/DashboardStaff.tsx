@@ -9,17 +9,11 @@ import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useAuth } from '@/contexts/AuthContext';
 import { DashboardMap } from '@/components/maps/DashboardMap';
+import { useStatusLabel } from '@/hooks/useStatusLabel';
 
-const statusLabels: Record<string, string> = {
-  pending: 'Aguardando',
-  analysis: 'Em Análise',
-  documentation: 'Documentação',
-  approval: 'Aprovação',
-  approved: 'Aprovado',
-  completed: 'Concluído',
-};
 
 export default function DashboardStaff() {
+  const rotuloEtapa = useStatusLabel();
   const navigate = useNavigate();
   const { user } = useAuth();
   const { data: projects = [], isLoading: projectsLoading } = useProjects();
@@ -145,7 +139,7 @@ export default function DashboardStaff() {
                     project.status === 'documentation' ? 'progress' :
                     'progress'
                   }>
-                    {statusLabels[project.status]}
+                    {rotuloEtapa(project.status)}
                   </Badge>
                 </button>
               ))}
