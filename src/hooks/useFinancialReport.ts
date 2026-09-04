@@ -10,6 +10,13 @@ export interface FinancialReportFilters {
   paymentStatus?: string;
   dateFrom?: string;
   dateTo?: string;
+  /**
+   * Esconde o consumo da franquia ("7/10 projetos") na linha de mensalidade.
+   * Pedido do usuario (set/2026): esse numero atrapalha a leitura do extrato,
+   * que e sobre DINHEIRO. Ele continua no financeiro da empresa, onde explica
+   * por que um projeto do mes veio mais caro. Ligado por padrao.
+   */
+  hideFranchiseUsage?: boolean;
 }
 
 export interface FinancialReportRow {
@@ -102,7 +109,9 @@ export function useFinancialReport(filters: FinancialReportFilters) {
       code: 'ASSINATURA',
       holderName: `Mensalidade — ${a.competenceLabel}`,
       companyName: a.companyName,
-      concessionaireName: a.projectsIncluded != null ? `${a.projectsInMonth}/${a.projectsIncluded} projetos` : '—',
+      concessionaireName: filters.hideFranchiseUsage === false && a.projectsIncluded != null
+        ? `${a.projectsInMonth}/${a.projectsIncluded} projetos`
+        : '—',
       status: 'subscription',
       projectValue: a.amount,
       paidValue: a.paidValue,

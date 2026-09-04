@@ -44,13 +44,16 @@ export function FinancialReportModal({ onClose }: FinancialReportModalProps) {
   const [showFilters, setShowFilters] = useState(false); // mobile filter toggle
 
   const [filters, setFilters] = useState<FinancialReportFilters>({});
-  const [applied, setApplied] = useState<FinancialReportFilters>({});
+  const [applied, setApplied] = useState<FinancialReportFilters>({ hideFranchiseUsage: true });
 
   // Local form state — `statuses` é multi-seleção (lista vazia = todas as etapas)
   const [form, setForm] = useState<{
     companyId: string; statuses: string[]; paymentStatus: string; dateFrom: string; dateTo: string;
+    // Escondido por padrao: o extrato e sobre dinheiro, e o consumo da
+    // franquia atrapalhava a leitura (pedido do usuario, set/2026).
+    mostrarFranquia: boolean;
   }>({
-    companyId: '', statuses: [], paymentStatus: '', dateFrom: '', dateTo: '',
+    companyId: '', statuses: [], paymentStatus: '', dateFrom: '', dateTo: '', mostrarFranquia: false,
   });
 
   const toggleStatus = (status: string) => setForm(f => ({
@@ -69,12 +72,13 @@ export function FinancialReportModal({ onClose }: FinancialReportModalProps) {
     if (form.paymentStatus) f.paymentStatus = form.paymentStatus;
     if (form.dateFrom) f.dateFrom = form.dateFrom;
     if (form.dateTo) f.dateTo = form.dateTo;
+    f.hideFranchiseUsage = !form.mostrarFranquia;
     setApplied(f);
   };
 
   const clearFilters = () => {
-    setForm({ companyId: '', statuses: [], paymentStatus: '', dateFrom: '', dateTo: '' });
-    setApplied({});
+    setForm({ companyId: '', statuses: [], paymentStatus: '', dateFrom: '', dateTo: '', mostrarFranquia: false });
+    setApplied({ hideFranchiseUsage: true });
   };
 
   // Active filter chips
@@ -269,6 +273,21 @@ export function FinancialReportModal({ onClose }: FinancialReportModalProps) {
               <div style={{ flex: isTablet ? '1 1 140px' : undefined }}>
                 <label style={labelStyle}>Data final</label>
                 <input type="date" value={form.dateTo} onChange={e => setForm(f => ({ ...f, dateTo: e.target.value }))} style={inputStyle} defaultValue={new Date().toISOString().split('T')[0]} />
+              </div>
+
+              <div style={{ flex: isTablet ? '1 1 200px' : undefined }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 7, cursor: 'pointer', fontSize: 12, color: '#555' }}>
+                  <input
+                    type="checkbox"
+                    checked={form.mostrarFranquia}
+                    onChange={e => setForm(f => ({ ...f, mostrarFranquia: e.target.checked }))}
+                    style={{ width: 14, height: 14, accentColor: '#F5A800', cursor: 'pointer' }}
+                  />
+                  Mostrar consumo da franquia
+                </label>
+                <p style={{ fontSize: 10, color: '#999', margin: '4px 0 0 21px', lineHeight: 1.4 }}>
+                  O "7/10 projetos" na linha da mensalidade. Fora do extrato, ele continua no financeiro da empresa.
+                </p>
               </div>
 
               <div style={{ flex: isTablet ? '0 0 auto' : undefined, display: 'flex', flexDirection: isTablet ? 'row' : 'column', gap: 8, alignSelf: isTablet ? 'flex-end' : undefined }}>
