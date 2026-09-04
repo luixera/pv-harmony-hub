@@ -14,12 +14,20 @@ name: Nginx — cache do index.html
 #
 # Segurança: backup datado, `nginx -t` ANTES de recarregar e restauração
 # automática se a validação falhar — o site nunca fica com config quebrada.
+#
+# NOTA de shell: o comando remoto roda com `bash -s`, SEM `-e`. Com errexit a
+# primeira execução morria no `grep` que procura a configuração — grep sai com
+# 1 quando não acha, e o script terminava antes de imprimir o diagnóstico.
 
 on:
   workflow_dispatch:
     inputs:
       desfazer:
         description: 'Desfazer: restaura o backup mais recente'
+        type: boolean
+        default: false
+      simular:
+        description: 'Só diagnosticar, sem alterar nada'
         type: boolean
         default: false
 
@@ -35,93 +43,130 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -p ${{ secrets.VPS_SSH_PORT }} -H "${{ secrets.VPS_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null || true
 
-      - name: Aplicar no Nginx
-        if: ${{ !inputs.desfazer }}
+      - name: Conexão
         run: |
           ssh -i ~/.ssh/deploy_key -p ${{ secrets.VPS_SSH_PORT }} -o StrictHostKeyChecking=no \
-            ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} 'bash -se' <<'REMOTO'
-          set -uo pipefail
+            -o ConnectTimeout=15 ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} \
+            'echo "conectado como $(whoami) em $(hostname)"'
 
-          # 1) O server block CERTO: o que serve a pasta do site. Pegar "o último
-          #    } do arquivo" seria arriscado — há também o server de redirecionamento.
-          CONF=$(grep -rl "pv-harmony-hub" /etc/nginx/sites-enabled/ /etc/nginx/conf.d/ 2>/dev/null | head -1)
+      - name: Executar
+        env:
+          DESFAZER: ${{ inputs.desfazer }}
+          SIMULAR: ${{ inputs.simular }}
+        run: |
+          ssh -i ~/.ssh/deploy_key -p ${{ secrets.VPS_SSH_PORT }} -o StrictHostKeyChecking=no \
+            ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} \
+            "DESFAZER='$DESFAZER' SIMULAR='$SIMULAR' bash -s" <<'REMOTO'
+          # SEM `set -e`: o diagnóstico precisa sobreviver a comandos que falham.
+          set -uo pipefail
+          MARCA="GD-MANAGER-CACHE-INDEX"
+
+          # root ou sudo?
+          if [ "$(id -u)" = "0" ]; then S=""; else S="sudo"; fi
+          echo "usuário: $(whoami) | privilégio: ${S:-root}"
+
+          # ── 1. Diagnóstico: onde está a configuração ────────────────────────
+          echo "=== arquivos de configuração visíveis ==="
+          $S ls -1 /etc/nginx/sites-enabled/ 2>/dev/null || echo "(sem sites-enabled)"
+          $S ls -1 /etc/nginx/conf.d/ 2>/dev/null || echo "(sem conf.d)"
+
+          # Procura por pistas, da mais específica para a mais geral.
+          CONF=""; PISTA=""
+          for PADRAO in "pv-harmony-hub" "homologamanager"; do
+            [ -n "$CONF" ] && break
+            CONF=$($S grep -rl "$PADRAO" /etc/nginx/ 2>/dev/null | grep -v '\.bak-' | head -1)
+            if [ -n "$CONF" ]; then PISTA="$PADRAO"; echo "achei pela pista '$PADRAO': $CONF"; fi
+          done
+
           if [ -z "$CONF" ]; then
-            echo "ERRO: não achei a configuração do site em /etc/nginx."
+            echo "ERRO: não localizei o server block do site."
+            echo "=== server_name declarados ==="
+            $S grep -rn "server_name\|root " /etc/nginx/sites-enabled/ /etc/nginx/conf.d/ 2>/dev/null | head -20
             exit 1
           fi
-          echo "Configuração: $CONF"
 
-          if grep -q "GD-MANAGER-CACHE-INDEX" "$CONF"; then
-            echo "Já aplicado anteriormente — nada a fazer."
-          else
-            BACKUP="$CONF.bak-$(date +%Y%m%d-%H%M%S)"
-            cp "$CONF" "$BACKUP" || exit 1
-            echo "Backup: $BACKUP"
+          echo "=== conteúdo atual de $CONF ==="
+          $S cat "$CONF"
+          echo "=== fim ==="
 
-            # Insere o bloco antes do } que fecha o server block que contém a
-            # raiz do site. Conta chaves para saber onde esse server termina.
-            awk '
-              # Segunda trava contra duplicar (a primeira é o grep acima).
-              /GD-MANAGER-CACHE-INDEX/ { feito = 1 }
-              /server[[:space:]]*{/ && depth == 0 { inserver = 1; achou_raiz = 0 }
-              inserver { depth += gsub(/{/, "{"); depth -= gsub(/}/, "}") }
-              inserver && /pv-harmony-hub/ { achou_raiz = 1 }
-              {
-                if (inserver && achou_raiz && depth == 0 && !feito) {
-                  # esta linha é o } que fecha o server certo
-                  print "    # GD-MANAGER-CACHE-INDEX"
-                  print "    # A casca do app nao pode ficar em cache: os arquivos de"
-                  print "    # /assets tem hash no nome e sao imutaveis, mas e o index.html"
-                  print "    # que aponta para eles. Sem isto o navegador servia por horas"
-                  print "    # uma versao antiga do sistema."
-                  print "    location = /index.html {"
-                  print "        add_header Cache-Control \"no-cache, must-revalidate\" always;"
-                  print "        expires off;"
-                  print "    }"
-                  feito = 1
-                }
-                print
-              }
-              inserver && depth == 0 { inserver = 0 }
-            ' "$BACKUP" > "$CONF"
-
-            if ! grep -q "GD-MANAGER-CACHE-INDEX" "$CONF"; then
-              echo "ERRO: não consegui inserir o bloco — restaurando."
-              cp "$BACKUP" "$CONF"
-              exit 1
-            fi
-
-            if nginx -t; then
-              systemctl reload nginx && echo "Nginx recarregado."
-            else
-              echo "ERRO: configuração inválida — restaurando backup."
-              cp "$BACKUP" "$CONF"
-              nginx -t && systemctl reload nginx
-              exit 1
-            fi
+          # ── 2. Desfazer ─────────────────────────────────────────────────────
+          if [ "${DESFAZER:-false}" = "true" ]; then
+            ULTIMO=$($S ls -1t "$CONF".bak-* 2>/dev/null | head -1)
+            if [ -z "${ULTIMO:-}" ]; then echo "Nenhum backup encontrado."; exit 1; fi
+            $S cp "$ULTIMO" "$CONF" && $S nginx -t && $S systemctl reload nginx \
+              && echo "Restaurado de $ULTIMO" || { echo "falha ao restaurar"; exit 1; }
+            exit 0
           fi
-          REMOTO
 
-      - name: Desfazer
-        if: ${{ inputs.desfazer }}
-        run: |
-          ssh -i ~/.ssh/deploy_key -p ${{ secrets.VPS_SSH_PORT }} -o StrictHostKeyChecking=no \
-            ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} 'bash -se' <<'REMOTO'
-          set -uo pipefail
-          CONF=$(grep -rl "pv-harmony-hub" /etc/nginx/sites-enabled/ /etc/nginx/conf.d/ 2>/dev/null | head -1)
-          ULTIMO=$(ls -1t "$CONF".bak-* 2>/dev/null | head -1)
-          if [ -z "${ULTIMO:-}" ]; then echo "Nenhum backup encontrado."; exit 1; fi
-          cp "$ULTIMO" "$CONF"
-          nginx -t && systemctl reload nginx && echo "Restaurado de $ULTIMO"
+          # ── 3. Já aplicado? ─────────────────────────────────────────────────
+          if $S grep -q "$MARCA" "$CONF"; then
+            echo "Bloco já presente — nada a fazer."
+            exit 0
+          fi
+
+          if [ "${SIMULAR:-false}" = "true" ]; then
+            echo "SIMULAÇÃO: pararia aqui e inseriria o bloco em $CONF."
+            exit 0
+          fi
+
+          # ── 4. Aplicar ──────────────────────────────────────────────────────
+          BACKUP="$CONF.bak-$(date +%Y%m%d-%H%M%S)"
+          $S cp "$CONF" "$BACKUP" || { echo "ERRO: sem permissão para o backup"; exit 1; }
+          echo "Backup: $BACKUP"
+
+          # Insere no server block que contém a raiz do site. Duas exigências,
+          # e as duas importam: bater a PISTA e ter uma diretiva `root`. Só a
+          # pista escolheria o server de redirecionamento (que tem o mesmo
+          # server_name e nenhum conteúdo) — testado, acontecia mesmo.
+          $S awk -v marca="$MARCA" -v pista="$PISTA" '
+            $0 ~ marca { feito = 1 }
+            /server[[:space:]]*{/ && depth == 0 { inserver = 1; tem_root = 0; tem_pista = 0 }
+            inserver { depth += gsub(/{/, "{"); depth -= gsub(/}/, "}") }
+            inserver && /^[[:space:]]*root[[:space:]]/ { tem_root = 1 }
+            inserver && $0 ~ pista { tem_pista = 1 }
+            {
+              if (inserver && tem_root && tem_pista && depth == 0 && !feito) {
+                print "    # " marca
+                print "    # A casca do app nao pode ficar em cache: os arquivos de"
+                print "    # /assets tem hash no nome e sao imutaveis, mas e o index.html"
+                print "    # que aponta para eles. Sem isto o navegador servia por horas"
+                print "    # uma versao antiga do sistema."
+                print "    # ATENCAO: add_header aqui cancela os add_header herdados do"
+                print "    # server; ao criar CSP/HSTS no server, repetir dentro deste bloco."
+                print "    location = /index.html {"
+                print "        add_header Cache-Control \"no-cache, must-revalidate\" always;"
+                print "        expires off;"
+                print "    }"
+                feito = 1
+              }
+              print
+            }
+            inserver && depth == 0 { inserver = 0 }
+          ' "$BACKUP" | $S tee "$CONF" > /dev/null
+
+          if ! $S grep -q "$MARCA" "$CONF"; then
+            echo "ERRO: não consegui inserir o bloco — restaurando."
+            $S cp "$BACKUP" "$CONF"
+            exit 1
+          fi
+
+          if $S nginx -t; then
+            $S systemctl reload nginx && echo "Nginx recarregado com sucesso."
+          else
+            echo "ERRO: configuração inválida — restaurando backup."
+            $S cp "$BACKUP" "$CONF"
+            $S nginx -t && $S systemctl reload nginx
+            exit 1
+          fi
           REMOTO
 
       - name: Prova — cabeçalhos servidos agora
         if: always()
         run: |
-          echo "--- index.html (deve ter no-cache) ---"
+          echo "--- index.html (esperado: no-cache, must-revalidate) ---"
           curl -sI -m 20 https://homologamanager.com.br/ | grep -i 'cache-control\|last-modified' || echo "(sem Cache-Control)"
           ASSET=$(curl -s -m 20 https://homologamanager.com.br/ | grep -o 'assets/index-[A-Za-z0-9._-]*\.js' | head -1)
-          echo "--- $ASSET (deve seguir imutável) ---"
+          echo "--- $ASSET (esperado: seguir imutável) ---"
           curl -sI -m 20 "https://homologamanager.com.br/$ASSET" | grep -i 'cache-control' || true
 
       - name: Cleanup
