@@ -1,0 +1,129 @@
+name: Nginx — cache do index.html
+
+# Execução MANUAL (aba Actions → este workflow → "Run workflow").
+#
+# Por que existe: o `index.html` era servido sem `Cache-Control`. Sem diretiva,
+# o navegador reutiliza a casca antiga do app por horas sem revalidar — e como
+# os arquivos de /assets nunca são apagados no deploy (de propósito, para não
+# quebrar quem está com a aba aberta), a casca velha continua achando o pacote
+# velho e funcionando, silenciosamente desatualizada. Isso já fez três
+# publicações "não chegarem" ao usuário (set/2026).
+#
+# O que faz: garante `Cache-Control: no-cache, must-revalidate` no index.html,
+# mantendo o cache eterno de /assets (que têm hash no nome). Idempotente.
+#
+# Segurança: backup datado, `nginx -t` ANTES de recarregar e restauração
+# automática se a validação falhar — o site nunca fica com config quebrada.
+
+on:
+  workflow_dispatch:
+    inputs:
+      desfazer:
+        description: 'Desfazer: restaura o backup mais recente'
+        type: boolean
+        default: false
+
+jobs:
+  aplicar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p ${{ secrets.VPS_SSH_PORT }} -H "${{ secrets.VPS_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Aplicar no Nginx
+        if: ${{ !inputs.desfazer }}
+        run: |
+          ssh -i ~/.ssh/deploy_key -p ${{ secrets.VPS_SSH_PORT }} -o StrictHostKeyChecking=no \
+            ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} 'bash -se' <<'REMOTO'
+          set -uo pipefail
+
+          # 1) O server block CERTO: o que serve a pasta do site. Pegar "o último
+          #    } do arquivo" seria arriscado — há também o server de redirecionamento.
+          CONF=$(grep -rl "pv-harmony-hub" /etc/nginx/sites-enabled/ /etc/nginx/conf.d/ 2>/dev/null | head -1)
+          if [ -z "$CONF" ]; then
+            echo "ERRO: não achei a configuração do site em /etc/nginx."
+            exit 1
+          fi
+          echo "Configuração: $CONF"
+
+          if grep -q "GD-MANAGER-CACHE-INDEX" "$CONF"; then
+            echo "Já aplicado anteriormente — nada a fazer."
+          else
+            BACKUP="$CONF.bak-$(date +%Y%m%d-%H%M%S)"
+            cp "$CONF" "$BACKUP" || exit 1
+            echo "Backup: $BACKUP"
+
+            # Insere o bloco antes do } que fecha o server block que contém a
+            # raiz do site. Conta chaves para saber onde esse server termina.
+            awk '
+              # Segunda trava contra duplicar (a primeira é o grep acima).
+              /GD-MANAGER-CACHE-INDEX/ { feito = 1 }
+              /server[[:space:]]*{/ && depth == 0 { inserver = 1; achou_raiz = 0 }
+              inserver { depth += gsub(/{/, "{"); depth -= gsub(/}/, "}") }
+              inserver && /pv-harmony-hub/ { achou_raiz = 1 }
+              {
+                if (inserver && achou_raiz && depth == 0 && !feito) {
+                  # esta linha é o } que fecha o server certo
+                  print "    # GD-MANAGER-CACHE-INDEX"
+                  print "    # A casca do app nao pode ficar em cache: os arquivos de"
+                  print "    # /assets tem hash no nome e sao imutaveis, mas e o index.html"
+                  print "    # que aponta para eles. Sem isto o navegador servia por horas"
+                  print "    # uma versao antiga do sistema."
+                  print "    location = /index.html {"
+                  print "        add_header Cache-Control \"no-cache, must-revalidate\" always;"
+                  print "        expires off;"
+                  print "    }"
+                  feito = 1
+                }
+                print
+              }
+              inserver && depth == 0 { inserver = 0 }
+            ' "$BACKUP" > "$CONF"
+
+            if ! grep -q "GD-MANAGER-CACHE-INDEX" "$CONF"; then
+              echo "ERRO: não consegui inserir o bloco — restaurando."
+              cp "$BACKUP" "$CONF"
+              exit 1
+            fi
+
+            if nginx -t; then
+              systemctl reload nginx && echo "Nginx recarregado."
+            else
+              echo "ERRO: configuração inválida — restaurando backup."
+              cp "$BACKUP" "$CONF"
+              nginx -t && systemctl reload nginx
+              exit 1
+            fi
+          fi
+          REMOTO
+
+      - name: Desfazer
+        if: ${{ inputs.desfazer }}
+        run: |
+          ssh -i ~/.ssh/deploy_key -p ${{ secrets.VPS_SSH_PORT }} -o StrictHostKeyChecking=no \
+            ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} 'bash -se' <<'REMOTO'
+          set -uo pipefail
+          CONF=$(grep -rl "pv-harmony-hub" /etc/nginx/sites-enabled/ /etc/nginx/conf.d/ 2>/dev/null | head -1)
+          ULTIMO=$(ls -1t "$CONF".bak-* 2>/dev/null | head -1)
+          if [ -z "${ULTIMO:-}" ]; then echo "Nenhum backup encontrado."; exit 1; fi
+          cp "$ULTIMO" "$CONF"
+          nginx -t && systemctl reload nginx && echo "Restaurado de $ULTIMO"
+          REMOTO
+
+      - name: Prova — cabeçalhos servidos agora
+        if: always()
+        run: |
+          echo "--- index.html (deve ter no-cache) ---"
+          curl -sI -m 20 https://homologamanager.com.br/ | grep -i 'cache-control\|last-modified' || echo "(sem Cache-Control)"
+          ASSET=$(curl -s -m 20 https://homologamanager.com.br/ | grep -o 'assets/index-[A-Za-z0-9._-]*\.js' | head -1)
+          echo "--- $ASSET (deve seguir imutável) ---"
+          curl -sI -m 20 "https://homologamanager.com.br/$ASSET" | grep -i 'cache-control' || true
+
+      - name: Cleanup
+        if: always()
+        run: rm -f ~/.ssh/deploy_key

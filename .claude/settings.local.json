@@ -374,7 +374,10 @@
       "Bash(npx -y supabase db query --linked -f \"C:/Users/luiza/AppData/Local/Temp/claude/C--Users-luiza-Desktop-DADOS-DESENVOLVIMENTO---GD-MANAGER-ENERGY-pv-harmony-hub-main-pv-harmony-hub-main/d13f144e-b872-4aa5-8701-ed8dea13ee4e/scratchpad/test_vistoria.sql\")",
       "Bash(npx -y supabase db query --linked -f \"C:/Users/luiza/AppData/Local/Temp/claude/C--Users-luiza-Desktop-DADOS-DESENVOLVIMENTO---GD-MANAGER-ENERGY-pv-harmony-hub-main-pv-harmony-hub-main/d13f144e-b872-4aa5-8701-ed8dea13ee4e/scratchpad/af.sql\")",
       "Bash(npx -y supabase db query --linked -f supabase/migrations/20260903100000_vencimento_e_geracao_mensal.sql)",
-      "Bash(grep -n \"projetos\\\\`\\\\|projectsInMonth\\\\|concessionaireName\" src/hooks/useFinancialReport.ts src/components/financial/FinancialReportModal.tsx)"
+      "Bash(grep -n \"projetos\\\\`\\\\|projectsInMonth\\\\|concessionaireName\" src/hooks/useFinancialReport.ts src/components/financial/FinancialReportModal.tsx)",
+      "Bash(curl -s -m 90 -o b.js \"https://homologamanager.com.br/assets/index-Cs6ZGSGX.js\")",
+      "Bash(grep -o 'hideFranchiseUsage[^,;]\\\\{0,60\\\\}' b.js)",
+      "Bash(curl -sI -m 25 https://homologamanager.com.br/assets/index-Cs6ZGSGX.js)"
     ]
   }
 }
