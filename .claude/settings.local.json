@@ -394,7 +394,8 @@
       "Bash(awk '/^function CardMenu|^const CardMenu|^function KanbanCardContent|^const KanbanCardContent = memo|^function RevisionBadge/{comp=$0; inside=1} inside && /use[A-Z][A-Za-z]*\\\\\\(/{print NR\": \"comp\" -> \"$0} /^}/{inside=0}' src/pages/ProjectsKanban.tsx)",
       "Bash(cp __TRACKED_VAR__/test-kanban-cache.ts ./_t.ts)",
       "Bash(node ./_t.cjs)",
-      "Bash(rm -f ./_t.ts ./_t.cjs)"
+      "Bash(rm -f ./_t.ts ./_t.cjs)",
+      "Bash(npx -y supabase db query --linked -f \"C:/Users/luiza/AppData/Local/Temp/claude/C--Users-luiza-Desktop-DADOS-DESENVOLVIMENTO---GD-MANAGER-ENERGY-pv-harmony-hub-main-pv-harmony-hub-main/d13f144e-b872-4aa5-8701-ed8dea13ee4e/scratchpad/hab.sql\")"
     ]
   }
 }
