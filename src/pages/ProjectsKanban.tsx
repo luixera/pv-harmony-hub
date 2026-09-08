@@ -21,7 +21,7 @@ import { ProtocolDialog, ProtocolData } from '@/components/projects/ProtocolDial
 import { useRegisterProtocol } from '@/hooks/useProjectProtocol';
 import { useSearchParams } from 'react-router-dom';
 import { Search, Building2, Zap, MapPin, Loader2, ChevronRight, ArrowRight, AlertCircle, DollarSign, MoreVertical, Trash2, Users, FileOutput, ExternalLink, XCircle, Clock, Hash, Archive, ArchiveRestore } from 'lucide-react';
-import { useProjectRevisions, useProjectRevisionSummary } from '@/hooks/useProjectRevisions';
+import { useProjectRevisions, useAllRevisionSummaries, RevisionSummary } from '@/hooks/useProjectRevisions';
 import { Database } from '@/integrations/supabase/types';
 import { ProjectModal } from '@/components/projects/ProjectModal';
 import { StaffAssignmentDialog } from '@/components/projects/StaffAssignmentDialog';
@@ -59,9 +59,10 @@ function hasNoValue(project: { financials?: { project_value?: number | null } | 
   return !project.financials?.project_value || project.financials.project_value === 0;
 }
 
-function RevisionBadge({ projectId }: { projectId: string }) {
-  // Uses the lightweight summary hook (no joins) to avoid N heavy queries on mount
-  const { data: revisions = [] } = useProjectRevisionSummary(projectId);
+// Recebe as revisões PRONTAS. Antes cada card consultava as suas: 194 cards =
+// 194 requisições para uma tabela de 23 linhas, todas em fila de 6 em 6.
+// Agora o quadro busca uma vez só (useAllRevisionSummaries) e distribui.
+function RevisionBadge({ revisions }: { revisions: RevisionSummary[] }) {
   if (revisions.length <= 1) return null;
   const current = revisions.find(r => r.is_current) ?? revisions[revisions.length - 1];
   if (!current) return null;
@@ -116,6 +117,9 @@ type KanbanCol = {
   requiresProtocol: boolean;
 };
 
+/** Referência estável: um [] novo a cada render anularia o React.memo. */
+const VAZIO: RevisionSummary[] = [];
+
 // ── Memoized card inner content ──────────────────────────────────────────────
 // Extracted so React.memo can skip re-renders during drag (only outer div
 // needs updating for isDragging class; the inner content is data-driven).
@@ -125,6 +129,7 @@ const KanbanCardContent = memo(function KanbanCardContent({
   daysStale,
   columns,
   companyDisplayName,
+  revisoesDoProjeto,
   onOpenModal,
   onChangeStatus,
 }: {
@@ -133,6 +138,8 @@ const KanbanCardContent = memo(function KanbanCardContent({
   daysStale: number | undefined;
   columns: KanbanCol[];
   companyDisplayName: string;
+  /** Revisões já carregadas em lote pelo quadro — o card não consulta nada. */
+  revisoesDoProjeto: RevisionSummary[];
   onOpenModal: (id: string) => void;
   onChangeStatus: (id: string, status: ProjectStatus) => void;
 }) {
@@ -143,7 +150,7 @@ const KanbanCardContent = memo(function KanbanCardContent({
       <div className="flex items-start justify-between mb-3">
         <span className="text-xs font-mono text-primary">{project.code}</span>
         <div className="flex items-center gap-1">
-          <RevisionBadge projectId={project.id} />
+          <RevisionBadge revisions={revisoesDoProjeto} />
           {/* só aparece com "Mostrar arquivados" ligado — fora disso o card nem
               está na lista */}
           {(project as { archived_at?: string | null }).archived_at && (
@@ -450,6 +457,8 @@ export default function ProjectsKanban() {
   const [mostrarArquivados, setMostrarArquivados] = useState(false);
 
   const { data: projects = [], isLoading } = useProjects({ incluirArquivados: mostrarArquivados });
+  // Revisões de todos os projetos numa consulta só (antes: uma por card).
+  const { data: revisoesPorProjeto = new Map() } = useAllRevisionSummaries();
   const { data: companies = [] } = useCompanies();
   const { data: concessionaires = [] } = useEnergyConcessionaires();
   const { getCompanyDisplayName, shouldHideCompanyName } = useCompanyDisplay();
@@ -883,6 +892,7 @@ export default function ProjectsKanban() {
                                     daysStale={daysStale}
                                     columns={kanbanColumns}
                                     companyDisplayName={getCompanyDisplayName(project.companyName)}
+                                    revisoesDoProjeto={revisoesPorProjeto.get(project.id) ?? VAZIO}
                                     onOpenModal={handleOpenModal}
                                     onChangeStatus={handleChangeStatus}
                                   />

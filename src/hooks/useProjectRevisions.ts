@@ -83,6 +83,39 @@ export interface RevisionSummary {
   is_current: boolean;
 }
 
+/**
+ * Resumo de revisões de TODOS os projetos de uma vez, indexado por projeto.
+ *
+ * O quadro tem um `RevisionBadge` por card, e cada um pedia as revisões do seu
+ * projeto: com 194 cards eram 194 requisições para ler uma tabela de 23 linhas
+ * — e o navegador só abre ~6 conexões por vez, então elas entravam em fila e
+ * seguravam o quadro (relato do usuário sobre lentidão, set/2026).
+ *
+ * A tabela inteira é minúscula; uma consulta só resolve. Mantido o
+ * `useProjectRevisionSummary` para quem precisa de um projeto isolado.
+ */
+export function useAllRevisionSummaries() {
+  return useQuery({
+    queryKey: ['project-revision-summaries'],
+    queryFn: async (): Promise<Map<string, RevisionSummary[]>> => {
+      const { data, error } = await supabase
+        .from('project_revisions')
+        .select('id, project_id, revision_number, is_current')
+        .order('revision_number', { ascending: true });
+      if (error) throw error;
+      const mapa = new Map<string, RevisionSummary[]>();
+      for (const r of (data ?? []) as (RevisionSummary & { project_id: string })[]) {
+        const lista = mapa.get(r.project_id);
+        if (lista) lista.push(r);
+        else mapa.set(r.project_id, [r]);
+      }
+      return mapa;
+    },
+    staleTime: 5 * 60 * 1000,
+    retry: false,
+  });
+}
+
 export function useProjectRevisionSummary(projectId: string | undefined) {
   return useQuery({
     queryKey: ['project-revision-summary', projectId],

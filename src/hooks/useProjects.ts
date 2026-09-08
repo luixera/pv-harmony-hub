@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import { toProjectStatus, projectStatusLabel } from '@/lib/statusMapping';
 import { upperizeStrings } from '@/lib/textCase';
 import { dispatchNotification } from '@/lib/notify';
+import { useAuth } from '@/contexts/AuthContext';
 
 type Project = Database['public']['Tables']['projects']['Row'];
 type ProjectGeneralData = Database['public']['Tables']['project_general_data']['Row'];
@@ -228,24 +229,41 @@ export function useProject(id: string | undefined) {
 
 export function useUpdateProjectStatus() {
   const queryClient = useQueryClient();
+  // Autor do histórico: já está no contexto de autenticação. Buscá-lo com
+  // `auth.getUser()` + select em `profiles` custava duas idas ao servidor a
+  // cada card arrastado, para um dado que a aplicação já tinha em mãos.
+  const { user: autor } = useAuth();
   // Etapa anterior de cada projeto em movimento, para registrar "de X → para Y"
   // no histórico sem precisar de uma consulta extra.
   const prevStatusRef = useRef(new Map<string, string>());
 
   return useMutation({
     // ── 1. Optimistic update: move the card instantly in the UI ────────────
+    //
+    // ATENÇÃO à chave. A lista real vive em `['projects','ativos']` ou
+    // `['projects','com-arquivados']` (ver useProjects). Aqui se usava
+    // `setQueryData(['projects'], …)` — chave EXATA, que consulta nenhuma lê:
+    // o update otimista caía num cache órfão, o card não saía do lugar e, como
+    // o onSuccess invalida com refetchType 'none', nada rebuscava. O card só
+    // se mexia quando outra coisa provocava um refetch (foco na janela).
+    // Era essa a "lentidão" relatada (set/2026) — o card não estava lento, não
+    // estava recebendo a ordem.
+    //
+    // `setQueriesData` (plural) casa por PREFIXO e atinge as duas variantes.
     onMutate: async ({ projectId, status }) => {
       // Cancel any in-flight refetches to avoid overwriting our optimistic update
       await queryClient.cancelQueries({ queryKey: ['projects'] });
 
-      // Snapshot previous state so we can roll back on error
-      const previousProjects = queryClient.getQueryData<ProjectWithDetails[]>(['projects']);
+      // Snapshot de TODAS as listas, para o rollback devolver cada uma
+      const previousProjects = queryClient.getQueriesData<ProjectWithDetails[]>({ queryKey: ['projects'] });
 
-      const before = previousProjects?.find(p => p.id === projectId)?.status;
+      const before = previousProjects
+        .flatMap(([, lista]) => lista ?? [])
+        .find(p => p.id === projectId)?.status;
       if (before) prevStatusRef.current.set(projectId, before as string);
 
       // Immediately reflect new status in the cache — card moves at once
-      queryClient.setQueryData<ProjectWithDetails[]>(['projects'], (old) => {
+      queryClient.setQueriesData<ProjectWithDetails[]>({ queryKey: ['projects'] }, (old) => {
         if (!old) return old;
         return old.map(p => p.id === projectId ? { ...p, status } : p);
       });
@@ -269,33 +287,34 @@ export function useUpdateProjectStatus() {
         throw error;
       }
 
-      // Histórico da mudança de etapa. Precisa ser AGUARDADO: no supabase-js o
-      // builder é lazy — sem await/then a requisição nunca é enviada (foi por
-      // isso que os registros de mudança de etapa pararam de aparecer).
-      // Falha aqui não derruba a troca de status (já feita acima).
-      try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-          const { data: profile } = await supabase
-            .from('profiles').select('name').eq('id', user.id).single();
+      // Histórico da mudança de etapa — DISPARA E NÃO ESPERA.
+      //
+      // Aqui havia três idas ao servidor em sequência DEPOIS do update:
+      // `auth.getUser()`, um select em `profiles` para pegar o nome, e o
+      // insert. A mutação só resolvia no fim disso tudo, e o quadro ficava
+      // "ocupado" durante quatro viagens de rede a cada card arrastado.
+      //
+      // O id e o nome já estão no contexto de autenticação — as duas consultas
+      // eram redundantes. E o insert não precisa bloquear: o `.then()` é o que
+      // ENVIA a requisição (o builder do supabase-js é lazy; sem ele nada sai,
+      // foi o que já quebrou o histórico uma vez), mas não precisamos aguardar
+      // a resposta para o card assumir a nova coluna.
+      if (autor) {
+        const before = prevStatusRef.current.get(projectId);
+        prevStatusRef.current.delete(projectId);
+        const description = before
+          ? `Etapa alterada de "${projectStatusLabel(before)}" para "${projectStatusLabel(safeStatus)}"`
+          : `Etapa alterada para "${projectStatusLabel(safeStatus)}"`;
 
-          const before = prevStatusRef.current.get(projectId);
-          prevStatusRef.current.delete(projectId);
-          const description = before
-            ? `Etapa alterada de "${projectStatusLabel(before)}" para "${projectStatusLabel(safeStatus)}"`
-            : `Etapa alterada para "${projectStatusLabel(safeStatus)}"`;
-
-          const { error: histErr } = await supabase.from('project_history').insert({
-            project_id: projectId,
-            action: 'Etapa alterada',
-            description,
-            user_id: user.id,
-            user_name: profile?.name || user.email,
-          });
+        void supabase.from('project_history').insert({
+          project_id: projectId,
+          action: 'Etapa alterada',
+          description,
+          user_id: autor.id,
+          user_name: autor.name,
+        }).then(({ error: histErr }) => {
           if (histErr) console.error('Erro ao registrar histórico de etapa:', histErr);
-        }
-      } catch (e) {
-        console.error('Falha ao registrar histórico de etapa:', e);
+        });
       }
     },
 
