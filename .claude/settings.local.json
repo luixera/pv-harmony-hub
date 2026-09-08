@@ -395,7 +395,15 @@
       "Bash(cp __TRACKED_VAR__/test-kanban-cache.ts ./_t.ts)",
       "Bash(node ./_t.cjs)",
       "Bash(rm -f ./_t.ts ./_t.cjs)",
-      "Bash(npx -y supabase db query --linked -f \"C:/Users/luiza/AppData/Local/Temp/claude/C--Users-luiza-Desktop-DADOS-DESENVOLVIMENTO---GD-MANAGER-ENERGY-pv-harmony-hub-main-pv-harmony-hub-main/d13f144e-b872-4aa5-8701-ed8dea13ee4e/scratchpad/hab.sql\")"
+      "Bash(npx -y supabase db query --linked -f \"C:/Users/luiza/AppData/Local/Temp/claude/C--Users-luiza-Desktop-DADOS-DESENVOLVIMENTO---GD-MANAGER-ENERGY-pv-harmony-hub-main-pv-harmony-hub-main/d13f144e-b872-4aa5-8701-ed8dea13ee4e/scratchpad/hab.sql\")",
+      "Bash(curl -s -o /dev/null -w \"HTTP %{http_code}\\\\n\" -m 25 -X POST \"https://yqsqrdndvsnhbsoaoilf.supabase.co/functions/v1/bidu-chat\" -H \"Content-Type: application/json\" -d '{\"mensagem\":\"teste\"}')",
+      "Bash(grep -i -E \"^\\(pizzip|jszip|xlsx|exceljs\\)$\")",
+      "Bash(node -e \"try{require.resolve\\('pizzip'\\);console.log\\('pizzip OK'\\)}catch\\(e\\){console.log\\('sem pizzip'\\)}\")",
+      "Bash(awk '/=== ABA 1/,/=== ABA 2/' cemig_celulas.txt)",
+      "Bash(grep -n -i -E \"MATHEUS|UBERABA|BAROZA|20431870|20\\\\.431|Sim$|kW|W$|inversor|modulo|módulo|GROWATT|CANADIAN|JINKO|TRINA|DEYE|SOLIS\" cemig_celulas.txt)",
+      "Bash(awk '/=== ABA 1/,/=== ABA 2/' cemig2.txt)",
+      "Bash(node __TRACKED_VAR__/lepdf.cjs 'C:/Users/luiza/Desktop/DADOS/Projetos/GO POWER UBERABA/MATHEUS VINICIUS ALVES FERREIRA BAROZA/11 - PLANTA DE SITUAÇÃO ASSINADA.pdf' __TRACKED_VAR__/planta.txt)",
+      "Bash(awk '/=== ABA 3/,/=== ABA 4/' cemig2.txt)"
     ]
   }
 }
