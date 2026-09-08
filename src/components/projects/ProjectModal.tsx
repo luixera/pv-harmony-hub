@@ -37,7 +37,7 @@ import {
   Check, ChevronRight, Upload, Download, Send, Paperclip, FileText,
   Image, Loader2, AlertTriangle, Save, Lock, DollarSign, Clock, MapPin, Hash,
   CheckSquare, Plus, Circle, CheckCircle2, Calendar, User as UserIcon, RotateCcw, FlaskConical, Mail,
-  Search,
+  Search, HardHat,
 } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -50,6 +50,8 @@ import { useProjectTasks, useUpdateTask, Task, TaskPriority } from '@/hooks/useT
 import { TaskDialog } from '@/components/tasks/TaskDialog';
 import { matchEntryRule, useEntryRules } from '@/hooks/useEntryRules';
 import { useVistoriaStatus, useSolicitarVistoria } from '@/hooks/useVistoria';
+import { BiduPanel } from '@/components/projects/BiduPanel';
+import { useBiduDisponivel } from '@/hooks/useBidu';
 
 type ProjectStatus = Database['public']['Enums']['project_status'];
 type DocumentType = Database['public']['Enums']['document_type'];
@@ -2048,6 +2050,8 @@ export function ProjectModal({ projectId, onClose, initialTab = 'geral', viewAsC
   const isStaff = user?.role === 'staff' && !viewAsCompany;
   const hasDiagramEngineAccess = useDiagramEngineAccess() && !viewAsCompany;
   const rotuloEtapa = useStatusLabel();
+  // Engenheiro Bidu: só no tenant biblioteca (GD Manager), como o motor de diagramas.
+  const temBidu = useBiduDisponivel();
   const canEdit = isAdmin || isStaff;
 
   // Pedido de vistoria: só faz sentido consultar na visão do cliente.
@@ -2162,6 +2166,7 @@ export function ProjectModal({ projectId, onClose, initialTab = 'geral', viewAsC
     // motor de templates de diagrama (ver useDiagramEngineAccess): projetista
     // e admin da GD Manager (o master, que é admin da GD Manager, já cai aqui).
     ...(hasDiagramEngineAccess ? [{ id: 'unifilar', label: 'Unifilar', icon: <FlaskConical size={13} style={{ marginRight: 5 }} /> }] : []),
+    ...(temBidu ? [{ id: 'bidu', label: 'Bidu', icon: <HardHat size={13} style={{ marginRight: 5 }} /> }] : []),
   ];
 
   const statusCfg: Record<string, { color: string; bg: string }> = {
@@ -2488,6 +2493,11 @@ export function ProjectModal({ projectId, onClose, initialTab = 'geral', viewAsC
                     aba ter sido escondida. */}
                 {activeTab === 'financeiro' && isAdmin && (
                   <TabFinanceiro project={project} isAdmin={isAdmin} />
+                )}
+                {activeTab === 'bidu' && temBidu && (
+                  <div style={{ padding: '18px 22px' }}>
+                    <BiduPanel projectId={project.id} />
+                  </div>
                 )}
                 {activeTab === 'historico' && (
                   <TabHistory projectId={project.id} />
