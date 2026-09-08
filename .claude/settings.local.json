@@ -407,7 +407,10 @@
       "Bash(cp __TRACKED_VAR__/test-cemig.ts ./_tc.ts)",
       "Bash(node ./_tc.cjs 'C:/Users/luiza/Desktop/DADOS/Projetos/GO POWER UBERABA/MATHEUS VINICIUS ALVES FERREIRA BAROZA/CEMIG/Formulario-MicroGD_Rev_N4.xlsx' __TRACKED_VAR__/gerado.xlsx)",
       "Bash(rm -f ./_tc.ts ./_tc.cjs)",
-      "Bash(grep -n \"^    </Dialog>\\\\|</Dialog>$\" src/components/projects/GenerateDocumentDialog.tsx)"
+      "Bash(grep -n \"^    </Dialog>\\\\|</Dialog>$\" src/components/projects/GenerateDocumentDialog.tsx)",
+      "Bash(MSYS_NO_PATHCONV=1 npx esbuild _tc.ts --bundle --platform=node --format=cjs --outfile=_tc.cjs --alias:@=./src --external:pizzip)",
+      "Bash(node _tc.cjs __TRACKED_VAR__/gerado.xlsx __TRACKED_VAR__/regressao.xlsx)",
+      "Bash(rm -f _tm.ts _tm.cjs _tc.ts _tc.cjs _sob.cjs)"
     ]
   }
 }

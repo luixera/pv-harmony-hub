@@ -74,8 +74,8 @@ Todas as células abaixo são da aba **`Formulário`**.
 | `AI114` | Quantidade de inversores | `inverter_quantity` |
 | `L116` | Potência total dos módulos (kW) | `module_power × qtd / 1000` |
 | `AI116` | Potência total dos inversores (kW) | `inverter_power × qtd` |
-| `L118` | Área dos arranjos (m²) | **não temos** — ver pendências |
-| `AI118` | Tensão de conexão do inversor (V) | do datasheet (`ac_voltage_v`) |
+| `L118` | Área dos arranjos (m²) | `qtd_modulos × 3` (regra do usuário) |
+| `AI118` | Tensão de conexão do inversor (V) | fixo `220` — na rede 127/220 o inversor entra entre fases |
 
 `R134` — possui armazenamento (Sim/Não), fixo "Não".
 
@@ -111,19 +111,26 @@ Geração compartilhada · Múltiplas Unidades Consumidoras.
 O preenchimento deve conferir a coordenada convertida contra a faixa do fuso e
 **avisar** antes de gerar — coordenada fora da faixa volta reprovada.
 
+A coordenada vai em **metros inteiros**. A conversão do catálogo devolve
+centímetros (`447.878,02 m`), precisão que não existe num ponto de conexão; o
+formulário aceito traz inteiros, e é assim que gravamos.
+
 ## Pendências (a confirmar com o usuário)
 
-1. **`J12` — "Número da instalação"**: no projeto de referência vale
-   `3002269191`, e **não** é o `uc_number` cadastrado
-   (`20.431.870.118-92`). É outro número da CEMIG e hoje não existe no
-   cadastro. Precisa virar campo, ou ser perguntado ao gerar.
-2. **`L118` — "Área dos arranjos (m²)"**: 51 m² para 18 módulos de 615 W.
-   Dá ~2,83 m² por módulo, compatível com um módulo de 615 W. Para calcular
-   sozinho, o catálogo precisaria das dimensões do módulo.
-3. **`AH47`/`AH49`** — duas linhas de padrão de entrada (60 A e 63 A no
-   exemplo). Confirmar qual é a existente e qual a proposta.
-4. **`AD28` = 1620000** — célula preenchida sem rótulo capturado. Confirmar
-   o que é (carga instalada?).
+1. **`AH47`/`AH49`** — duas linhas de padrão de entrada (60 A e 63 A no
+   exemplo de referência). Hoje escrevemos o mesmo disjuntor do cadastro nas
+   duas. Confirmar qual é a existente e qual a proposta — importa nos casos de
+   aumento de carga.
+2. **`AD28` = 1620000** — célula preenchida sem rótulo capturado. Não
+   escrevemos nela. Confirmar o que é (carga instalada?).
+
+### Resolvidas
+
+- **`J12` — "Número da instalação"**: é o número da UC (`uc_number`), conforme
+  o usuário (set/2026). A dúvida veio de o projeto de referência ter no
+  cadastro um número em formato antigo; nos projetos atuais o `uc_number` já
+  vem com os 10 dígitos que o formulário espera (PRJ-21470: `3005478195`).
+- **`L118` — "Área dos arranjos (m²)"**: `quantidade de módulos × 3`.
 
 ## Planta de situação (o outro entregável do Bidu)
 

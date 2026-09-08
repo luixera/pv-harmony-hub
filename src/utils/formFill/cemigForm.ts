@@ -58,6 +58,12 @@ const numero = (v: string) => {
   return Number.isFinite(n) ? String(n) : m[0];
 };
 
+/** Coordenada UTM em metros inteiros, do jeito que a CEMIG preenche. */
+const metroInteiro = (v: string) => {
+  const n = Number(numero(v));
+  return Number.isFinite(n) ? String(Math.round(n)) : '';
+};
+
 /** `monofasico` → `Monopolar`, e assim por diante (lista da aba Dados). */
 export function tipoDisjuntorCemig(faseCrua: string): string {
   const f = (faseCrua ?? '').toLowerCase();
@@ -104,8 +110,11 @@ export function valoresFormularioCemig(
 ): Record<string, string> {
   // utm_fuso vem como "22K" (fuso + faixa); a célula quer só o número.
   const fuso = (v.utm_fuso ?? '').replace(/[^\d]/g, '');
-  const leste = numero(v.utm_longitude ?? '');
-  const norte = numero(v.utm_latitude ?? '');
+  // A CEMIG quer a coordenada em METROS INTEIROS — é assim no formulário que
+  // foi aceito. A conversão devolve centímetros ("447878,02"), precisão que não
+  // existe no ponto de conexão e que só dá margem a a planilha reclamar.
+  const leste = metroInteiro(v.utm_longitude ?? '');
+  const norte = metroInteiro(v.utm_latitude ?? '');
 
   return {
     ...v,
@@ -124,6 +133,10 @@ export function valoresFormularioCemig(
     cemig_tipo_disjuntor: tipoDisjuntorCemig(v.fase ?? ''),
     cemig_disjuntor: numero(v.disjuntor ?? ''),
     cemig_tensao: '127/220',
+    // Tensão em que o inversor se conecta. Na rede 127/220 da CEMIG o inversor
+    // entra entre fases, em 220 V — é o que está no formulário aceito. Fica
+    // como constante nomeada: se um dia aparecer projeto em 380, muda aqui.
+    cemig_tensao_inversor: '220',
     cemig_nao: 'Não',
     cemig_fonte: 'Solar',
     cemig_tipo_geracao: 'Empregando conversor eletrônico/inversor',
@@ -201,6 +214,7 @@ export const FORMULARIO_CEMIG: MapaPlanilha = {
     { celula: 'L116',  chave: 'cemig_pot_total_modulos' },
     { celula: 'AI116', chave: 'cemig_pot_total_inversores' },
     { celula: 'L118',  chave: 'cemig_area' },
+    { celula: 'AI118', chave: 'cemig_tensao_inversor' },
 
     // 5 — Armazenamento
     { celula: 'R134', chave: 'cemig_nao' },
