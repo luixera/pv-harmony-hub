@@ -131,12 +131,24 @@ async function resolveEquipmentDoc(
   // 2) se o vínculo não tem ESTE documento, procura por marca+modelo — outro
   //    registro da mesma marca/modelo pode ter o arquivo. Isso conserta o caso
   //    do inversor digitado à mão ou vinculado a um item sem INMETRO.
+  //
+  //    A comparação IGNORA maiúsculas, espaços e pontuação: o mesmo inversor
+  //    aparece cadastrado como "HMS-1875DW-4T" e "HMS-1875DW4T", ou
+  //    "SOFAR 7,5KTLM" e "SOFAR 7.5KTLM". Com `ilike` exato o documento existia
+  //    e não entrava no pacote (relato do usuário sobre o AFCI da CPFL,
+  //    set/2026). O catálogo é pequeno, então filtramos aqui em vez de tentar
+  //    normalizar no lado do banco.
   if (!path && brand && model) {
+    const chave = (t: string | null | undefined) =>
+      (t ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const col = kind === 'inmetro' ? 'inmetro_url' : kind === 'afci' ? 'afci_url' : 'datasheet_url';
     const { data } = await supabase.from('equipment_catalog' as never)
-      .select(COLS).eq('type', which).ilike('brand', brand).ilike('model', model)
-      .not(kind === 'inmetro' ? 'inmetro_url' : kind === 'afci' ? 'afci_url' : 'datasheet_url', 'is', null)
-      .limit(1).maybeSingle();
-    path = pick(data as Row | null);
+      .select(`brand, model, ${COLS}`).eq('type', which).not(col, 'is', null);
+    const linhas = (data ?? []) as (Row & { brand: string | null; model: string | null })[];
+    const alvoMarca = chave(brand);
+    const alvoModelo = chave(model);
+    const achado = linhas.find(r => chave(r.brand) === alvoMarca && chave(r.model) === alvoModelo);
+    path = pick(achado ?? null);
   }
   if (!path) return null;
   return downloadFromBucket('equipment-documents', path);
