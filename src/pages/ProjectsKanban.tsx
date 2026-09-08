@@ -119,6 +119,8 @@ type KanbanCol = {
 
 /** Referência estável: um [] novo a cada render anularia o React.memo. */
 const VAZIO: RevisionSummary[] = [];
+/** Idem para a coluna sem projetos. */
+const VAZIO_PROJ: ProjectWithDetails[] = [];
 
 // ── Memoized card inner content ──────────────────────────────────────────────
 // Extracted so React.memo can skip re-renders during drag (only outer div
@@ -445,6 +447,142 @@ function ProtocolDialogWithRevision({
 }
 
 // ── Main Kanban ───────────────────────────────────────────────────────────────
+/**
+ * Uma coluna do quadro, MEMOIZADA.
+ *
+ * Antes tudo isto era montado em linha no render do quadro: qualquer mudança
+ * na lista de projetos reconstruía as nove colunas e os ~194 cards, ainda que
+ * só duas colunas tivessem mudado. Era por isso que trocar a etapa pelo modal
+ * parecia instantâneo e arrastar o card parecia pesado — a mutação é a mesma,
+ * o que diferia era o tamanho do re-render (relato do usuário, set/2026).
+ *
+ * Para o memo valer, tudo que chega aqui precisa ter referência estável: a
+ * lista da coluna (ver `projectsByStatus`), os callbacks (useCallback) e o
+ * `getCompanyDisplayName` (useCallback no próprio hook).
+ */
+const KanbanColumn = memo(function KanbanColumn({
+  column,
+  columnIndex,
+  projetos,
+  staleMap,
+  isAdmin,
+  kanbanColumns,
+  revisoesPorProjeto,
+  getCompanyDisplayName,
+  onOpenModal,
+  onChangeStatus,
+}: {
+  column: KanbanCol;
+  columnIndex: number;
+  projetos: ProjectWithDetails[];
+  staleMap: Map<string, number>;
+  isAdmin: boolean;
+  kanbanColumns: KanbanCol[];
+  revisoesPorProjeto: Map<string, RevisionSummary[]>;
+  getCompanyDisplayName: (nome: string | undefined | null) => string;
+  onOpenModal: (id: string) => void;
+  onChangeStatus: (id: string, status: ProjectStatus) => void;
+}) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: columnIndex * 0.1 }}
+      className="flex-shrink-0 w-80 flex flex-col h-full min-h-0"
+    >
+      {column.isRejectionStage ? (
+        <div
+          className="flex-shrink-0"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            marginBottom: 16,
+            background: '#E24B4A',
+            borderRadius: 8,
+            padding: '6px 12px',
+          }}
+        >
+          <XCircle size={14} style={{ color: '#fff', flexShrink: 0 }} />
+          <span style={{ fontWeight: 700, color: '#fff', fontSize: 14 }}>
+            {column.title}
+          </span>
+          <span
+            style={{
+              marginLeft: 'auto',
+              fontSize: 11,
+              fontWeight: 700,
+              background: 'rgba(255,255,255,0.2)',
+              color: '#fff',
+              borderRadius: 20,
+              padding: '1px 8px',
+            }}
+          >
+            {projetos.length}
+          </span>
+        </div>
+      ) : (
+        <div className="flex items-center gap-3 mb-4 flex-shrink-0">
+          <div className={`w-3 h-3 rounded-full ${column.color}`} />
+          <h3 className="font-semibold text-foreground">{column.title}</h3>
+          <Badge variant="secondary" className="ml-auto">
+            {projetos.length}
+          </Badge>
+        </div>
+      )}
+
+      <Droppable droppableId={column.id}>
+        {(provided, snapshot) => (
+          <div
+            ref={provided.innerRef}
+            {...provided.droppableProps}
+            className={`kanban-column transition-colors flex-1 min-h-0 overflow-y-auto scrollbar-thin ${
+              snapshot.isDraggingOver ? 'bg-primary/10 ring-2 ring-primary/20' : ''
+            }`}
+          >
+            {projetos.map((project, index) => {
+              const daysStale = staleMap.get(project.id);
+              return (
+                <Draggable key={project.id} draggableId={project.id} index={index}>
+                  {(provided, snapshot) => (
+                    <div
+                      ref={provided.innerRef}
+                      {...provided.draggableProps}
+                      {...provided.dragHandleProps}
+                      onClick={() => onOpenModal(project.id)}
+                      className={`kanban-card mb-3 ${
+                        snapshot.isDragging ? 'shadow-2xl ring-2 ring-primary' : ''
+                      }`}
+                      style={daysStale !== undefined ? { borderLeft: '3px solid #F59E0B', borderRadius: 8 } : undefined}
+                    >
+                      <KanbanCardContent
+                        project={project}
+                        isAdmin={isAdmin}
+                        daysStale={daysStale}
+                        columns={kanbanColumns}
+                        companyDisplayName={getCompanyDisplayName(project.companyName)}
+                        revisoesDoProjeto={revisoesPorProjeto.get(project.id) ?? VAZIO}
+                        onOpenModal={onOpenModal}
+                        onChangeStatus={onChangeStatus}
+                      />
+                    </div>
+                  )}
+                </Draggable>
+              );
+            })}
+            {provided.placeholder}
+            {projetos.length === 0 && (
+              <div className="text-center py-8 text-muted-foreground text-sm">
+                Nenhum projeto
+              </div>
+            )}
+          </div>
+        )}
+      </Droppable>
+    </motion.div>
+  );
+});
+
 export default function ProjectsKanban() {
   const [searchParams] = useSearchParams();
   const isMobile = useIsMobile();
@@ -546,15 +684,29 @@ export default function ProjectsKanban() {
   })) || fallbackColumns, [kanbanModel]);
 
   // Pre-grouped projects per column — O(N) once, not O(N×C) in the render loop
+  //
+  // E com REFERÊNCIA ESTÁVEL por coluna: ao mover um card, só duas colunas
+  // mudam de conteúdo. Se todas recebessem um array novo, o React.memo da
+  // coluna não seguraria nada e as nove voltariam a re-renderizar com os 194
+  // cards — que é a diferença que o usuário sentia entre o modal (rápido) e o
+  // arrastar (lento), set/2026.
+  const gruposAnteriores = useRef(new Map<string, ProjectWithDetails[]>());
   const projectsByStatus = useMemo(() => {
     const map = new Map<string, ProjectWithDetails[]>();
-    for (const col of kanbanColumns) {
-      map.set(col.id, []);
-    }
+    for (const col of kanbanColumns) map.set(col.id, []);
     for (const p of filteredProjects) {
       const bucket = map.get(p.status);
       if (bucket) bucket.push(p);
     }
+    // Reaproveita o array anterior quando a coluna não mudou (mesmos projetos,
+    // mesma ordem) — comparação rasa por identidade dos objetos.
+    for (const [chave, lista] of map) {
+      const antes = gruposAnteriores.current.get(chave);
+      if (antes && antes.length === lista.length && antes.every((p, i) => p === lista[i])) {
+        map.set(chave, antes);
+      }
+    }
+    gruposAnteriores.current = map;
     return map;
   }, [filteredProjects, kanbanColumns]);
 
@@ -814,103 +966,19 @@ export default function ProjectsKanban() {
               style={{ height: 'calc(100vh - 230px)', minHeight: 360 }}
             >
               {kanbanColumns.map((column, columnIndex) => (
-                <motion.div
+                <KanbanColumn
                   key={column.id}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: columnIndex * 0.1 }}
-                  className="flex-shrink-0 w-80 flex flex-col h-full min-h-0"
-                >
-                  {column.isRejectionStage ? (
-                    <div
-                      className="flex-shrink-0"
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 8,
-                        marginBottom: 16,
-                        background: '#E24B4A',
-                        borderRadius: 8,
-                        padding: '6px 12px',
-                      }}
-                    >
-                      <XCircle size={14} style={{ color: '#fff', flexShrink: 0 }} />
-                      <span style={{ fontWeight: 700, color: '#fff', fontSize: 14 }}>
-                        {column.title}
-                      </span>
-                      <span
-                        style={{
-                          marginLeft: 'auto',
-                          fontSize: 11,
-                          fontWeight: 700,
-                          background: 'rgba(255,255,255,0.2)',
-                          color: '#fff',
-                          borderRadius: 20,
-                          padding: '1px 8px',
-                        }}
-                      >
-                        {(projectsByStatus.get(column.id) || []).length}
-                      </span>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-3 mb-4 flex-shrink-0">
-                      <div className={`w-3 h-3 rounded-full ${column.color}`} />
-                      <h3 className="font-semibold text-foreground">{column.title}</h3>
-                      <Badge variant="secondary" className="ml-auto">
-                        {(projectsByStatus.get(column.id) || []).length}
-                      </Badge>
-                    </div>
-                  )}
-
-                  <Droppable droppableId={column.id}>
-                    {(provided, snapshot) => (
-                      <div
-                        ref={provided.innerRef}
-                        {...provided.droppableProps}
-                        className={`kanban-column transition-colors flex-1 min-h-0 overflow-y-auto scrollbar-thin ${
-                          snapshot.isDraggingOver ? 'bg-primary/10 ring-2 ring-primary/20' : ''
-                        }`}
-                      >
-                        {(projectsByStatus.get(column.id) || []).map((project, index) => {
-                          const daysStale = staleMap.get(project.id);
-                          return (
-                            <Draggable key={project.id} draggableId={project.id} index={index}>
-                              {(provided, snapshot) => (
-                                <div
-                                  ref={provided.innerRef}
-                                  {...provided.draggableProps}
-                                  {...provided.dragHandleProps}
-                                  onClick={() => handleOpenModal(project.id)}
-                                  className={`kanban-card mb-3 ${
-                                    snapshot.isDragging ? 'shadow-2xl ring-2 ring-primary' : ''
-                                  }`}
-                                  style={daysStale !== undefined ? { borderLeft: '3px solid #F59E0B', borderRadius: 8 } : undefined}
-                                >
-                                  <KanbanCardContent
-                                    project={project}
-                                    isAdmin={isAdmin}
-                                    daysStale={daysStale}
-                                    columns={kanbanColumns}
-                                    companyDisplayName={getCompanyDisplayName(project.companyName)}
-                                    revisoesDoProjeto={revisoesPorProjeto.get(project.id) ?? VAZIO}
-                                    onOpenModal={handleOpenModal}
-                                    onChangeStatus={handleChangeStatus}
-                                  />
-                                </div>
-                              )}
-                            </Draggable>
-                          );
-                        })}
-                        {provided.placeholder}
-                        {(projectsByStatus.get(column.id) || []).length === 0 && (
-                          <div className="text-center py-8 text-muted-foreground text-sm">
-                            Nenhum projeto
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </Droppable>
-                </motion.div>
+                  column={column}
+                  columnIndex={columnIndex}
+                  projetos={projectsByStatus.get(column.id) ?? VAZIO_PROJ}
+                  staleMap={staleMap}
+                  isAdmin={isAdmin}
+                  kanbanColumns={kanbanColumns}
+                  revisoesPorProjeto={revisoesPorProjeto}
+                  getCompanyDisplayName={getCompanyDisplayName}
+                  onOpenModal={handleOpenModal}
+                  onChangeStatus={handleChangeStatus}
+                />
               ))}
             </div>
           </DragDropContext>
