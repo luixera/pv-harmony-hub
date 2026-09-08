@@ -19,6 +19,9 @@ import { RevisionGeneralData, RevisionEquipment } from '@/hooks/useProjectRevisi
 import { useDocumentPreview } from '@/hooks/useDocumentPreview';
 import { detectTemplateTags, generateDocxFromTemplate } from '@/utils/docxGenerator';
 import { gerarFormularioEnel, baixarArquivo } from '@/utils/formFill/gerarFormularioEnel';
+import { ehFormularioCemig, gerarFormularioCemig } from '@/utils/formFill/gerarFormularioCemig';
+import { PerguntasCemigDialog } from '@/components/projects/PerguntasCemigDialog';
+import type { RespostasCemig } from '@/utils/formFill/cemigForm';
 import { useEquipmentCatalog } from '@/hooks/useEquipmentCatalog';
 import { useDocuments } from '@/hooks/useDocuments';
 import { supabase } from '@/integrations/supabase/client';
@@ -145,6 +148,10 @@ export function GenerateDocumentDialog({
   const [selectedTemplate, setSelectedTemplate] =
     useState<ConcessionaireTemplate | null>(null);
   const [isGenerating,     setIsGenerating]     = useState(false);
+  // Formulário da CEMIG: o modelo fica guardado enquanto o projetista responde
+  // as três perguntas que o cadastro não tem.
+  const [modeloCemig, setModeloCemig] = useState<ArrayBuffer | null>(null);
+  const [perguntasCemigAbertas, setPerguntasCemigAbertas] = useState(false);
 
   // ── Download loading states ────────────────────────────────────────────────
   const [isDownloading,    setIsDownloading]    = useState(false);
@@ -305,6 +312,16 @@ export function GenerateDocumentDialog({
       // célula). Nenhum dos dois passa pelo motor de tags, então saem prontos
       // direto para download, sem a etapa de prévia/edição.
       const extensao = selectedTemplate.name.toLowerCase().split('.').pop() ?? '';
+
+      // A CEMIG faz três perguntas que o cadastro do projeto não responde
+      // (FAST TRACK, Grid Zero e tipo de solicitação). Pergunta primeiro,
+      // gera depois — foram justamente elas que travaram esta automação.
+      if (ehFormularioCemig(selectedTemplate.name)) {
+        setModeloCemig(buffer);
+        setPerguntasCemigAbertas(true);
+        return;
+      }
+
       if (extensao === 'pdf' || extensao === 'xlsx') {
         const gerado = await gerarFormularioEnel(buffer, selectedTemplate.name, buildProjectValues());
         if (!gerado) {
@@ -820,6 +837,32 @@ export function GenerateDocumentDialog({
           </div>
         </div>
       </DialogContent>
+
+      <PerguntasCemigDialog
+        open={perguntasCemigAbertas}
+        onOpenChange={(v) => { setPerguntasCemigAbertas(v); if (!v) setIsGenerating(false); }}
+        gerando={isGenerating}
+        onConfirmar={(respostas: RespostasCemig) => {
+          if (!modeloCemig) return;
+          try {
+            const r = gerarFormularioCemig(modeloCemig, buildProjectValues(), respostas);
+            baixarArquivo(r.bytes, r.nomeArquivo, r.mime);
+            // Avisos não impedem o download — o projetista decide o que fazer.
+            // Mas ele não pode descobrir o problema só na devolutiva da CEMIG.
+            for (const aviso of r.avisos) toast.warning(aviso, { duration: 12000 });
+            if (r.avisos.length === 0) {
+              toast.success('Formulário MicroGD preenchido com os dados do projeto');
+            }
+            setPerguntasCemigAbertas(false);
+            onOpenChange(false);
+          } catch (e) {
+            console.error('[CEMIG] falha ao preencher', e);
+            toast.error('Não consegui preencher o formulário da CEMIG.');
+          } finally {
+            setIsGenerating(false);
+          }
+        }}
+      />
     </Dialog>
   );
 }

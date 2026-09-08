@@ -403,7 +403,11 @@
       "Bash(grep -n -i -E \"MATHEUS|UBERABA|BAROZA|20431870|20\\\\.431|Sim$|kW|W$|inversor|modulo|módulo|GROWATT|CANADIAN|JINKO|TRINA|DEYE|SOLIS\" cemig_celulas.txt)",
       "Bash(awk '/=== ABA 1/,/=== ABA 2/' cemig2.txt)",
       "Bash(node __TRACKED_VAR__/lepdf.cjs 'C:/Users/luiza/Desktop/DADOS/Projetos/GO POWER UBERABA/MATHEUS VINICIUS ALVES FERREIRA BAROZA/11 - PLANTA DE SITUAÇÃO ASSINADA.pdf' __TRACKED_VAR__/planta.txt)",
-      "Bash(awk '/=== ABA 3/,/=== ABA 4/' cemig2.txt)"
+      "Bash(awk '/=== ABA 3/,/=== ABA 4/' cemig2.txt)",
+      "Bash(cp __TRACKED_VAR__/test-cemig.ts ./_tc.ts)",
+      "Bash(node ./_tc.cjs 'C:/Users/luiza/Desktop/DADOS/Projetos/GO POWER UBERABA/MATHEUS VINICIUS ALVES FERREIRA BAROZA/CEMIG/Formulario-MicroGD_Rev_N4.xlsx' __TRACKED_VAR__/gerado.xlsx)",
+      "Bash(rm -f ./_tc.ts ./_tc.cjs)",
+      "Bash(grep -n \"^    </Dialog>\\\\|</Dialog>$\" src/components/projects/GenerateDocumentDialog.tsx)"
     ]
   }
 }
