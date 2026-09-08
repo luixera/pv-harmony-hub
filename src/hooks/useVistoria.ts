@@ -40,6 +40,36 @@ export function useVistoriaStatus(projectId: string | undefined, habilitado = tr
   });
 }
 
+/**
+ * Projetos com pedido de vistoria EM ABERTO — uma consulta para o quadro
+ * inteiro, não uma por card (o quadro já teve esse problema: 194 requisições
+ * para uma tabela minúscula, set/2026).
+ *
+ * Quem vê o quê sai do próprio RLS de `tasks`: o admin enxerga todas, e o
+ * projetista só as que criou ou que lhe foram atribuídas. Ou seja, o destaque
+ * aparece para o admin e para o projetista responsável — decisão do usuário.
+ * Por isso não há função no banco aqui: a permissão que já existe basta.
+ */
+export function useVistoriasPendentes() {
+  return useQuery({
+    queryKey: ['vistorias-pendentes'],
+    queryFn: async (): Promise<Set<string>> => {
+      const { data, error } = await supabase
+        .from('tasks' as never)
+        .select('project_id')
+        .eq('origin', 'vistoria_request')
+        .in('status', ['pending', 'in_progress']);
+      if (error) throw error;
+      const ids = new Set<string>();
+      for (const t of (data ?? []) as { project_id: string | null }[]) {
+        if (t.project_id) ids.add(t.project_id);
+      }
+      return ids;
+    },
+    staleTime: 60_000,
+  });
+}
+
 export function useSolicitarVistoria() {
   const qc = useQueryClient();
   return useMutation({
@@ -51,6 +81,8 @@ export function useSolicitarVistoria() {
     },
     onSuccess: (r, projectId) => {
       qc.invalidateQueries({ queryKey: ['vistoria-status', projectId] });
+      // o quadro destaca os projetos com pedido em aberto
+      qc.invalidateQueries({ queryKey: ['vistorias-pendentes'] });
       qc.invalidateQueries({ queryKey: ['tasks'], exact: false });
       qc.invalidateQueries({ queryKey: ['comments', projectId] });
       qc.invalidateQueries({ queryKey: ['project-history', projectId] });

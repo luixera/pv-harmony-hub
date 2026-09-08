@@ -22,6 +22,7 @@ import { useRegisterProtocol } from '@/hooks/useProjectProtocol';
 import { useSearchParams } from 'react-router-dom';
 import { Search, Building2, Zap, MapPin, Loader2, ChevronRight, ArrowRight, AlertCircle, DollarSign, MoreVertical, Trash2, Users, FileOutput, ExternalLink, XCircle, Clock, Hash, Archive, ArchiveRestore } from 'lucide-react';
 import { useProjectRevisions, useAllRevisionSummaries, RevisionSummary } from '@/hooks/useProjectRevisions';
+import { useVistoriasPendentes } from '@/hooks/useVistoria';
 import { Database } from '@/integrations/supabase/types';
 import { ProjectModal } from '@/components/projects/ProjectModal';
 import { StaffAssignmentDialog } from '@/components/projects/StaffAssignmentDialog';
@@ -121,6 +122,8 @@ type KanbanCol = {
 const VAZIO: RevisionSummary[] = [];
 /** Idem para a coluna sem projetos. */
 const VAZIO_PROJ: ProjectWithDetails[] = [];
+/** Idem para o conjunto de pedidos de vistoria. */
+const VAZIO_SET: Set<string> = new Set();
 
 // ── Memoized card inner content ──────────────────────────────────────────────
 // Extracted so React.memo can skip re-renders during drag (only outer div
@@ -132,6 +135,7 @@ const KanbanCardContent = memo(function KanbanCardContent({
   columns,
   companyDisplayName,
   revisoesDoProjeto,
+  pediuVistoria,
   onOpenModal,
   onChangeStatus,
 }: {
@@ -142,6 +146,8 @@ const KanbanCardContent = memo(function KanbanCardContent({
   companyDisplayName: string;
   /** Revisões já carregadas em lote pelo quadro — o card não consulta nada. */
   revisoesDoProjeto: RevisionSummary[];
+  /** O cliente pediu vistoria e a equipe ainda não atendeu. */
+  pediuVistoria: boolean;
   onOpenModal: (id: string) => void;
   onChangeStatus: (id: string, status: ProjectStatus) => void;
 }) {
@@ -152,6 +158,16 @@ const KanbanCardContent = memo(function KanbanCardContent({
       <div className="flex items-start justify-between mb-3">
         <span className="text-xs font-mono text-primary">{project.code}</span>
         <div className="flex items-center gap-1">
+          {pediuVistoria && (
+            <span
+              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold"
+              style={{ background: '#E7F0FE', color: '#1D4ED8', border: '0.5px solid #93B4F5' }}
+              title="O cliente solicitou a vistoria e a equipe ainda não atendeu"
+            >
+              <Search className="w-2.5 h-2.5" />
+              Vistoria solicitada
+            </span>
+          )}
           <RevisionBadge revisions={revisoesDoProjeto} />
           {/* só aparece com "Mostrar arquivados" ligado — fora disso o card nem
               está na lista */}
@@ -468,6 +484,7 @@ const KanbanColumn = memo(function KanbanColumn({
   isAdmin,
   kanbanColumns,
   revisoesPorProjeto,
+  vistoriasPendentes,
   getCompanyDisplayName,
   onOpenModal,
   onChangeStatus,
@@ -479,6 +496,8 @@ const KanbanColumn = memo(function KanbanColumn({
   isAdmin: boolean;
   kanbanColumns: KanbanCol[];
   revisoesPorProjeto: Map<string, RevisionSummary[]>;
+  /** Projetos com vistoria pedida pelo cliente e ainda não atendida. */
+  vistoriasPendentes: Set<string>;
   getCompanyDisplayName: (nome: string | undefined | null) => string;
   onOpenModal: (id: string) => void;
   onChangeStatus: (id: string, status: ProjectStatus) => void;
@@ -542,6 +561,9 @@ const KanbanColumn = memo(function KanbanColumn({
           >
             {projetos.map((project, index) => {
               const daysStale = staleMap.get(project.id);
+              // Azul (vistoria pedida) vence o âmbar (parado): é o que exige
+              // ação agora. O selo de "parado" continua aparecendo no card.
+              const pediuVistoria = vistoriasPendentes.has(project.id);
               return (
                 <Draggable key={project.id} draggableId={project.id} index={index}>
                   {(provided, snapshot) => (
@@ -553,7 +575,13 @@ const KanbanColumn = memo(function KanbanColumn({
                       className={`kanban-card mb-3 ${
                         snapshot.isDragging ? 'shadow-2xl ring-2 ring-primary' : ''
                       }`}
-                      style={daysStale !== undefined ? { borderLeft: '3px solid #F59E0B', borderRadius: 8 } : undefined}
+                      style={
+                        pediuVistoria
+                          ? { borderLeft: '3px solid #2563EB', borderRadius: 8, background: '#F5F9FF' }
+                          : daysStale !== undefined
+                            ? { borderLeft: '3px solid #F59E0B', borderRadius: 8 }
+                            : undefined
+                      }
                     >
                       <KanbanCardContent
                         project={project}
@@ -562,6 +590,7 @@ const KanbanColumn = memo(function KanbanColumn({
                         columns={kanbanColumns}
                         companyDisplayName={getCompanyDisplayName(project.companyName)}
                         revisoesDoProjeto={revisoesPorProjeto.get(project.id) ?? VAZIO}
+                        pediuVistoria={pediuVistoria}
                         onOpenModal={onOpenModal}
                         onChangeStatus={onChangeStatus}
                       />
@@ -597,6 +626,8 @@ export default function ProjectsKanban() {
   const { data: projects = [], isLoading } = useProjects({ incluirArquivados: mostrarArquivados });
   // Revisões de todos os projetos numa consulta só (antes: uma por card).
   const { data: revisoesPorProjeto = new Map() } = useAllRevisionSummaries();
+  // Projetos com pedido de vistoria do cliente ainda em aberto.
+  const { data: vistoriasPendentes = VAZIO_SET } = useVistoriasPendentes();
   const { data: companies = [] } = useCompanies();
   const { data: concessionaires = [] } = useEnergyConcessionaires();
   const { getCompanyDisplayName, shouldHideCompanyName } = useCompanyDisplay();
@@ -698,6 +729,16 @@ export default function ProjectsKanban() {
       const bucket = map.get(p.status);
       if (bucket) bucket.push(p);
     }
+    // Projeto com vistoria pedida pelo cliente sobe ao TOPO da própria coluna
+    // (pedido do usuário: "assim é mais fácil ver os que precisam de atenção").
+    // O card não muda de etapa — só de posição dentro dela. `sort` é estável em
+    // JS, então o resto preserva a ordem que já vinha (mais recente primeiro).
+    if (vistoriasPendentes.size > 0) {
+      for (const lista of map.values()) {
+        lista.sort((a, b) =>
+          Number(vistoriasPendentes.has(b.id)) - Number(vistoriasPendentes.has(a.id)));
+      }
+    }
     // Reaproveita o array anterior quando a coluna não mudou (mesmos projetos,
     // mesma ordem) — comparação rasa por identidade dos objetos.
     for (const [chave, lista] of map) {
@@ -708,7 +749,7 @@ export default function ProjectsKanban() {
     }
     gruposAnteriores.current = map;
     return map;
-  }, [filteredProjects, kanbanColumns]);
+  }, [filteredProjects, kanbanColumns, vistoriasPendentes]);
 
   // ── Stable callbacks (prevent KanbanCardContent re-renders via React.memo) ─
   const handleOpenModal = useCallback((id: string) => setModalProjectId(id), []);
@@ -975,6 +1016,7 @@ export default function ProjectsKanban() {
                   isAdmin={isAdmin}
                   kanbanColumns={kanbanColumns}
                   revisoesPorProjeto={revisoesPorProjeto}
+                  vistoriasPendentes={vistoriasPendentes}
                   getCompanyDisplayName={getCompanyDisplayName}
                   onOpenModal={handleOpenModal}
                   onChangeStatus={handleChangeStatus}
