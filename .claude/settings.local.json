@@ -377,7 +377,19 @@
       "Bash(grep -n \"projetos\\\\`\\\\|projectsInMonth\\\\|concessionaireName\" src/hooks/useFinancialReport.ts src/components/financial/FinancialReportModal.tsx)",
       "Bash(curl -s -m 90 -o b.js \"https://homologamanager.com.br/assets/index-Cs6ZGSGX.js\")",
       "Bash(grep -o 'hideFranchiseUsage[^,;]\\\\{0,60\\\\}' b.js)",
-      "Bash(curl -sI -m 25 https://homologamanager.com.br/assets/index-Cs6ZGSGX.js)"
+      "Bash(curl -sI -m 25 https://homologamanager.com.br/assets/index-Cs6ZGSGX.js)",
+      "Bash(curl -sI -m 25 https://homologamanager.com.br/dashboard-admin)",
+      "Bash(npx -y supabase db query --linked -f \"C:/Users/luiza/AppData/Local/Temp/claude/C--Users-luiza-Desktop-DADOS-DESENVOLVIMENTO---GD-MANAGER-ENERGY-pv-harmony-hub-main-pv-harmony-hub-main/d13f144e-b872-4aa5-8701-ed8dea13ee4e/scratchpad/regras.sql\")",
+      "Bash(npx -y supabase db query --linked -f \"C:/Users/luiza/AppData/Local/Temp/claude/C--Users-luiza-Desktop-DADOS-DESENVOLVIMENTO---GD-MANAGER-ENERGY-pv-harmony-hub-main-pv-harmony-hub-main/d13f144e-b872-4aa5-8701-ed8dea13ee4e/scratchpad/cena2.sql\")",
+      "Bash(npx -y supabase storage --help)",
+      "Bash(npx -y supabase storage cp --linked \"ss:///equipment-documents/ce7ac098-d576-4fd4-9291-621af672ea27/datasheet/DATASHEET_AUXSOL_ASN-7.5SL.pdf\" ./auxsol.pdf)",
+      "Bash(npx -y supabase storage cp --experimental --linked \"ss:///equipment-documents/ce7ac098-d576-4fd4-9291-621af672ea27/datasheet/DATASHEET_AUXSOL_ASN-7.5SL.pdf\" ./auxsol.pdf)",
+      "Bash(npx -y supabase storage cp --experimental --linked ss:///equipment-documents/ce7ac098-d576-4fd4-9291-621af672ea27/datasheet/DATASHEET_AUXSOL_ASN-7.5SL.pdf __TRACKED_VAR__/auxsol.pdf)",
+      "Bash(npx -y supabase storage cp --experimental --linked \"ss:///equipment-documents/ce7ac098-d576-4fd4-9291-621af672ea27/datasheet/DATASHEET_AUXSOL_ASN-7.5SL.pdf\" auxsol.pdf)",
+      "Bash(node __TRACKED_VAR__/lepdf.cjs auxsol.pdf __TRACKED_VAR__/auxsol.txt)",
+      "Bash(grep -o -i -E '\\(monof|trif|single|three|phase|fase\\)[^ ]{0,30}' __TRACKED_VAR__/auxsol.txt)",
+      "Bash(grep -o -E \"ASN-?7[^ ]{0,12}|7500|7\\\\.5[kK]\" auxsol.txt)",
+      "Bash(rm -f auxsol.pdf)"
     ]
   }
 }

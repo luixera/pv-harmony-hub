@@ -19,7 +19,7 @@ import { useDiagramTemplates } from '@/hooks/useDiagramTemplates';
 import { resolveEntryRule, useEntryRules } from '@/hooks/useEntryRules';
 import { useEngineeringRuleMap } from '@/hooks/useEngineeringRules';
 import {
-  MicroPlan, ProjectArrangementOption, inverterSpecsFromTechSpecs, isMicroinverter,
+  MicroPlan, ProjectArrangementOption, inverterSpecsFromTechSpecs, isMicroinverter, resolveInverterPhase,
   microSpecsFromTechSpecs, moduleSpecsFromTechSpecs, ruleValue, suggestBreakerPlan,
   suggestElectricalSizing, suggestMicroinverterPlan, suggestProjectArrangement,
   stringTableRows,
@@ -382,6 +382,44 @@ export function UnifilarTab({ project: projetoRecebido }: { project: ProjectWith
   // Teto de micros por ramal escolhido na mão. Nulo = o padrão do motor (o
   // mais conservador entre datasheet e regra).
   const [microPerBranch, setMicroPerBranch] = useState<number | null>(null);
+
+  /**
+   * A fase de saida do inversor veio do DATASHEET ou foi deduzida pela
+   * potencia? Dessa resposta saem a corrente, o disjuntor e a bitola.
+   *
+   * Existe por causa do PRJ-66266 (set/2026): um AUXSOL ASN-7.5SL, monofasico
+   * 220V com 34A de saida, foi deduzido como trifasico por ter 7,5kW. O
+   * diagrama saiu com 11,4A, disjuntor de 16A e cabo de 2,5mm2 — um terco do
+   * necessario, e nada na tela denunciava que a fase era um palpite.
+   */
+  const faseInversor = useMemo(() => {
+    if (!suggestOpen || ruleMap.size === 0) return null;
+    const powerKw = Number(project.equipment?.inverter_power ?? 0) || undefined;
+    return resolveInverterPhase({
+      specs: inverterSpecsFromTechSpecs(inverterCatalog?.tech_specs ?? null, powerKw),
+      powerKw,
+      supplyPhaseType: phaseTypeOf(project.generalData?.phase_type),
+    }, ruleMap);
+  }, [suggestOpen, ruleMap, inverterCatalog, project.equipment, project.generalData]);
+
+  /** Fase deduzida = o motor esta chutando. A tela nao deixa gerar assim. */
+  const faseChutada = faseInversor?.source === 'potencia';
+
+  /** Confirma a fase GRAVANDO no catalogo: o proximo projeto ja nasce certo. */
+  const confirmarFase = async (fases: number, tensao: number) => {
+    if (!inverterCatalog) return;
+    await saveEquipment.mutateAsync({
+      id: inverterCatalog.id,
+      type: 'inverter',
+      brand: inverterCatalog.brand,
+      model: inverterCatalog.model,
+      power: inverterCatalog.power,
+      datasheet_url: inverterCatalog.datasheet_url,
+      inmetro_url: inverterCatalog.inmetro_url,
+      afci_url: inverterCatalog.afci_url,
+      tech_specs: { ...(inverterCatalog.tech_specs ?? {}), ac_phases: fases, ac_voltage_v: tensao },
+    } as never);
+  };
 
   const microPlan = useMemo(() => {
     if (!isMicro || !suggestOpen || ruleMap.size === 0) return null;
@@ -918,6 +956,52 @@ export function UnifilarTab({ project: projetoRecebido }: { project: ProjectWith
                 </span>
               </div>
             ))}
+            {/* TRAVA DE SEGURANÇA — a fase não veio do datasheet.
+                Não é um aviso a mais: o disjuntor e a bitola do desenho saem
+                daqui, e errar a fase erra a corrente na mesma proporção (3×
+                entre monofásico 220V e trifásico 380V). Só libera a geração
+                depois que alguém confirmar, e a confirmação vai para o
+                catálogo — o próximo projeto com este inversor já nasce certo. */}
+            {faseChutada && (
+              <div style={{
+                borderRadius: 8, padding: '10px 12px',
+                background: '#FDECEC', border: '1px solid #F5B5B5', color: '#8A2B2B',
+              }}>
+                <p style={{ fontSize: 12, fontWeight: 700, margin: 0 }}>
+                  Confirme a fase de saída do inversor antes de gerar
+                </p>
+                <p style={{ fontSize: 11.5, margin: '4px 0 0', lineHeight: 1.5 }}>
+                  O datasheet de <strong>{project.equipment?.inverter_brand} {project.equipment?.inverter_model}</strong>{' '}
+                  não informa a fase de saída, então o motor deduziu{' '}
+                  <strong>{faseInversor?.phaseType} em {faseInversor?.voltageV}V</strong> só pela potência.
+                  O disjuntor e a bitola vêm daí — se estiver errado, a corrente erra junto.
+                </p>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+                  {([
+                    ['Monofásico 220V', 1, 220],
+                    ['Bifásico 220V', 2, 220],
+                    ['Trifásico 380V', 3, 380],
+                  ] as [string, number, number][]).map(([rotulo, fases, tensao]) => (
+                    <button
+                      key={rotulo}
+                      onClick={() => confirmarFase(fases, tensao)}
+                      disabled={saveEquipment.isPending}
+                      style={{
+                        padding: '5px 12px', borderRadius: 7, fontSize: 11.5, fontWeight: 700,
+                        border: '1px solid #C24141', background: '#fff', color: '#8A2B2B',
+                        cursor: saveEquipment.isPending ? 'wait' : 'pointer',
+                      }}
+                    >
+                      {rotulo}
+                    </button>
+                  ))}
+                </div>
+                <p style={{ fontSize: 10.5, margin: '7px 0 0', opacity: 0.85 }}>
+                  A escolha é gravada no Catálogo de Equipamentos. Se o datasheet estiver
+                  anexado, o botão “Ler datasheet” do bloco acima preenche isso e mais.
+                </p>
+              </div>
+            )}
             {engineResult.options.map(opt => (
               <div key={opt.id} style={{
                 display: 'flex', alignItems: 'center', gap: 10, background: '#fff',
@@ -932,8 +1016,10 @@ export function UnifilarTab({ project: projetoRecebido }: { project: ProjectWith
                   ))}
                 </div>
                 <button
-                  onClick={() => applySuggestion(opt)}
-                  style={{ padding: '6px 14px', borderRadius: 7, border: 'none', background: '#2D7A3A', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}
+                  onClick={() => { if (!faseChutada) applySuggestion(opt); }}
+                  disabled={faseChutada}
+                  title={faseChutada ? 'Confirme a fase de saída do inversor antes de gerar' : undefined}
+                  style={{ padding: '6px 14px', borderRadius: 7, border: 'none', background: faseChutada ? '#CBD5C0' : '#2D7A3A', color: faseChutada ? '#6B7280' : '#fff', fontSize: 12, fontWeight: 700, cursor: faseChutada ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap' }}
                 >
                   Usar esta
                 </button>

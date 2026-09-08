@@ -544,13 +544,23 @@ export function resolveInverterPhase(input: {
     limitadoPelaUC = true;
   }
   const voltageV = tensaoDatasheet ?? (phaseType === 'trifasico' ? triV : monoV);
+  // ATENÇÃO — este alerta já foi 'info' e custou caro (PRJ-66266, set/2026):
+  // um AUXSOL ASN-7.5SL, que é MONOFÁSICO 220V com 34A de saída, foi deduzido
+  // como trifásico só por ter 7,5kW (acima do limite de 6kW da regra). A
+  // corrente saiu 11,4A em vez de 34A e o diagrama foi gerado com disjuntor de
+  // 16A e cabo de 2,5mm² — um terço do necessário. Nada no desenho denunciava
+  // que a fase tinha sido CHUTADA.
+  //
+  // A dedução por potência é frágil por natureza: quase todo inversor de 7,5kW
+  // vendido no Brasil é monofásico. Isto é 'warning', e a tela exige
+  // confirmação antes de gerar (ver UnifilarTab).
   alerts.push({
-    severity: 'info', code: 'inverter_phase_estimated',
-    message: `Saída do inversor deduzida como ${phaseType} em ${voltageV}V`
-      + (potencia ? ` (${potencia}kW ${potencia > limiteMonoKw ? 'acima' : 'até'} do limite de ${limiteMonoKw}kW da regra)` : '')
+    severity: 'warning', code: 'inverter_phase_estimated',
+    message: `A fase de saída deste inversor NÃO veio do datasheet — foi deduzida como ${phaseType} em ${voltageV}V`
+      + (potencia ? ` só pela potência (${potencia}kW ${potencia > limiteMonoKw ? 'acima' : 'até'} do limite de ${limiteMonoKw}kW da regra)` : '')
       + (limitadoPelaUC ? `, limitada ao padrão de entrada ${supply} da UC` : '')
-      + '.',
-    suggestion: 'Preencha "Fases na saída CA" do inversor no Catálogo de Equipamentos — a corrente do disjuntor depende disso.',
+      + '. O disjuntor e a bitola saem daí: se a fase estiver errada, a corrente erra na mesma proporção.',
+    suggestion: 'Confirme a fase antes de gerar o diagrama — ou leia o datasheet do inversor para preencher "Fases na saída CA" no catálogo.',
     source: ruleSource(rules, 'protections.single_phase_max_kw'),
   });
   return { phaseType, voltageV, source: 'potencia', alerts };
