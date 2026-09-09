@@ -87,6 +87,30 @@ export interface SheetOptions {
 /** Largura do carimbo dentro da faixa do rodapé (o resto vira quadro de notas). */
 const TITLE_BLOCK_W_FRAC = 0.55;
 
+/**
+ * Largura aproximada de um texto, em mm.
+ *
+ * A fonte da prancha é de largura variável, então isto é estimativa — mas é a
+ * MESMA estimativa que os cortes do carimbo e das tabelas já usavam
+ * (1,35mm/caractere no tamanho 2,6; 0,95 no 1,8; 0,82 no 1,6), ou seja
+ * ~0,52 × tamanho por caractere. Ter a conta num lugar só é o que permite
+ * decidir folha e quebra de linha pelo conteúdo, em vez de no olho.
+ */
+export const CHAR_W_RATIO = 0.52;
+export const textWidthMm = (texto: string, size: number) => texto.length * size * CHAR_W_RATIO;
+
+/**
+ * Quebra o texto em linhas que caibam em `larguraMm`, sem cortar palavra.
+ *
+ * Uma palavra sozinha maior que a faixa fica na linha dela: partir
+ * "CHSM66RN(DG)/F-BH610" no meio é pior que deixar passar um pouco da coluna.
+ */
+export function wrapToWidthMm(texto: string, larguraMm: number, size: number): string[] {
+  const maxChars = Math.max(4, Math.floor(larguraMm / (size * CHAR_W_RATIO)));
+  const linhas = wrapText(texto, maxChars);
+  return linhas.length > 0 ? linhas : [texto];
+}
+
 /** Quebra `texto` em linhas de no máximo `maxChars`, sem cortar palavra. */
 function wrapText(texto: string, maxChars: number): string[] {
   const palavras = texto.split(/\s+/).filter(Boolean);

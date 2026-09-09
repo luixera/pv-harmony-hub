@@ -453,6 +453,33 @@ Tudo isso vale igual no editor do projeto e no motor de templates (mesma
 `Scene`), e sai idêntico no SVG e no PDF exportados (primitiva `rect`/`line`
 ganhou `dashed`; camada nova `GROUP_BOX`).
 
+### Prancha apertada — largura de rótulo (set/2026)
+O tamanho da folha era escolhido só pelo **número de fileiras**
+(`pickPaper`), e o rótulo de cada símbolo era desenhado com o comprimento que
+tivesse. Num projeto de duas fileiras com o modelo do módulo e o do
+microinversor na legenda (`GOKIN OK 4-66HTBD-610M F`,
+`Microinversores – Ramal 1`), o texto passava dos 30 mm de passo da coluna do
+A4: os blocos ficavam com 1,6 mm de folga entre si e a legenda do módulo saía
+por fora da moldura. É a "prancha apertada" relatada pelo usuário.
+
+Três peças resolvem, e as três moram no motor:
+
+1. `textWidthMm` / `wrapToWidthMm` (`paper.ts`) — a conta de largura que os
+   cortes do carimbo já usavam (~0,52 × tamanho por caractere), agora num
+   lugar só, para decidir por medida em vez de no olho.
+2. `pickPaper` recebe `labels`/`legends` e **mede o texto**: se o mais largo
+   não couber na coluna do A4, a prancha nasce em A3 (passo de 46 mm) — sem
+   encolher a fonte do desenho. Projeto simples continua em A4.
+3. `medirLarguraDosRotulos` grava em cada símbolo o `labelWidthMm` (distância
+   até o vizinho da mesma fileira, menos a calha) e `labelLines` **quebra** o
+   que passar disso. É a rede de segurança: vale para o esquemático, para o
+   botão *Organizar* (que remede depois de alinhar) e para diagramas antigos
+   presos ao A4. Rótulo que o usuário arrastou para fora da coluna fica sem
+   limite — a posição foi escolha dele.
+
+`labelLines` é o **ponto único** de quebra: o canvas do editor e o exportador
+chamam a mesma função, então o que se vê na tela é o que sai no PDF.
+
 ## Componentes e fotos adicionados manualmente
 Além dos 5 componentes que vêm do cadastro do projeto (`TechnicalJsonMvp`), a
 paleta "Adicionar" na barra de ferramentas cria uma instância solta de

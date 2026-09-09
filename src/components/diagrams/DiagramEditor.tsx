@@ -10,7 +10,7 @@ import {
   PlacedShape, PlacedSymbol, PlacedText, SheetOptions, blockCenter, buildSceneFromPlacement, buildSheetFurnitureScene,
   computeAllConnectionPoints, connectionDependsOn, connectionLabelPosition, detachDerivations, findNearestPort,
   findLineSnapPoint, findNearestSymbol, healConnectionsThrough, initialConnections, initialPlacement,
-  deleteSegmentPlan, labelAnchor, nearestPointOnPolyline, orthogonalPath, orthoSnapPoint, pointAtT, portPagePosition, segmentDragPlan,
+  deleteSegmentPlan, labelAnchor, labelLines, nearestPointOnPolyline, orthogonalPath, orthoSnapPoint, pointAtT, portPagePosition, segmentDragPlan,
   SERIES_KINDS, shapePrimitives, SNAP_RADIUS, snapToGrid, splitConnectionAtSymbol, usedConductorsOf, usedKindsOf,
 } from '@/utils/cadEngine/editableLayout';
 import { ComponentKind, Point, TechnicalJsonMvp } from '@/utils/cadEngine/types';
@@ -2077,13 +2077,12 @@ export function DiagramEditor({
                   // era por isso que "não dava pra editar a legenda" (jul/2026).
                   // Este retângulo transparente (fill 'transparent', e NÃO
                   // 'none', que não recebe clique) cobre o bloco todo.
-                  const linhas = [
-                    { txt: resolveProjectTags(p.label, values), fs: 2.6 },
-                    ...p.legend.map(l => ({ txt: resolveProjectTags(l, values), fs: 2.4 })),
-                  ];
-                  const larguraMm = Math.max(10, ...linhas.map(l => l.txt.length * l.fs * 0.55));
+                  // MESMA quebra do exportador (labelLines): o que aparece na
+                  // tela tem de ser o que sai no PDF entregue à concessionária.
+                  const linhas = labelLines(p, s => resolveProjectTags(s, values));
+                  const larguraMm = Math.max(10, ...linhas.map(l => l.text.length * l.size * 0.55));
                   const topoMm = at.y - 2.8;
-                  const alturaMm = 3.2 + p.legend.length * 3.4;
+                  const alturaMm = 3.2 + (linhas.length - 1) * 3.4;
                   return (
                     <g
                       style={{ cursor: 'move' }}
@@ -2108,9 +2107,14 @@ export function DiagramEditor({
                           stroke="#BBB" strokeWidth={0.25} strokeDasharray="1,1"
                         />
                       )}
-                      <text x={at.x} y={at.y} fontSize={2.6} textAnchor="middle" fontWeight="bold" fill="#333">{resolveProjectTags(p.label, values)}</text>
-                      {p.legend.map((line, i) => (
-                        <text key={i} x={at.x} y={at.y + (i + 1) * 3.4} fontSize={2.4} textAnchor="middle" fill="#333">{resolveProjectTags(line, values)}</text>
+                      {linhas.map((linha, i) => (
+                        <text
+                          key={i} x={at.x} y={at.y + i * 3.4}
+                          fontSize={linha.size} textAnchor="middle"
+                          fontWeight={linha.bold ? 'bold' : undefined} fill="#333"
+                        >
+                          {linha.text}
+                        </text>
                       ))}
                     </g>
                   );

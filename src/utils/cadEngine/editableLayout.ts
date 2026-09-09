@@ -4,6 +4,7 @@ import { WARNING_PLATE_ENEL, WARNING_PLATE_GENERIC } from './warningPlates';
 import {
   CENTER_Y, DRAW_BOTTOM, DRAW_TOP, drawFrameAndHeader, drawInfoTables, drawLegendTable, drawTitleBlock,
   LEGEND_LINE_H, LEGEND_W, LEGEND_X0, MARGIN, paperOf, PaperSize, PITCH_X, SheetOptions, START_X, TITLE_BLOCK_H,
+  textWidthMm, wrapToWidthMm,
 } from './paper';
 import { resolveProjectTags } from '@/utils/projectValues';
 
@@ -32,6 +33,32 @@ export interface PlacedSymbol {
    *  onde quiser quando o desenho aperta. Ausente = posição padrão. */
   labelDx?: number;
   labelDy?: number;
+  /** Largura (mm) que o bloco de rótulo pode ocupar sem invadir o símbolo
+   *  vizinho. O builder calcula pela distância até o vizinho da mesma fileira;
+   *  o texto que passar disso é QUEBRADO em linhas. Ausente = sem limite
+   *  (símbolo solto, posto à mão pelo usuário). */
+  labelWidthMm?: number;
+}
+
+/**
+ * As linhas do bloco de rótulo (nome + legendas), já quebradas na largura que o
+ * símbolo tem disponível.
+ *
+ * Ponto ÚNICO: o canvas do editor e o exportador chamam esta função. Se cada um
+ * quebrasse por conta própria, o que se vê na tela deixaria de ser o que sai no
+ * PDF — e o desenho que a concessionária recebe é o segundo.
+ */
+export function labelLines(
+  p: PlacedSymbol,
+  resolve: (s: string) => string = s => s,
+): { text: string; size: number; bold: boolean }[] {
+  const largura = p.labelWidthMm;
+  const quebra = (t: string, size: number) =>
+    (largura ? wrapToWidthMm(resolve(t), largura, size) : [resolve(t)]);
+  return [
+    ...quebra(p.label, 2.6).map(text => ({ text, size: 2.6, bold: true })),
+    ...p.legend.flatMap(l => quebra(l, 2.4).map(text => ({ text, size: 2.4, bold: false }))),
+  ];
 }
 
 /** Distância padrão entre a base do símbolo e a 1ª linha do rótulo (mm). */
@@ -1090,6 +1117,10 @@ export function pickPaper(need: {
   hasMap?: boolean;
   /** Prancha com DADOS TÉCNICOS + MEMÓRIA DE CÁLCULO na coluna direita. */
   hasTables?: boolean;
+  /** Rótulos (negrito, 2,6mm) que vão sob os símbolos das fileiras. */
+  labels?: string[];
+  /** Linhas de legenda (2,4mm) desses mesmos símbolos. */
+  legends?: string[];
 }): PaperSize {
   const rows = Math.max(1, need.rows);
   // As duas tabelas ocupam ~110 mm da coluna direita, e em A4 essa coluna só
@@ -1102,11 +1133,56 @@ export function pickPaper(need: {
     // o esquemático empilha módulos sobre o micro: só 1 ramal cabe em A4
     return rows > 1 || (need.unitsPerRow ?? 1) > 3 || need.hasMap ? 'A3' : 'A4';
   }
+  // Aperto na HORIZONTAL: contar fileiras não basta. A coluna do A4 tem 30 mm
+  // de passo, e um projeto de duas fileiras estoura isso fácil quando a legenda
+  // carrega o modelo do módulo e o do microinversor ("Microinversores – Ramal
+  // 1" já mede ~34 mm). O texto encavalava o bloco vizinho e a prancha saía
+  // apertada — relatado pelo usuário (set/2026). Nesse caso o A3, com passo de
+  // 46 mm, é o que resolve sem encolher a fonte do desenho.
+  if (larguraDoTextoNaoCabe(colunaUtil('A4'), need.labels, need.legends)) return 'A3';
+
   // compacto: em A4 as fileiras começam a encolher a partir de 4 (com planta
   // de localização, 3) — daí em diante o A3 mantém os símbolos no tamanho
   const maxA4 = need.hasMap ? 3 : 4;
   return rows > maxA4 ? 'A3' : 'A4';
 }
+
+/**
+ * Diz a cada símbolo quanta largura o rótulo dele tem — a distância até o
+ * vizinho mais próximo da MESMA fileira, menos a calha.
+ *
+ * É o que faltava no motor: o rótulo era desenhado com o comprimento que
+ * tivesse, e num projeto com o modelo do módulo e o do microinversor na legenda
+ * o texto entrava por cima do bloco ao lado. Com a largura conhecida,
+ * `labelLines` quebra em vez de invadir. Símbolo sem vizinho na fileira fica
+ * sem limite — não há o que invadir.
+ */
+export function medirLarguraDosRotulos(itens: PlacedSymbol[]) {
+  const MESMA_FILEIRA = 10;   // metade da caixa do símbolo: separa fileira de fileira
+  for (const p of itens) {
+    // Rótulo que o usuário arrastou pra fora da coluna não é mais problema
+    // nosso — ele escolheu onde o texto fica, e limitar a largura ali seria
+    // desfazer a escolha dele.
+    if (p.labelDx || p.labelDy) { p.labelWidthMm = undefined; continue; }
+    let menor = Infinity;
+    for (const o of itens) {
+      if (o === p || Math.abs(o.y - p.y) > MESMA_FILEIRA) continue;
+      menor = Math.min(menor, Math.abs(o.x - p.x));
+    }
+    p.labelWidthMm = Number.isFinite(menor) ? Math.max(24, menor - LABEL_GUTTER) : undefined;
+  }
+}
+
+/** Largura útil de uma coluna de símbolo na folha (passo menos a calha). */
+export const colunaUtil = (paper: PaperSize) =>
+  Math.max(24, SHEET_LAYOUT[paper].X_INV - SHEET_LAYOUT[paper].X_PV - LABEL_GUTTER);
+
+/** Folga entre o rótulo de um símbolo e o do vizinho (mm). */
+const LABEL_GUTTER = 2;
+
+const larguraDoTextoNaoCabe = (larguraMm: number, labels?: string[], legends?: string[]) =>
+  (labels ?? []).some(t => textWidthMm(t, 2.6) > larguraMm)
+  || (legends ?? []).some(t => textWidthMm(t, 2.4) > larguraMm);
 
 export function buildMultiArrangementScene(options: {
   inverterCount: number;
@@ -1198,11 +1274,19 @@ export function buildMultiArrangementScene(options: {
   // A base da última fileira depende de quantas linhas de RÓTULO ela tem
   // embaixo (rótulo + legendas, ~3,5mm cada): com o modelo do módulo e do
   // inversor na legenda o texto ficou mais alto e batia no carimbo.
-  const linhasRotulo = 1 + Math.max(
-    0,
-    ...(options.pvLegends ?? []).map(l => l.length),
-    ...(options.inverterLegends ?? []).map(l => l.length),
-    2,                                   // legenda do disjuntor (corrente + nota)
+  //
+  // Conta as linhas DEPOIS da quebra: um rótulo que não cabe na coluna vira
+  // duas linhas, e reservar espaço pela contagem crua deixaria o texto entrar
+  // no carimbo.
+  const colW = colunaUtil(paper);
+  const alturaDoBloco = (label: string, legend: string[]) =>
+    wrapToWidthMm(label, colW, 2.6).length
+    + legend.reduce((n, l) => n + wrapToWidthMm(l, colW, 2.4).length, 0);
+  const linhasRotulo = Math.max(
+    3,                                   // rótulo + legenda do disjuntor (corrente + nota)
+    ...(options.pvLabels ?? []).map((l, i) => alturaDoBloco(l, options.pvLegends?.[i] ?? [])),
+    ...(options.inverterLabels ?? []).map((l, i) => alturaDoBloco(l, options.inverterLegends?.[i] ?? [])),
+    ...(options.breakerLabels ?? []).map(l => alturaDoBloco(l, ['00A', '(seccionamento)'])),
   );
   const carimboTop = paperOf(paper).heightMm - MARGIN - TITLE_BLOCK_H;
   const BOTTOM = Math.min(L.BOTTOM, carimboTop - 4.4 - linhasRotulo * LABEL_LINE_H);
@@ -1517,6 +1601,8 @@ export function buildMultiArrangementScene(options: {
     });
   }
 
+  medirLarguraDosRotulos(placements);
+
   // a folha escolhida viaja no estado: editor e exportadores usam a mesma
   return {
     placements, connections, photos, texts, groups,
@@ -1762,6 +1848,9 @@ export function buildMicroSchematicScene(options: Omit<Parameters<typeof buildMu
     delete c.waypoints;
   }
 
+  // o esquemático refaz os símbolos por conta própria: precisa medir os dele
+  medirLarguraDosRotulos(placements);
+
   return { ...base, placements, connections, texts: [...(base.texts ?? []), ...equipTexts] };
 }
 
@@ -1822,6 +1911,11 @@ export function autoArrange(state: DiagramSceneState): DiagramSceneState {
       p.x = snapToGrid(first + i * pitch) - (SYMBOL_BBOX.w * p.scale) / 2;
     });
   }
+
+  // Organizar mudou as distâncias entre símbolos, então as larguras de rótulo
+  // mudaram junto. Remedir aqui é o que faz o botão resolver de fato o desenho
+  // apertado, em vez de só alinhar os símbolos e deixar o texto encavalado.
+  medirLarguraDosRotulos(placements);
 
   // limpa pontos de dobra: os condutores re-roteiam sozinhos (com desvio)
   const connections = state.connections.map(c =>
@@ -2043,19 +2137,16 @@ export function buildSceneFromPlacement(
     scene.blocks.push({ layer: 'SYMBOLS', blockRef: p.kind, at: { x: p.x, y: p.y }, rotation: p.rotation, scale: p.scale });
 
     const anchor = labelAnchor(p);
-    const legendX = anchor.x;
-    let legendY = anchor.y;
-    scene.shapes.push({
-      layer: 'TEXT_LABEL',
-      geometry: { kind: 'text', at: { x: legendX, y: legendY }, value: resolve(p.label), size: 2.6, anchor: 'middle', weight: 'bold' },
-    });
-    for (const line of p.legend) {
-      legendY += LEGEND_LINE_H;
+    labelLines(p, resolve).forEach((linha, i) => {
       scene.shapes.push({
         layer: 'TEXT_LABEL',
-        geometry: { kind: 'text', at: { x: legendX, y: legendY }, value: resolve(line), size: 2.4, anchor: 'middle' },
+        geometry: {
+          kind: 'text', at: { x: anchor.x, y: anchor.y + i * LEGEND_LINE_H },
+          value: linha.text, size: linha.size, anchor: 'middle',
+          weight: linha.bold ? 'bold' : undefined,
+        },
       });
-    }
+    });
   }
 
   for (const t of texts) {

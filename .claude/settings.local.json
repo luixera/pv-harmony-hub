@@ -410,7 +410,16 @@
       "Bash(grep -n \"^    </Dialog>\\\\|</Dialog>$\" src/components/projects/GenerateDocumentDialog.tsx)",
       "Bash(MSYS_NO_PATHCONV=1 npx esbuild _tc.ts --bundle --platform=node --format=cjs --outfile=_tc.cjs --alias:@=./src --external:pizzip)",
       "Bash(node _tc.cjs __TRACKED_VAR__/gerado.xlsx __TRACKED_VAR__/regressao.xlsx)",
-      "Bash(rm -f _tm.ts _tm.cjs _tc.ts _tc.cjs _sob.cjs)"
+      "Bash(rm -f _tm.ts _tm.cjs _tc.ts _tc.cjs _sob.cjs)",
+      "Bash(cp __TRACKED_VAR__/test-prancha.ts ./_tp.ts)",
+      "Bash(MSYS_NO_PATHCONV=1 npx esbuild _tp.ts --bundle --platform=node --format=cjs --outfile=_tp.cjs --alias:@=./src)",
+      "Bash(node _tp.cjs)",
+      "Bash(grep -i -E \"^sharp$|resvg|canvas|puppeteer|playwright\")",
+      "Bash(echo \"exit:$?\")",
+      "Bash(grep -n \"placements, connections\\\\|return {$\\\\|^export function \\\\\\(buildMicroSchematicScene\\\\|initialPlacement\\\\|autoArrange\\\\|layoutFromRecognition\\\\\\)\" src/utils/cadEngine/editableLayout.ts)",
+      "Bash(tee /tmp/tsc.txt)",
+      "Bash(rm -f _tp.ts _tp.cjs _rp.ts _rp.cjs)",
+      "Bash(git commit -q -m ' *)"
     ]
   }
 }

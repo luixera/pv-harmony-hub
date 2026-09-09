@@ -550,6 +550,17 @@ export function UnifilarTab({ project: projetoRecebido }: { project: ProjectWith
       trunkSection: plan.trunkSectionMm2 ? `${plan.trunkSectionMm2} mm²` : undefined,
     };
 
+    // Rótulos fora do objeto: `pickPaper` precisa MEDIR o texto pra escolher a
+    // folha. É o caso do microinversor — poucas fileiras, mas com o modelo do
+    // módulo e o do micro na legenda a coluna do A4 não comporta.
+    const pvLabels = plan.branches.map((_, i) => (plan.branches.length > 1 ? `Módulos – Ramal ${i + 1}` : 'Módulos'));
+    const pvLegends = plan.branches.map(b => [
+      `${b.units} × ${plan.modulesPerUnitCap} = ${b.modules} módulos`, curto(moduleModel),
+    ].filter(Boolean));
+    const inverterLabels = plan.branches.map((_, i) => (plan.branches.length > 1 ? `Microinversores – Ramal ${i + 1}` : 'Microinversores'));
+    const inverterLegends = plan.branches.map(b => [curto(`${b.units}× ${microModel}`), microSpecLine].filter(Boolean));
+    const breakerLabels = plan.branches.map((_, i) => (plan.branches.length > 1 ? `Disjuntor Ramal ${i + 1}` : 'Disjuntor Geral CA'));
+
     const state = style === 'esquematico'
       ? buildMicroSchematicScene({
           ...common,
@@ -558,16 +569,14 @@ export function UnifilarTab({ project: projetoRecebido }: { project: ProjectWith
         })
       : buildMultiArrangementScene({
           ...common,
-          paper: pickPaper({ rows: plan.branches.length, hasMap: !!locationMap }),
+          paper: pickPaper({
+            rows: plan.branches.length, hasMap: !!locationMap,
+            labels: [...pvLabels, ...inverterLabels, ...breakerLabels],
+            legends: [...pvLegends.flat(), ...inverterLegends.flat()],
+          }),
           inverterCount: plan.branches.length,
           inverterKind: 'microinverter',
-          pvLabels: plan.branches.map((_, i) => (plan.branches.length > 1 ? `Módulos – Ramal ${i + 1}` : 'Módulos')),
-          pvLegends: plan.branches.map(b => [
-            `${b.units} × ${plan.modulesPerUnitCap} = ${b.modules} módulos`, curto(moduleModel),
-          ].filter(Boolean)),
-          inverterLabels: plan.branches.map((_, i) => (plan.branches.length > 1 ? `Microinversores – Ramal ${i + 1}` : 'Microinversores')),
-          inverterLegends: plan.branches.map(b => [curto(`${b.units}× ${microModel}`), microSpecLine].filter(Boolean)),
-          breakerLabels: plan.branches.map((_, i) => (plan.branches.length > 1 ? `Disjuntor Ramal ${i + 1}` : 'Disjuntor Geral CA')),
+          pvLabels, pvLegends, inverterLabels, inverterLegends, breakerLabels,
           branchBreakerA: plan.branches.map(b => b.breakerA),
         });
     await guardarAntesDeSubstituir('gerar o diagrama de microinversores');
@@ -657,10 +666,22 @@ export function UnifilarTab({ project: projetoRecebido }: { project: ProjectWith
       ['Tensão a frio (Voc)', opt.perInverter[0]?.coldVoltageV ? `${opt.perInverter[0].coldVoltageV} V` : ''],
     ] as [string, string][]).filter(([, v]) => v && v.trim() !== '');
 
+    // bloco do inversor: modelo + potência e a corrente CA que dimensionou
+    // o disjuntor daquele arranjo
+    const inverterLegends = plan.branches.map(b => [
+      inversorModelo,
+      [invSpecs.powerKw ? `${invSpecs.powerKw} kW` : '', b.currentA ? `${b.currentA}A` : '']
+        .filter(Boolean).join(' · '),
+    ].filter(Boolean));
+
     const state = buildMultiArrangementScene({
-      paper: pickPaper({ rows: projectInverters, hasMap: !!locationMap, hasTables: dadosTecnicos.length > 0 }),
+      paper: pickPaper({
+        rows: projectInverters, hasMap: !!locationMap, hasTables: dadosTecnicos.length > 0,
+        legends: [...pvLegends.flat(), ...inverterLegends.flat()],
+      }),
       inverterCount: projectInverters,
       pvLegends,
+      inverterLegends,
       locationCallout: values.uc || values.latitude_gms
         ? {
             uc: values.uc || undefined,
@@ -675,13 +696,6 @@ export function UnifilarTab({ project: projetoRecebido }: { project: ProjectWith
         // uma linha por string, com os módulos dela
         arranjoStrings: stringTableRows(opt.perInverter),
       },
-      // bloco do inversor: modelo + potência e a corrente CA que dimensionou
-      // o disjuntor daquele arranjo
-      inverterLegends: plan.branches.map(b => [
-        inversorModelo,
-        [invSpecs.powerKw ? `${invSpecs.powerKw} kW` : '', b.currentA ? `${b.currentA}A` : '']
-          .filter(Boolean).join(' · '),
-      ].filter(Boolean)),
       locationMap,
       includeGeneralBreaker: includeGeneral,
       includeLoadsReference: ruleValue(ruleMap, 'arrays.include_loads_reference', 1) !== 0,
