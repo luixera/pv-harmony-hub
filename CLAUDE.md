@@ -8,15 +8,15 @@ Este arquivo é o **índice** da documentação. Ele não contém documentação
 extensa — só o resumo e os links. Antes de qualquer tarefa: **leia este arquivo,
 depois leia apenas a documentação do módulo que será alterado.**
 
-## Método de trabalho — Superpowers (obrigatório em todo prompt)
+## Método de trabalho — pacote `desenvolveLuiz` (obrigatório em todo prompt)
 
-As skills do [obra/superpowers](https://github.com/obra/superpowers) estão em
-`.claude/skills/` e valem para **toda** interação (decisão do usuário,
-set/2026). Antes de responder ou agir, invocar `using-superpowers` e a skill
-de processo que couber: *brainstorming* para "vamos construir X",
-*systematic-debugging* para "corrija isto", *writing-plans* → *executing-plans*
-para trabalho de várias etapas, *test-driven-development* ao implementar,
-*verification-before-completion* antes de dizer que terminou. Instruções
+Antes de responder ou agir em QUALQUER prompt, ler e seguir
+[.claude/skills/desenvolveLuiz/SKILL.md](.claude/skills/desenvolveLuiz/SKILL.md).
+É o ponto de entrada que junta [obra/superpowers](https://github.com/obra/superpowers)
+(processo: brainstorming → plano → execução, systematic-debugging, TDD,
+verificação antes de concluir), a `find-skills` da vercel-labs (procurar uma
+skill pronta antes de construir do zero) e as regras da casa (baseline de
+tipos, banco, docs, tenant). Decisão do usuário, set/2026. Instruções
 diretas do usuário e este arquivo têm precedência sobre as skills.
 
 ---
