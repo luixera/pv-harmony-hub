@@ -3,7 +3,7 @@ name: Ludmilla — deploy do robô na VPS
 # Execução MANUAL (aba Actions → este workflow → "Run workflow").
 #
 # O que faz: compila worker/ludmilla no CI, sincroniza para /opt/ludmilla na
-# VPS e roda deploy/instalar.sh por SSH — que instala Node 20 e o Chromium
+# VPS e roda deploy/instalar.sh por SSH — que instala Node 22 e o Chromium
 # (se faltarem), grava o ambiente em /etc/ludmilla/env e (re)inicia o serviço
 # systemd `ludmilla-worker`. Idempotente.
 #
@@ -39,7 +39,7 @@ jobs:
       - name: Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: worker/ludmilla/package-lock.json
 

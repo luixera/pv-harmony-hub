@@ -32,7 +32,7 @@ RLS: RESTRICTIVE por tenant + `ludmilla_equipe_ok()` (admin/staff de tenant
 
 ## Robô (`worker/ludmilla/`)
 
-Node 20 + Playwright. `index.ts` faz o laço: `ludmilla_claim_run` a cada 30 s
+Node 22 + Playwright. `index.ts` faz o laço: `ludmilla_claim_run` a cada 30 s
 → contexto NOVO de navegador por run → conector → `ludmilla_finalizar_run`
 com resultado e print. `erros.ts` classifica toda falha (`login_recusado`,
 `sessao_expirada`, `captcha_exigido`, `pagina_mudou`, `bloqueado_por_waf`,
@@ -45,7 +45,7 @@ Testes: `npm test` (node:test; o de reconhecimento serve HTML em localhost e
 **bloqueia a rede** — assinaturas do Google/Cloudflare são só texto).
 
 Deploy: workflow manual `.github/workflows/ludmilla-worker.yml` → rsync para
-`/opt/ludmilla` + `deploy/instalar.sh` (Node 20, usuário `ludmilla`, Chromium,
+`/opt/ludmilla` + `deploy/instalar.sh` (Node 22, usuário `ludmilla`, Chromium,
 `/etc/ludmilla/env` 600, unit systemd `ludmilla-worker`). Segredos: os da VPS
 + `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`.
 

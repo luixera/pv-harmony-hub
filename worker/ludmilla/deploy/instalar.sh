@@ -31,10 +31,10 @@ fi
 [ -n "$SUPABASE_SERVICE_ROLE_KEY" ] || falhar "SUPABASE_SERVICE_ROLE_KEY vazio"
 [ -f "$APP/package.json" ] || falhar "código não está em $APP (o rsync rodou?)"
 
-passo "Node 20"
+passo "Node 22"
 NODE_MAJOR=$(node -v 2>/dev/null | sed 's/^v\([0-9]*\).*/\1/')
-if [ "${NODE_MAJOR:-0}" -lt 20 ]; then
-  curl -fsSL https://deb.nodesource.com/setup_20.x | bash - || falhar "não consegui preparar o repositório do Node"
+if [ "${NODE_MAJOR:-0}" -lt 22 ]; then
+  curl -fsSL https://deb.nodesource.com/setup_22.x | bash - || falhar "não consegui preparar o repositório do Node"
   apt-get install -y nodejs || falhar "não consegui instalar o Node"
 fi
 echo "node agora: $(node -v)"

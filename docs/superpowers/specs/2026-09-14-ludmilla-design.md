@@ -60,7 +60,7 @@ print e procura widget de CAPTCHA e campos do formulário.
                                                       │ service role
                                           ┌───────────┴────────────────────┐
                                           │ VPS · ludmilla-worker (systemd)│
-                                          │ Node 20 + Playwright/Chromium  │
+                                          │ Node 22 + Playwright/Chromium  │
                                           │ pega run da fila → conector →  │
                                           │ grava resultado + print        │
                                           └────────────────────────────────┘
@@ -117,7 +117,7 @@ print e procura widget de CAPTCHA e campos do formulário.
 
 ### 3.4 Worker (VPS)
 
-- Pasta `worker/ludmilla/` no repositório: Node 20, TypeScript, Playwright.
+- Pasta `worker/ludmilla/` no repositório: Node 22, TypeScript, Playwright.
   Serviço `ludmilla-worker.service` (systemd), ambiente em
   `/etc/ludmilla/env` (`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`,
   `LUDMILLA_POLL_SECONDS=30`).
