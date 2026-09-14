@@ -1,7 +1,8 @@
 # Ludmilla — acompanhamento dos portais das concessionárias
 
-> Estado: 🟡 sub-projeto 1 entregue (set/2026) — fundação no banco, robô na
-> VPS, reconhecimento dos portais. Só tenant GD Manager (`is_library`).
+> Estado: 🟡 CPFL funcionando ponta a ponta (set/2026): robô na VPS lê os
+> protocolos, o banco gera recomendações, a página /ludmilla aplica/ignora.
+> Elektro bloqueada (Akamai). Só tenant GD Manager (`is_library`).
 > Spec: [docs/superpowers/specs/2026-09-14-ludmilla-design.md](../../superpowers/specs/2026-09-14-ludmilla-design.md)
 
 ## O que é
@@ -74,10 +75,34 @@ as últimas visitas e mostra o print por URL assinada do bucket.
   portal envia e-mail por etapa (o Claudinho dos e-mails já lê), ou a sessão
   do próprio navegador do usuário.
 
-## Próximos sub-projetos
+## Varredura → recomendações → relatório (14/09/2026)
 
-2. Descoberta logada da CPFL (com o usuário) → conector `varrer`, tradução de
-   status, casamento protocolo/UC/titular, `portal_updates`, pg_cron 2×/dia.
-3. Página `/ludmilla` (relatório + aplicar/ignorar), credenciais na aba
-   Concessionárias, contador na sidebar, notificação interna.
-4. Elektro: decidir entre e-mail (Claudinho) e sessão do navegador do usuário.
+- **`varrer` da CPFL** (`worker/ludmilla/src/conectores/cpfl.ts` +
+  `cpfl-lista.ts`): login B2C → cartão "Projetos Particulares" → abas
+  *Orçamentos de conexão* e *Análise prévia* → 200 por página → lê os
+  `AccordionItem[data-status]` (nome, nota de serviço/**atividade** =
+  protocolo, serviço, datas do painel, link "Ver projeto"). Primeira varredura
+  real: 199 protocolos em 51 s, 47 casando com `projects.protocol_number`.
+  Teste sobre fixture real (`test/fixtures/cpfl-lista.html`).
+- **`ludmilla_registrar_varredura`** (chamada por `ludmilla_finalizar_run`):
+  guarda o último estado por protocolo em `portal_protocol_state`, casa pelo
+  número, traduz por `portal_status_map` (semeado: Aprovado→approved,
+  Reprovado→pendencia) e cria `portal_updates` quando (a) o status mudou
+  desde a última varredura ou (b) na primeira vez, a tradução aponta etapa
+  **à frente** da atual (`ludmilla_recomendacao_vale` — sem isso a primeira
+  leitura gerou 17 linhas de ruído em 23: projetos concluídos com "Aprovado").
+- **Sino**: trigger em `portal_updates` notifica o projetista atribuído (ou
+  os admins) com `type='ludmilla'`.
+- **Página /ludmilla** (`src/pages/Ludmilla.tsx`): contas com "Verificar
+  agora", relatório com filtros, **Aplicar** (etapa recomendada ou outra;
+  `ludmilla_aplicar_update` move o card e grava comentário + histórico com a
+  pessoa como autora e a Ludmilla como origem) e **Ignorar**. Item "Ludmilla"
+  na sidebar com contador de pendentes.
+
+## Próximos
+
+2. Agendamento 2×/dia (pg_cron → `ludmilla_pedir_run`); tradução de
+   "Pendente"/"Em Andamento" (decisão da equipe em `portal_status_map`);
+   casamento por UC/titular para os 3 protocolos sem par; os 4 cartões que a
+   varredura não leu (199 de 203).
+3. Elektro: decidir entre e-mail (Claudinho) e sessão do navegador do usuário.

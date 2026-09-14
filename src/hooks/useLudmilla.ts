@@ -149,3 +149,73 @@ export async function urlDoPrint(printPath: string): Promise<string | null> {
   if (error) return null;
   return data.signedUrl;
 }
+
+// ── Relatório de recomendações ───────────────────────────────────────────────
+
+export interface PortalUpdate {
+  id: string;
+  account_id: string;
+  protocolo: string;
+  titular_portal: string | null;
+  status_portal: string;
+  status_anterior: string | null;
+  project_id: string | null;
+  casamento: 'protocolo' | 'uc' | 'titular' | null;
+  recomendacao: string | null;
+  situacao: 'pendente' | 'aplicada' | 'ignorada';
+  aplicada_por: string | null;
+  aplicada_em: string | null;
+  detectado_em: string;
+  raw: Record<string, string> | null;
+  project?: { id: string; code: string; status: string; title: string | null } | null;
+}
+
+export function usePortalUpdates(situacao: 'pendente' | 'aplicada' | 'ignorada' | 'todas' = 'pendente') {
+  const disponivel = useLudmillaDisponivel();
+  return useQuery({
+    queryKey: ['portal-updates', situacao],
+    queryFn: async (): Promise<PortalUpdate[]> => {
+      let q = supabase
+        .from('portal_updates' as never)
+        .select('*, project:projects(id, code, status, title)')
+        .order('detectado_em', { ascending: false })
+        .limit(200);
+      if (situacao !== 'todas') q = q.eq('situacao', situacao);
+      const { data, error } = await q;
+      if (error) throw error;
+      return (data ?? []) as PortalUpdate[];
+    },
+    enabled: disponivel,
+    staleTime: 60_000,
+    refetchInterval: 5 * 60_000,
+  });
+}
+
+/** Aplica a recomendação: move o card (etapa recomendada ou a escolhida) e registra no histórico. */
+export function useAplicarUpdate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, status }: { id: string; status?: string }) => {
+      const { error } = await supabase.rpc('ludmilla_aplicar_update' as never, { p_update_id: id, p_status: status ?? null } as never);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['portal-updates'], exact: false });
+      qc.invalidateQueries({ queryKey: ['projects'], exact: false });
+      toast.success('Card movido. Ficou no histórico com você como autor e a Ludmilla como origem.');
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+}
+
+export function useIgnorarUpdate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.rpc('ludmilla_ignorar_update' as never, { p_update_id: id } as never);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['portal-updates'], exact: false }),
+    onError: (e: Error) => toast.error(e.message),
+  });
+}

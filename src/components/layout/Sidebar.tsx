@@ -25,7 +25,8 @@ import {
   HelpCircle,
   LayoutTemplate,
 } from 'lucide-react';
-import { Cpu } from 'lucide-react';
+import { Cpu, Radar } from 'lucide-react';
+import { useLudmillaDisponivel, usePortalUpdates } from '@/hooks/useLudmilla';
 import { openWelcomeTour } from '@/components/onboarding/OnboardingController';
 import { useMyPendingTasks } from '@/hooks/useTasks';
 import { useEmailUpdates } from '@/hooks/useEmailUpdates';
@@ -42,6 +43,8 @@ interface SidebarItem {
   roles: ('admin' | 'staff' | 'company')[];
   /** Além dos papéis, exige acesso ao motor de templates de diagrama (hoje só GD Manager). */
   requiresDiagramEngine?: boolean;
+  /** Só para a equipe do GD Manager (a Ludmilla, como o Bidu). */
+  requiresLudmilla?: boolean;
 }
 
 const sidebarItems: SidebarItem[] = [
@@ -51,6 +54,7 @@ const sidebarItems: SidebarItem[] = [
   { icon: Kanban, label: 'Kanban', path: '/projects', roles: ['admin', 'staff'] },
   { icon: CheckSquare, label: 'Tarefas', path: '/tasks', roles: ['admin', 'staff'] },
   { icon: Mail, label: 'Email', path: '/email-updates', roles: ['admin', 'staff'] },
+  { icon: Radar, label: 'Ludmilla', path: '/ludmilla', roles: ['admin', 'staff'], requiresLudmilla: true },
   { icon: DollarSign, label: 'Financeiro', path: '/admin/financial', roles: ['admin'] },
   { icon: BarChart2, label: 'Relatórios', path: '/reports', roles: ['admin'] },
   { icon: FolderOpen, label: 'Meus Projetos', path: '/company/projects', roles: ['company'] },
@@ -87,6 +91,9 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   const { data: tenant } = useTenant();
   const features = useTenantFeatures();
   const hasDiagramEngineAccess = useDiagramEngineAccess();
+  const ludmillaDisponivel = useLudmillaDisponivel();
+  const { data: recomendacoes = [] } = usePortalUpdates('pendente');
+  const ludmillaBadge = recomendacoes.length;
 
   // Rotas ocultadas conforme os recursos do plano do tenant
   const featureGate: Record<string, boolean> = {
@@ -99,6 +106,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   const filteredItems = sidebarItems.filter(item =>
     user && item.roles.includes(user.role) && featureGate[item.path] !== false
     && (!item.requiresDiagramEngine || hasDiagramEngineAccess)
+    && (!item.requiresLudmilla || ludmillaDisponivel)
   );
 
   // Marca exibida: logo/nome do tenant, com fallback para a marca padrão
@@ -155,7 +163,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
               <nav className="flex-1 py-4 px-3 space-y-1 overflow-y-auto scrollbar-thin">
                 {filteredItems.map((item) => {
                   const isActive = location.pathname === item.path;
-                  const badge = item.path === '/tasks' && pendingCount > 0 ? pendingCount : item.path === '/email-updates' && emailBadge > 0 ? emailBadge : 0;
+                  const badge = item.path === '/tasks' && pendingCount > 0 ? pendingCount : item.path === '/email-updates' && emailBadge > 0 ? emailBadge : item.path === '/ludmilla' && ludmillaBadge > 0 ? ludmillaBadge : 0;
                   return (
                     <button
                       key={item.path}
