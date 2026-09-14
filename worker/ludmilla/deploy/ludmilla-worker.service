@@ -1,0 +1,31 @@
+[Unit]
+Description=Ludmilla — robô de acompanhamento dos portais das concessionárias (GD Manager)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ludmilla
+Group=ludmilla
+WorkingDirectory=/opt/ludmilla
+EnvironmentFile=/etc/ludmilla/env
+# o Chromium do Playwright fica no HOME do usuário ludmilla
+Environment=PLAYWRIGHT_BROWSERS_PATH=/home/ludmilla/.cache/ms-playwright
+ExecStart=/usr/bin/node dist/index.js
+Restart=always
+RestartSec=10
+# um run de reconhecimento não passa de 2 min; se travar, o systemd reinicia
+TimeoutStopSec=30
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=ludmilla
+
+# endurecimento básico: o robô não precisa de mais nada da máquina
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=read-only
+ReadWritePaths=/opt/ludmilla /home/ludmilla/.cache
+
+[Install]
+WantedBy=multi-user.target

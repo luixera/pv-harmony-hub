@@ -1,0 +1,22 @@
+{
+  "name": "ludmilla-worker",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Ludmilla — robô que visita os portais das concessionárias e lê o status dos protocolos (só leitura).",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "tsc -p tsconfig.test.json && node --test \"dist-test/test/**/*.test.js\"",
+    "start": "node dist/index.js"
+  },
+  "engines": { "node": ">=20" },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0",
+    "playwright": "^1.47.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "typescript": "^5.5.0"
+  }
+}
