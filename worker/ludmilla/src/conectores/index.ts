@@ -32,7 +32,7 @@ export interface Conector {
   /** Entra com a credencial, PARA depois da senha e conta o que viu. */
   testarLogin(page: Page, creds: Credenciais): Promise<VereditoLogin>;
   /** Entra, navega até a lista de projetos e guarda o HTML das telas. */
-  descobrir(page: Page, creds: Credenciais): Promise<Descoberta>;
+  descobrir(page: Page, creds: Credenciais, guardarTela: (t: Descoberta['telas'][number]) => Promise<void>): Promise<Descoberta>;
   /** Entra e lê a lista. Só existe depois da descoberta logada. */
   varrer(page: Page, creds: Credenciais): Promise<Protocolo[]>;
 }

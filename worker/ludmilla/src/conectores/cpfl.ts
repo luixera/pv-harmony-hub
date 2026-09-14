@@ -49,6 +49,18 @@ async function entrar(page: Page, creds: Credenciais, loginUrl: string) {
   await respirar(page, 1_500);
 }
 
+/**
+ * Banner de cookies do site da CPFL: cobre a parte de baixo da página e
+ * intercepta cliques. Fecha com "Rejeitar todos" — a opção que menos coleta.
+ */
+async function fecharCookies(page: Page) {
+  const rejeitar = page.getByText(/Rejeitar todos/i).first();
+  if (await rejeitar.count() > 0 && await rejeitar.isVisible().catch(() => false)) {
+    await rejeitar.click({ timeout: 5_000 }).catch(() => undefined);
+    await respirar(page, 600);
+  }
+}
+
 /** Clica num elemento pelo texto visível e espera a página assentar. */
 async function clicarTexto(page: Page, texto: RegExp, oQue: string) {
   const alvo = page.getByText(texto).first();
@@ -83,15 +95,23 @@ export const cpfl: Conector = {
     return vereditoDepoisDaSenha(page, SINAL_DE_ENTRADA);
   },
 
-  async descobrir(page: Page, creds: Credenciais): Promise<Descoberta> {
+  async descobrir(page: Page, creds: Credenciais, guardarTela): Promise<Descoberta> {
     await entrar(page, creds, this.loginUrl);
     const telas: Descoberta['telas'] = [];
-    const guardar = async (nome: string) => telas.push({ nome, url: semSegredos(page.url()), html: await htmlLimpo(page) });
+    // cada tela sobe NA HORA: uma falha no meio não perde o que já foi visto
+    const guardar = async (nome: string) => {
+      const tela = { nome, url: semSegredos(page.url()), html: await htmlLimpo(page) };
+      telas.push(tela);
+      await guardarTela(tela);
+    };
 
+    await fecharCookies(page);
     await guardar('01-depois-do-login');
-    // tela "Selecionar perfil" → Projetos Particulares (quando aparece)
-    if (await page.getByText(/Projetos Particulares/i).first().count() > 0) {
-      await clicarTexto(page, /Projetos Particulares/i, 'Projetos Particulares');
+    // tela "Selecionar perfil": o cartão "Projetos Particulares". O nome também
+    // está no rodapé (Parceiros), então o alvo é o subtítulo, que só o cartão tem.
+    if (await page.getByText(/Serviços para projetistas/i).first().count() > 0) {
+      await clicarTexto(page, /Serviços para projetistas/i, 'cartão Projetos Particulares');
+      await fecharCookies(page);
       await guardar('02-meus-projetos');
     }
     await clicarTexto(page, /OR[CÇ]AMENTOS DE CONEX[AÃ]O/i, 'aba Orçamentos de conexão');

@@ -65,9 +65,10 @@ async function executar(navegador: Browser, run: Run): Promise<void> {
     }
 
     if (run.tipo === 'descoberta') {
-      const d = await c.descobrir(page, creds);
       const arquivos: string[] = [];
-      for (const t of d.telas) arquivos.push(await subirTexto(run.tenant_id, run.id, `${t.nome}.html`, t.html));
+      const d = await c.descobrir(page, creds, async t => {
+        arquivos.push(await subirTexto(run.tenant_id, run.id, `${t.nome}.html`, t.html));
+      });
       printPath = await subirPrint(run.tenant_id, run.id, await page.screenshot({ fullPage: true }));
       await finalizarRun(run.id, {
         situacao: 'ok', printPath, situacaoConta: 'ok',
