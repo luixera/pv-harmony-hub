@@ -1,5 +1,6 @@
 import type { Page } from 'playwright';
-import type { Conector, Descoberta } from './index.js';
+import type { Conector, Descoberta, Protocolo } from './index.js';
+import { lerCartoesCpfl, lerPaginacaoCpfl, SELETOR_SPINNER } from './cpfl-lista.js';
 import type { Credenciais } from '../fila.js';
 import { ErroLudmilla } from '../erros.js';
 import { reconhecerPagina } from '../reconhecer.js';
@@ -124,8 +125,53 @@ export const cpfl: Conector = {
     return { telas };
   },
 
-  async varrer() {
-    throw new ErroLudmilla('pagina_mudou',
-      'O roteiro de leitura da CPFL ainda não foi configurado — é escrito sobre o HTML da descoberta.');
+  async varrer(page: Page, creds: Credenciais): Promise<Protocolo[]> {
+    await entrar(page, creds, this.loginUrl);
+    await fecharCookies(page);
+    if (await page.getByText(/Serviços para projetistas/i).first().count() > 0) {
+      await clicarTexto(page, /Serviços para projetistas/i, 'cartão Projetos Particulares');
+      await fecharCookies(page);
+    }
+    if (await page.locator('[role="tab"]').count() === 0) {
+      throw new ErroLudmilla('pagina_mudou', 'Não cheguei à tela "Meus projetos" (sem as abas de projeto).');
+    }
+
+    // As duas abas listam protocolos; a mesma atividade pode aparecer nas
+    // duas — a última leitura vence, sem duplicar.
+    const porProtocolo = new Map<string, Protocolo>();
+    for (const aba of [/OR[CÇ]AMENTOS DE CONEX[AÃ]O/i, /AN[AÁ]LISE PR[EÉ]VIA/i]) {
+      const nomeAba = aba.source.includes('CONEX') ? 'Orçamentos de conexão' : 'Análise prévia';
+      await page.getByRole('tab', { name: aba }).click();
+      await esperarLista(page);
+      await mostrarMaisPorPagina(page);
+
+      let pagina = 1;
+      for (;;) {
+        for (const c of await lerCartoesCpfl(page)) {
+          if (c.protocolo) porProtocolo.set(c.protocolo, { ...c, raw: { ...c.raw, aba: nomeAba, notaServico: c.notaServico } });
+        }
+        const p = await lerPaginacaoCpfl(page);
+        if (!p.temProxima || pagina >= 20) break;   // 20 × 200 = 4000: teto de segurança
+        await page.locator('button[aria-label="Next page"]').click();
+        await esperarLista(page);
+        pagina++;
+      }
+    }
+    return [...porProtocolo.values()];
   },
 };
+
+/** Espera o spinner da lista sumir e a página assentar. */
+async function esperarLista(page: Page) {
+  await page.waitForFunction(sel => !document.querySelector(sel), SELETOR_SPINNER, { timeout: 60_000 }).catch(() => undefined);
+  await page.waitForLoadState('networkidle', { timeout: 30_000 }).catch(() => undefined);
+  await respirar(page, 800);
+}
+
+/** "Exibir linhas: 200" — menos páginas, menos cliques no portal. */
+async function mostrarMaisPorPagina(page: Page) {
+  const seletor = page.locator('#page-size');
+  if (await seletor.count() === 0) return;
+  await seletor.selectOption('200').catch(() => undefined);
+  await esperarLista(page);
+}
