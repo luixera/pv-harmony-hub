@@ -11,7 +11,7 @@ export interface Run {
   id: string;
   tenant_id: string;
   account_id: string;
-  tipo: 'reconhecimento' | 'teste_login' | 'varredura';
+  tipo: 'reconhecimento' | 'teste_login' | 'descoberta' | 'varredura';
   situacao: string;
 }
 
@@ -82,6 +82,16 @@ export async function credenciais(accountId: string): Promise<Credenciais> {
   const linha = ((data ?? []) as Credenciais[])[0];
   if (!linha) throw new Error('A conta não tem credencial gravada ou está desativada.');
   return linha;
+}
+
+/** Sobe um arquivo de texto (HTML da descoberta) no bucket, na pasta do run. */
+export async function subirTexto(tenantId: string, runId: string, nome: string, conteudo: string): Promise<string> {
+  const path = `${tenantId}/${runId}/${nome}`;
+  const { error } = await supabase().storage.from('ludmilla').upload(path, Buffer.from(conteudo, 'utf8'), {
+    contentType: 'text/html; charset=utf-8', upsert: true,
+  });
+  if (error) throw new Error(`Não consegui guardar ${nome}: ${error.message}`);
+  return path;
 }
 
 /** Sobe o print no bucket privado `ludmilla`, na pasta do tenant. Devolve o path. */

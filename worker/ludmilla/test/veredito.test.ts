@@ -75,3 +75,13 @@ test('erro de senha ESCONDIDO (o B2C deixa a div no HTML) não conta como recusa
   assert.notEqual(v.veredito, 'senha_recusada');
   assert.equal(v.veredito, 'desconhecido');
 });
+
+test('código de autorização do B2C NUNCA fica no resultado (URL e título limpos)', async () => {
+  const page = await navegador.newPage();
+  await page.route(url => url.hostname !== '127.0.0.1', route => route.abort());
+  await page.setContent('<html><head><title>Loading https://www.cpfl.com.br/b2c-auth/receive-token?code=eyJabc.def&state=x</title></head><body>Loading</body></html>');
+  const v = await vereditoDepoisDaSenha(page, /Meus Projetos/i);
+  await page.close();
+  assert.doesNotMatch(v.titulo, /eyJabc/);
+  assert.match(v.titulo, /code=\[removido\]/);
+});

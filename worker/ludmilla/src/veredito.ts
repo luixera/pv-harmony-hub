@@ -26,9 +26,17 @@ async function textoVisivel(page: Page, seletor: string): Promise<string> {
   return (await el.innerText()).trim();
 }
 
+/**
+ * Tira segredos de uma URL/título antes de gravar no banco. O B2C devolve o
+ * código de autorização na query (`?code=…`); é de uso único, mas não é para
+ * ficar em `resultado` mesmo assim.
+ */
+export const semSegredos = (texto: string) =>
+  texto.replace(/([?&#](?:code|id_token|access_token|token)=)[^&\s"']+/gi, '$1[removido]');
+
 export async function vereditoDepoisDaSenha(page: Page, sinalDeEntrada: RegExp): Promise<VereditoLogin> {
-  const titulo = (await page.title()).trim();
-  const url_final = page.url();
+  const titulo = semSegredos((await page.title()).trim());
+  const url_final = semSegredos(page.url());
   const corpo = (await page.locator('body').innerText().catch(() => '')).replace(/\s+/g, ' ');
 
   // 1. senha recusada: o B2C escreve a mensagem numa div .error que fica no

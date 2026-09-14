@@ -1,24 +1,73 @@
 import type { Page } from 'playwright';
-import type { Conector } from './index.js';
+import type { Conector, Descoberta } from './index.js';
 import type { Credenciais } from '../fila.js';
 import { ErroLudmilla } from '../erros.js';
 import { reconhecerPagina } from '../reconhecer.js';
-import { vereditoDepoisDaSenha } from '../veredito.js';
+import { semSegredos, vereditoDepoisDaSenha } from '../veredito.js';
 
 /**
  * CPFL — "Projetos Particulares" (projetosparticulares.cpfl.com.br).
  *
- * Reconhecimento de 14/09/2026: o login é Azure AD B2C
- * (cpflb2cprd.b2clogin.com, política B2C_1A_SIGNUP_SIGNIN_MFA_FRONT), sem
- * CAPTCHA, campos `#signInName` (e-mail) e `#password`, botão `#next`.
- * "Meus Projetos" mora em `/Internet/Projeto` no site da CPFL.
+ * O que já se sabe (reconhecimento e teste de acesso, 14/09/2026):
+ * - login em Azure AD B2C (cpflb2cprd.b2clogin.com), campos `#signInName` e
+ *   `#password`, botão `#next`; e-mail + senha bastam — não pediu segundo
+ *   fator, apesar do "MFA" no nome da política;
+ * - depois do login o B2C devolve para `cpfl.com.br/b2c-auth/receive-token`
+ *   e o site cai numa tela "Selecionar perfil" (Projetos Particulares ×
+ *   Baixa tensão);
+ * - "Projetos Particulares" leva a "Meus projetos", com as abas ANÁLISE PRÉVIA
+ *   e ORÇAMENTOS DE CONEXÃO; cada projeto é um cartão com Nome do projeto,
+ *   Nota de serviço/Atividade, Serviço e um selo de status (Pendente, Em
+ *   Andamento, Reprovado…).
  *
- * `varrer` ainda não existe: depende do que o teste de acesso mostrar
- * depois da senha (segundo fator ou não).
+ * `varrer` vem depois da descoberta, escrito sobre o HTML real dessas telas.
  */
 
-/** Tela logada da CPFL: a URL do site com a área de projetos, ou o título. */
-const SINAL_DE_ENTRADA = /cpfl\.com\.br\/Internet\/Projeto|Meus Projetos/i;
+/** Tela logada da CPFL: a área de projetos no site, ou o título. */
+const SINAL_DE_ENTRADA = /cpfl\.com\.br\/(Internet\/Projeto|b2c-auth)|Selecionar perfil|Meus projetos/i;
+
+/** Pausa com cara de gente entre um clique e outro. */
+const respirar = (page: Page, ms = 1_200) => page.waitForTimeout(ms);
+
+async function entrar(page: Page, creds: Credenciais, loginUrl: string) {
+  await page.goto(loginUrl, { waitUntil: 'networkidle', timeout: 60_000 });
+  const email = page.locator('#signInName');
+  const senha = page.locator('#password');
+  if (await email.count() === 0 || await senha.count() === 0) {
+    throw new ErroLudmilla('pagina_mudou', 'A tela de login da CPFL não tem mais os campos #signInName/#password.');
+  }
+  await email.fill(creds.login);
+  await senha.fill(creds.senha);
+  await respirar(page, 800);
+  await page.locator('#next, button[type="submit"]').first().click();
+
+  // O B2C redireciona em cadeia (b2clogin → receive-token → site). Esperar
+  // "networkidle" não basta: o teste de 14/09 tirou o print com o título
+  // "Loading …". O sinal certo é a URL sair do b2clogin.
+  await page.waitForURL(url => !/b2clogin\.com/i.test(url.href), { timeout: 60_000 }).catch(() => undefined);
+  await page.waitForLoadState('networkidle', { timeout: 60_000 }).catch(() => undefined);
+  await respirar(page, 1_500);
+}
+
+/** Clica num elemento pelo texto visível e espera a página assentar. */
+async function clicarTexto(page: Page, texto: RegExp, oQue: string) {
+  const alvo = page.getByText(texto).first();
+  if (await alvo.count() === 0) {
+    throw new ErroLudmilla('pagina_mudou', `Não achei "${oQue}" na tela (${semSegredos(page.url())}).`);
+  }
+  await alvo.click();
+  await page.waitForLoadState('networkidle', { timeout: 60_000 }).catch(() => undefined);
+  await respirar(page);
+}
+
+/** HTML da página sem scripts nem estilos — o que interessa é a estrutura. */
+async function htmlLimpo(page: Page): Promise<string> {
+  const html = await page.content();
+  return semSegredos(html
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<link[^>]*>/gi, ''));
+}
 
 export const cpfl: Conector = {
   chave: 'cpfl',
@@ -30,32 +79,33 @@ export const cpfl: Conector = {
   },
 
   async testarLogin(page: Page, creds: Credenciais) {
-    await page.goto(this.loginUrl, { waitUntil: 'networkidle', timeout: 60_000 });
-
-    // a tela precisa ser a que o reconhecimento viu; se mudou, para aqui
-    const email = page.locator('#signInName');
-    const senha = page.locator('#password');
-    if (await email.count() === 0 || await senha.count() === 0) {
-      throw new ErroLudmilla('pagina_mudou', 'A tela de login da CPFL não tem mais os campos #signInName/#password.');
-    }
-
-    await email.fill(creds.login);
-    await senha.fill(creds.senha);
-    // um humano leva um instante entre digitar e enviar
-    await page.waitForTimeout(800);
-    const botao = page.locator('#next, button[type="submit"]').first();
-    await Promise.all([
-      page.waitForLoadState('networkidle', { timeout: 60_000 }).catch(() => undefined),
-      botao.click(),
-    ]);
-    // o B2C redireciona em cadeia; dá um fôlego para a última página assentar
-    await page.waitForTimeout(2_000);
-
+    await entrar(page, creds, this.loginUrl);
     return vereditoDepoisDaSenha(page, SINAL_DE_ENTRADA);
+  },
+
+  async descobrir(page: Page, creds: Credenciais): Promise<Descoberta> {
+    await entrar(page, creds, this.loginUrl);
+    const telas: Descoberta['telas'] = [];
+    const guardar = async (nome: string) => telas.push({ nome, url: semSegredos(page.url()), html: await htmlLimpo(page) });
+
+    await guardar('01-depois-do-login');
+    // tela "Selecionar perfil" → Projetos Particulares (quando aparece)
+    if (await page.getByText(/Projetos Particulares/i).first().count() > 0) {
+      await clicarTexto(page, /Projetos Particulares/i, 'Projetos Particulares');
+      await guardar('02-meus-projetos');
+    }
+    await clicarTexto(page, /OR[CÇ]AMENTOS DE CONEX[AÃ]O/i, 'aba Orçamentos de conexão');
+    await guardar('03-orcamentos-de-conexao');
+    // e a outra aba, que também lista protocolos
+    if (await page.getByText(/AN[AÁ]LISE PR[EÉ]VIA/i).first().count() > 0) {
+      await clicarTexto(page, /AN[AÁ]LISE PR[EÉ]VIA/i, 'aba Análise prévia');
+      await guardar('04-analise-previa');
+    }
+    return { telas };
   },
 
   async varrer() {
     throw new ErroLudmilla('pagina_mudou',
-      'O roteiro de leitura da CPFL ainda não foi configurado — depende do resultado do teste de acesso.');
+      'O roteiro de leitura da CPFL ainda não foi configurado — é escrito sobre o HTML da descoberta.');
   },
 };

@@ -1,7 +1,7 @@
 import { chromium, Browser, BrowserContext } from 'playwright';
 import { classificarErro } from './erros.js';
 import { conector } from './conectores/index.js';
-import { conectorDaConta, credenciais, finalizarRun, pegarRun, subirPrint, Run } from './fila.js';
+import { conectorDaConta, credenciais, finalizarRun, pegarRun, subirPrint, subirTexto, Run } from './fila.js';
 
 /**
  * LUDMILLA — o laço.
@@ -61,6 +61,19 @@ async function executar(navegador: Browser, run: Run): Promise<void> {
         situacaoConta: recusada ? 'erro' : v.veredito === 'entrou' ? 'ok' : undefined,
       });
       log('teste de login', { run: run.id, veredito: v.veredito });
+      return;
+    }
+
+    if (run.tipo === 'descoberta') {
+      const d = await c.descobrir(page, creds);
+      const arquivos: string[] = [];
+      for (const t of d.telas) arquivos.push(await subirTexto(run.tenant_id, run.id, `${t.nome}.html`, t.html));
+      printPath = await subirPrint(run.tenant_id, run.id, await page.screenshot({ fullPage: true }));
+      await finalizarRun(run.id, {
+        situacao: 'ok', printPath, situacaoConta: 'ok',
+        resultado: { telas: d.telas.map((t, k) => ({ nome: t.nome, url: t.url, arquivo: arquivos[k], bytes: t.html.length })) },
+      });
+      log('descoberta ok', { run: run.id, telas: d.telas.map(t => t.nome) });
       return;
     }
 

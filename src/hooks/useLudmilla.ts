@@ -18,7 +18,7 @@ import { toast } from 'sonner';
 export const LUDMILLA_USER_ID = '00000000-10d1-4000-8000-000000000002';
 
 export type SituacaoConta = 'nao_configurado' | 'ok' | 'sessao_expirada' | 'erro';
-export type TipoRun = 'reconhecimento' | 'teste_login' | 'varredura';
+export type TipoRun = 'reconhecimento' | 'teste_login' | 'descoberta' | 'varredura';
 export type SituacaoRun = 'na_fila' | 'rodando' | 'ok' | 'erro';
 
 export interface PortalAccount {

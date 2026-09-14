@@ -40,6 +40,7 @@ const VEREDITO: Record<VereditoLogin['veredito'], { rotulo: string; cor: string 
 const TIPO: Record<string, string> = {
   reconhecimento: 'Reconhecimento da tela de login',
   teste_login: 'Teste de acesso',
+  descoberta: 'Descoberta das telas (HTML guardado)',
   varredura: 'Varredura de protocolos',
 };
 

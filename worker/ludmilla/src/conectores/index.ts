@@ -19,6 +19,11 @@ export interface Protocolo {
   raw: Record<string, string>;
 }
 
+/** O que a descoberta traz: as telas visitadas, com o HTML limpo de cada uma. */
+export interface Descoberta {
+  telas: { nome: string; url: string; html: string }[];
+}
+
 export interface Conector {
   chave: string;
   /** Tela de login — é onde o reconhecimento começa. */
@@ -26,6 +31,8 @@ export interface Conector {
   reconhecer(page: Page): Promise<Reconhecimento>;
   /** Entra com a credencial, PARA depois da senha e conta o que viu. */
   testarLogin(page: Page, creds: Credenciais): Promise<VereditoLogin>;
+  /** Entra, navega até a lista de projetos e guarda o HTML das telas. */
+  descobrir(page: Page, creds: Credenciais): Promise<Descoberta>;
   /** Entra e lê a lista. Só existe depois da descoberta logada. */
   varrer(page: Page, creds: Credenciais): Promise<Protocolo[]>;
 }
