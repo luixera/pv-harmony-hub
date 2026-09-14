@@ -46,8 +46,24 @@ async function executar(navegador: Browser, run: Run): Promise<void> {
       return;
     }
 
-    // varredura: a senha só é lida aqui, e morre com o contexto
+    // daqui em diante precisa de senha: lida só agora, morre com o contexto
     const creds = await credenciais(run.account_id);
+
+    if (run.tipo === 'teste_login') {
+      const v = await c.testarLogin(page, creds);
+      printPath = await subirPrint(run.tenant_id, run.id, await page.screenshot({ fullPage: true }));
+      // senha recusada é erro da CONTA (fica em ultimo_erro); o resto é informação
+      const recusada = v.veredito === 'senha_recusada';
+      await finalizarRun(run.id, {
+        situacao: recusada ? 'erro' : 'ok',
+        resultado: v, printPath,
+        erro: recusada ? v.explicacao : undefined,
+        situacaoConta: recusada ? 'erro' : v.veredito === 'entrou' ? 'ok' : undefined,
+      });
+      log('teste de login', { run: run.id, veredito: v.veredito });
+      return;
+    }
+
     const protocolos = await c.varrer(page, creds);
     await finalizarRun(run.id, {
       situacao: 'ok', resultado: { protocolos }, protocolos: protocolos.length, situacaoConta: 'ok',

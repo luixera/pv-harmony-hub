@@ -19,6 +19,13 @@ export const elektro: Conector = {
     return reconhecerPagina(page, resposta?.status() ?? 0);
   },
 
+  async testarLogin(page: Page) {
+    // a tela de login nem chega a aparecer — o reconhecimento já explica
+    const r = await this.reconhecer(page);
+    if (r.bloqueado_por_waf) throw new ErroLudmilla('bloqueado_por_waf', 'O Portal GD da Neoenergia bloqueou o navegador antes da tela de login.');
+    throw new ErroLudmilla('pagina_mudou', 'O roteiro de login da Elektro ainda não foi configurado.');
+  },
+
   async varrer() {
     throw new ErroLudmilla('pagina_mudou',
       'O roteiro da Elektro ainda não foi configurado — falta a descoberta logada do Portal GD.');

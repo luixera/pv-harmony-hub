@@ -11,7 +11,7 @@ export interface Run {
   id: string;
   tenant_id: string;
   account_id: string;
-  tipo: 'reconhecimento' | 'varredura';
+  tipo: 'reconhecimento' | 'teste_login' | 'varredura';
   situacao: string;
 }
 

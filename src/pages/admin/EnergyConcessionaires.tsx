@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { motion } from 'framer-motion';
-import { Zap, Plus, Search, Edit2, Loader2, LayoutTemplate, Package, PlugZap, Library, RefreshCw } from 'lucide-react';
+import { Zap, Plus, Search, Edit2, Loader2, LayoutTemplate, Package, PlugZap, Library, RefreshCw, KeyRound } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useAuth } from '@/contexts/AuthContext';
@@ -21,6 +21,8 @@ import { ConcessionaireTemplatesDialog } from '@/components/concessionaires/Conc
 import { EntryRulesDialog } from '@/components/concessionaires/EntryRulesDialog';
 import { LibraryImportDialog } from '@/components/concessionaires/LibraryImportDialog';
 import { useConcessionaireLibrary } from '@/hooks/useConcessionaireLibrary';
+import { PortalAcessoDialog } from '@/components/concessionaires/PortalAcessoDialog';
+import { useLudmillaDisponivel } from '@/hooks/useLudmilla';
 
 function PackageItemCount({ concessionaireId }: { concessionaireId: string }) {
   const { data: items = [] } = useInstallerPackage(concessionaireId);
@@ -70,6 +72,9 @@ export default function EnergyConcessionaires() {
   const [templatesDialogOpen, setTemplatesDialogOpen] = useState(false);
   const [entryRulesDialogOpen, setEntryRulesDialogOpen] = useState(false);
   const [libraryDialogOpen, setLibraryDialogOpen] = useState(false);
+  const [portalDialogOpen, setPortalDialogOpen] = useState(false);
+  // Ludmilla (acesso ao portal) só existe para a equipe do GD Manager
+  const ludmilla = useLudmillaDisponivel();
   const [selectedConcessionaire, setSelectedConcessionaire] = useState<EnergyConcessionaire | null>(null);
   
   const { data: concessionaires = [], isLoading } = useEnergyConcessionaires(showInactive);
@@ -106,6 +111,11 @@ export default function EnergyConcessionaires() {
     setEntryRulesDialogOpen(true);
   };
   
+  const handleViewPortal = (concessionaire: EnergyConcessionaire) => {
+    setSelectedConcessionaire(concessionaire);
+    setPortalDialogOpen(true);
+  };
+
   const handleNewConcessionaire = () => {
     setSelectedConcessionaire(null);
     setFormDialogOpen(true);
@@ -296,6 +306,11 @@ export default function EnergyConcessionaires() {
                     <IconAction title="Regras de padrão de entrada" onClick={() => handleViewEntryRules(concessionaire)}>
                       <PlugZap className="w-4 h-4" />
                     </IconAction>
+                    {ludmilla && (
+                      <IconAction title="Acesso ao portal (Ludmilla)" onClick={() => handleViewPortal(concessionaire)}>
+                        <KeyRound className="w-4 h-4" />
+                      </IconAction>
+                    )}
                     {isAdmin && (
                       <IconAction title="Editar concessionária" onClick={() => handleEdit(concessionaire)}>
                         <Edit2 className="w-4 h-4" />
@@ -337,6 +352,12 @@ export default function EnergyConcessionaires() {
       <LibraryImportDialog
         open={libraryDialogOpen}
         onOpenChange={setLibraryDialogOpen}
+      />
+
+      <PortalAcessoDialog
+        open={portalDialogOpen}
+        onOpenChange={setPortalDialogOpen}
+        concessionaire={selectedConcessionaire}
       />
     </MainLayout>
   );

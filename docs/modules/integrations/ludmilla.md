@@ -49,6 +49,18 @@ Deploy: workflow manual `.github/workflows/ludmilla-worker.yml` → rsync para
 `/etc/ludmilla/env` 600, unit systemd `ludmilla-worker`). Segredos: os da VPS
 + `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`.
 
+## Tela "Acesso ao portal" e teste de acesso (14/09/2026)
+
+Na aba Concessionárias, o ícone de chave (só equipe GD Manager) abre
+: login + senha (só admin grava; a senha vai ao Vault e não
+volta), situação da conta, e os botões **Testar acesso** e **Só reconhecer a
+tela**. O run  entra com a credencial, PARA depois da senha e
+devolve um veredito (): ,
+, ,  (vira erro da
+conta) ou  — sempre com print. É a descoberta do segundo fator
+feita pelo próprio robô, sem a sessão do navegador do usuário. A tela lista
+as últimas visitas e mostra o print por URL assinada do bucket.
+
 ## O que o reconhecimento mostrou (14/09/2026, da máquina de dev)
 
 - **CPFL**: login em **Azure AD B2C** (`cpflb2cprd.b2clogin.com`), política
