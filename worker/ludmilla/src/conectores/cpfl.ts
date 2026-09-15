@@ -162,6 +162,41 @@ export const cpfl: Conector = {
     telas.push(telaRotas);
     await guardarTela(telaRotas);
     rede = []; api = [];
+
+    // FORMATO das respostas de detalhe (anexos, cliente, UCs, parecer) para um
+    // projeto aprovado e um pendente — lidas direto da API, sem renderizar.
+    // É sobre isto que o casamento por titular/UC e o download dos anexos
+    // (Relacionamento Operacional) serão escritos.
+    const lista = await page.request.get(urlListaCpfl(creds.login, 1, 200)).catch(() => null);
+    const itens = lista && lista.ok() ? lerListaCpfl(await lista.json().catch(() => null)).itens : [];
+    const amostras = [
+      itens.find(i => i.status === 'PROJETO ENCERRADO'),
+      itens.find(i => i.status.includes('SOLICITAR VISTORIA')),
+      itens.find(i => i.status.includes('INDEFERIDOS')),
+    ].filter((i): i is NonNullable<typeof i> => !!i && !!i.raw.codigoProjeto);
+    const detalhes: Record<string, unknown>[] = [];
+    for (const item of amostras) {
+      const cod = item.raw.codigoProjeto;
+      const bloco: Record<string, unknown> = { protocolo: item.protocolo, status: item.status, codigoProjeto: cod };
+      for (const rota of ['anexos', 'cliente', 'projetodetalhesucs', 'dadostecnicos', 'equipamentos']) {
+        const url = `https://www.cpfl.com.br/gestao-projetos/api/drupalApi/ServerSide?${new URLSearchParams({
+          httpType: 'GET', paramType: 'ROUTE', endpoint: `/api/internal/detalhesprojeto/${rota}/${cod}` })}`;
+        const r = await page.request.get(url).catch(() => null);
+        bloco[rota] = r ? { status: r.status(), body: (await r.text().catch(() => '')).slice(0, 60_000) } : 'sem resposta';
+        await respirar(page, 300);
+      }
+      const parecer = await page.request.get(urlParecerCpfl(cod)).catch(() => null);
+      bloco.parecer = parecer ? { status: parecer.status(), body: (await parecer.text().catch(() => '')).slice(0, 60_000) } : 'sem resposta';
+      detalhes.push(bloco);
+    }
+    const telaDetalhes: TelaDescoberta = { nome: '00-detalhes-api', url: 'api', html: JSON.stringify(detalhes, null, 1) };
+    telas.push(telaDetalhes);
+    await guardarTela(telaDetalhes);
+    rede = []; api = [];
+
+    // de volta ao fluxo da tela: espera as abas do app aparecerem
+    await page.waitForSelector('[role="tab"]', { timeout: 30_000 }).catch(() => undefined);
+    await esperarLista(page);
     // tela "Selecionar perfil": o cartão "Projetos Particulares". O nome também
     // está no rodapé (Parceiros), então o alvo é o subtítulo, que só o cartão tem.
     if (await page.getByText(/Serviços para projetistas/i).first().count() > 0) {
