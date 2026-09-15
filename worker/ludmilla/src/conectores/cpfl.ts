@@ -1,6 +1,9 @@
 import type { Page } from 'playwright';
 import type { Conector, Descoberta, Protocolo, TelaDescoberta } from './index.js';
-import { lerCartoesCpfl, lerPaginacaoCpfl, SELETOR_SPINNER } from './cpfl-lista.js';
+
+/** Spinner do app React do portal (lista e tela do projeto). */
+const SELETOR_SPINNER = '[class*="loading-spinner"]';
+import { lerListaCpfl, lerUltimoParecerCpfl, urlListaCpfl, urlParecerCpfl } from './cpfl-api.js';
 import type { Credenciais } from '../fila.js';
 import { ErroLudmilla } from '../erros.js';
 import { reconhecerPagina } from '../reconhecer.js';
@@ -26,6 +29,13 @@ import { semSegredos, vereditoDepoisDaSenha } from '../veredito.js';
 
 /** Tela logada da CPFL: a área de projetos no site, ou o título. */
 const SINAL_DE_ENTRADA = /cpfl\.com\.br\/(Internet\/Projeto|b2c-auth)|Selecionar perfil|Meus projetos/i;
+
+/** Dias desde uma data dd/mm/aaaa; Infinity quando não há data. */
+const diasDesde = (ddmmaaaa: string | undefined): number => {
+  const m = /^(\d{2})\/(\d{2})\/(\d{4})/.exec(ddmmaaaa ?? '');
+  if (!m) return Infinity;
+  return (Date.now() - Date.UTC(Number(m[3]), Number(m[2]) - 1, Number(m[1]))) / 86_400_000;
+};
 
 /** Pausa com cara de gente entre um clique e outro. */
 const respirar = (page: Page, ms = 1_200) => page.waitForTimeout(ms);
@@ -110,7 +120,9 @@ export const cpfl: Conector = {
       if (tipo === 'xhr' || tipo === 'fetch' || tipo === 'document') rede.push({ url: semSegredos(r.url()), status: r.status(), tipo });
       if (r.url().includes('/gestao-projetos/api/')) {
         const body = await r.text().catch(() => '');
-        api.push({ url: semSegredos(decodeURIComponent(r.url())), status: r.status(), body: body.slice(0, 400_000) });
+        // campos de token/segredo no corpo não vão para o bucket
+        const limpo = body.replace(/"(token|access_token|id_token|refresh_token)"\s*:\s*"[^"]*"/gi, '"$1":"[removido]"');
+        api.push({ url: semSegredos(decodeURIComponent(r.url())), status: r.status(), body: limpo.slice(0, 400_000) });
       }
     });
     // cada tela sobe NA HORA: uma falha no meio não perde o que já foi visto
@@ -177,34 +189,51 @@ export const cpfl: Conector = {
   async varrer(page: Page, creds: Credenciais): Promise<Protocolo[]> {
     await entrar(page, creds, this.loginUrl);
     await fecharCookies(page);
+    // entra em "Projetos Particulares": é o que cria a sessão do app de
+    // projetos; a partir daqui a API interna responde para este navegador
     if (await page.getByText(/Serviços para projetistas/i).first().count() > 0) {
       await clicarTexto(page, /Serviços para projetistas/i, 'cartão Projetos Particulares');
-      await fecharCookies(page);
     }
-    if (await page.locator('[role="tab"]').count() === 0) {
-      throw new ErroLudmilla('pagina_mudou', 'Não cheguei à tela "Meus projetos" (sem as abas de projeto).');
+    if (!/gestao-projetos/.test(page.url())) {
+      await page.goto('https://www.cpfl.com.br/gestao-projetos/meus-projetos', { waitUntil: 'networkidle', timeout: 60_000 });
     }
 
-    // As duas abas listam protocolos; a mesma atividade pode aparecer nas
-    // duas — a última leitura vence, sem duplicar.
+    // A LISTA vem da API (JSON), não da tela: sem spinner, sem paginação
+    // clicada, e com o status DETALHADO que o cartão não mostra.
     const porProtocolo = new Map<string, Protocolo>();
-    for (const aba of [/OR[CÇ]AMENTOS DE CONEX[AÃ]O/i, /AN[AÁ]LISE PR[EÉ]VIA/i]) {
-      const nomeAba = aba.source.includes('CONEX') ? 'Orçamentos de conexão' : 'Análise prévia';
-      await page.getByRole('tab', { name: aba }).click();
-      await esperarLista(page);
-      await mostrarMaisPorPagina(page);
-
-      let pagina = 1;
-      for (;;) {
-        for (const c of await lerCartoesCpfl(page)) {
-          if (c.protocolo) porProtocolo.set(c.protocolo, { ...c, raw: { ...c.raw, aba: nomeAba, notaServico: c.notaServico } });
-        }
-        const p = await lerPaginacaoCpfl(page);
-        if (!p.temProxima || pagina >= 20) break;   // 20 × 200 = 4000: teto de segurança
-        await page.locator('button[aria-label="Next page"]').click();
-        await esperarLista(page);
-        pagina++;
+    let pagina = 1;
+    let total = Infinity;
+    while (porProtocolo.size < total && pagina <= 20) {
+      const resposta = await page.request.get(urlListaCpfl(creds.login, pagina, 200));
+      if (resposta.status() === 401 || resposta.status() === 403) {
+        throw new ErroLudmilla('sessao_expirada', `A API do portal recusou a sessão (HTTP ${resposta.status()}).`);
       }
+      if (!resposta.ok()) throw new ErroLudmilla('pagina_mudou', `A API do portal respondeu HTTP ${resposta.status()} na lista.`);
+      const lida = lerListaCpfl(await resposta.json().catch(() => null));
+      if (pagina === 1 && lida.itens.length === 0 && lida.total > 0) {
+        throw new ErroLudmilla('pagina_mudou', 'A lista da API veio vazia num formato que não reconheço.');
+      }
+      total = lida.total;
+      for (const item of lida.itens) porProtocolo.set(item.protocolo, item);
+      if (lida.itens.length === 0) break;
+      pagina++;
+      await respirar(page, 700);
+    }
+
+    // O último PARECER (texto da CPFL) só para o que mexeu recentemente —
+    // é o que a pessoa quer ler ao decidir; o resto não muda há meses.
+    const recentes = [...porProtocolo.values()]
+      .filter(p => diasDesde(p.raw['Última atualização']) <= 45 && p.raw.codigoProjeto)
+      .slice(0, 40);
+    for (const p of recentes) {
+      const r = await page.request.get(urlParecerCpfl(p.raw.codigoProjeto)).catch(() => null);
+      if (!r || !r.ok()) continue;
+      const parecer = lerUltimoParecerCpfl(await r.json().catch(() => null));
+      if (parecer) {
+        p.raw['Último parecer'] = `${parecer.data} · ${parecer.status}`;
+        p.raw['Texto do parecer'] = parecer.texto;
+      }
+      await respirar(page, 400);
     }
     return [...porProtocolo.values()];
   },
