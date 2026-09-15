@@ -3,11 +3,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { KeyRound, Loader2, ShieldCheck, AlertTriangle, PlayCircle, Image as ImageIcon, CheckCircle2, XCircle, Clock } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { KeyRound, Loader2, ShieldCheck, AlertTriangle, PlayCircle, Image as ImageIcon, CheckCircle2, XCircle, Clock, MonitorSmartphone, Server } from 'lucide-react';
 import { EnergyConcessionaire } from '@/hooks/useEnergyConcessionaires';
 import {
-  conectorParaConcessionaria, PortalRun, urlDoPrint, usePedirRun, usePortalAccounts,
-  usePortalRuns, useSetPortalCredentials, VereditoLogin,
+  conectorParaConcessionaria, estadoDaEstacao, ModoConta, PortalAccount, PortalRun, urlDoPrint, useAtualizarContaPortal,
+  useEquipeDoTenant, usePedirRun, usePortalAccounts, usePortalRuns, useSetPortalCredentials, VereditoLogin,
 } from '@/hooks/useLudmilla';
 import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
@@ -17,9 +18,10 @@ import { cn } from '@/lib/utils';
  * de projetos da concessionária e pede o TESTE DE ACESSO.
  *
  * A senha entra e não volta: vai por RPC para o Vault. A tela só sabe que
- * está "configurado". O teste de acesso é o robô entrando de verdade, na
- * VPS, e contando o que viu depois da senha — é assim que se descobre se o
- * portal pede um segundo fator, sem ninguém precisar abrir o portal à mão.
+ * está "configurado". O teste de acesso é o robô entrando de verdade (na
+ * VPS ou na estação local) e contando o que viu depois da senha — é assim
+ * que se descobre se o portal pede um segundo fator, sem ninguém precisar
+ * abrir o portal à mão.
  */
 
 const SITUACAO: Record<string, { rotulo: string; cor: string }> = {
@@ -30,7 +32,7 @@ const SITUACAO: Record<string, { rotulo: string; cor: string }> = {
 };
 
 const VEREDITO: Record<VereditoLogin['veredito'], { rotulo: string; cor: string }> = {
-  entrou:             { rotulo: 'Entrou — chegou em "Meus Projetos"',  cor: 'text-emerald-600' },
+  entrou:             { rotulo: 'Entrou — chegou na área logada',     cor: 'text-emerald-600' },
   pediu_codigo_email: { rotulo: 'Pediu código por e-mail',             cor: 'text-amber-600' },
   pediu_codigo_sms:   { rotulo: 'Pediu código por SMS',                cor: 'text-amber-600' },
   senha_recusada:     { rotulo: 'Senha recusada',                      cor: 'text-red-600' },
@@ -46,6 +48,79 @@ const TIPO: Record<string, string> = {
 
 function quando(iso: string) {
   return new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+}
+
+/**
+ * ONDE A LUDMILLA RODA para esta conta. VPS é o padrão. A estação local é o
+ * PC do coworking, para o portal que não abre para a VPS e pede CAPTCHA
+ * (Elektro): lá a Ludmilla preenche e-mail e senha e uma PESSOA digita o
+ * código. A estação entra no GD Manager como o "operador" escolhido aqui.
+ */
+function OndeRoda({ conta, isAdmin }: { conta: PortalAccount; isAdmin: boolean }) {
+  const { data: equipe = [] } = useEquipeDoTenant(isAdmin);
+  const atualizar = useAtualizarContaPortal();
+  const [modo, setModo] = useState<ModoConta>(conta.modo);
+  const [operador, setOperador] = useState<string>(conta.operador_local ?? '');
+  useEffect(() => { setModo(conta.modo); setOperador(conta.operador_local ?? ''); }, [conta.id, conta.modo, conta.operador_local]);
+  const estacao = estadoDaEstacao(conta);
+  const mudou = modo !== conta.modo || (modo === 'local' && operador !== (conta.operador_local ?? ''));
+
+  return (
+    <div className="rounded-lg border p-3 space-y-3">
+      <div className="flex items-center gap-2 text-sm font-medium">
+        {conta.modo === 'local' ? <MonitorSmartphone className="w-4 h-4" /> : <Server className="w-4 h-4" />}
+        Onde a Ludmilla roda
+        {estacao && (
+          <span className={cn('ml-auto text-xs font-normal flex items-center gap-1', estacao.online ? 'text-emerald-600' : 'text-amber-600')}>
+            <span className={cn('inline-block w-2 h-2 rounded-full', estacao.online ? 'bg-emerald-500' : 'bg-amber-500')} />
+            {estacao.texto}
+          </span>
+        )}
+      </div>
+      {conta.modo === 'local' && conta.situacao === 'sessao_expirada' && (
+        <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-2">
+          Aguardando login na estação: na última visita ninguém digitou o código da imagem. Na próxima visita ela chama de novo.
+        </p>
+      )}
+      <div className="grid sm:grid-cols-2 gap-3">
+        <div className="space-y-1.5">
+          <Label>Modo</Label>
+          <Select value={modo} onValueChange={v => setModo(v as ModoConta)} disabled={!isAdmin}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="vps">VPS (automático, sem ninguém)</SelectItem>
+              <SelectItem value="local">Estação local (PC do coworking, pessoa digita o CAPTCHA)</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        {modo === 'local' && (
+          <div className="space-y-1.5">
+            <Label>Usuário da estação (operador)</Label>
+            <Select value={operador} onValueChange={setOperador} disabled={!isAdmin}>
+              <SelectTrigger><SelectValue placeholder="Escolha um usuário da equipe" /></SelectTrigger>
+              <SelectContent>
+                {equipe.map(p => (
+                  <SelectItem key={p.id} value={p.id}>{p.name ?? p.email ?? p.id}{p.role === 'admin' ? ' (admin)' : ''}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+      </div>
+      <p className="text-xs text-muted-foreground">
+        {modo === 'local'
+          ? 'A estação entra no GD Manager com esse usuário e só ela pega as visitas desta conta. Instale a Ludmilla no PC pelo pacote "ludmilla-local" (Actions → Ludmilla — deploy do robô) e faça o login com esse usuário.'
+          : 'A Ludmilla visita este portal pela VPS, sem ninguém por perto. Portais com CAPTCHA no login (Elektro) só funcionam na estação local.'}
+      </p>
+      {isAdmin && (
+        <Button size="sm" variant="outline" disabled={!mudou || atualizar.isPending}
+          onClick={() => atualizar.mutate({ accountId: conta.id, modo, operadorLocal: operador || null })}>
+          {atualizar.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+          Salvar modo
+        </Button>
+      )}
+    </div>
+  );
 }
 
 function LinhaRun({ run }: { run: PortalRun }) {
@@ -192,6 +267,9 @@ export function PortalAcessoDialog({
                 Só reconhecer a tela
               </Button>
             </div>
+
+            {/* Onde roda: VPS ou estação local (Elektro) */}
+            {conta && <OndeRoda conta={conta} isAdmin={isAdmin} />}
 
             {/* Runs */}
             {conta && (

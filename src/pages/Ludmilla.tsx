@@ -3,9 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Radar, CheckCircle2, XCircle, ArrowRight, ExternalLink, RefreshCw, Loader2, Clock, KeyRound } from 'lucide-react';
+import { Radar, CheckCircle2, XCircle, ArrowRight, ExternalLink, RefreshCw, Loader2, Clock, KeyRound, MonitorSmartphone } from 'lucide-react';
 import {
-  PortalUpdate, useAplicarUpdate, useIgnorarUpdate, useLudmillaDisponivel, usePedirRun,
+  estadoDaEstacao, PortalUpdate, useAplicarUpdate, useIgnorarUpdate, useLudmillaDisponivel, usePedirRun,
   usePortalAccounts, usePortalUpdates,
 } from '@/hooks/useLudmilla';
 import { useStatusLabel, useStatusOrder } from '@/hooks/useStatusLabel';
@@ -170,6 +170,21 @@ export default function Ludmilla() {
               <div className="text-xs text-muted-foreground flex items-center gap-1">
                 <Clock size={12} /> {c.ultima_varredura_em ? `última varredura ${quando(c.ultima_varredura_em)}` : 'ainda não varreu'}
               </div>
+              {/* conta na estação local (Elektro): a estação pulsa a cada minuto */}
+              {(() => {
+                const e = estadoDaEstacao(c);
+                if (!e) return null;
+                return (
+                  <div className={cn('text-xs flex items-center gap-1.5', e.online ? 'text-emerald-600' : 'text-amber-600')}>
+                    <MonitorSmartphone size={12} />
+                    <span className={cn('inline-block w-2 h-2 rounded-full', e.online ? 'bg-emerald-500' : 'bg-amber-500')} />
+                    {e.texto}
+                  </div>
+                );
+              })()}
+              {c.modo === 'local' && c.situacao === 'sessao_expirada' && (
+                <p className="text-xs text-amber-700">Aguardando login na estação: ninguém digitou o código da imagem na última visita.</p>
+              )}
               {c.ultimo_erro && <p className="text-xs text-red-600">{c.ultimo_erro}</p>}
               <Button size="sm" variant="outline" className="gap-2 w-full"
                 disabled={!c.login || pedir.isPending}

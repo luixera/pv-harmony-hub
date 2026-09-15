@@ -21,6 +21,8 @@ export type SituacaoConta = 'nao_configurado' | 'ok' | 'sessao_expirada' | 'erro
 export type TipoRun = 'reconhecimento' | 'teste_login' | 'descoberta' | 'varredura';
 export type SituacaoRun = 'na_fila' | 'rodando' | 'ok' | 'erro';
 
+export type ModoConta = 'vps' | 'local';
+
 export interface PortalAccount {
   id: string;
   concessionaire_id: string;
@@ -31,6 +33,64 @@ export interface PortalAccount {
   ultima_varredura_em: string | null;
   enabled: boolean;
   updated_at: string;
+  /** vps = robô na VPS (padrão); local = estação do coworking (Elektro: CAPTCHA digitado por gente) */
+  modo: ModoConta;
+  /** usuário staff com quem a estação entra no GD Manager — só ele pega os runs desta conta */
+  operador_local: string | null;
+  /** último batimento da estação (a cada 60 s enquanto ligada) */
+  estacao_vista_em: string | null;
+}
+
+/** Estação ligada = pulsou nos últimos 3 min. Só faz sentido para contas `local`. */
+export function estadoDaEstacao(conta: PortalAccount, agora = Date.now()): { online: boolean; texto: string } | null {
+  if (conta.modo !== 'local') return null;
+  if (!conta.operador_local) return { online: false, texto: 'estação sem operador — escolha um usuário no acesso ao portal' };
+  if (!conta.estacao_vista_em) return { online: false, texto: 'estação nunca ligou — instale a Ludmilla no PC do coworking' };
+  const min = Math.floor((agora - new Date(conta.estacao_vista_em).getTime()) / 60_000);
+  if (min <= 3) return { online: true, texto: 'estação online' };
+  const quando = min < 60 ? `${min} min` : min < 48 * 60 ? `${Math.floor(min / 60)} h` : `${Math.floor(min / 1440)} dias`;
+  return { online: false, texto: `estação offline há ${quando}` };
+}
+
+/** Equipe do tenant (admin + staff ativos) — quem pode ser o operador da estação. */
+export function useEquipeDoTenant(habilitado = true) {
+  return useQuery({
+    queryKey: ['equipe-do-tenant'],
+    queryFn: async (): Promise<{ id: string; name: string | null; email: string | null; role: string }[]> => {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, name, email, role')
+        .in('role', ['admin', 'staff'])
+        .eq('active', true)
+        .order('name');
+      if (error) throw error;
+      return (data ?? []) as { id: string; name: string | null; email: string | null; role: string }[];
+    },
+    enabled: habilitado,
+    staleTime: 5 * 60_000,
+  });
+}
+
+/** Onde a Ludmilla roda para esta conta (VPS ou estação local) e quem é o operador. Só admin (RLS). */
+export function useAtualizarContaPortal() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ accountId, modo, operadorLocal }: { accountId: string; modo: ModoConta; operadorLocal: string | null }) => {
+      if (modo === 'local' && !operadorLocal) throw new Error('Escolha o usuário com quem a estação entra no GD Manager.');
+      const { error } = await supabase
+        .from('portal_accounts' as never)
+        .update({ modo, operador_local: modo === 'local' ? operadorLocal : null } as never)
+        .eq('id', accountId);
+      if (error) throw error;
+    },
+    onSuccess: (_v, { modo }) => {
+      qc.invalidateQueries({ queryKey: ['portal-accounts'] });
+      toast.success(modo === 'local'
+        ? 'Conta na estação local. Os próximos pedidos vão para o PC do coworking.'
+        : 'Conta na VPS. A Ludmilla visita este portal pela VPS.');
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
 }
 
 /** O que o robô responde num `teste_login` (ver worker/ludmilla/src/conectores). */
@@ -81,6 +141,8 @@ export function usePortalAccounts() {
     },
     enabled: disponivel,
     staleTime: 60_000,
+    // a estação pulsa a cada 60 s: a tela acompanha o online/offline sozinha
+    refetchInterval: 60_000,
   });
 }
 
