@@ -38,6 +38,15 @@ const PAGINAS: Record<string, { status: number; html: string }> = {
     html: `<html><head><title>Access Denied</title></head><body>
       <h1>Access Denied</h1><p>You don't have permission to access this page. Reference #18.abc</p></body></html>`,
   },
+  // Portal GD da Elektro: JSF/PrimeFaces, CAPTCHA de imagem gerado pelo próprio servidor
+  '/imagem': {
+    status: 200,
+    html: `<html><head><title>Portal GD Acessante</title></head><body><form id="j_idt14">
+      <input type="text" id="j_idt14:j_idt16" name="j_idt14:j_idt16">
+      <input type="password" id="j_idt14:j_idt18" name="j_idt14:j_idt18">
+      <img src="/captcha.jpg" alt=""><input type="text" id="j_idt14:captchaCode" name="j_idt14:captchaCode">
+      </form></body></html>`,
+  },
 };
 
 let servidor: Server;
@@ -92,6 +101,13 @@ test('tela sem CAPTCHA diz "nenhum" — a boa notícia também é informação',
   const r = await reconhecer('/limpo');
   assert.equal(r.captcha, 'nenhum');
   assert.equal(r.campos.map(c => c.id).join(','), 'login,pwd');
+});
+
+test('CAPTCHA de imagem (campo captchaCode) é reconhecido como "imagem"', async () => {
+  const r = await reconhecer('/imagem');
+  assert.equal(r.captcha, 'imagem');
+  assert.equal(r.bloqueado_por_waf, false);
+  assert.deepEqual(r.campos.map(c => c.id), ['j_idt14:j_idt16', 'j_idt14:j_idt18', 'j_idt14:captchaCode']);
 });
 
 test('403 com "Access Denied" é bloqueio de WAF, não tela de login', async () => {

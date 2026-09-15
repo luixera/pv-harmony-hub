@@ -9,7 +9,8 @@ import type { Page } from 'playwright';
  * contingência de sessão importada; WAF = reavaliar a abordagem).
  */
 
-export type TipoCaptcha = 'recaptcha' | 'hcaptcha' | 'turnstile' | 'nenhum' | 'desconhecido';
+/** `imagem` = CAPTCHA gerado pelo próprio portal (campo "captcha" + figura), como no Portal GD da Elektro. */
+export type TipoCaptcha = 'recaptcha' | 'hcaptcha' | 'turnstile' | 'imagem' | 'nenhum' | 'desconhecido';
 
 export interface CampoLogin {
   tipo: string;
@@ -64,6 +65,11 @@ export async function reconhecerPagina(page: Page, statusHttp: number): Promise<
   }
   // bloqueado antes da tela: não dá para afirmar nada sobre CAPTCHA
   if (bloqueado_por_waf && captcha === 'nenhum') captcha = 'desconhecido';
+
+  // CAPTCHA "caseiro": um campo de texto chamado captcha (e uma imagem ao lado)
+  if (captcha === 'nenhum' && await page.locator('input[id*="captcha" i], input[name*="captcha" i]').count() > 0) {
+    captcha = 'imagem';
+  }
 
   // Só campos VISÍVEIS: hidden e submit não são o que a pessoa preenche.
   const campos: CampoLogin[] = bloqueado_por_waf ? [] : await page.evaluate(() => {

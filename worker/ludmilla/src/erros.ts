@@ -45,7 +45,7 @@ const EFEITO: Record<ClasseErro, { conta: SituacaoConta; prefixo: string; sufixo
   captcha_exigido: {
     conta: 'erro',
     prefixo: 'O portal exige CAPTCHA no login, e a Ludmilla não resolve CAPTCHA.',
-    sufixo: 'Saída prevista: importar a sua sessão (você entra no seu navegador e cola os cookies na aba Concessionárias).',
+    sufixo: 'Saída: colocar a conta no modo "estação local" — a Ludmilla preenche e-mail e senha e uma pessoa digita o código.',
   },
   pagina_mudou: {
     conta: 'ok',

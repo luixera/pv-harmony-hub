@@ -7,7 +7,7 @@ test('CAPTCHA exigido derruba a conta para erro e explica a contingência', () =
   assert.equal(r.classe, 'captcha_exigido');
   assert.equal(r.situacaoConta, 'erro');
   assert.match(r.mensagem, /CAPTCHA/);
-  assert.match(r.mensagem, /sessão/i); // aponta a saída: importar a sessão
+  assert.match(r.mensagem, /estação local/i); // aponta a saída: a conta no modo estação, com uma pessoa digitando o código
 });
 
 test('sessão expirada pede reconexão, não marca a conta como erro', () => {
