@@ -6,6 +6,7 @@ import {
 } from './cpfl-api.js';
 import type { Credenciais } from '../fila.js';
 import { ErroLudmilla } from '../erros.js';
+import { comPaciencia } from '../paciencia.js';
 import { reconhecerPagina } from '../reconhecer.js';
 import { semSegredos, vereditoDepoisDaSenha } from '../veredito.js';
 
@@ -262,14 +263,25 @@ export const cpfl: Conector = {
     if (!/gestao-projetos/.test(page.url())) {
       await page.goto('https://www.cpfl.com.br/gestao-projetos/meus-projetos', { waitUntil: 'networkidle', timeout: 60_000 });
     }
+    // A aba "Orçamentos de conexão" é onde ficam os projetos que a Ludmilla
+    // acompanha (regra do usuário, 14/09/2026): a tela abre nela — assim o
+    // print mostra a lista certa — e a leitura vem da API DESSA aba.
+    await esperarLista(page);
+    const abaOrcamentos = page.getByRole('tab', { name: /OR[CÇ]AMENTOS DE CONEX[AÃ]O/i });
+    if (await abaOrcamentos.count() > 0) {
+      await abaOrcamentos.first().click({ timeout: 10_000 }).catch(() => undefined);
+      await esperarLista(page);
+    }
 
     // A LISTA vem da API (JSON), não da tela: sem spinner, sem paginação
-    // clicada, e com o status DETALHADO que o cartão não mostra.
+    // clicada, e com o status DETALHADO que o cartão não mostra. Portal lento
+    // (estourou 30 s em 15/09) não derruba o run: prazo maior e nova tentativa.
     const porProtocolo = new Map<string, Protocolo>();
     let pagina = 1;
     let total = Infinity;
     while (porProtocolo.size < total && pagina <= 20) {
-      const resposta = await page.request.get(urlListaCpfl(creds.login, pagina, 200));
+      const resposta = await comPaciencia(`lista de orçamentos de conexão (página ${pagina})`,
+        () => page.request.get(urlListaCpfl(creds.login, pagina, 200), { timeout: 90_000 }));
       if (resposta.status() === 401 || resposta.status() === 403) {
         throw new ErroLudmilla('sessao_expirada', `A API do portal recusou a sessão (HTTP ${resposta.status()}).`);
       }
@@ -294,8 +306,11 @@ export const cpfl: Conector = {
       .slice(0, 80);
     for (const p of detalhar) {
       const cod = p.raw.codigoProjeto;
+      // detalhe que não vem (portal lento duas vezes) fica de fora deste run — o
+      // próximo lê de novo; nunca derruba a varredura inteira por um projeto
       const json = async (url: string) => {
-        const r = await page.request.get(url).catch(() => null);
+        const r = await comPaciencia(`detalhe do projeto ${p.protocolo}`,
+          () => page.request.get(url, { timeout: 60_000 }), { tentativas: 2, pausaMs: 3_000 }).catch(() => null);
         return r && r.ok() ? r.json().catch(() => null) : null;
       };
       // Pareceres: a linha do tempo das abas ORÇAMENTO/VISTORIA/CONEXÃO. Vão
@@ -328,7 +343,8 @@ export const cpfl: Conector = {
   },
 
   async baixarAnexo(page: Page, idArquivo: string): Promise<Buffer | null> {
-    const r = await page.request.get(urlBaixarArquivoCpfl(idArquivo)).catch(() => null);
+    const r = await comPaciencia(`anexo ${idArquivo}`,
+      () => page.request.get(urlBaixarArquivoCpfl(idArquivo), { timeout: 90_000 }), { tentativas: 2, pausaMs: 3_000 }).catch(() => null);
     if (!r || !r.ok()) return null;
     return lerArquivoCpfl(await r.json().catch(() => null));
   },
