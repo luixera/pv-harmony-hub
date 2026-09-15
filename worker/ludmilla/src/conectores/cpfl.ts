@@ -131,6 +131,7 @@ export const cpfl: Conector = {
     // Abre um aprovado e um pendente para conhecer as duas caras da tela.
     await page.getByRole('tab', { name: /OR[CÇ]AMENTOS DE CONEX[AÃ]O/i }).click();
     await esperarLista(page);
+    await mostrarMaisPorPagina(page);   // os aprovados não estão na 1ª página de 10
     for (const [status, nome] of [['Aprovado', '05-projeto-aprovado'], ['Pendente', '07-projeto-pendente']] as const) {
       const link = await page.locator(`[data-accordion-component="AccordionItem"][data-status="${status}"] a[href*="/meus-projetos/"]`)
         .first().getAttribute('href').catch(() => null);
@@ -190,9 +191,14 @@ export const cpfl: Conector = {
   },
 };
 
-/** Espera o spinner da lista sumir e a página assentar. */
+/**
+ * Espera o spinner da lista APARECER e sumir. Só esperar sumir não basta: o
+ * app renderiza, o networkidle passa, e só então dispara a busca dos dados —
+ * a descoberta capturou a tela do projeto com o spinner girando por isso.
+ */
 async function esperarLista(page: Page) {
-  await page.waitForFunction(sel => !document.querySelector(sel), SELETOR_SPINNER, { timeout: 60_000 }).catch(() => undefined);
+  await page.waitForSelector(SELETOR_SPINNER, { state: 'attached', timeout: 4_000 }).catch(() => undefined);
+  await page.waitForSelector(SELETOR_SPINNER, { state: 'detached', timeout: 60_000 }).catch(() => undefined);
   await page.waitForLoadState('networkidle', { timeout: 30_000 }).catch(() => undefined);
   await respirar(page, 800);
 }
