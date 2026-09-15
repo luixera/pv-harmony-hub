@@ -162,6 +162,14 @@ export const cpfl: Conector = {
       for (const m of js.matchAll(RE_ROTA)) {
         if (!rotas.has(m[1])) rotas.set(m[1], js.slice(Math.max(0, (m.index ?? 0) - 160), (m.index ?? 0) + 200));
       }
+      // como o app baixa um anexo: o trecho em volta de cada uso de idArquivo/download
+      for (const palavra of ['idArquivo', 'download', 'Download', 'blob:', 'octet-stream', 'base64']) {
+        let n = 0;
+        for (const m of js.matchAll(new RegExp(palavra.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'))) {
+          if (n++ >= 6) break;
+          rotas.set(`palavra:${palavra}#${n}`, js.slice(Math.max(0, (m.index ?? 0) - 300), (m.index ?? 0) + 300));
+        }
+      }
     }
     const mapa = { scripts, rotas: [...rotas.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([rota, contexto]) => ({ rota, contexto })) };
     const telaRotas: TelaDescoberta = { nome: '00-endpoints', url: 'bundle', html: JSON.stringify(mapa, null, 1) };
