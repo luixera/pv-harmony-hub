@@ -155,7 +155,7 @@ export const cpfl: Conector = {
       Array.from(document.querySelectorAll('script[src]')).map(s => (s as HTMLScriptElement).src));
     const rotas = new Map<string, string>();   // rota → trecho do código em volta (para entender o uso)
     const RE_ROTA = /["'`](\/api\/(?:internal|external)\/[A-Za-z0-9_\/{}$.-]+)/g;
-    for (const src of scripts.filter(u => /react-app/build/static/js//.test(u))) {
+    for (const src of scripts.filter(u => u.includes('/react-app/build/static/js/'))) {
       const r = await page.request.get(src).catch(() => null);
       if (!r || !r.ok()) continue;
       const js = await r.text().catch(() => '');
