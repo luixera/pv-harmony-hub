@@ -1,10 +1,13 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import type { SituacaoConta } from './erros.js';
+import { carregarSessao, guardarSessao, modoAtual, nomeRpc } from './local.js';
 
 /**
  * A fila da Ludmilla vive no banco (`portal_sync_runs`), e este módulo é a
- * única porta do robô para ela. Tudo passa por RPC de service role: o robô
- * não tem SELECT direto em tabela nenhuma além do que as funções expõem.
+ * única porta do robô para ela. Tudo passa por RPC: na VPS com service role;
+ * na estação local (LUDMILLA_MODO=local) com a sessão do usuário operador e
+ * as RPCs `_local`, que o banco só deixa o `operador_local` da conta chamar.
+ * O robô não tem SELECT direto em tabela nenhuma além do que as funções expõem.
  */
 
 export interface Run {
@@ -36,22 +39,59 @@ let cliente: SupabaseClient | null = null;
 export function supabase(): SupabaseClient {
   if (cliente) return cliente;
   const url = process.env.SUPABASE_URL;
+  if (!url) throw new Error('Falta SUPABASE_URL no ambiente.');
+  if (modoAtual() === 'local') {
+    // Estação: chave pública + sessão do usuário operador (guardada em arquivo).
+    // Service role NUNCA sai da VPS.
+    const anon = process.env.SUPABASE_ANON_KEY;
+    if (!anon) throw new Error('Falta SUPABASE_ANON_KEY no ambiente da estação.');
+    cliente = createClient(url, anon, { auth: { persistSession: false, autoRefreshToken: true } });
+    cliente.auth.onAuthStateChange((_ev, s) => {
+      if (s?.refresh_token) guardarSessao({ access_token: s.access_token, refresh_token: s.refresh_token, expires_at: s.expires_at ?? 0 });
+    });
+    return cliente;
+  }
   const chave = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !chave) throw new Error('Faltam SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY no ambiente.');
+  if (!chave) throw new Error('Falta SUPABASE_SERVICE_ROLE_KEY no ambiente.');
   cliente = createClient(url, chave, { auth: { persistSession: false, autoRefreshToken: false } });
   return cliente;
 }
 
+/**
+ * Estação: retoma a sessão guardada (ou entra com e-mail/senha na primeira vez,
+ * via `--login`). Devolve o e-mail do operador ou lança com a instrução.
+ */
+export async function entrarNaEstacao(login?: { email: string; senha: string }): Promise<string> {
+  const c = supabase();
+  if (login) {
+    const { data, error } = await c.auth.signInWithPassword({ email: login.email, password: login.senha });
+    if (error || !data.session) throw new Error(`Não consegui entrar no GD Manager: ${error?.message ?? 'sem sessão'}`);
+    guardarSessao({ access_token: data.session.access_token, refresh_token: data.session.refresh_token, expires_at: data.session.expires_at ?? 0 });
+    return data.user?.email ?? login.email;
+  }
+  const s = carregarSessao();
+  if (!s) throw new Error('A estação ainda não entrou no GD Manager. Rode: node dist/index.js --login');
+  const { data, error } = await c.auth.setSession({ access_token: s.access_token, refresh_token: s.refresh_token });
+  if (error || !data.session) throw new Error(`A sessão da estação expirou (${error?.message ?? 'sem sessão'}). Rode de novo: node dist/index.js --login`);
+  return data.user?.email ?? '';
+}
+
+/** Heartbeat da estação — a página mostra online/offline por ele. */
+export async function pulsar(): Promise<void> {
+  if (modoAtual() !== 'local') return;
+  await supabase().rpc('ludmilla_estacao_pulsa').then(() => undefined, () => undefined);
+}
+
 /** Próximo run da fila, já marcado como `rodando`; null quando não há. */
 export async function pegarRun(): Promise<Run | null> {
-  const { data, error } = await supabase().rpc('ludmilla_claim_run');
+  const { data, error } = await supabase().rpc(nomeRpc('ludmilla_claim_run'));
   if (error) throw new Error(`Não consegui consultar a fila: ${error.message}`);
   const linhas = (data ?? []) as Run[];
   return linhas[0] ?? null;
 }
 
 export async function finalizarRun(runId: string, f: Fechamento): Promise<void> {
-  const { error } = await supabase().rpc('ludmilla_finalizar_run', {
+  const { error } = await supabase().rpc(nomeRpc('ludmilla_finalizar_run'), {
     p_run_id: runId,
     p_situacao: f.situacao,
     p_erro: f.erro ?? null,
@@ -77,7 +117,7 @@ export async function conectorDaConta(accountId: string): Promise<string> {
 
 /** Credenciais decifradas — só na varredura, só na hora de usar. */
 export async function credenciais(accountId: string): Promise<Credenciais> {
-  const { data, error } = await supabase().rpc('ludmilla_portal_credentials', { p_account_id: accountId });
+  const { data, error } = await supabase().rpc(nomeRpc('ludmilla_portal_credentials'), { p_account_id: accountId });
   if (error) throw new Error(`Não consegui ler as credenciais: ${error.message}`);
   const linha = ((data ?? []) as Credenciais[])[0];
   if (!linha) throw new Error('A conta não tem credencial gravada ou está desativada.');
@@ -118,7 +158,7 @@ export interface AnexoPendente {
 
 /** O que o banco autorizou anexar (projeto casado E titular/UC conferidos). */
 export async function anexosPendentes(accountId: string): Promise<AnexoPendente[]> {
-  const { data, error } = await supabase().rpc('ludmilla_anexos_pendentes', { p_account_id: accountId });
+  const { data, error } = await supabase().rpc(nomeRpc('ludmilla_anexos_pendentes'), { p_account_id: accountId });
   if (error) throw new Error(`Não consegui listar os anexos pendentes: ${error.message}`);
   return (data ?? []) as AnexoPendente[];
 }
@@ -139,17 +179,17 @@ export async function subirDocumento(a: AnexoPendente, bytes: Buffer, mime: stri
 }
 
 export async function anexoEnviado(anexoId: string, filePath: string, mime: string): Promise<void> {
-  const { error } = await supabase().rpc('ludmilla_anexo_enviado', { p_anexo_id: anexoId, p_file_path: filePath, p_file_type: mime });
+  const { error } = await supabase().rpc(nomeRpc('ludmilla_anexo_enviado'), { p_anexo_id: anexoId, p_file_path: filePath, p_file_type: mime });
   if (error) throw new Error(`Não consegui registrar o anexo no card: ${error.message}`);
 }
 
 export async function anexoErro(anexoId: string, motivo: string): Promise<void> {
-  await supabase().rpc('ludmilla_anexo_erro', { p_anexo_id: anexoId, p_motivo: motivo.slice(0, 500) });
+  await supabase().rpc(nomeRpc('ludmilla_anexo_erro'), { p_anexo_id: anexoId, p_motivo: motivo.slice(0, 500) });
 }
 
 /** Protocolos dos projetos que a conta acompanha — o robô lê o detalhe deles mesmo sem mexida recente. */
 export async function protocolosDeInteresse(accountId: string): Promise<string[]> {
-  const { data, error } = await supabase().rpc('ludmilla_protocolos_de_interesse', { p_account_id: accountId });
+  const { data, error } = await supabase().rpc(nomeRpc('ludmilla_protocolos_de_interesse'), { p_account_id: accountId });
   if (error) return [];
   return ((data ?? []) as { protocolo: string }[]).map(x => x.protocolo);
 }
