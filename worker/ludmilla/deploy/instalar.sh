@@ -23,6 +23,10 @@ echo "unit: $([ -f "$UNIT" ] && echo 'existe' || echo 'não existe')"
 echo "serviço: $(systemctl is-active ludmilla-worker 2>/dev/null || echo 'inativo')"
 [ -d "$APP" ] && echo "código: $(ls "$APP" | tr '\n' ' ')" || echo "código: pasta ausente"
 
+echo "navegadores: $(ls /home/ludmilla/.cache/ms-playwright 2>/dev/null | tr '
+' ' ')"
+echo "últimas linhas do log:"; journalctl -u ludmilla-worker -n 12 --no-pager 2>/dev/null
+
 if [ "${SIMULAR:-false}" = "true" ]; then
   echo; echo "SIMULAÇÃO — nada foi alterado."; exit 0
 fi
