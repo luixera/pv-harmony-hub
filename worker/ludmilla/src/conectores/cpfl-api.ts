@@ -125,3 +125,77 @@ export function lerUltimoParecerCpfl(resposta: unknown): { data: string; status:
     texto: (u.respostaParecerExterno || u.respostaParecer || '').replace(/\s+/g, ' ').trim().slice(0, 1_000),
   };
 }
+
+// ── Detalhe do projeto ───────────────────────────────────────────────────────
+// Descoberto em 14/09/2026 lendo o bundle do app e chamando as rotas na sessão
+// logada. Tudo GET; a Ludmilla nunca chama as rotas de escrita
+// (encerrarprojeto é PUT — fica fora).
+
+const rota = (paramType: 'ROUTE' | 'QUERY', endpoint: string, params: Record<string, string> = {}) => {
+  const q = new URLSearchParams({ httpType: 'GET', paramType, ...params, endpoint });
+  return `${BASE}?${q.toString()}`;
+};
+
+/** Anexos do projeto (os da CPFL e os que o projetista subiu). */
+export const urlAnexosCpfl = (codigoProjeto: string) => rota('ROUTE', `/api/internal/detalhesprojeto/anexos/${codigoProjeto}`);
+/** Dados do cliente (titular): nome, CPF/CNPJ, endereços. */
+export const urlClienteCpfl = (codigoProjeto: string) => rota('ROUTE', `/api/internal/detalhesprojeto/cliente/${codigoProjeto}`);
+/** Detalhe do projeto por número de protocolo (atividade): UC atual e nova, datas… */
+export const urlDetalhesCpfl = (protocolo: string) => rota('QUERY', '/api/internal/detalhesprojeto', { 'params[numeroProtocolo]': protocolo });
+/** Conteúdo de um anexo, em base64. */
+export const urlBaixarArquivoCpfl = (idArquivo: string) => rota('ROUTE', `/api/arquivos/baixararquivo/${idArquivo}`);
+
+export interface AnexoCpfl {
+  idArquivo: string;
+  nomeArquivo: string;
+  descricao: string;
+  extensao: string;
+  data: string;
+}
+
+/**
+ * Só os anexos EMITIDOS PELA CPFL (tipoProjeto "ANEXOS CPFL"): Relacionamento
+ * Operacional e Orçamento de Conexão Simplificado. Os demais são os documentos
+ * que o próprio projetista subiu — já estão no card.
+ */
+export function lerAnexosCpfl(resposta: unknown): AnexoCpfl[] {
+  const v = (resposta as { data?: { $values?: Record<string, unknown>[] } })?.data?.$values ?? [];
+  return v
+    .filter(a => String(a.tipoProjeto ?? '').toUpperCase() === 'ANEXOS CPFL' && a.idArquivo)
+    .map(a => ({
+      idArquivo: String(a.idArquivo),
+      nomeArquivo: String(a.nomeArquivo ?? a.descricao ?? a.idArquivo),
+      descricao: String(a.descricao ?? ''),
+      extensao: String(a.extensao ?? 'pdf'),
+      // aqui a data já vem no formato brasileiro ("27/8/2026") — ao contrário da
+      // lista, que manda mês primeiro; só completa os zeros
+      data: String(a.data ?? '').replace(/^(\d{1,2})\/(\d{1,2})\/(\d{4}).*$/, (_m, d, mo, y) => `${d.padStart(2, '0')}/${mo.padStart(2, '0')}/${y}`),
+    }));
+}
+
+/** O titular do projeto no portal: documento só com dígitos, para conferir com o cadastro. */
+export function lerClienteCpfl(resposta: unknown): { documento: string; nome: string; tipoDocumento: string } {
+  const d = (resposta as { data?: Record<string, unknown> })?.data ?? {};
+  return {
+    documento: String(d.numeroDocumento ?? '').replace(/\D/g, ''),
+    nome: [d.nome, d.sobrenome].map(x => String(x ?? '').trim()).filter(Boolean).join(' '),
+    tipoDocumento: String(d.descricaoTipoDocumento ?? ''),
+  };
+}
+
+/** As UCs do projeto (instalação atual e a nova), só dígitos. */
+export function lerDetalhesCpfl(resposta: unknown): { ucs: string[]; titulo: string } {
+  const d = (resposta as { data?: Record<string, unknown> })?.data ?? {};
+  const ucs = [d.numeroInstalacao, d.numeroInstalacaoNova]
+    .map(x => (x == null ? '' : String(x).replace(/\D/g, '')))
+    .filter(x => x.length > 0);
+  return { ucs: [...new Set(ucs)], titulo: String(d.titulo ?? '') };
+}
+
+/** Bytes de um anexo (conteudoArquivo em base64, com ou sem prefixo data:). */
+export function lerArquivoCpfl(resposta: unknown): Buffer | null {
+  const c = (resposta as { data?: { conteudoArquivo?: string } })?.data?.conteudoArquivo;
+  if (!c) return null;
+  const b64 = c.replace(/^data:[^,]*;base64,/, '').replace(/\s/g, '');
+  return Buffer.from(b64, 'base64');
+}

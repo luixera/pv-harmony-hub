@@ -160,8 +160,11 @@ export interface PortalUpdate {
   status_portal: string;
   status_anterior: string | null;
   project_id: string | null;
-  casamento: 'protocolo' | 'uc' | 'titular' | null;
+  casamento: 'protocolo' | 'cpf' | 'uc' | 'titular' | null;
   recomendacao: string | null;
+  /** true = o projeto foi casado por CPF/UC/título e o protocolo do cadastro é outro: aplicar atualiza o protocolo */
+  atualizar_protocolo: boolean;
+  protocolo_anterior: string | null;
   situacao: 'pendente' | 'aplicada' | 'ignorada';
   aplicada_por: string | null;
   aplicada_em: string | null;

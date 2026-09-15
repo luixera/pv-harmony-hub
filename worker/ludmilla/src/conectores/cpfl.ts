@@ -1,6 +1,9 @@
 import type { Page } from 'playwright';
 import type { Conector, Descoberta, Protocolo, TelaDescoberta } from './index.js';
-import { lerListaCpfl, lerUltimoParecerCpfl, urlListaCpfl, urlParecerCpfl } from './cpfl-api.js';
+import {
+  lerAnexosCpfl, lerArquivoCpfl, lerClienteCpfl, lerDetalhesCpfl, lerListaCpfl, lerUltimoParecerCpfl,
+  urlAnexosCpfl, urlBaixarArquivoCpfl, urlClienteCpfl, urlDetalhesCpfl, urlListaCpfl, urlParecerCpfl,
+} from './cpfl-api.js';
 import type { Credenciais } from '../fila.js';
 import { ErroLudmilla } from '../erros.js';
 import { reconhecerPagina } from '../reconhecer.js';
@@ -288,16 +291,38 @@ export const cpfl: Conector = {
       .filter(p => diasDesde(p.raw['Última atualização']) <= 45 && p.raw.codigoProjeto)
       .slice(0, 40);
     for (const p of recentes) {
-      const r = await page.request.get(urlParecerCpfl(p.raw.codigoProjeto)).catch(() => null);
-      if (!r || !r.ok()) continue;
-      const parecer = lerUltimoParecerCpfl(await r.json().catch(() => null));
+      const cod = p.raw.codigoProjeto;
+      const json = async (url: string) => {
+        const r = await page.request.get(url).catch(() => null);
+        return r && r.ok() ? r.json().catch(() => null) : null;
+      };
+      const parecer = lerUltimoParecerCpfl(await json(urlParecerCpfl(cod)));
       if (parecer) {
         p.raw['Último parecer'] = `${parecer.data} · ${parecer.status}`;
         p.raw['Texto do parecer'] = parecer.texto;
       }
+      // Titular (CPF/CNPJ) e UCs: é com isso que o banco CONFERE que o protocolo
+      // é mesmo do projeto do card antes de anexar qualquer coisa, e que casa um
+      // reprovado reenviado sob protocolo novo (regras do usuário, 14/09/2026).
+      const cliente = lerClienteCpfl(await json(urlClienteCpfl(cod)));
+      if (cliente.documento) p.raw.documentoTitular = cliente.documento;
+      if (cliente.nome) p.raw.nomeTitular = cliente.nome;
+      const det = lerDetalhesCpfl(await json(urlDetalhesCpfl(p.protocolo)));
+      if (det.ucs.length > 0) p.raw.ucs = det.ucs.join(',');
+      // Anexos emitidos pela CPFL (Relacionamento Operacional, Orçamento
+      // Simplificado): só a lista — o download acontece depois, e só para o
+      // que o banco autorizar (projeto casado E titular/UC conferidos).
+      const anexos = lerAnexosCpfl(await json(urlAnexosCpfl(cod)));
+      if (anexos.length > 0) p.raw.anexosCpfl = JSON.stringify(anexos);
       await respirar(page, 400);
     }
     return [...porProtocolo.values()];
+  },
+
+  async baixarAnexo(page: Page, idArquivo: string): Promise<Buffer | null> {
+    const r = await page.request.get(urlBaixarArquivoCpfl(idArquivo)).catch(() => null);
+    if (!r || !r.ok()) return null;
+    return lerArquivoCpfl(await r.json().catch(() => null));
   },
 };
 

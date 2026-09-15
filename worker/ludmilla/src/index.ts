@@ -1,7 +1,10 @@
 import { chromium, Browser, BrowserContext } from 'playwright';
 import { classificarErro } from './erros.js';
 import { conector } from './conectores/index.js';
-import { conectorDaConta, credenciais, finalizarRun, pegarRun, subirPrint, subirTexto, Run } from './fila.js';
+import {
+  anexoEnviado, anexoErro, anexosPendentes, conectorDaConta, credenciais, finalizarRun, pegarRun,
+  subirDocumento, subirPrint, subirTexto, Run,
+} from './fila.js';
 
 /**
  * LUDMILLA — o laço.
@@ -86,6 +89,30 @@ async function executar(navegador: Browser, run: Run): Promise<void> {
       situacao: 'ok', resultado: { protocolos }, protocolos: protocolos.length, situacaoConta: 'ok',
     });
     log('varredura ok', { run: run.id, protocolos: protocolos.length });
+
+    // Anexos: o fechamento do run já decidiu (no banco) quais arquivos podem
+    // ir para qual card — projeto casado pelo número E titular/UC conferidos.
+    // Com a sessão do portal ainda aberta, baixa e coloca no card.
+    if (c.baixarAnexo) {
+      const pendentes = await anexosPendentes(run.account_id).catch(e => { log('anexos indisponíveis', { erro: (e as Error).message }); return []; });
+      let enviados = 0;
+      for (const a of pendentes) {
+        try {
+          const bytes = await c.baixarAnexo(page, a.id_arquivo);
+          if (!bytes || bytes.length < 100) { await anexoErro(a.id, 'O portal não devolveu o conteúdo do arquivo.'); continue; }
+          const mime = /\.pdf$/i.test(a.nome_arquivo) ? 'application/pdf' : 'application/octet-stream';
+          const path = await subirDocumento(a, bytes, mime);
+          await anexoEnviado(a.id, path, mime);
+          enviados++;
+          log('anexo no card', { projeto: a.codigo, arquivo: a.nome_arquivo });
+        } catch (e) {
+          await anexoErro(a.id, (e as Error).message);
+          log('anexo falhou', { projeto: a.codigo, arquivo: a.nome_arquivo, erro: (e as Error).message });
+        }
+        await dormir(600);
+      }
+      if (pendentes.length > 0) log('anexos', { pedidos: pendentes.length, enviados });
+    }
   } catch (e) {
     const erro = classificarErro(e);
     try {

@@ -103,3 +103,46 @@ export async function subirPrint(tenantId: string, runId: string, png: Buffer): 
   if (error) throw new Error(`Não consegui guardar o print: ${error.message}`);
   return path;
 }
+
+// ── Anexos da concessionária para o card ─────────────────────────────────────
+
+export interface AnexoPendente {
+  id: string;
+  project_id: string;
+  company_id: string;
+  protocolo: string;
+  id_arquivo: string;
+  nome_arquivo: string;
+  codigo: string;
+}
+
+/** O que o banco autorizou anexar (projeto casado E titular/UC conferidos). */
+export async function anexosPendentes(accountId: string): Promise<AnexoPendente[]> {
+  const { data, error } = await supabase().rpc('ludmilla_anexos_pendentes', { p_account_id: accountId });
+  if (error) throw new Error(`Não consegui listar os anexos pendentes: ${error.message}`);
+  return (data ?? []) as AnexoPendente[];
+}
+
+/** Nome de arquivo seguro para o bucket (mesma ideia do sanitizeFileName do front). */
+const nomeSeguro = (nome: string) =>
+  nome.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\w.\-]+/g, '_').replace(/_+/g, '_').slice(0, 120);
+
+/**
+ * Sobe o arquivo no bucket dos documentos do projeto, no MESMO caminho que o
+ * front usa para anexos de comentário ({empresa}/{projeto}/other_photos/…).
+ */
+export async function subirDocumento(a: AnexoPendente, bytes: Buffer, mime: string): Promise<string> {
+  const path = `${a.company_id}/${a.project_id}/other_photos/${Date.now()}_${nomeSeguro(a.nome_arquivo)}`;
+  const { error } = await supabase().storage.from('project-documents').upload(path, bytes, { contentType: mime, upsert: false });
+  if (error) throw new Error(`Não consegui guardar o anexo no projeto: ${error.message}`);
+  return path;
+}
+
+export async function anexoEnviado(anexoId: string, filePath: string, mime: string): Promise<void> {
+  const { error } = await supabase().rpc('ludmilla_anexo_enviado', { p_anexo_id: anexoId, p_file_path: filePath, p_file_type: mime });
+  if (error) throw new Error(`Não consegui registrar o anexo no card: ${error.message}`);
+}
+
+export async function anexoErro(anexoId: string, motivo: string): Promise<void> {
+  await supabase().rpc('ludmilla_anexo_erro', { p_anexo_id: anexoId, p_motivo: motivo.slice(0, 500) });
+}

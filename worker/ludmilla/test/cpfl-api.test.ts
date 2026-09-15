@@ -63,3 +63,38 @@ test('monta as URLs da API como o site monta', () => {
   assert.match(u, /endpoint=%2Fapi%2Fexternal%2Fgetprojetosorcamentoconexao/);
   assert.match(urlParecerCpfl(10083970), /endpoint=%2Fapi%2Finternal%2Fgetdetalhesparecer%2F10083970/);
 });
+
+// ── detalhe do projeto: anexos, cliente, UCs, arquivo ────────────────────────
+import { lerAnexosCpfl, lerClienteCpfl, lerDetalhesCpfl, lerArquivoCpfl, urlBaixarArquivoCpfl } from '../src/conectores/cpfl-api.js';
+
+test('anexos: só os emitidos pela CPFL (ANEXOS CPFL), não os que o projetista subiu', () => {
+  const r = lerAnexosCpfl({ data: { $values: [
+    { idArquivo: 'a.pdf', nomeArquivo: 'Relacionamento_Operacional_2199687070.pdf', descricao: '27-8-2026-Relacionamento_Operacional_2199687070.pdf', tipoProjeto: 'ANEXOS CPFL', tipoArquivo: 'CPFL', extensao: 'pdf', data: '27/8/2026' },
+    { idArquivo: 'b.pdf', nomeArquivo: 'Orçamento_Conexão_Simplificado_2199687070.pdf', descricao: 'x', tipoProjeto: 'ANEXOS CPFL', tipoArquivo: 'CPFL', extensao: 'pdf', data: '27/8/2026' },
+    { idArquivo: 'c.pdf', nomeArquivo: 'unifilar_PRJ-71443.pdf', descricao: 'x', tipoProjeto: 'ANÁLISE TÉCNICA', tipoArquivo: 'DIAGRAMA UNIFILAR', extensao: 'pdf', data: '25/8/2026' },
+  ] } });
+  assert.deepEqual(r.map(a => a.idArquivo), ['a.pdf', 'b.pdf']);
+  assert.equal(r[0].nomeArquivo, 'Relacionamento_Operacional_2199687070.pdf');
+  assert.equal(r[0].data, '27/08/2026');
+});
+
+test('cliente: CPF/CNPJ só dígitos e nome completo', () => {
+  const c = lerClienteCpfl({ data: { nome: 'JOSÉ', sobrenome: 'DA SILVA', numeroDocumento: '123.456.789-09', descricaoTipoDocumento: 'CPF' } });
+  assert.equal(c.documento, '12345678909');
+  assert.equal(c.nome, 'JOSÉ DA SILVA');
+  assert.equal(lerClienteCpfl(null).documento, '');
+});
+
+test('detalhes: as UCs do projeto (instalação atual e nova), só dígitos', () => {
+  const d = lerDetalhesCpfl({ data: { numeroInstalacao: 20323603, numeroInstalacaoNova: 188568503505, titulo: 'UFV X' } });
+  assert.deepEqual(d.ucs, ['20323603', '188568503505']);
+  assert.deepEqual(lerDetalhesCpfl({ data: { numeroInstalacao: null, numeroInstalacaoNova: null } }).ucs, []);
+});
+
+test('arquivo: conteudoArquivo em base64 (com ou sem prefixo data:) vira bytes', () => {
+  const b = lerArquivoCpfl({ data: { conteudoArquivo: 'data:application/pdf;base64,JVBERi0xLjQK' } });
+  assert.equal(b?.toString('latin1').slice(0, 5), '%PDF-');
+  assert.equal(lerArquivoCpfl({ data: { conteudoArquivo: 'JVBERi0xLjQK' } })?.length, 9);
+  assert.equal(lerArquivoCpfl({ data: {} }), null);
+  assert.match(urlBaixarArquivoCpfl('443a117c.pdf'), /endpoint=%2Fapi%2Farquivos%2Fbaixararquivo%2F443a117c\.pdf/);
+});

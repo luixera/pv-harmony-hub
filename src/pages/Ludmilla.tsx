@@ -58,6 +58,11 @@ export function LinhaRecomendacao({ u }: { u: PortalUpdate }) {
           </div>
           <div className="mt-1 text-xs text-muted-foreground">
             Protocolo {u.protocolo} · visto {quando(u.detectado_em)}
+            {u.atualizar_protocolo && (
+              <span className="ml-2 px-1.5 py-0.5 rounded bg-violet-100 text-violet-800">
+                protocolo novo — casado por {u.casamento === 'cpf' ? 'CPF/CNPJ' : u.casamento === 'uc' ? 'UC' : 'título'}; no cadastro está {u.protocolo_anterior || '(vazio)'}
+              </span>
+            )}
             {u.raw?.['Última atualização'] ? ` · atualizado no portal em ${u.raw['Última atualização']}` : ''}
           </div>
         </div>
@@ -92,9 +97,9 @@ export function LinhaRecomendacao({ u }: { u: PortalUpdate }) {
               <Button size="sm" variant="ghost" className="gap-1" disabled={ignorar.isPending} onClick={() => ignorar.mutate(u.id)}>
                 <XCircle size={14} /> Ignorar
               </Button>
-              <Button size="sm" className="gap-1" disabled={!etapa || !u.project || aplicar.isPending}
-                onClick={() => aplicar.mutate({ id: u.id, status: etapa })}>
-                {aplicar.isPending ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />} Aplicar
+              <Button size="sm" className="gap-1" disabled={(!etapa && !u.atualizar_protocolo) || !u.project || aplicar.isPending}
+                onClick={() => aplicar.mutate({ id: u.id, status: etapa || undefined })}>
+                {aplicar.isPending ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />} {u.atualizar_protocolo && !etapa ? 'Atualizar protocolo' : 'Aplicar'}
               </Button>
             </div>
           </>

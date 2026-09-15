@@ -47,6 +47,8 @@ export interface Conector {
   descobrir(page: Page, creds: Credenciais, guardarTela: (t: TelaDescoberta) => Promise<void>): Promise<Descoberta>;
   /** Entra e lê a lista. Só existe depois da descoberta logada. */
   varrer(page: Page, creds: Credenciais): Promise<Protocolo[]>;
+  /** Baixa um anexo do portal (na mesma sessão da varredura). Null = não veio. */
+  baixarAnexo?(page: Page, idArquivo: string): Promise<Buffer | null>;
 }
 
 export const CONECTORES: Record<string, Conector> = {
