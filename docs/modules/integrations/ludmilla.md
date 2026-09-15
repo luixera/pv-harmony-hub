@@ -99,10 +99,62 @@ as últimas visitas e mostra o print por URL assinada do bucket.
   pessoa como autora e a Ludmilla como origem) e **Ignorar**. Item "Ludmilla"
   na sidebar com contador de pendentes.
 
+## CPFL pela API interna, ciclo de vistoria, anexos e casamento (15/09/2026)
+
+A descoberta capturou a **API JSON** que o app React da CPFL consome
+(`/gestao-projetos/api/drupalApi/ServerSide?...&endpoint=<rota>`, mesma
+sessão logada). A varredura deixou de ler a tela (`cpfl-api.ts`):
+
+| Rota | Uso |
+|---|---|
+| `/api/external/getprojetosorcamentoconexao` (200/página) | lista com **status detalhado** (`status`, partes por `\|`) e `codigoProjeto` |
+| `/api/internal/getdetalhesparecer/{codigoProjeto}` | pareceres (texto da CPFL) |
+| `/api/internal/detalhesprojeto?params[numeroProtocolo]=` | `numeroInstalacao` / `numeroInstalacaoNova` = **UC** |
+| `/api/internal/detalhesprojeto/cliente/{codigoProjeto}` | titular: `numeroDocumento` (CPF/CNPJ), nome |
+| `/api/internal/detalhesprojeto/anexos/{codigoProjeto}` | anexos; os da CPFL têm `tipoProjeto = "ANEXOS CPFL"` |
+| `/api/arquivos/baixararquivo/{idArquivo}` | conteúdo em base64 (`conteudoArquivo`) |
+
+Só GET. `encerrarprojeto` (PUT) e "solicitar vistoria" **nunca** são chamados
+(a vistoria automática está combinada para conversa futura).
+
+**Ciclo da CPFL** (regras do usuário): "Aprovado" no selo ≠ concluído. O
+status detalhado diz onde está: `PROJETO ENCERRADO` = vistoria concluída →
+`completed`; `DOCUMENTOS APROVADOS | SOLICITAR VISTORIA` = aprovado
+(o selo mostra "Pendente"!) → `approved`; `ORÇAMENTO DE CONEXÃO EMITIDO E
+AGUARDANDO APROVAÇÃO DO CLIENTE` / `AGUARDAR EXECUÇÃO DE OBRA` = aprovado com
+adequação (inversão de fluxo) → `approved`; `VISTORIA E CONEXÃO EM EXECUÇÃO`
+→ `vistoria_solicitada`; `VISTORIA REPROVADA…` → `vistoria_reprovada`;
+`DOCUMENTOS INDEFERIDOS` → `pendencia`. Mapa em `portal_status_map`
+(normalizado por `ludmilla_normalizar_status`). "Etapa à frente" segue a
+**ordem do Kanban** do tenant (`ludmilla_ordem_etapa`). Escopo:
+`portal_accounts.etapas_acompanhadas` (padrão analysis, approved,
+vistoria_solicitada — concluídos fora).
+
+**Anexos no card**: para projeto casado pelo número e com **titular (CPF/CNPJ)
+ou UC conferidos** contra `project_general_data`, o banco enfileira em
+`portal_anexos`; o robô baixa na mesma sessão, sobe em `project-documents`
+(`{empresa}/{projeto}/other_photos/…`, o caminho dos anexos de comentário),
+registra em `documents` e comenta no card como Ludmilla. Sem conferência →
+`bloqueado` com motivo. Primeira execução: 28 autorizados, 20 enviados
+(limite por visita), 0 bloqueados.
+
+**Reprovado reenviado sob protocolo novo**: protocolo sem par é casado por
+CPF/CNPJ, UC ou título igual ao de outro protocolo já casado da conta;
+vira recomendação com `atualizar_protocolo` — Aplicar grava o número novo.
+
+**Armadilhas**: a API só responde depois de clicar em "Projetos
+Particulares" (é o que abre a sessão do app); a tela do projeto não renderiza
+no headless shell e o Chromium completo cai (SIGTRAP no crashpad sob o
+systemd) — por isso API; `getUserData` devolve um token de sessão → corpos
+capturados são limpos de `token` antes do bucket; a data dos anexos vem
+d/m/aaaa e a da lista m/d/aaaa.
+
 ## Próximos
 
-2. Agendamento 2×/dia (pg_cron → `ludmilla_pedir_run`); tradução de
-   "Pendente"/"Em Andamento" (decisão da equipe em `portal_status_map`);
-   casamento por UC/titular para os 3 protocolos sem par; os 4 cartões que a
-   varredura não leu (199 de 203).
-3. Elektro: decidir entre e-mail (Claudinho) e sessão do navegador do usuário.
+2. Agendamento 2×/dia (pg_cron → `ludmilla_pedir_run`); mostrar
+   `portal_anexos` (enviados/bloqueados) na página /ludmilla; 3 projetos em
+   andamento sem par no portal; os 4 cartões que a lista não devolve (199 de
+   203 — 5 "Incompleto" sem atividade).
+3. Solicitar vistoria automática quando a empresa pede pelo painel — a
+   conversar (exige a mesma conferência de titular/UC e é a única escrita).
+4. Elektro: decidir entre e-mail (Claudinho) e sessão do navegador do usuário.
