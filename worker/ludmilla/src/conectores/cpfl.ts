@@ -155,7 +155,7 @@ export const cpfl: Conector = {
       Array.from(document.querySelectorAll('script[src]')).map(s => (s as HTMLScriptElement).src));
     const rotas = new Map<string, string>();   // rota → trecho do código em volta (para entender o uso)
     const RE_ROTA = /["'`](\/api\/(?:internal|external)\/[A-Za-z0-9_\/{}$.-]+)/g;
-    for (const src of scripts.filter(u => /gestao-projetos|component|chunk|main|app|vendor|index/i.test(u)).slice(0, 15)) {
+    for (const src of scripts.filter(u => /react-app/build/static/js//.test(u))) {
       const r = await page.request.get(src).catch(() => null);
       if (!r || !r.ok()) continue;
       const js = await r.text().catch(() => '');
@@ -163,7 +163,7 @@ export const cpfl: Conector = {
         if (!rotas.has(m[1])) rotas.set(m[1], js.slice(Math.max(0, (m.index ?? 0) - 160), (m.index ?? 0) + 200));
       }
       // como o app baixa um anexo: o trecho em volta de cada uso de idArquivo/download
-      for (const palavra of ['idArquivo', 'download', 'Download', 'blob:', 'octet-stream', 'base64']) {
+      for (const palavra of ['idArquivo', 'nomeArquivo', 'download', 'responseType', '/drupalApi/', 'octet-stream']) {
         let n = 0;
         for (const m of js.matchAll(new RegExp(palavra.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'))) {
           if (n++ >= 6) break;
