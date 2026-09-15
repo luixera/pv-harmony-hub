@@ -146,3 +146,10 @@ export async function anexoEnviado(anexoId: string, filePath: string, mime: stri
 export async function anexoErro(anexoId: string, motivo: string): Promise<void> {
   await supabase().rpc('ludmilla_anexo_erro', { p_anexo_id: anexoId, p_motivo: motivo.slice(0, 500) });
 }
+
+/** Protocolos dos projetos que a conta acompanha — o robô lê o detalhe deles mesmo sem mexida recente. */
+export async function protocolosDeInteresse(accountId: string): Promise<string[]> {
+  const { data, error } = await supabase().rpc('ludmilla_protocolos_de_interesse', { p_account_id: accountId });
+  if (error) return [];
+  return ((data ?? []) as { protocolo: string }[]).map(x => x.protocolo);
+}

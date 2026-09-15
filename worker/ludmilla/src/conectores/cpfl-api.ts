@@ -112,20 +112,6 @@ export function lerListaCpfl(resposta: unknown): { itens: Protocolo[]; total: nu
   return { itens, total: Number(data?.quantidadeItem ?? itens.length) };
 }
 
-/** O último parecer da CPFL sobre o projeto — texto que a tela mostra ao projetista. */
-export function lerUltimoParecerCpfl(resposta: unknown): { data: string; status: string; texto: string } | null {
-  const p = (resposta as { data?: { analisesPrincipais?: { pareceres?: { $values?: {
-    dataParecer?: string; nomeStatus?: string; respostaParecerExterno?: string; respostaParecer?: string;
-  }[] } } } })?.data?.analisesPrincipais?.pareceres?.$values ?? [];
-  if (p.length === 0) return null;
-  const u = p[p.length - 1];
-  return {
-    data: dataBr(u.dataParecer),
-    status: (u.nomeStatus ?? '').trim(),
-    texto: (u.respostaParecerExterno || u.respostaParecer || '').replace(/\s+/g, ' ').trim().slice(0, 1_000),
-  };
-}
-
 // ── Detalhe do projeto ───────────────────────────────────────────────────────
 // Descoberto em 14/09/2026 lendo o bundle do app e chamando as rotas na sessão
 // logada. Tudo GET; a Ludmilla nunca chama as rotas de escrita
@@ -198,4 +184,63 @@ export function lerArquivoCpfl(resposta: unknown): Buffer | null {
   if (!c) return null;
   const b64 = c.replace(/^data:[^,]*;base64,/, '').replace(/\s/g, '');
   return Buffer.from(b64, 'base64');
+}
+
+// ── Pareceres: a linha do tempo da tela do projeto ───────────────────────────
+// É o que aparece em "Mostrar parecer" nas abas ORÇAMENTO / VISTORIA / CONEXÃO.
+// Cada parecer pertence a uma análise (codigoInboxGrupo) — é assim que se
+// sabe se um "APROVADA" é da vistoria ou dos documentos.
+
+export interface ParecerCpfl {
+  /** codigoInboxUsuario — estável, serve para não comentar o mesmo parecer duas vezes */
+  chave: string;
+  data: string;          // dd/mm/aaaa
+  ordem: number;         // epoch ms, para ordenar
+  analise: string;       // ORÇAMENTO | VISTORIA | CONEXÃO | …
+  status: string;        // nomeStatus, ex. "VISTORIA APROVADA"
+  tipo: string;          // tipoStatus: Aprovado | Reprovado | …
+  texto: string;         // respostaParecerExterno (o que a tela mostra)
+}
+
+const epochDeDataUs = (v: string | null | undefined): number => {
+  const m = /^(\d{2})\/(\d{2})\/(\d{4})(?:\s+(\d{2}):(\d{2}):(\d{2}))?/.exec(v ?? '');
+  if (!m) return 0;
+  return Date.UTC(Number(m[3]), Number(m[1]) - 1, Number(m[2]), Number(m[4] ?? 0), Number(m[5] ?? 0), Number(m[6] ?? 0));
+};
+
+export function lerPareceresCpfl(resposta: unknown): ParecerCpfl[] {
+  const raiz = (resposta as { data?: { analisesPrincipais?: {
+    analises?: { $values?: Record<string, unknown>[] };
+    pareceres?: { $values?: Record<string, unknown>[] };
+  } } })?.data?.analisesPrincipais;
+  if (!raiz) return [];
+  const analisePorGrupo = new Map<string, string>();
+  for (const a of raiz.analises?.$values ?? []) {
+    analisePorGrupo.set(String(a.codigoInboxGrupo ?? ''), String(a.tipoProjetoAnalise ?? '').toUpperCase());
+  }
+  return (raiz.pareceres?.$values ?? [])
+    .filter(p => p.codigoInboxUsuario != null)
+    .map(p => ({
+      chave: String(p.codigoInboxUsuario),
+      data: dataBr(String(p.dataParecer ?? '')),
+      ordem: epochDeDataUs(String(p.dataParecer ?? '')),
+      analise: analisePorGrupo.get(String(p.codigoInboxGrupo ?? '')) ?? '',
+      status: String(p.nomeStatus ?? '').trim(),
+      tipo: String(p.tipoStatus ?? '').trim(),
+      texto: String(p.respostaParecerExterno || p.respostaParecer || '').replace(/\s+/g, ' ').trim().slice(0, 1_500),
+    }))
+    .sort((a, b) => a.ordem - b.ordem);
+}
+
+/**
+ * A vistoria está concluída? Olha o ÚLTIMO parecer de vistoria/ligação:
+ * aprovação → 'sim'; reprovação → 'nao'; nenhum parecer desse tipo → ''
+ * (desconhecido). "PROJETO ENCERRADO" sozinho não basta para concluir — o
+ * botão "Encerrar projeto" existe, e um encerramento manual não é vistoria.
+ */
+export function vistoriaAprovadaCpfl(pareceres: ParecerCpfl[]): 'sim' | 'nao' | '' {
+  const deVistoria = pareceres.filter(p => p.analise === 'VISTORIA' || /VISTORIA|LIGA[ÇC][AÃ]O/i.test(p.status));
+  if (deVistoria.length === 0) return '';
+  const ultimo = deVistoria[deVistoria.length - 1];
+  return /APROVAD/i.test(ultimo.status) || /^aprovado$/i.test(ultimo.tipo) ? 'sim' : 'nao';
 }

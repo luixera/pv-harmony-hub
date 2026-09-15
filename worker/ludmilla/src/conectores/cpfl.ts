@@ -1,7 +1,7 @@
 import type { Page } from 'playwright';
-import type { Conector, Descoberta, Protocolo, TelaDescoberta } from './index.js';
+import type { Conector, Descoberta, OpcoesVarredura, Protocolo, TelaDescoberta } from './index.js';
 import {
-  lerAnexosCpfl, lerArquivoCpfl, lerClienteCpfl, lerDetalhesCpfl, lerListaCpfl, lerUltimoParecerCpfl,
+  lerAnexosCpfl, lerArquivoCpfl, lerClienteCpfl, lerDetalhesCpfl, lerListaCpfl, lerPareceresCpfl, vistoriaAprovadaCpfl,
   urlAnexosCpfl, urlBaixarArquivoCpfl, urlClienteCpfl, urlDetalhesCpfl, urlListaCpfl, urlParecerCpfl,
 } from './cpfl-api.js';
 import type { Credenciais } from '../fila.js';
@@ -251,7 +251,7 @@ export const cpfl: Conector = {
     return { telas };
   },
 
-  async varrer(page: Page, creds: Credenciais): Promise<Protocolo[]> {
+  async varrer(page: Page, creds: Credenciais, opcoes?: OpcoesVarredura): Promise<Protocolo[]> {
     await entrar(page, creds, this.loginUrl);
     await fecharCookies(page);
     // entra em "Projetos Particulares": é o que cria a sessão do app de
@@ -285,22 +285,30 @@ export const cpfl: Conector = {
       await respirar(page, 700);
     }
 
-    // O último PARECER (texto da CPFL) só para o que mexeu recentemente —
-    // é o que a pessoa quer ler ao decidir; o resto não muda há meses.
-    const recentes = [...porProtocolo.values()]
-      .filter(p => diasDesde(p.raw['Última atualização']) <= 45 && p.raw.codigoProjeto)
-      .slice(0, 40);
-    for (const p of recentes) {
+    // DETALHE (pareceres, titular, UCs, anexos) para o que interessa: o que
+    // mexeu recentemente E os protocolos dos projetos que o banco acompanha
+    // (o banco sabe quais são; o robô não) — o resto não muda há meses.
+    const interesse = new Set(opcoes?.protocolosDeInteresse ?? []);
+    const detalhar = [...porProtocolo.values()]
+      .filter(p => p.raw.codigoProjeto && (interesse.has(p.protocolo) || diasDesde(p.raw['Última atualização']) <= 45))
+      .slice(0, 80);
+    for (const p of detalhar) {
       const cod = p.raw.codigoProjeto;
       const json = async (url: string) => {
         const r = await page.request.get(url).catch(() => null);
         return r && r.ok() ? r.json().catch(() => null) : null;
       };
-      const parecer = lerUltimoParecerCpfl(await json(urlParecerCpfl(cod)));
-      if (parecer) {
-        p.raw['Último parecer'] = `${parecer.data} · ${parecer.status}`;
-        p.raw['Texto do parecer'] = parecer.texto;
+      // Pareceres: a linha do tempo das abas ORÇAMENTO/VISTORIA/CONEXÃO. Vão
+      // para o card como comentários, e o último de vistoria decide se
+      // "PROJETO ENCERRADO" é vistoria concluída ou encerramento manual.
+      const pareceres = lerPareceresCpfl(await json(urlParecerCpfl(cod)));
+      if (pareceres.length > 0) {
+        const ultimo = pareceres[pareceres.length - 1];
+        p.raw['Último parecer'] = `${ultimo.data} · ${ultimo.status}`;
+        p.raw['Texto do parecer'] = ultimo.texto;
+        p.raw.pareceres = JSON.stringify(pareceres.map(x => ({ chave: x.chave, data: x.data, analise: x.analise, status: x.status, tipo: x.tipo, texto: x.texto })));
       }
+      p.raw.vistoriaAprovada = vistoriaAprovadaCpfl(pareceres);
       // Titular (CPF/CNPJ) e UCs: é com isso que o banco CONFERE que o protocolo
       // é mesmo do projeto do card antes de anexar qualquer coisa, e que casa um
       // reprovado reenviado sob protocolo novo (regras do usuário, 14/09/2026).

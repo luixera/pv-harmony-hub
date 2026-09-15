@@ -36,6 +36,11 @@ export interface TelaDescoberta {
   api?: { url: string; status: number; body: string }[];
 }
 
+/** O que o banco sabe e o robô não: quais protocolos merecem o detalhe. */
+export interface OpcoesVarredura {
+  protocolosDeInteresse?: string[];
+}
+
 export interface Conector {
   chave: string;
   /** Tela de login — é onde o reconhecimento começa. */
@@ -46,7 +51,7 @@ export interface Conector {
   /** Entra, navega até a lista de projetos e guarda o HTML das telas. */
   descobrir(page: Page, creds: Credenciais, guardarTela: (t: TelaDescoberta) => Promise<void>): Promise<Descoberta>;
   /** Entra e lê a lista. Só existe depois da descoberta logada. */
-  varrer(page: Page, creds: Credenciais): Promise<Protocolo[]>;
+  varrer(page: Page, creds: Credenciais, opcoes?: OpcoesVarredura): Promise<Protocolo[]>;
   /** Baixa um anexo do portal (na mesma sessão da varredura). Null = não veio. */
   baixarAnexo?(page: Page, idArquivo: string): Promise<Buffer | null>;
 }

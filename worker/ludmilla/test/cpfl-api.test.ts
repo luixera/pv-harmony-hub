@@ -98,3 +98,42 @@ test('arquivo: conteudoArquivo em base64 (com ou sem prefixo data:) vira bytes',
   assert.equal(lerArquivoCpfl({ data: {} }), null);
   assert.match(urlBaixarArquivoCpfl('443a117c.pdf'), /endpoint=%2Fapi%2Farquivos%2Fbaixararquivo%2F443a117c\.pdf/);
 });
+
+// ── pareceres: a linha do tempo da tela do projeto ───────────────────────────
+import { lerPareceresCpfl, vistoriaAprovadaCpfl } from '../src/conectores/cpfl-api.js';
+
+// Formato real (14/09/2026): analises (etapas) + pareceres (o "Mostrar parecer")
+const PARECERES = { data: { analisesPrincipais: {
+  analises: { $values: [
+    { tipoProjetoAnalise: 'ORÇAMENTO', codigoInboxGrupo: 1, dataEntrada: '07/24/2026 12:00:31', codigoStatus: 1357, nomeStatus: 'AGUARDANDO VALIDAÇÃO', tipoStatus: 'Em Andamento' },
+    { tipoProjetoAnalise: 'VISTORIA', codigoInboxGrupo: 2, dataEntrada: '08/10/2026 09:00:00', codigoStatus: 400, nomeStatus: 'EM ANÁLISE DE VISTORIA', tipoStatus: 'Em Andamento' },
+    { tipoProjetoAnalise: 'VISTORIA', codigoInboxGrupo: 3, dataEntrada: '08/25/2026 09:00:00', codigoStatus: 400, nomeStatus: 'EM ANÁLISE DE VISTORIA', tipoStatus: 'Em Andamento' },
+  ] },
+  pareceres: { $values: [
+    { codigoInboxUsuario: 11, codigoInboxGrupo: 2, dataParecer: '08/18/2026 10:00:00', codigoStatus: 401, nomeStatus: 'VISTORIA REPROVADA - AGUARDANDO SOLICITAR VISTORIA E CONEXÃO', tipoStatus: 'Reprovado', responsavelParecer: 'X', respostaParecerExterno: 'Padrão de entrada fora da norma. Regularizar e solicitar nova vistoria.', respostaParecer: 'interno' },
+    { codigoInboxUsuario: 12, codigoInboxGrupo: 3, dataParecer: '09/01/2026 08:30:00', codigoStatus: 405, nomeStatus: 'VISTORIA APROVADA', tipoStatus: 'Aprovado', responsavelParecer: 'Y', respostaParecerExterno: 'Vistoria aprovada.  Conexão liberada.', respostaParecer: 'interno' },
+    { codigoInboxUsuario: 10, codigoInboxGrupo: 1, dataParecer: '07/25/2026 07:42:55', codigoStatus: 1361, nomeStatus: 'ANÁLISE COMERCIAL - DOCUMENTOS APROVADOS', tipoStatus: 'Aprovado', responsavelParecer: 'Z', respostaParecerExterno: 'Documentos deferidos.', respostaParecer: 'interno' },
+  ] },
+} } };
+
+test('pareceres: em ordem de data, com a análise a que pertencem, chave estável e texto externo', () => {
+  const p = lerPareceresCpfl(PARECERES);
+  assert.deepEqual(p.map(x => x.chave), ['10', '11', '12']);            // ordenado por data, não pela ordem da API
+  assert.equal(p[0].analise, 'ORÇAMENTO');
+  assert.equal(p[1].analise, 'VISTORIA');
+  assert.equal(p[1].data, '18/08/2026');
+  assert.equal(p[2].status, 'VISTORIA APROVADA');
+  assert.equal(p[2].texto, 'Vistoria aprovada. Conexão liberada.');    // texto EXTERNO (o que a tela mostra), espaços normalizados
+  assert.deepEqual(lerPareceresCpfl(null), []);
+});
+
+test('vistoria aprovada = o último parecer de vistoria/ligação é aprovação', () => {
+  assert.equal(vistoriaAprovadaCpfl(lerPareceresCpfl(PARECERES)), 'sim');
+  // reprovada por último → não
+  const reprovada = structuredClone(PARECERES);
+  reprovada.data.analisesPrincipais.pareceres.$values[1].nomeStatus = 'LIGAÇÃO REPROVADA';
+  reprovada.data.analisesPrincipais.pareceres.$values[1].tipoStatus = 'Reprovado';
+  assert.equal(vistoriaAprovadaCpfl(lerPareceresCpfl(reprovada)), 'nao');
+  // sem parecer de vistoria → desconhecido (vazio)
+  assert.equal(vistoriaAprovadaCpfl(lerPareceresCpfl(PARECERES).filter(x => x.analise !== 'VISTORIA')), '');
+});

@@ -3,7 +3,7 @@ import { classificarErro } from './erros.js';
 import { conector } from './conectores/index.js';
 import {
   anexoEnviado, anexoErro, anexosPendentes, conectorDaConta, credenciais, finalizarRun, pegarRun,
-  subirDocumento, subirPrint, subirTexto, Run,
+  protocolosDeInteresse, subirDocumento, subirPrint, subirTexto, Run,
 } from './fila.js';
 
 /**
@@ -84,7 +84,7 @@ async function executar(navegador: Browser, run: Run): Promise<void> {
       return;
     }
 
-    const protocolos = await c.varrer(page, creds);
+    const protocolos = await c.varrer(page, creds, { protocolosDeInteresse: await protocolosDeInteresse(run.account_id) });
     await finalizarRun(run.id, {
       situacao: 'ok', resultado: { protocolos }, protocolos: protocolos.length, situacaoConta: 'ok',
     });
