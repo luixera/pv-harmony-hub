@@ -77,23 +77,30 @@ before(async () => {
 after(async () => { await navegador?.close(); servidor?.close(); });
 beforeEach(() => { modo = 'ok'; ultimoPost = null; posts = 0; });
 
-/** A pessoa: espera o robô preencher a senha, digita o CAPTCHA e clica em Entrar. */
+/**
+ * A pessoa: espera o robô preencher a senha (e, na segunda tentativa, o aviso
+ * de erro do portal), digita o CAPTCHA e clica em Entrar. Se a página estiver
+ * navegando na hora, tenta de novo — gente também tenta de novo.
+ */
 async function pessoaDigita(page: Page, codigo: string, depoisDeErro = false) {
-  const prazo = Date.now() + 15_000;
+  const prazo = Date.now() + 30_000;
   while (Date.now() < prazo) {
     try {
-      const senha = await page.locator('[id$=":j_idt18"]').inputValue();
+      const senha = await page.locator('[id$=":j_idt18"]').inputValue({ timeout: 1_000 });
       const erroVisivel = await page.locator('.ui-messages-error').count() > 0;
-      if (senha === CREDS.senha && (!depoisDeErro || erroVisivel)) break;
-    } catch { /* navegando */ }
+      if (senha === CREDS.senha && (!depoisDeErro || erroVisivel)) {
+        await page.locator('[id$=":captchaCode"]').fill(codigo, { timeout: 2_000 });
+        await page.locator('#entrar').click({ timeout: 2_000 });
+        return;
+      }
+    } catch { /* navegando — olha de novo */ }
     await page.waitForTimeout(100);
   }
-  await page.fill('[id$=":captchaCode"]', codigo);
-  await page.click('#entrar');
+  throw new Error(`A pessoa esperou 30 s e o robô não deixou o formulário pronto (código "${codigo}").`);
 }
 
 const opcoes = (avisos: string[], extra: Record<string, unknown> = {}) => ({
-  loginUrl: base + '/', avisar: (t: string, x: string) => { avisos.push(`${t}: ${x}`); }, intervaloMs: 150, timeoutMs: 15_000, ...extra,
+  loginUrl: base + '/', avisar: (t: string, x: string) => { avisos.push(`${t}: ${x}`); }, intervaloMs: 150, timeoutMs: 30_000, ...extra,
 });
 
 test('login assistido: o robô preenche e-mail e senha, avisa, e a pessoa digita o CAPTCHA', async () => {

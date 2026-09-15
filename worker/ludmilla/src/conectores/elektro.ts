@@ -54,20 +54,23 @@ async function preencher(page: Page, creds: Credenciais) {
   if (await email.count() === 0 || await senha.count() === 0) {
     throw new ErroLudmilla('pagina_mudou', 'A tela de login da Elektro não tem mais os campos de e-mail e senha que o roteiro conhece.');
   }
-  await email.fill(creds.login);
-  await senha.fill(creds.senha);
+  await email.fill(creds.login, { timeout: 10_000 });
+  await senha.fill(creds.senha, { timeout: 10_000 });
   // o cursor fica no código: a pessoa só precisa olhar a imagem e digitar
-  await page.locator(SELETOR_ELEKTRO.captcha).first().focus().catch(() => undefined);
+  await page.locator(SELETOR_ELEKTRO.captcha).first().focus({ timeout: 2_000 }).catch(() => undefined);
 }
 
-/** Primeira mensagem de erro VISÍVEL do PrimeFaces, ou ''. */
+/**
+ * Primeira mensagem de erro VISÍVEL do PrimeFaces, ou ''. Leituras com prazo
+ * curto: se o elemento sumir no meio (a página navegou), não fica esperando.
+ */
 async function erroVisivel(page: Page): Promise<string> {
   const lista = page.locator(SELETOR_ELEKTRO.erro);
   const n = await lista.count().catch(() => 0);
   for (let i = 0; i < n; i++) {
     const el = lista.nth(i);
     if (!(await el.isVisible().catch(() => false))) continue;
-    const texto = (await el.innerText().catch(() => '')).replace(/\s+/g, ' ').trim();
+    const texto = (await el.innerText({ timeout: 1_000 }).catch(() => '')).replace(/\s+/g, ' ').trim();
     if (texto) return texto;
   }
   return '';
@@ -111,9 +114,13 @@ export async function entrarElektro(page: Page, creds: Credenciais, o: OpcoesEle
       continue; // a página está navegando — olha de novo daqui a pouco
     }
     if (!temCaptcha) {
+      // no meio de uma navegação o documento novo ainda não tem o formulário:
+      // só é "entrou" se o CAPTCHA continuar ausente depois da página carregar
       await page.waitForLoadState('load', { timeout: 60_000 }).catch(() => undefined);
       await respirar(page);
-      return 'entrou';
+      const aindaSem = await page.locator(SELETOR_ELEKTRO.captcha).count().then(n => n === 0).catch(() => false);
+      if (aindaSem) return 'entrou';
+      continue;
     }
     // o formulário continua: o portal reclamou de alguma coisa?
     const erro = await erroVisivel(page);
@@ -121,10 +128,17 @@ export async function entrarElektro(page: Page, creds: Credenciais, o: OpcoesEle
       throw new ErroLudmilla('login_recusado', `O Portal GD disse: "${erro}"`);
     }
     // CAPTCHA errado: o JSF redesenha o formulário vazio — preenche de novo e chama de novo
-    const senhaAtual = await page.locator(SELETOR_ELEKTRO.senha).first().inputValue().catch(() => creds.senha);
+    // (leitura com prazo curto: se a página navegar no meio, deixa para a próxima volta)
+    const senhaAtual = await page.locator(SELETOR_ELEKTRO.senha).first().inputValue({ timeout: 1_000 }).catch(() => creds.senha);
     if (senhaAtual === '') {
-      await preencher(page, creds);
-      avisar('Ludmilla precisa de você', `${erro ? `O portal disse "${erro}". ` : ''}Digite o código da imagem de novo e clique em Entrar. E-mail e senha já estão preenchidos.`);
+      try {
+        await preencher(page, creds);
+      } catch {
+        continue; // o formulário sumiu enquanto preenchia — a próxima volta decide
+      }
+      // a mensagem do portal é lida de novo AGORA: a leitura de cima pode ter sido da página anterior
+      const motivo = (await erroVisivel(page)) || erro;
+      avisar('Ludmilla precisa de você', `${motivo ? `O portal disse "${motivo}". ` : ''}Digite o código da imagem de novo e clique em Entrar. E-mail e senha já estão preenchidos.`);
     }
   }
   throw new ErroLudmilla('sessao_expirada',
