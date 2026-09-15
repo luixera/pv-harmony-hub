@@ -1,9 +1,12 @@
 # Ludmilla — acompanhamento dos portais das concessionárias
 
 > Estado: 🟡 CPFL funcionando ponta a ponta (set/2026): robô na VPS lê os
-> protocolos, o banco gera recomendações, a página /ludmilla aplica/ignora.
-> Elektro bloqueada (Akamai). Só tenant GD Manager (`is_library`).
-> Spec: [docs/superpowers/specs/2026-09-14-ludmilla-design.md](../../superpowers/specs/2026-09-14-ludmilla-design.md)
+> protocolos, o banco gera recomendações, a página /ludmilla aplica/ignora,
+> agendamento 2×/dia. Elektro: **estação local** (PC do coworking) construída
+> e testada com portal de mentira — aguarda o aceite na máquina de verdade.
+> Só tenant GD Manager (`is_library`).
+> Specs: [2026-09-14-ludmilla-design.md](../../superpowers/specs/2026-09-14-ludmilla-design.md) ·
+> [2026-09-15-ludmilla-elektro-local-design.md](../../superpowers/specs/2026-09-15-ludmilla-elektro-local-design.md)
 
 ## O que é
 
@@ -163,12 +166,93 @@ systemd) — por isso API; `getUserData` devolve um token de sessão → corpos
 capturados são limpos de `token` antes do bucket; a data dos anexos vem
 d/m/aaaa e a da lista m/d/aaaa.
 
+## Estação local e Elektro (15/09/2026)
+
+**Por quê.** O Portal GD da Elektro (`gdneoenergiaelektro.neoenergia.com`)
+devolve 403 (Akamai) a qualquer cliente que não seja um Chrome de verdade em
+IP de pessoa, e o login (JSF/PrimeFaces) tem CAPTCHA de imagem. A Ludmilla
+não resolve CAPTCHA (decisão firme, pedida duas vezes e recusada). Saída
+combinada com o usuário: o **mesmo robô** roda num PC Windows do coworking
+("estação local"), a Ludmilla preenche e-mail e senha do cofre e **uma pessoa
+digita o código**.
+
+**Banco (`20260915170000_ludmilla_estacao_local.sql`).** `portal_accounts`:
+`modo` (`vps`|`local`), `operador_local` (uuid do staff com quem a estação
+entra no GD Manager), `estacao_vista_em` (batimento). A estação **não tem
+service role**: usa RPCs `_local` (`ludmilla_claim_run_local`,
+`ludmilla_finalizar_run_local`, `ludmilla_portal_credentials_local`,
+`ludmilla_anexos_pendentes_local`, `ludmilla_anexo_enviado_local`,
+`ludmilla_anexo_erro_local`, `ludmilla_protocolos_de_interesse_local`,
+`ludmilla_estacao_pulsa`) que só passam quando `operador_local = auth.uid()`
+e a conta é `local`; `ludmilla_registrar_varredura` aceita service role OU o
+operador. Storage: políticas de INSERT para o operador em `ludmilla` (pasta do
+tenant) e `project-documents`. Conta local que fecha `sessao_expirada`
+(ninguém digitou) → sino para os admins. `ludmilla_agendar_varreduras()` +
+cron `ludmilla-08h` (`0 11 * * *` UTC) e `ludmilla-17h` (`0 20 * * *` UTC)
+enfileiram uma varredura por conta configurada, sem empilhar. Testado por
+impersonação (11/11).
+
+**Robô — modo local (`LUDMILLA_MODO=local`, `src/local.ts`).** Cliente
+supabase com a chave pública + sessão do usuário operador guardada em
+`%LOCALAPPDATA%\Ludmilla\sessao.json` (criada por `node dist/index.js
+--login`, senha sem eco, nunca gravada; refresh automático regrava o
+arquivo); `nomeRpc()` troca para as RPCs `_local`; env da estação em
+`%LOCALAPPDATA%\Ludmilla\env` (só URL + anon key); batimento
+`ludmilla_estacao_pulsa` a cada 60 s; Chrome **instalado** (`channel:
+'chrome'`, com janela, `launchPersistentContext` em `chrome-<portal>`, fechado
+ao fim de cada run — a janela só existe enquanto há trabalho); `avisar()` =
+balão do Windows via PowerShell. Sessão inválida → balão "Ludmilla parada".
+
+**Conector Elektro (`src/conectores/elektro.ts`) — login assistido.**
+`entrarElektro`: abre o portal (403/429 → `bloqueado_por_waf`); sem CAPTCHA e
+sem senha na tela → `sessao_mantida` (o perfil ainda está logado); senão
+preenche e-mail/senha (seletores por sufixo: `[id$=":captchaCode"]`, `form
+input[type=password]`, primeiro texto do form que tem senha), foca o código,
+avisa, e **olha a tela a cada 2 s por até 5 min**: formulário sumiu (confirmado
+depois do `load`) → `entrou`; erro visível falando de senha/usuário →
+`login_recusado`; JSF redesenhou o formulário vazio (código errado) →
+preenche de novo e avisa de novo com o texto do portal; prazo → `sessao_expirada`.
+Leituras com prazo curto (o auto-wait de 30 s do Playwright travava o laço).
+`descobrir`: `01-inicio`, `00-menu` (links/botões com texto e destino),
+`02-lista` (primeiro item de menu que fala de solicitações/projetos e NÃO é
+ação — nunca "Nova solicitação"), `03-detalhe` (primeiro link da tabela).
+`varrer`: ainda não — é escrito sobre as telas da descoberta real. Na VPS a
+Elektro lança `captcha_exigido` explicando que a conta precisa do modo
+estação. `reconhecerPagina` passou a identificar CAPTCHA `imagem` (campo
+`captcha*`). 8 testes com portal JSF de mentira, suíte completa 10× sem falha.
+
+**Instalador (`deploy/windows/`).** O workflow `ludmilla-worker.yml` publica
+o artefato `ludmilla-local` (zip: `app/dist`, manifestos, `instalar.ps1`,
+`Ludmilla.cmd`, `LEIA-ME.txt`, `env.padrao` com os valores públicos vindos
+dos segredos do site — a service role NÃO entra). `instalar.ps1`: Node 22 via
+winget se faltar, exige Chrome, para a instância anterior, copia para
+`%LOCALAPPDATA%\Ludmilla\app`, `npm ci --omit=dev`, grava `env`, `--login`
+(uma vez), atalho minimizado na pasta Inicializar, inicia. Atualizar = rodar
+de novo. `Ludmilla.cmd` reinicia o robô 30 s depois de qualquer queda.
+
+**Front.** Diálogo "Acesso ao portal": bloco "Onde a Ludmilla roda" (modo +
+operador, `useAtualizarContaPortal`, RLS só admin) e estado da estação
+(`estadoDaEstacao`: online = pulsou há ≤ 3 min); página /ludmilla mostra
+online/offline e "aguardando login" quando a última visita fechou
+`sessao_expirada`.
+
+**Paciência com portal lento (CPFL, 15/09).** A varredura das 15:50 caiu com
+`apiRequestContext.get: Timeout 30000ms` (a das 17:00 passou). Agora
+`comPaciencia()` (`src/paciencia.ts`): lista 90 s × 3 tentativas, detalhes
+60 s × 2, anexos 90 s × 2, erro em português dizendo o que estava lendo; erros
+da Ludmilla não se repetem. Antes de ler a API o robô clica na aba
+**Orçamentos de conexão** (regra do usuário) e a varredura ok guarda um
+print da tela final.
+
 ## Próximos
 
-2. Agendamento 2×/dia (pg_cron → `ludmilla_pedir_run`); mostrar
-   `portal_anexos` (enviados/bloqueados) na página /ludmilla; 3 projetos em
-   andamento sem par no portal; os 4 cartões que a lista não devolve (199 de
-   203 — 5 "Incompleto" sem atividade).
-3. Solicitar vistoria automática quando a empresa pede pelo painel — a
+1. **Aceite da estação** no PC do coworking: instalar, "Verificar agora" na
+   Elektro (descoberta), pessoa digita o código, telas no bucket. Risco a
+   observar: o Chrome do Playwright carrega `navigator.webdriver=true` — se a
+   Akamai bloquear mesmo com gente, conversar antes de qualquer mudança.
+2. Roteiro `varrer` da Elektro sobre as telas da descoberta (plano próprio).
+3. Mostrar `portal_anexos` (enviados/bloqueados) na página /ludmilla; 3
+   projetos em andamento sem par no portal; os 4 cartões que a lista não
+   devolve (199 de 203 — 5 "Incompleto" sem atividade).
+4. Solicitar vistoria automática quando a empresa pede pelo painel — a
    conversar (exige a mesma conferência de titular/UC e é a única escrita).
-4. Elektro: decidir entre e-mail (Claudinho) e sessão do navegador do usuário.

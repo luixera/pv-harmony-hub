@@ -1,6 +1,6 @@
 # Ludmilla — Elektro pela estação local — Plano de implementação
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** O mesmo robô da Ludmilla rodando numa máquina Windows do coworking, com Chrome de verdade, lendo o Portal GD da Elektro depois que uma pessoa digita o CAPTCHA — e o agendamento 2×/dia para todas as contas.
 
@@ -22,47 +22,47 @@
 
 **Files:** Create `supabase/migrations/20260915170000_ludmilla_estacao_local.sql`
 
-- [ ] Colunas em `portal_accounts`: `modo`, `operador_local`, `estacao_vista_em`; usuário `ludmilla.coworking` (`00000000-10d1-4000-8000-000000000003`, staff, sem senha — a senha é definida pelo admin na tela de Usuários, como qualquer staff).
-- [ ] `ludmilla_finalizar_run_impl(...)` (sem checagem de papel) + `ludmilla_finalizar_run` (service role) e `ludmilla_finalizar_run_local` (operador) delegando; idem `claim`, `credentials`, `anexos_pendentes`, `anexo_enviado`, `anexo_erro`, `protocolos_de_interesse`, `estacao_pulsa`.
-- [ ] Sino para admins quando conta local fica `sessao_expirada`.
-- [ ] `ludmilla_agendar_varreduras()` + `cron.schedule('ludmilla-08h', '0 11 * * *', …)` e `'ludmilla-17h', '0 20 * * *'`.
-- [ ] Teste por impersonação: operador certo pega run; outro staff do tenant não; outro tenant não; cron insere sem duplicar.
-- [ ] Commit.
+- [x] Colunas em `portal_accounts`: `modo`, `operador_local`, `estacao_vista_em`; usuário `ludmilla.coworking` (`00000000-10d1-4000-8000-000000000003`, staff, sem senha — a senha é definida pelo admin na tela de Usuários, como qualquer staff).
+- [x] `ludmilla_finalizar_run_impl(...)` (sem checagem de papel) + `ludmilla_finalizar_run` (service role) e `ludmilla_finalizar_run_local` (operador) delegando; idem `claim`, `credentials`, `anexos_pendentes`, `anexo_enviado`, `anexo_erro`, `protocolos_de_interesse`, `estacao_pulsa`.
+- [x] Sino para admins quando conta local fica `sessao_expirada`.
+- [x] `ludmilla_agendar_varreduras()` + `cron.schedule('ludmilla-08h', '0 11 * * *', …)` e `'ludmilla-17h', '0 20 * * *'`.
+- [x] Teste por impersonação: operador certo pega run; outro staff do tenant não; outro tenant não; cron insere sem duplicar.
+- [x] Commit.
 
 ### Task 2: Robô — modo local (auth por usuário, Chrome com janela, aviso)
 
 **Files:** Modify `worker/ludmilla/src/fila.ts`, `src/index.ts`; Create `src/local.ts` (sessão em arquivo + aviso do Windows), `test/local.test.ts`
 
-- [ ] `local.ts`: `carregarSessao()/guardarSessao()` em `%LOCALAPPDATA%\Ludmilla\sessao.json`; `avisar(titulo, texto)` via PowerShell (balão); `dirPerfilChrome()`.
-- [ ] `fila.ts`: cliente supabase por modo (`anon key + sessão do usuário` no local); funções `pegarRun/finalizarRun/credenciais/...` chamam a RPC certa conforme `LUDMILLA_MODO`.
-- [ ] `index.ts`: no local, `launchPersistentContext` (chrome, headed); fecha o contexto ao fim de cada run; heartbeat.
-- [ ] Testes: escolha da RPC por modo; sessão gravada/lida; sem rede.
-- [ ] Commit.
+- [x] `local.ts`: `carregarSessao()/guardarSessao()` em `%LOCALAPPDATA%\Ludmilla\sessao.json`; `avisar(titulo, texto)` via PowerShell (balão); `dirPerfilChrome()`.
+- [x] `fila.ts`: cliente supabase por modo (`anon key + sessão do usuário` no local); funções `pegarRun/finalizarRun/credenciais/...` chamam a RPC certa conforme `LUDMILLA_MODO`.
+- [x] `index.ts`: no local, `launchPersistentContext` (chrome, headed); fecha o contexto ao fim de cada run; heartbeat.
+- [x] Testes: escolha da RPC por modo; sessão gravada/lida; sem rede.
+- [x] Commit.
 
 ### Task 3: Conector Elektro — login assistido e descoberta
 
 **Files:** Modify `worker/ludmilla/src/conectores/elektro.ts`; Create `test/elektro.test.ts` (HTML local do formulário JSF)
 
-- [ ] `entrar`: detecta formulário (`input[id$=":captchaCode"]`), preenche e-mail/senha nos campos `j_idt14:j_idt16`/`j_idt14:j_idt18` (seletores por sufixo `[id$=...]`, o prefixo pode mudar), foca o CAPTCHA, avisa, `waitForFunction` até o formulário sumir (5 min) → senão `sessao_expirada`.
-- [ ] `descobrir`: depois do login, guarda `01-inicio`, lista de solicitações (procurando por texto "Solicita" / tabela PrimeFaces), paginação, primeiro detalhe.
-- [ ] `varrer`: lança `pagina_mudou` "roteiro da Elektro é escrito depois da descoberta".
-- [ ] Commit.
+- [x] `entrar`: detecta formulário (`input[id$=":captchaCode"]`), preenche e-mail/senha nos campos `j_idt14:j_idt16`/`j_idt14:j_idt18` (seletores por sufixo `[id$=...]`, o prefixo pode mudar), foca o CAPTCHA, avisa, `waitForFunction` até o formulário sumir (5 min) → senão `sessao_expirada`.
+- [x] `descobrir`: depois do login, guarda `01-inicio`, lista de solicitações (procurando por texto "Solicita" / tabela PrimeFaces), paginação, primeiro detalhe.
+- [x] `varrer`: lança `pagina_mudou` "roteiro da Elektro é escrito depois da descoberta".
+- [x] Commit.
 
 ### Task 4: Instalador Windows + deploy
 
-**Files:** Create `worker/ludmilla/deploy/windows/instalar.ps1`, `atualizar.ps1`, `Ludmilla.cmd`; Modify `.github/workflows/ludmilla-worker.yml` (artefato zip do worker para a estação baixar)
+**Files:** Create `worker/ludmilla/deploy/windows/instalar.ps1`, `Ludmilla.cmd`, `LEIA-ME.txt` (o `atualizar.ps1` do plano virou "rodar o instalar.ps1 de novo" — idempotente); Modify `.github/workflows/ludmilla-worker.yml` (artefato zip do worker para a estação baixar)
 
-- [ ] Workflow publica `ludmilla-local.zip` (dist + package.json + deploy/windows) como artefato/release.
-- [ ] `instalar.ps1`: winget Node 22 se faltar; extrai em `%LOCALAPPDATA%\Ludmilla\app`; `npm ci --omit=dev`; pede e-mail/senha do usuário da estação (Read-Host, senha mascarada) e roda `node dist/index.js --login` para gravar a sessão; registra tarefa "Ludmilla" no logon (`schtasks`), inicia.
-- [ ] Commit.
+- [x] Workflow publica `ludmilla-local.zip` (dist + package.json + deploy/windows) como artefato/release.
+- [x] `instalar.ps1`: winget Node 22 se faltar; extrai em `%LOCALAPPDATA%\Ludmilla\app`; `npm ci --omit=dev`; pede e-mail/senha do usuário da estação (Read-Host, senha mascarada) e roda `node dist/index.js --login` para gravar a sessão; registra tarefa "Ludmilla" no logon (`schtasks`), inicia.
+- [x] Commit.
 
 ### Task 5: Página /ludmilla — estação e conta local
 
 **Files:** Modify `src/pages/Ludmilla.tsx`, `src/hooks/useLudmilla.ts`, `src/components/concessionaires/PortalAcessoDialog.tsx`
 
-- [ ] Conta mostra "estação local: online há X min / offline" (heartbeat) e "aguardando login" quando o último run fechou `sessao_expirada`.
-- [ ] No diálogo de acesso: escolher `modo` (VPS / estação local) e o operador (lista de staff do tenant).
-- [ ] Commit; tsc 65; build.
+- [x] Conta mostra "estação local: online há X min / offline" (heartbeat) e "aguardando login" quando o último run fechou `sessao_expirada`.
+- [x] No diálogo de acesso: escolher `modo` (VPS / estação local) e o operador (lista de staff do tenant).
+- [x] Commit; tsc 65; build.
 
 ### Task 6: Aceite
 
