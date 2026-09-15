@@ -103,7 +103,10 @@ async function executar(navegador: Browser, run: Run): Promise<void> {
 
 async function principal() {
   log('ludmilla no ar', { poll: POLL_SEGUNDOS });
-  const navegador = await chromium.launch({ headless: true });
+  // Chromium COMPLETO em headless novo, não o 'headless shell': a tela do
+  // projeto da CPFL (app React) ficava no spinner no shell — com o navegador
+  // inteiro ela renderiza como no Chrome de uma pessoa.
+  const navegador = await chromium.launch({ headless: true, channel: 'chromium' });
   let parar = false;
   const encerrar = () => { parar = true; log('encerrando'); };
   process.on('SIGTERM', encerrar);
