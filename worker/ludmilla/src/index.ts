@@ -70,6 +70,7 @@ async function executar(navegador: Browser, run: Run): Promise<void> {
         arquivos.push(await subirTexto(run.tenant_id, run.id, `${t.nome}.html`, t.html));
         if (t.rede) await subirTexto(run.tenant_id, run.id, `${t.nome}.rede.json`, JSON.stringify(t.rede, null, 1));
         if (t.png) await subirPrint(run.tenant_id, `${run.id}/${t.nome}`, t.png);
+        if (t.api) await subirTexto(run.tenant_id, run.id, `${t.nome}.api.json`, JSON.stringify(t.api, null, 1));
       });
       printPath = await subirPrint(run.tenant_id, run.id, await page.screenshot({ fullPage: true }));
       await finalizarRun(run.id, {

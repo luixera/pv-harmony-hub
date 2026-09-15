@@ -102,17 +102,25 @@ export const cpfl: Conector = {
     // rede: o que a tela pediu ao servidor desde a captura anterior — é como se
     // descobre por que uma tela fica no spinner (API recusando o robô?)
     let rede: NonNullable<TelaDescoberta['rede']> = [];
-    page.on('response', r => {
+    // …e o CORPO das respostas da API interna do portal (ServerSide/getUserData):
+    // é o mesmo JSON que a tela consome — o roteiro de leitura é escrito sobre ele.
+    let api: { url: string; status: number; body: string }[] = [];
+    page.on('response', async r => {
       const tipo = r.request().resourceType();
       if (tipo === 'xhr' || tipo === 'fetch' || tipo === 'document') rede.push({ url: semSegredos(r.url()), status: r.status(), tipo });
+      if (r.url().includes('/gestao-projetos/api/')) {
+        const body = await r.text().catch(() => '');
+        api.push({ url: semSegredos(decodeURIComponent(r.url())), status: r.status(), body: body.slice(0, 400_000) });
+      }
     });
     // cada tela sobe NA HORA: uma falha no meio não perde o que já foi visto
     const guardar = async (nome: string) => {
       const tela: TelaDescoberta = {
         nome, url: semSegredos(page.url()), html: await htmlLimpo(page),
         png: await page.screenshot({ fullPage: true }).catch(() => undefined), rede,
+        api: api.length > 0 ? api : undefined,
       };
-      rede = [];
+      rede = []; api = [];
       telas.push(tela);
       await guardarTela(tela);
     };

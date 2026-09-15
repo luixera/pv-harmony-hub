@@ -32,6 +32,8 @@ export interface TelaDescoberta {
   png?: Buffer;
   /** requisições XHR/fetch feitas desde a tela anterior: url → status */
   rede?: { url: string; status: number; tipo: string }[];
+  /** corpos das respostas da API interna do portal, na ordem em que vieram */
+  api?: { url: string; status: number; body: string }[];
 }
 
 export interface Conector {
