@@ -139,6 +139,29 @@ export const cpfl: Conector = {
 
     await fecharCookies(page);
     await guardar('01-depois-do-login');
+
+    // ENDPOINTS do app de projetos: em vez de renderizar cada aba (o headless
+    // shell trava no spinner da tela do projeto), lê o bundle JS na sessão
+    // logada e lista todas as rotas /api/... que ele conhece — anexos,
+    // vistoria, dados do cliente. É um mapa do que existe, sem clicar em nada.
+    await page.goto('https://www.cpfl.com.br/gestao-projetos/meus-projetos', { waitUntil: 'networkidle', timeout: 60_000 }).catch(() => undefined);
+    const scripts: string[] = await page.evaluate(() =>
+      Array.from(document.querySelectorAll('script[src]')).map(s => (s as HTMLScriptElement).src));
+    const rotas = new Map<string, string>();   // rota → trecho do código em volta (para entender o uso)
+    const RE_ROTA = /["'`](\/api\/(?:internal|external)\/[A-Za-z0-9_\/{}$.-]+)/g;
+    for (const src of scripts.filter(u => /gestao-projetos|component|chunk|main|app|vendor|index/i.test(u)).slice(0, 15)) {
+      const r = await page.request.get(src).catch(() => null);
+      if (!r || !r.ok()) continue;
+      const js = await r.text().catch(() => '');
+      for (const m of js.matchAll(RE_ROTA)) {
+        if (!rotas.has(m[1])) rotas.set(m[1], js.slice(Math.max(0, (m.index ?? 0) - 160), (m.index ?? 0) + 200));
+      }
+    }
+    const mapa = { scripts, rotas: [...rotas.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([rota, contexto]) => ({ rota, contexto })) };
+    const telaRotas: TelaDescoberta = { nome: '00-endpoints', url: 'bundle', html: JSON.stringify(mapa, null, 1) };
+    telas.push(telaRotas);
+    await guardarTela(telaRotas);
+    rede = []; api = [];
     // tela "Selecionar perfil": o cartão "Projetos Particulares". O nome também
     // está no rodapé (Parceiros), então o alvo é o subtítulo, que só o cartão tem.
     if (await page.getByText(/Serviços para projetistas/i).first().count() > 0) {

@@ -103,10 +103,10 @@ async function executar(navegador: Browser, run: Run): Promise<void> {
 
 async function principal() {
   log('ludmilla no ar', { poll: POLL_SEGUNDOS });
-  // Chromium COMPLETO em headless novo, não o 'headless shell': a tela do
-  // projeto da CPFL (app React) ficava no spinner no shell — com o navegador
-  // inteiro ela renderiza como no Chrome de uma pessoa.
-  const navegador = await chromium.launch({ headless: true, channel: 'chromium' });
+  // Headless shell. O Chromium completo (channel 'chromium') cai com SIGTRAP no
+  // crashpad sob o endurecimento do systemd; e a leitura dos portais é pela
+  // API interna, não pela tela renderizada.
+  const navegador = await chromium.launch({ headless: true });
   let parar = false;
   const encerrar = () => { parar = true; log('encerrando'); };
   process.on('SIGTERM', encerrar);
