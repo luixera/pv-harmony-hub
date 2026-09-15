@@ -138,6 +138,20 @@ registra em `documents` e comenta no card como Ludmilla. Sem conferência →
 `bloqueado` com motivo. Primeira execução: 28 autorizados, 20 enviados
 (limite por visita), 0 bloqueados.
 
+**Concluído só com vistoria aprovada** (15/09): `PROJETO ENCERRADO` não basta
+(existe o botão "Encerrar projeto"). O robô lê os pareceres
+(`lerPareceresCpfl`, ligados às análises ORÇAMENTO/VISTORIA/CONEXÃO por
+`codigoInboxGrupo`) e grava `raw.vistoriaAprovada` = último parecer de
+vistoria/ligação aprovado. `completed` só com `sim`; sem a prova, a linha
+entra sem recomendação e ganha "concluído" quando o parecer confirmar. Quais
+protocolos detalhar: os que mexeram em 45 dias ∪
+`ludmilla_protocolos_de_interesse` (projetos acompanhados pela conta).
+
+**Pareceres no card**: cada "Mostrar parecer" vira um comentário da Ludmilla
+("📡 Parecer da CPFL — data · análise · status" + texto), uma vez só
+(`portal_pareceres`, chave = `codigoInboxUsuario`), com a mesma conferência
+de titular/UC dos anexos. Primeira execução: 56 pareceres.
+
 **Reprovado reenviado sob protocolo novo**: protocolo sem par é casado por
 CPF/CNPJ, UC ou título igual ao de outro protocolo já casado da conta;
 vira recomendação com `atualizar_protocolo` — Aplicar grava o número novo.

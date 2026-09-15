@@ -62,7 +62,7 @@ Detalhes: [docs/project/tech-stack.md](docs/project/tech-stack.md).
 | Relatórios | ✅ | [modules/reports](docs/modules/reports/overview.md) |
 | Notificações e automações | ✅ | [modules/notifications](docs/modules/notifications/overview.md) |
 | Integrações | ✅ | [modules/integrations](docs/modules/integrations/overview.md) |
-| Ludmilla (portais das concessionárias) | 🟡 Sub-projeto 1 — só GD Manager | [modules/integrations/ludmilla](docs/modules/integrations/ludmilla.md) |
+| Ludmilla (portais das concessionárias) | 🟡 CPFL pronta; Elektro pendente — só GD Manager | [modules/integrations/ludmilla](docs/modules/integrations/ludmilla.md) |
 | Usuários | ✅ | [modules/users](docs/modules/users/overview.md) |
 | Permissões (RLS) | ✅ | [modules/permissions](docs/modules/permissions/overview.md) |
 | Geração compartilhada | 🟡 Parcial | [modules/shared-generation](docs/modules/shared-generation/overview.md) |
