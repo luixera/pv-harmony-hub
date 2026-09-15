@@ -116,11 +116,40 @@ export const cpfl: Conector = {
       await guardar('02-meus-projetos');
     }
     await clicarTexto(page, /OR[CÇ]AMENTOS DE CONEX[AÃ]O/i, 'aba Orçamentos de conexão');
+    await esperarLista(page);
     await guardar('03-orcamentos-de-conexao');
     // e a outra aba, que também lista protocolos
     if (await page.getByText(/AN[AÁ]LISE PR[EÉ]VIA/i).first().count() > 0) {
       await clicarTexto(page, /AN[AÁ]LISE PR[EÉ]VIA/i, 'aba Análise prévia');
+      await esperarLista(page);
       await guardar('04-analise-previa');
+    }
+
+    // A TELA DO PROJETO: na CPFL "Aprovado" não é concluído — concluído é
+    // aprovado COM a vistoria concluída, e um aprovado pode estar em adequação
+    // (inversão de fluxo). Isso só se lê dentro do projeto, na aba Vistoria.
+    // Abre um aprovado e um pendente para conhecer as duas caras da tela.
+    await page.getByRole('tab', { name: /OR[CÇ]AMENTOS DE CONEX[AÃ]O/i }).click();
+    await esperarLista(page);
+    for (const [status, nome] of [['Aprovado', '05-projeto-aprovado'], ['Pendente', '07-projeto-pendente']] as const) {
+      const link = await page.locator(`[data-accordion-component="AccordionItem"][data-status="${status}"] a[href*="/meus-projetos/"]`)
+        .first().getAttribute('href').catch(() => null);
+      if (!link) continue;
+      await page.goto(new URL(link, page.url()).href, { waitUntil: 'networkidle', timeout: 60_000 });
+      await esperarLista(page);
+      await guardar(nome);
+      // todas as abas do projeto, uma a uma — a de Vistoria é a que importa
+      const abas = page.getByRole('tab');
+      const n = await abas.count();
+      for (let i = 0; i < n; i++) {
+        const rotulo = ((await abas.nth(i).textContent()) ?? '').trim();
+        if (!rotulo) continue;
+        await abas.nth(i).click();
+        await esperarLista(page);
+        await guardar(`${nome}-aba-${i + 1}-${rotulo.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 30)}`);
+      }
+      await page.goBack({ waitUntil: 'networkidle' }).catch(() => undefined);
+      await esperarLista(page);
     }
     return { telas };
   },
