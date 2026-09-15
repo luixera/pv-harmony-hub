@@ -1,8 +1,5 @@
 import type { Page } from 'playwright';
 import type { Conector, Descoberta, Protocolo, TelaDescoberta } from './index.js';
-
-/** Spinner do app React do portal (lista e tela do projeto). */
-const SELETOR_SPINNER = '[class*="loading-spinner"]';
 import { lerListaCpfl, lerUltimoParecerCpfl, urlListaCpfl, urlParecerCpfl } from './cpfl-api.js';
 import type { Credenciais } from '../fila.js';
 import { ErroLudmilla } from '../erros.js';
@@ -26,6 +23,9 @@ import { semSegredos, vereditoDepoisDaSenha } from '../veredito.js';
  *
  * `varrer` vem depois da descoberta, escrito sobre o HTML real dessas telas.
  */
+
+/** Spinner do app React do portal (lista e tela do projeto). */
+const SELETOR_SPINNER = '[class*="loading-spinner"]';
 
 /** Tela logada da CPFL: a área de projetos no site, ou o título. */
 const SINAL_DE_ENTRADA = /cpfl\.com\.br\/(Internet\/Projeto|b2c-auth)|Selecionar perfil|Meus projetos/i;
@@ -139,12 +139,18 @@ export const cpfl: Conector = {
 
     await fecharCookies(page);
     await guardar('01-depois-do-login');
+    // tela "Selecionar perfil": o cartão "Projetos Particulares". O nome também
+    // está no rodapé (Parceiros), então o alvo é o subtítulo, que só o cartão tem.
+    if (await page.getByText(/Serviços para projetistas/i).first().count() > 0) {
+      await clicarTexto(page, /Serviços para projetistas/i, 'cartão Projetos Particulares');
+      await fecharCookies(page);
+      await guardar('02-meus-projetos');
+    }
 
     // ENDPOINTS do app de projetos: em vez de renderizar cada aba (o headless
     // shell trava no spinner da tela do projeto), lê o bundle JS na sessão
     // logada e lista todas as rotas /api/... que ele conhece — anexos,
     // vistoria, dados do cliente. É um mapa do que existe, sem clicar em nada.
-    await page.goto('https://www.cpfl.com.br/gestao-projetos/meus-projetos', { waitUntil: 'networkidle', timeout: 60_000 }).catch(() => undefined);
     const scripts: string[] = await page.evaluate(() =>
       Array.from(document.querySelectorAll('script[src]')).map(s => (s as HTMLScriptElement).src));
     const rotas = new Map<string, string>();   // rota → trecho do código em volta (para entender o uso)
@@ -194,16 +200,6 @@ export const cpfl: Conector = {
     await guardarTela(telaDetalhes);
     rede = []; api = [];
 
-    // de volta ao fluxo da tela: espera as abas do app aparecerem
-    await page.waitForSelector('[role="tab"]', { timeout: 30_000 }).catch(() => undefined);
-    await esperarLista(page);
-    // tela "Selecionar perfil": o cartão "Projetos Particulares". O nome também
-    // está no rodapé (Parceiros), então o alvo é o subtítulo, que só o cartão tem.
-    if (await page.getByText(/Serviços para projetistas/i).first().count() > 0) {
-      await clicarTexto(page, /Serviços para projetistas/i, 'cartão Projetos Particulares');
-      await fecharCookies(page);
-      await guardar('02-meus-projetos');
-    }
     await clicarTexto(page, /OR[CÇ]AMENTOS DE CONEX[AÃ]O/i, 'aba Orçamentos de conexão');
     await esperarLista(page);
     await guardar('03-orcamentos-de-conexao');
