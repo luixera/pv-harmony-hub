@@ -21,7 +21,17 @@ export interface Protocolo {
 
 /** O que a descoberta traz: as telas visitadas, com o HTML limpo de cada uma. */
 export interface Descoberta {
-  telas: { nome: string; url: string; html: string }[];
+  telas: TelaDescoberta[];
+}
+
+export interface TelaDescoberta {
+  nome: string;
+  url: string;
+  html: string;
+  /** print da tela no momento da captura */
+  png?: Buffer;
+  /** requisições XHR/fetch feitas desde a tela anterior: url → status */
+  rede?: { url: string; status: number; tipo: string }[];
 }
 
 export interface Conector {
@@ -32,7 +42,7 @@ export interface Conector {
   /** Entra com a credencial, PARA depois da senha e conta o que viu. */
   testarLogin(page: Page, creds: Credenciais): Promise<VereditoLogin>;
   /** Entra, navega até a lista de projetos e guarda o HTML das telas. */
-  descobrir(page: Page, creds: Credenciais, guardarTela: (t: Descoberta['telas'][number]) => Promise<void>): Promise<Descoberta>;
+  descobrir(page: Page, creds: Credenciais, guardarTela: (t: TelaDescoberta) => Promise<void>): Promise<Descoberta>;
   /** Entra e lê a lista. Só existe depois da descoberta logada. */
   varrer(page: Page, creds: Credenciais): Promise<Protocolo[]>;
 }

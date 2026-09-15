@@ -68,11 +68,13 @@ async function executar(navegador: Browser, run: Run): Promise<void> {
       const arquivos: string[] = [];
       const d = await c.descobrir(page, creds, async t => {
         arquivos.push(await subirTexto(run.tenant_id, run.id, `${t.nome}.html`, t.html));
+        if (t.rede) await subirTexto(run.tenant_id, run.id, `${t.nome}.rede.json`, JSON.stringify(t.rede, null, 1));
+        if (t.png) await subirPrint(run.tenant_id, `${run.id}/${t.nome}`, t.png);
       });
       printPath = await subirPrint(run.tenant_id, run.id, await page.screenshot({ fullPage: true }));
       await finalizarRun(run.id, {
         situacao: 'ok', printPath, situacaoConta: 'ok',
-        resultado: { telas: d.telas.map((t, k) => ({ nome: t.nome, url: t.url, arquivo: arquivos[k], bytes: t.html.length })) },
+        resultado: { telas: d.telas.map((t, k) => ({ nome: t.nome, url: t.url, arquivo: arquivos[k], bytes: t.html.length, requisicoes: t.rede?.length ?? 0 })) },
       });
       log('descoberta ok', { run: run.id, telas: d.telas.map(t => t.nome) });
       return;

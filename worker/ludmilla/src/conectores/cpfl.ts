@@ -1,5 +1,5 @@
 import type { Page } from 'playwright';
-import type { Conector, Descoberta, Protocolo } from './index.js';
+import type { Conector, Descoberta, Protocolo, TelaDescoberta } from './index.js';
 import { lerCartoesCpfl, lerPaginacaoCpfl, SELETOR_SPINNER } from './cpfl-lista.js';
 import type { Credenciais } from '../fila.js';
 import { ErroLudmilla } from '../erros.js';
@@ -99,9 +99,20 @@ export const cpfl: Conector = {
   async descobrir(page: Page, creds: Credenciais, guardarTela): Promise<Descoberta> {
     await entrar(page, creds, this.loginUrl);
     const telas: Descoberta['telas'] = [];
+    // rede: o que a tela pediu ao servidor desde a captura anterior — é como se
+    // descobre por que uma tela fica no spinner (API recusando o robô?)
+    let rede: NonNullable<TelaDescoberta['rede']> = [];
+    page.on('response', r => {
+      const tipo = r.request().resourceType();
+      if (tipo === 'xhr' || tipo === 'fetch' || tipo === 'document') rede.push({ url: semSegredos(r.url()), status: r.status(), tipo });
+    });
     // cada tela sobe NA HORA: uma falha no meio não perde o que já foi visto
     const guardar = async (nome: string) => {
-      const tela = { nome, url: semSegredos(page.url()), html: await htmlLimpo(page) };
+      const tela: TelaDescoberta = {
+        nome, url: semSegredos(page.url()), html: await htmlLimpo(page),
+        png: await page.screenshot({ fullPage: true }).catch(() => undefined), rede,
+      };
+      rede = [];
       telas.push(tela);
       await guardarTela(tela);
     };
