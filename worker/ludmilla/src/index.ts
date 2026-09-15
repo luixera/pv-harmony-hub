@@ -5,7 +5,7 @@ import {
   anexoEnviado, anexoErro, anexosPendentes, conectorDaConta, credenciais, entrarNaEstacao, finalizarRun, pegarRun,
   protocolosDeInteresse, pulsar, subirDocumento, subirPrint, subirTexto, Run,
 } from './fila.js';
-import { carregarEnvDaEstacao, dirPerfilChrome, modoAtual, pedirLoginNoTerminal } from './local.js';
+import { avisar, carregarEnvDaEstacao, dirPerfilChrome, modoAtual, pedirLoginNoTerminal } from './local.js';
 
 /**
  * LUDMILLA — o laço.
@@ -115,8 +115,11 @@ async function executar(abrir: Abrir, run: Run): Promise<void> {
     }
 
     const protocolos = await c.varrer(page, creds, { protocolosDeInteresse: await protocolosDeInteresse(run.account_id) });
+    // print da tela onde a leitura terminou (a lista, na aba certa) — só a
+    // janela, não a página inteira: é prova do caminho, não cópia da lista
+    printPath = await subirPrint(run.tenant_id, run.id, await page.screenshot({ fullPage: false })).catch(() => undefined);
     await finalizarRun(run.id, {
-      situacao: 'ok', resultado: { protocolos }, protocolos: protocolos.length, situacaoConta: 'ok',
+      situacao: 'ok', resultado: { protocolos }, protocolos: protocolos.length, situacaoConta: 'ok', printPath,
     });
     log('varredura ok', { run: run.id, protocolos: protocolos.length });
 
@@ -178,7 +181,13 @@ async function principal() {
   let batimento: NodeJS.Timeout | null = null;
   if (modo === 'local') {
     // sessão do usuário operador (gravada pelo --login); as RPCs _local checam quem é
-    const email = await entrarNaEstacao();
+    let email: string;
+    try {
+      email = await entrarNaEstacao();
+    } catch (e) {
+      avisar('Ludmilla parada', (e as Error).message);
+      throw e;
+    }
     log('estação pronta', { usuario: email });
     await pulsar();
     batimento = setInterval(() => { void pulsar(); }, 60_000);

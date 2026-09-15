@@ -54,6 +54,30 @@ jobs:
         working-directory: worker/ludmilla
         run: npm run build
 
+      # Pacote da ESTAÇÃO LOCAL (Windows, coworking): o mesmo robô compilado +
+      # instalador. Baixa-se na página deste run (Artifacts → ludmilla-local).
+      # O env.padrao leva só valores públicos (URL + chave anon, as mesmas do
+      # site); a service role NÃO entra no zip.
+      - name: Pacote da estação local (Windows)
+        working-directory: worker/ludmilla
+        env:
+          SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
+        run: |
+          rm -rf _estacao && mkdir -p _estacao/app
+          cp -r dist package.json package-lock.json _estacao/app/
+          cp deploy/windows/* _estacao/
+          printf '# Valores públicos do projeto (os mesmos do site). Segredo nenhum aqui.\nSUPABASE_URL=%s\nSUPABASE_ANON_KEY=%s\n' "$SUPABASE_URL" "$SUPABASE_ANON_KEY" > _estacao/env.padrao
+          (cd _estacao && zip -qr ../ludmilla-local.zip .)
+          ls -la ludmilla-local.zip
+
+      - name: Publicar ludmilla-local.zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: ludmilla-local
+          path: worker/ludmilla/ludmilla-local.zip
+          retention-days: 30
+
       - name: Setup SSH
         run: |
           mkdir -p ~/.ssh
@@ -69,7 +93,7 @@ jobs:
           # só o necessário para rodar: código compilado, manifesto e deploy
           rsync -avz --delete -e "$SSH" \
             --exclude='node_modules' --exclude='dist-test' --exclude='test' --exclude='src' \
-            --exclude='_*' --exclude='*.png' \
+            --exclude='_*' --exclude='*.png' --exclude='*.zip' \
             worker/ludmilla/ ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/opt/ludmilla/
 
       - name: Instalar / reiniciar

@@ -1,0 +1,46 @@
+LUDMILLA — ESTAÇÃO LOCAL (Windows)
+==================================
+
+É o mesmo robô da Ludmilla, rodando numa máquina de pessoa (o PC do
+coworking), para o portal que não abre para a VPS: o Portal GD da Elektro.
+
+O que ela faz aqui: entra no GD Manager como o "operador local" da conta,
+pega as visitas agendadas (2x ao dia, ou "Verificar agora"), abre o Chrome
+desta máquina no Portal GD, PREENCHE e-mail e senha da Elektro (que ficam
+no cofre do GD Manager) e chama você para digitar o código da imagem.
+Ela nunca lê nem tenta o código — só espera você.
+
+INSTALAR (uma vez)
+------------------
+1. Instale o Google Chrome, se não tiver.
+2. No GD Manager: Concessionárias → Elektro → ícone da chave → modo
+   "Estação local" e escolha o usuário operador (um usuário staff).
+   Esse usuário precisa ter senha — é com ele que a estação entra.
+3. Extraia este zip numa pasta qualquer.
+4. Botão direito em instalar.ps1 → "Executar com o PowerShell".
+   Ele instala o Node.js (se faltar), copia o robô para
+   %LOCALAPPDATA%\Ludmilla, pede o e-mail e a senha do usuário operador
+   (a senha vai direto para o Supabase; aqui fica só a sessão) e deixa a
+   Ludmilla iniciando junto com o Windows.
+
+NO DIA A DIA
+------------
+- A janela "Ludmilla - estacao local" fica minimizada. Feche-a para parar.
+- Quando a Elektro pedir o código: aparece um balão; o Chrome da Ludmilla
+  já está aberto com e-mail e senha preenchidos — digite o código e clique
+  em Entrar. Se ninguém digitar em 5 minutos, a visita é adiada e os
+  administradores recebem um aviso no sino.
+- A página /ludmilla mostra se a estação está online (ela "pulsa" a cada
+  minuto) e se está aguardando login.
+
+ATUALIZAR
+---------
+Extraia o zip novo e rode instalar.ps1 de novo. Sessão, env e perfis do
+Chrome ficam; só o código é trocado.
+
+SE A SESSÃO EXPIRAR
+-------------------
+Aparece o balão "Ludmilla parada". Abra um terminal na pasta
+%LOCALAPPDATA%\Ludmilla\app e rode:
+    set LUDMILLA_MODO=local
+    node dist\index.js --login
