@@ -4,7 +4,7 @@ import { MainLayout } from '@/components/layout/MainLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Radar, CheckCircle2, XCircle, ArrowRight, ExternalLink, RefreshCw, Loader2, Clock, KeyRound, MonitorSmartphone, ShieldQuestion } from 'lucide-react';
+import { Radar, CheckCircle2, XCircle, ArrowRight, ExternalLink, RefreshCw, Loader2, Clock, KeyRound, MonitorSmartphone, ShieldQuestion, ChevronRight } from 'lucide-react';
 import {
   estadoDaEstacao, PortalCaptcha, PortalRun, PortalUpdate, PassoCriacao, urlDoPrint,
   useAplicarUpdate, useIgnorarUpdate, useLudmillaDisponivel, usePedirRun, usePortalAccounts,

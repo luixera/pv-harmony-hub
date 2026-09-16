@@ -197,7 +197,9 @@ Deno.serve(async (req) => {
       headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
       body: JSON.stringify({
         model: MODELO_IA,
-        max_tokens: 2000,
+        // o raciocínio adaptativo conta dentro de max_tokens: com 2000 a resposta
+        // podia sair cortada (mesmo defeito da leitura de datasheet, 16/09/2026)
+        max_tokens: 16000,
         thinking: { type: 'adaptive' },
         system: promptDoSistema(habilidades ?? [], regras ?? [], projeto),
         messages: mensagens,

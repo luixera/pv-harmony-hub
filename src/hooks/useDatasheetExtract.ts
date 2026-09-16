@@ -1,4 +1,5 @@
 import { useMutation } from '@tanstack/react-query';
+import { FunctionsHttpError } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 import { EquipmentType } from '@/hooks/useEquipmentCatalog';
 
@@ -70,7 +71,18 @@ export function useDatasheetExtract() {
           power: input.power ?? null,
         },
       });
-      if (error) throw new Error(error.message || 'Erro ao chamar a leitura do datasheet');
+      if (error) {
+        // a função responde 4xx/5xx com { ok:false, error } em português — é essa
+        // frase que interessa, não "Edge Function returned a non-2xx status code"
+        if (error instanceof FunctionsHttpError) {
+          const corpo = await error.context.json().catch(() => null) as { error?: string; warnings?: string[] } | null;
+          if (corpo?.error) {
+            const aviso = Array.isArray(corpo.warnings) && corpo.warnings.length > 0 ? ` (${corpo.warnings[0]})` : '';
+            throw new Error(corpo.error + aviso);
+          }
+        }
+        throw new Error(error.message || 'Erro ao chamar a leitura do datasheet');
+      }
       if (!data?.ok) {
         const avisos = Array.isArray(data?.warnings) && data.warnings.length > 0
           ? ` (${data.warnings[0]})`

@@ -258,7 +258,8 @@ Deno.serve(async (req) => {
       },
       body: JSON.stringify({
         model: 'claude-opus-4-8',
-        max_tokens: 8000,
+        // o raciocínio adaptativo conta dentro de max_tokens (teto, não gasto)
+        max_tokens: 16000,
         thinking: { type: 'adaptive' },
         messages: [{ role: 'user', content }],
       }),

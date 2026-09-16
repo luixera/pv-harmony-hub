@@ -286,7 +286,10 @@ Deno.serve(async (req) => {
       headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
       body: JSON.stringify({
         model: MODELO_IA,
-        max_tokens: 3000,
+        // O raciocínio adaptativo CONTA dentro de max_tokens. Com 3000, um
+        // datasheet de família com rótulos deslocados (Growatt NEO, 16/09/2026)
+        // gastou tudo pensando e o JSON saiu cortado no meio → 422.
+        max_tokens: 16000,
         // ler a coluna certa de uma tabela de família exige raciocínio, não OCR
         thinking: { type: 'adaptive' },
         messages: [{ role: 'user', content: [contentBlock(body), { type: 'text', text: buildPrompt(body) }] }],
@@ -297,6 +300,10 @@ Deno.serve(async (req) => {
       return json({ ok: false, error: `Erro na API Claude: ${claudeResp.status}` }, 502)
     }
     const claudeData = await claudeResp.json()
+    if (claudeData.stop_reason === 'max_tokens') {
+      console.error('Resposta cortada por max_tokens', claudeData.usage)
+      return json({ ok: false, error: 'A leitura do datasheet ficou longa demais e foi cortada. Tente de novo; se repetir, preencha os dados à mão no catálogo.' }, 422)
+    }
 
     if (quota?.log_id && claudeData?.usage) {
       const { error: usageErr } = await userClient.rpc('update_ai_usage_tokens', {
