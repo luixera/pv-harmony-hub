@@ -300,11 +300,8 @@ Deno.serve(async (req) => {
       return json({ ok: false, error: `Erro na API Claude: ${claudeResp.status}` }, 502)
     }
     const claudeData = await claudeResp.json()
-    if (claudeData.stop_reason === 'max_tokens') {
-      console.error('Resposta cortada por max_tokens', claudeData.usage)
-      return json({ ok: false, error: 'A leitura do datasheet ficou longa demais e foi cortada. Tente de novo; se repetir, preencha os dados à mão no catálogo.' }, 422)
-    }
 
+    // tokens gastos entram no extrato mesmo quando a resposta não serve
     if (quota?.log_id && claudeData?.usage) {
       const { error: usageErr } = await userClient.rpc('update_ai_usage_tokens', {
         _log_id: quota.log_id,
@@ -313,6 +310,10 @@ Deno.serve(async (req) => {
         _output_tokens: claudeData.usage.output_tokens ?? null,
       })
       if (usageErr) console.error('update_ai_usage_tokens:', usageErr)
+    }
+    if (claudeData.stop_reason === 'max_tokens') {
+      console.error('Resposta cortada por max_tokens', claudeData.usage)
+      return json({ ok: false, error: 'A leitura do datasheet ficou longa demais e foi cortada. Tente de novo; se repetir, preencha os dados à mão no catálogo.' }, 422)
     }
     if (claudeData.stop_reason === 'refusal') {
       return json({ ok: false, error: 'A leitura foi recusada pelos filtros do modelo' })
