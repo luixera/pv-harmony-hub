@@ -52,6 +52,7 @@ import { matchEntryRule, useEntryRules } from '@/hooks/useEntryRules';
 import { useVistoriaStatus, useSolicitarVistoria } from '@/hooks/useVistoria';
 import { BiduPanel } from '@/components/projects/BiduPanel';
 import { useBiduDisponivel } from '@/hooks/useBidu';
+import { CriarNaCpflPanel } from '@/components/projects/CriarNaCpflPanel';
 
 type ProjectStatus = Database['public']['Enums']['project_status'];
 type DocumentType = Database['public']['Enums']['document_type'];
@@ -1141,6 +1142,19 @@ function TabGeneral({ project, isEditing, onSave, onCancel, onEdit }: {
           })()}
         </div>
       </div>
+
+      {/* Criar na CPFL — só equipe GD Manager com Ludmilla disponível */}
+      {!isEditing && (
+        <div style={{ marginTop: 20 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#999', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>
+            Portal CPFL
+          </div>
+          <CriarNaCpflPanel
+            projectId={project.id}
+            cpflNodeId={(project as any).cpfl_node_id as string | null | undefined}
+          />
+        </div>
+      )}
 
       {isEditing && (
         <div style={{ display: 'flex', gap: 8, marginTop: 20 }}>

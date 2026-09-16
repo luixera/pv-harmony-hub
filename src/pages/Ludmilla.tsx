@@ -6,8 +6,9 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Radar, CheckCircle2, XCircle, ArrowRight, ExternalLink, RefreshCw, Loader2, Clock, KeyRound, MonitorSmartphone, ShieldQuestion } from 'lucide-react';
 import {
-  estadoDaEstacao, PortalCaptcha, PortalUpdate, urlDoPrint, useAplicarUpdate, useIgnorarUpdate, useLudmillaDisponivel,
-  usePedirRun, usePortalAccounts, usePortalCaptchas, usePortalUpdates, useResponderCaptcha,
+  estadoDaEstacao, PortalCaptcha, PortalRun, PortalUpdate, PassoCriacao, urlDoPrint,
+  useAplicarUpdate, useIgnorarUpdate, useLudmillaDisponivel, usePedirRun, usePortalAccounts,
+  usePortalCaptchas, usePortalUpdates, usePassosCriacao, useRunsCriacaoCpfl, useResponderCaptcha,
 } from '@/hooks/useLudmilla';
 import { useStatusLabel, useStatusOrder } from '@/hooks/useStatusLabel';
 import { useEnergyConcessionaires } from '@/hooks/useEnergyConcessionaires';
@@ -163,6 +164,100 @@ export function LinhaRecomendacao({ u }: { u: PortalUpdate }) {
   );
 }
 
+const NOMES_PASSO: Record<PassoCriacao['nome'], string> = {
+  introducao:     'Introdução',
+  dados_uc:       'Dados da UC',
+  dados_projeto:  'Dados do Projeto',
+  dados_cliente:  'Dados do Cliente',
+  revisao:        'Revisão',
+  concluido:      'Concluído',
+};
+
+function CardCriacaoCpfl({ run }: { run: PortalRun }) {
+  const [expandido, setExpandido] = useState(false);
+  const { data: passos = [] } = usePassosCriacao(expandido ? run.id : null);
+  const [printUrls, setPrintUrls] = useState<Record<string, string>>({});
+
+  async function carregarPrint(passo: PassoCriacao) {
+    if (!passo.screenshot || printUrls[passo.id]) return;
+    const url = await urlDoPrint(passo.screenshot);
+    if (url) setPrintUrls(prev => ({ ...prev, [passo.id]: url }));
+  }
+
+  const projectId = run.dados?.['project_id'] as string | undefined;
+  const situacaoCor = run.situacao === 'ok'
+    ? 'text-emerald-600' : run.situacao === 'erro'
+      ? 'text-red-600' : run.situacao === 'rodando'
+        ? 'text-blue-600' : 'text-muted-foreground';
+
+  return (
+    <div className="rounded-xl border bg-card overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setExpandido(e => !e)}
+        className="w-full flex items-center gap-3 p-4 text-left hover:bg-muted/40 transition-colors"
+      >
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-medium text-sm">
+              {projectId ? `Projeto ${projectId.slice(0, 8)}…` : 'Criar na CPFL'}
+            </span>
+            <span className={cn('text-xs font-semibold', situacaoCor)}>
+              {run.situacao === 'na_fila' ? 'na fila'
+               : run.situacao === 'rodando' ? 'em andamento'
+               : run.situacao === 'ok' ? 'concluído'
+               : `erro`}
+            </span>
+          </div>
+          <div className="text-xs text-muted-foreground mt-0.5">{quando(run.pedido_em)}</div>
+        </div>
+        <ChevronRight className={cn('h-4 w-4 text-muted-foreground shrink-0 transition-transform', expandido && 'rotate-90')} />
+      </button>
+
+      {run.situacao === 'erro' && run.erro && (
+        <p className="px-4 pb-3 text-xs text-red-600">{run.erro}</p>
+      )}
+
+      {expandido && (
+        <div className="px-4 pb-4 space-y-2">
+          {passos.length === 0 && run.situacao !== 'na_fila' && (
+            <p className="text-xs text-muted-foreground">Nenhum passo registrado ainda.</p>
+          )}
+          {passos.map(p => (
+            <div key={p.id} className="border rounded-md overflow-hidden">
+              <button
+                type="button"
+                onClick={() => carregarPrint(p)}
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted/50 transition-colors text-left"
+              >
+                {p.status === 'ok'
+                  ? <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
+                  : p.status === 'erro'
+                    ? <XCircle className="h-4 w-4 text-red-500 shrink-0" />
+                    : <Loader2 className="h-4 w-4 text-blue-500 animate-spin shrink-0" />}
+                <span className="flex-1 font-medium">{NOMES_PASSO[p.nome] ?? p.nome}</span>
+                {p.screenshot && <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />}
+              </button>
+              {p.erro && <p className="px-3 pb-2 text-xs text-red-600">{p.erro}</p>}
+              {printUrls[p.id] && (
+                <div className="px-3 pb-3">
+                  <a href={printUrls[p.id]} target="_blank" rel="noopener noreferrer">
+                    <img
+                      src={printUrls[p.id]}
+                      alt={`Screenshot — ${NOMES_PASSO[p.nome]}`}
+                      className="rounded border w-full max-h-48 object-cover object-top"
+                    />
+                  </a>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Ludmilla() {
   const disponivel = useLudmillaDisponivel();
   const navigate = useNavigate();
@@ -171,6 +266,7 @@ export default function Ludmilla() {
   const { data: contas = [] } = usePortalAccounts();
   const { data: concessionarias = [] } = useEnergyConcessionaires(false);
   const { data: captchas = [] } = usePortalCaptchas();
+  const { data: runsCriacao = [] } = useRunsCriacaoCpfl();
   const pedir = usePedirRun();
 
   if (!disponivel) {
@@ -251,6 +347,16 @@ export default function Ludmilla() {
             </div>
           ))}
         </div>
+
+        {/* Criações CPFL */}
+        {runsCriacao.length > 0 && (
+          <div className="space-y-3">
+            <h2 className="font-semibold">Criações no portal CPFL</h2>
+            <div className="space-y-2">
+              {runsCriacao.map(r => <CardCriacaoCpfl key={r.id} run={r} />)}
+            </div>
+          </div>
+        )}
 
         {/* Relatório */}
         <div className="flex items-center gap-2">

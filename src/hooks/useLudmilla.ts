@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -18,7 +19,7 @@ import { toast } from 'sonner';
 export const LUDMILLA_USER_ID = '00000000-10d1-4000-8000-000000000002';
 
 export type SituacaoConta = 'nao_configurado' | 'ok' | 'sessao_expirada' | 'erro';
-export type TipoRun = 'reconhecimento' | 'teste_login' | 'descoberta' | 'varredura';
+export type TipoRun = 'reconhecimento' | 'teste_login' | 'descoberta' | 'varredura' | 'criar_projeto';
 export type SituacaoRun = 'na_fila' | 'rodando' | 'ok' | 'erro';
 
 export type ModoConta = 'vps' | 'local';
@@ -174,6 +175,18 @@ export interface PortalRun {
   erro: string | null;
   print_path: string | null;
   resultado: Record<string, unknown> | null;
+  dados: Record<string, unknown> | null;
+}
+
+export interface PassoCriacao {
+  id: string;
+  run_id: string;
+  passo: number;
+  nome: 'introducao' | 'dados_uc' | 'dados_projeto' | 'dados_cliente' | 'revisao' | 'concluido';
+  status: 'rodando' | 'ok' | 'erro';
+  screenshot: string | null;
+  erro: string | null;
+  created_at: string;
 }
 
 /** A Ludmilla existe para este usuário? Só equipe do tenant biblioteca. */
@@ -269,9 +282,94 @@ export function usePedirRun() {
 
 /** URL temporária do print de um run (bucket privado). */
 export async function urlDoPrint(printPath: string): Promise<string | null> {
-  const { data, error } = await supabase.storage.from('ludmilla').createSignedUrl(printPath, 600);
+  const { data, error } = await supabase.storage.from('ludmilla').createSignedUrl(printPath, 3600);
   if (error) return null;
   return data.signedUrl;
+}
+
+// ── Criação de projeto na CPFL ───────────────────────────────────────────────
+
+/** Solicita criação do projeto na CPFL. Devolve o run_id para subscrição Realtime. */
+export function useCriarProjetoCpfl() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ accountId, projectId }: { accountId: string; projectId: string }): Promise<string> => {
+      const { data, error } = await supabase.rpc('ludmilla_pedir_run' as never, {
+        p_account_id: accountId,
+        p_tipo:       'criar_projeto',
+        p_dados:      { project_id: projectId },
+      } as never);
+      if (error) throw error;
+      return data as string;
+    },
+    onSuccess: (_runId, { accountId }) => {
+      qc.invalidateQueries({ queryKey: ['portal-runs', accountId] });
+    },
+    onError: (e: Error) => toast.error(`Não foi possível iniciar a criação: ${e.message}`),
+  });
+}
+
+/** Subscreve em tempo real os passos de um run de criação. */
+export function usePassosCriacao(runId: string | null) {
+  const qc = useQueryClient();
+
+  useEffect(() => {
+    if (!runId) return;
+    const canal = supabase
+      .channel(`criacao-${runId}`)
+      .on('postgres_changes' as never, {
+        event: '*',
+        schema: 'public',
+        table: 'portal_criacao_passos',
+        filter: `run_id=eq.${runId}`,
+      }, () => {
+        void qc.invalidateQueries({ queryKey: ['passos-criacao', runId] });
+      })
+      .subscribe();
+    return () => { void canal.unsubscribe(); };
+  }, [runId, qc]);
+
+  return useQuery({
+    queryKey: ['passos-criacao', runId],
+    queryFn: async (): Promise<PassoCriacao[]> => {
+      if (!runId) return [];
+      const { data, error } = await supabase
+        .from('portal_criacao_passos' as never)
+        .select('*')
+        .eq('run_id', runId)
+        .order('passo', { ascending: true });
+      if (error) throw error;
+      return (data ?? []) as PassoCriacao[];
+    },
+    enabled: !!runId,
+    refetchInterval: (q) => {
+      const passos = q.state.data ?? [];
+      const terminado = passos.some(
+        p => (p.nome === 'concluido' && p.status === 'ok') || p.status === 'erro'
+      );
+      return terminado ? false : 3_000;
+    },
+  });
+}
+
+/** Últimos runs de criação CPFL (todos, independente de conta). */
+export function useRunsCriacaoCpfl(limit = 20) {
+  const disponivel = useLudmillaDisponivel();
+  return useQuery({
+    queryKey: ['runs-criacao-cpfl'],
+    queryFn: async (): Promise<PortalRun[]> => {
+      const { data, error } = await supabase
+        .from('portal_sync_runs' as never)
+        .select('*')
+        .eq('tipo', 'criar_projeto')
+        .order('pedido_em', { ascending: false })
+        .limit(limit);
+      if (error) throw error;
+      return (data ?? []) as PortalRun[];
+    },
+    enabled: disponivel,
+    refetchInterval: 10_000,
+  });
 }
 
 // ── Relatório de recomendações ───────────────────────────────────────────────
