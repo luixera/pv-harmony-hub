@@ -1,10 +1,12 @@
 import type { Page } from 'playwright';
 import { ErroLudmilla } from '../erros.js';
 import { comPaciencia } from '../paciencia.js';
-import { supabase } from '../fila.js';
+import { supabase, type Credenciais } from '../fila.js';
 import { decimalParaDms, parsearCoordenadas } from '../dms.js';
+import { logarNaCpfl } from './cpfl.js';
 
 const URL_MEUS_PROJETOS = 'https://www.cpfl.com.br/gestao-projetos/meus-projetos';
+const LOGIN_URL_CPFL = 'https://www.cpfl.com.br/cpfl-auth/redirect-arame?redirect_uri=/Internet/Projeto';
 
 export interface DadosCriacaoCpfl {
   project_id: string;
@@ -57,24 +59,15 @@ const respirar = (page: Page, ms = 1_200) => page.waitForTimeout(ms);
  * Preenche o formulário multi-passo de criação de projeto na CPFL.
  * Lança ErroLudmilla em qualquer falha — o worker captura e finaliza o run.
  */
-export async function criarProjeto(page: Page, dados: DadosCriacaoCpfl): Promise<void> {
+export async function criarProjeto(page: Page, dados: DadosCriacaoCpfl, creds: Credenciais): Promise<void> {
 
-  // ── Passo 1: Navegar até "Criar projeto" em Orçamentos de Conexão ──────────
+  // ── Passo 1: Login + navegar até "Criar projeto" em Orçamentos de Conexão ──
   await registrarPasso(page, dados, 1, 'introducao', 'rodando');
   try {
-    // Se a sessão expirou, o portal redireciona para fora do gestao-projetos
-    if (!/gestao-projetos/.test(page.url())) {
-      await page.goto(URL_MEUS_PROJETOS, { waitUntil: 'networkidle', timeout: 60_000 });
-      await respirar(page, 1_500);
-    }
+    // Login completo (B2C → Selecionar perfil → gestao-projetos)
+    await logarNaCpfl(page, creds, LOGIN_URL_CPFL);
 
-    // Após navigate, checa de novo — sessão expirada redireciona para login/perfil
-    if (!/gestao-projetos/.test(page.url())) {
-      throw new ErroLudmilla('sessao_expirada',
-        'Sessão no portal CPFL expirada. Faça uma varredura manual para renovar o login antes de criar o projeto.');
-    }
-
-    // Fecha banner de cookies se aparecer
+    // Fecha banner de cookies se aparecer (pode reaparecer após o login)
     const rejeitar = page.getByText(/Rejeitar todos/i).first();
     if (await rejeitar.count() > 0 && await rejeitar.isVisible().catch(() => false)) {
       await rejeitar.click({ timeout: 5_000 }).catch(() => undefined);

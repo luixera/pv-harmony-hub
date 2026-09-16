@@ -165,8 +165,9 @@ async function executar(abrir: Abrir, run: Run): Promise<Fim | null> {
     if (run.tipo === 'criar_projeto') {
       const projectId = run.dados?.['project_id'] as string | undefined;
       if (!projectId) throw new ErroLudmilla('falhou', 'Run criar_projeto sem project_id nos dados.');
+      const creds = await credenciais(run.account_id);
       const dadosCriacao = await dadosCriacaoCpfl(run.id, projectId, run.tenant_id);
-      await criarProjeto(page, dadosCriacao);
+      await criarProjeto(page, dadosCriacao, creds);
       printPath = await print();
       await finalizarRun(run.id, { situacao: 'ok', printPath, situacaoConta: 'ok' });
       log('criação CPFL ok', { run: run.id, project: projectId });

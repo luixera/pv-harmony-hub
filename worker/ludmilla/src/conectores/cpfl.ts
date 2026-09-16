@@ -65,6 +65,26 @@ async function entrar(page: Page, creds: Credenciais, loginUrl: string) {
 }
 
 /**
+ * Login completo + navegação até gestao-projetos/meus-projetos.
+ * Reutilizado por varrer e por cpfl-criar (que abre sessão nova a cada run).
+ */
+export async function logarNaCpfl(page: Page, creds: Credenciais, loginUrl: string): Promise<void> {
+  await entrar(page, creds, loginUrl);
+  await fecharCookies(page);
+  // tela "Selecionar perfil" → entra em Projetos Particulares
+  if (await page.getByText(/Serviços para projetistas/i).first().count() > 0) {
+    await clicarTexto(page, /Serviços para projetistas/i, 'cartão Projetos Particulares');
+  }
+  if (!/gestao-projetos/.test(page.url())) {
+    await page.goto('https://www.cpfl.com.br/gestao-projetos/meus-projetos', { waitUntil: 'networkidle', timeout: 60_000 });
+    await respirar(page, 1_000);
+  }
+  if (!/gestao-projetos/.test(page.url())) {
+    throw new ErroLudmilla('sessao_expirada', 'Login na CPFL falhou: não chegou ao portal de projetos após a autenticação.');
+  }
+}
+
+/**
  * Banner de cookies do site da CPFL: cobre a parte de baixo da página e
  * intercepta cliques. Fecha com "Rejeitar todos" — a opção que menos coleta.
  */
@@ -253,16 +273,7 @@ export const cpfl: Conector = {
   },
 
   async varrer(page: Page, creds: Credenciais, opcoes?: OpcoesVarredura): Promise<Protocolo[]> {
-    await entrar(page, creds, this.loginUrl);
-    await fecharCookies(page);
-    // entra em "Projetos Particulares": é o que cria a sessão do app de
-    // projetos; a partir daqui a API interna responde para este navegador
-    if (await page.getByText(/Serviços para projetistas/i).first().count() > 0) {
-      await clicarTexto(page, /Serviços para projetistas/i, 'cartão Projetos Particulares');
-    }
-    if (!/gestao-projetos/.test(page.url())) {
-      await page.goto('https://www.cpfl.com.br/gestao-projetos/meus-projetos', { waitUntil: 'networkidle', timeout: 60_000 });
-    }
+    await logarNaCpfl(page, creds, this.loginUrl);
     // A aba "Orçamentos de conexão" é onde ficam os projetos que a Ludmilla
     // acompanha (regra do usuário, 14/09/2026): a tela abre nela — assim o
     // print mostra a lista certa — e a leitura vem da API DESSA aba.
