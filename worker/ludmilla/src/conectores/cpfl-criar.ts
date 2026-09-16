@@ -1,4 +1,4 @@
-import type { Page } from 'playwright';
+import type { Locator, Page } from 'playwright';
 import { ErroLudmilla } from '../erros.js';
 import { comPaciencia } from '../paciencia.js';
 import { supabase, type Credenciais } from '../fila.js';
@@ -62,6 +62,32 @@ async function registrarPasso(
 
 /** Pausa humanizada entre ações. */
 const respirar = (page: Page, ms = 1_200) => page.waitForTimeout(ms);
+
+/**
+ * Primeiro elemento VISÍVEL entre os que casam os seletores (na ordem dada).
+ * O formulário Drupal da CPFL guarda cópias escondidas dos mesmos campos em
+ * blocos condicionais (um por opção de orçamento): `.first()` pega a cópia
+ * escondida e o fill estoura "element is not visible" com o campo na tela.
+ */
+async function primeiroVisivel(page: Page, seletores: string[]): Promise<Locator | null> {
+  for (const seletor of seletores) {
+    const todos = page.locator(seletor);
+    const n = await todos.count();
+    for (let i = 0; i < n; i++) {
+      const el = todos.nth(i);
+      if (await el.isVisible().catch(() => false)) return el;
+    }
+  }
+  return null;
+}
+
+/** name/id dos inputs visíveis — vai na mensagem de erro para a pessoa ver o que a Ludmilla viu. */
+async function camposVisiveis(page: Page): Promise<string> {
+  const nomes = await page.locator('input:visible, select:visible, textarea:visible')
+    .evaluateAll(els => els.map(e => (e as HTMLInputElement).name || e.id).filter(Boolean).slice(0, 20))
+    .catch(() => [] as string[]);
+  return nomes.length ? nomes.join(', ') : 'nenhum';
+}
 
 /**
  * Marca o radio cujo <label> COMEÇA com o rótulo pedido e confere que ficou
@@ -182,45 +208,45 @@ export async function criarProjeto(page: Page, dados: DadosCriacaoCpfl, creds: C
     );
     await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => undefined);
 
-    // 2b. O campo da UC fica dentro do acordeão "Insira os dados do local da
-    // unidade consumidora", que abre fechado — abrir antes de preencher.
-    const campoUc = page.locator(
-      'input[name*="field_uc"], input[id*="field-uc"], input[name*="uc"], input[id*="uc"]'
-    ).first();
-    if (!(await campoUc.isVisible().catch(() => false))) {
+    // 2b. Campo da UC — sempre a cópia VISÍVEL (há cópias escondidas por opção
+    // de orçamento). Se nenhuma estiver visível, o acordeão "Insira os dados do
+    // local da unidade consumidora" está fechado: abre e procura de novo.
+    const SEL_UC = [
+      'input[name*="field_uc"]', 'input[id*="field-uc"]',
+      'input[placeholder*="UC"]', 'input[name*="_uc"]', 'input[id*="-uc"]',
+    ];
+    let campoUc = await primeiroVisivel(page, SEL_UC);
+    if (!campoUc) {
       const acordeao = page.getByText(/Insira os dados do local da unidade consumidora/i).first();
       if (await acordeao.count() > 0) {
         await acordeao.click({ timeout: 10_000 });
-        await respirar(page, 800);
+        await respirar(page, 1_000);
       }
+      campoUc = await primeiroVisivel(page, SEL_UC);
     }
-    await campoUc.waitFor({ state: 'visible', timeout: 15_000 }).catch(() => undefined);
-    if (!(await campoUc.isVisible().catch(() => false))) {
+    if (!campoUc) {
       throw new ErroLudmilla('pagina_mudou',
-        'Campo Nº da UC não ficou visível no passo 2, mesmo depois de marcar a opção de orçamento e abrir o acordeão.');
+        `Não achei o campo Nº da UC visível no passo 2. Campos visíveis na tela: ${await camposVisiveis(page)}.`);
     }
     await campoUc.fill(dados.uc_number);
     await respirar(page, 600);
 
     // 2c. Se houver "Buscar", o portal preenche o titular a partir da UC.
-    const btnBuscar = page.getByRole('button', { name: /Buscar/i }).first();
-    if (await btnBuscar.count() > 0 && await btnBuscar.isVisible().catch(() => false)) {
+    const SEL_NOME = ['input[name*="nome"]', 'input[name*="name"]', 'input[id*="nome"]', 'input[id*="name"]'];
+    const btnBuscar = await primeiroVisivel(page, ['button:has-text("Buscar")', 'a:has-text("Buscar")']);
+    if (btnBuscar) {
       await btnBuscar.click({ timeout: 10_000 });
       await comPaciencia('auto-preenchimento da UC pelo portal', async () => {
         await page.waitForLoadState('networkidle', { timeout: 15_000 });
         await respirar(page, 1_500);
-        const campoNome = page.locator(
-          'input[name*="nome"], input[name*="name"], input[id*="nome"], input[id*="name"]'
-        ).first();
-        const val = await campoNome.inputValue().catch(() => '');
+        const campoNome = await primeiroVisivel(page, SEL_NOME);
+        const val = campoNome ? await campoNome.inputValue().catch(() => '') : '';
         if (!val.trim()) throw new Error('nome do cliente ainda vazio após Buscar');
       }, { tentativas: 2, pausaMs: 3_000 });
 
       // UC não encontrada = campo nome ainda vazio depois do Buscar
-      const campoNomeCheck = page.locator(
-        'input[name*="nome"], input[name*="name"], input[id*="nome"], input[id*="name"]'
-      ).first();
-      const nomePreenchido = await campoNomeCheck.inputValue().catch(() => '');
+      const campoNomeCheck = await primeiroVisivel(page, SEL_NOME);
+      const nomePreenchido = campoNomeCheck ? await campoNomeCheck.inputValue().catch(() => '') : '';
       if (!nomePreenchido.trim()) {
         throw new ErroLudmilla('falhou',
           'UC não encontrada no portal CPFL. Verifique o número UC no GD Manager e tente novamente.');
@@ -228,32 +254,20 @@ export async function criarProjeto(page: Page, dados: DadosCriacaoCpfl, creds: C
     }
 
     // Lê disjuntor e fase retornados pela CPFL (fonte primária)
-    const campoDisj = page.locator(
-      'select[name*="disjuntor"], input[name*="disjuntor"], select[id*="disjuntor"]'
-    ).first();
-    if (await campoDisj.count() > 0) {
-      valorDisjuntorCpfl = await campoDisj.inputValue().catch(() => null);
-    }
-    const campoFasePg = page.locator(
-      'select[name*="fase"], select[id*="fase"], input[name*="fase"]'
-    ).first();
-    if (await campoFasePg.count() > 0) {
-      valorFaseCpfl = await campoFasePg.inputValue().catch(() => null);
-    }
+    const campoDisj = await primeiroVisivel(page, ['select[name*="disjuntor"]', 'input[name*="disjuntor"]', 'select[id*="disjuntor"]']);
+    if (campoDisj) valorDisjuntorCpfl = await campoDisj.inputValue().catch(() => null);
+    const campoFasePg = await primeiroVisivel(page, ['select[name*="fase"]', 'select[id*="fase"]', 'input[name*="fase"]']);
+    if (campoFasePg) valorFaseCpfl = await campoFasePg.inputValue().catch(() => null);
 
     // Coordenadas em DMS
     const coords = parsearCoordenadas(dados.coordinates);
     if (coords) {
       const latDms = decimalParaDms(coords.lat, 'lat');
       const lngDms = decimalParaDms(coords.lng, 'lng');
-      const campoLat = page.locator(
-        'input[name*="lat"], input[id*="lat"], input[placeholder*="Latitude"]'
-      ).first();
-      const campoLng = page.locator(
-        'input[name*="lon"], input[id*="lon"], input[id*="lng"], input[placeholder*="Longitude"]'
-      ).first();
-      if (await campoLat.count() > 0) { await campoLat.fill(latDms); await respirar(page, 400); }
-      if (await campoLng.count() > 0) { await campoLng.fill(lngDms); await respirar(page, 400); }
+      const campoLat = await primeiroVisivel(page, ['input[placeholder*="Latitude"]', 'input[name*="lat"]', 'input[id*="lat"]']);
+      const campoLng = await primeiroVisivel(page, ['input[placeholder*="Longitude"]', 'input[name*="lon"]', 'input[id*="lon"]', 'input[id*="lng"]']);
+      if (campoLat) { await campoLat.fill(latDms); await respirar(page, 400); }
+      if (campoLng) { await campoLng.fill(lngDms); await respirar(page, 400); }
     }
 
     await page.getByRole('button', { name: /Avançar/i }).first().click({ timeout: 10_000 });
