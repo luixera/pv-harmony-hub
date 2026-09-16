@@ -143,11 +143,39 @@ export async function criarProjeto(page: Page, dados: DadosCriacaoCpfl, creds: C
   let valorDisjuntorCpfl: string | null = null;
   let valorFaseCpfl: string | null = null;
   try {
+    // Seleciona o tipo de serviço antes de preencher a UC.
+    // Autonomia: tipo_servico = 'orcamento_conexao' (padrão para GD) | 'ligacao_nova'
+    const tipoServico = dados.autonomia['tipo_servico'] ?? 'orcamento_conexao';
+    const textoServico = tipoServico === 'ligacao_nova'
+      ? /Ligação nova/i
+      : /Orçamento de conexão/i;
+
+    // Pode ser label (radio), select option ou card clicável
+    const labelServico = page.locator('label').filter({ hasText: textoServico }).first();
+    if (await labelServico.count() > 0) {
+      await labelServico.click({ timeout: 10_000 });
+      await respirar(page, 800);
+    } else {
+      const inputRadio = page.locator('input[type="radio"]').filter({ has: page.locator(`xpath=following-sibling::*[contains(text(),"${tipoServico === 'ligacao_nova' ? 'Ligação' : 'Orçamento'}")]`) }).first();
+      if (await inputRadio.count() > 0) {
+        await inputRadio.check({ timeout: 10_000 });
+        await respirar(page, 800);
+      } else {
+        // Tenta clicar no texto diretamente (card ou link)
+        const textoClicavel = page.getByText(textoServico).first();
+        if (await textoClicavel.count() > 0) {
+          await textoClicavel.click({ timeout: 10_000 });
+          await respirar(page, 800);
+        }
+      }
+    }
+    await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => undefined);
+
     const campoUc = page.locator(
-      'input[name*="uc"], input[placeholder*="UC"], input[id*="uc"], input[placeholder*="Nº"]'
+      'input[name*="uc"], input[placeholder*="UC"], input[id*="uc"], input[name*="field_uc"]'
     ).first();
     if (await campoUc.count() === 0) {
-      throw new ErroLudmilla('pagina_mudou', 'Campo Nº da UC não encontrado no passo 2.');
+      throw new ErroLudmilla('pagina_mudou', 'Campo Nº da UC não encontrado no passo 2. O tipo de serviço pode estar errado em autonomia.tipo_servico.');
     }
     await campoUc.fill(dados.uc_number);
     await respirar(page, 600);
