@@ -83,12 +83,14 @@ function PassoItem({ passo }: { passo: PassoCriacao }) {
 interface Props {
   projectId: string;
   cpflNodeId?: string | null;
+  concessionaireName?: string | null;
 }
 
-export function CriarNaCpflPanel({ projectId, cpflNodeId }: Props) {
+export function CriarNaCpflPanel({ projectId, cpflNodeId, concessionaireName }: Props) {
   const disponivel = useLudmillaDisponivel();
   const { data: contas = [] } = usePortalAccounts();
   const cpflAccount = contas.find(c => c.connector === 'cpfl');
+  const ehCpfl = /cpfl/i.test(concessionaireName ?? '');
 
   const [runId, setRunId] = useState<string | null>(null);
   const criarMutation = useCriarProjetoCpfl();
@@ -116,7 +118,7 @@ export function CriarNaCpflPanel({ projectId, cpflNodeId }: Props) {
   const { data: passosAtivos = [] } = usePassosCriacao(runId ? null : idEfetivo);
   const passosExibidos = runId ? passosNovos : passosAtivos;
 
-  if (!disponivel || !cpflAccount) return null;
+  if (!disponivel || !cpflAccount || !ehCpfl) return null;
 
   const concluido = passosExibidos.some(p => p.nome === 'concluido' && p.status === 'ok');
   const comErro    = passosExibidos.some(p => p.status === 'erro');

@@ -1143,8 +1143,8 @@ function TabGeneral({ project, isEditing, onSave, onCancel, onEdit }: {
         </div>
       </div>
 
-      {/* Criar na CPFL — só equipe GD Manager com Ludmilla disponível */}
-      {!isEditing && (
+      {/* Criar na CPFL — só para projetos CPFL, equipe GD Manager com Ludmilla */}
+      {!isEditing && /cpfl/i.test(project.concessionaireName ?? '') && (
         <div style={{ marginTop: 20 }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: '#999', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>
             Portal CPFL
@@ -1152,6 +1152,7 @@ function TabGeneral({ project, isEditing, onSave, onCancel, onEdit }: {
           <CriarNaCpflPanel
             projectId={project.id}
             cpflNodeId={(project as any).cpfl_node_id as string | null | undefined}
+            concessionaireName={project.concessionaireName}
           />
         </div>
       )}
