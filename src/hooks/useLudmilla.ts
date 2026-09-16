@@ -39,6 +39,68 @@ export interface PortalAccount {
   operador_local: string | null;
   /** último batimento da estação (a cada 60 s enquanto ligada) */
   estacao_vista_em: string | null;
+  /** desde quando a estação está logada no portal sem precisar de login (sessão viva) */
+  sessao_viva_desde: string | null;
+}
+
+// ── Código da imagem respondido pela equipe (de longe) ───────────────────────
+
+export interface PortalCaptcha {
+  id: string;
+  account_id: string;
+  run_id: string | null;
+  imagem_path: string;
+  situacao: 'aguardando' | 'respondido' | 'usado' | 'recusado' | 'expirado' | 'cancelado';
+  tentativa: number;
+  mensagem: string | null;
+  criado_em: string;
+  expira_em: string;
+}
+
+/**
+ * Pedidos de código abertos pela estação. A página consulta a cada 5 s:
+ * é assim que o cartão "Digite o código" aparece para quem já está nela.
+ */
+export function usePortalCaptchas() {
+  const disponivel = useLudmillaDisponivel();
+  return useQuery({
+    queryKey: ['portal-captchas'],
+    queryFn: async (): Promise<PortalCaptcha[]> => {
+      const { data, error } = await supabase
+        .from('portal_captchas' as never)
+        .select('*')
+        .eq('situacao', 'aguardando')
+        .gt('expira_em', new Date().toISOString())
+        .order('criado_em', { ascending: false })
+        .limit(5);
+      if (error) throw error;
+      return (data ?? []) as PortalCaptcha[];
+    },
+    enabled: disponivel,
+    refetchInterval: 5_000,
+    refetchIntervalInBackground: true,
+  });
+}
+
+/** A pessoa digitou os caracteres da imagem: vai para a estação, que preenche e envia. */
+export function useResponderCaptcha() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ captchaId, resposta }: { captchaId: string; resposta: string }) => {
+      const { error } = await supabase.rpc('ludmilla_captcha_responder' as never, {
+        p_captcha_id: captchaId, p_resposta: resposta,
+      } as never);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['portal-captchas'] });
+      toast.success('Código enviado. A estação preenche e entra no portal em alguns segundos.');
+    },
+    onError: (e: Error) => {
+      qc.invalidateQueries({ queryKey: ['portal-captchas'] });
+      toast.error(e.message);
+    },
+  });
 }
 
 /** Estação ligada = pulsou nos últimos 3 min. Só faz sentido para contas `local`. */

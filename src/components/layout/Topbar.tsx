@@ -172,6 +172,7 @@ function NotificationBell({ onOpenModal }: { onOpenModal: (id: string) => void }
   const { data: notifications = [] } = useNotifications();
   const markAsRead = useMarkAsRead();
   const markAllAsRead = useMarkAllAsRead();
+  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const unreadCount = notifications.filter(n => !n.read).length;
@@ -187,11 +188,13 @@ function NotificationBell({ onOpenModal }: { onOpenModal: (id: string) => void }
 
   const handleClick = (notif: typeof notifications[0]) => {
     if (!notif.read) markAsRead.mutate(notif.id);
-    if (notif.project_id) { onOpenModal(notif.project_id); setOpen(false); }
+    if (notif.project_id) { onOpenModal(notif.project_id); setOpen(false); return; }
+    // aviso da Ludmilla (código da imagem, login na estação, recomendação): abre a página dela
+    if (notif.type === 'ludmilla') { navigate('/ludmilla'); setOpen(false); }
   };
 
   const typeIcon: Record<string, string> = {
-    info: '💬', status: '🔄', document: '📄', financial: '💰',
+    info: '💬', status: '🔄', document: '📄', financial: '💰', ludmilla: '📡',
   };
 
   return (
