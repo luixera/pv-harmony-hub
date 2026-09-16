@@ -83,16 +83,25 @@ export async function criarProjeto(page: Page, dados: DadosCriacaoCpfl, creds: C
     await page.waitForLoadState('networkidle', { timeout: 30_000 });
     await respirar(page, 1_000);
 
-    // Clica em "Criar projeto"
-    const btnCriar = page.getByRole('link', { name: /Criar projeto/i })
-      .or(page.getByRole('button', { name: /Criar projeto/i }))
-      .or(page.getByText(/Criar projeto/i));
+    // Clica em "Criar projeto" (botão/link na aba Orçamentos de Conexão)
+    const btnCriar = page.getByRole('link', { name: /^Criar projeto$/i })
+      .or(page.getByRole('button', { name: /^Criar projeto$/i }));
     if (await btnCriar.first().count() === 0) {
       throw new ErroLudmilla('pagina_mudou', 'Botão "Criar projeto" não encontrado na aba Orçamentos de Conexão.');
     }
     await btnCriar.first().click({ timeout: 10_000 });
     await page.waitForLoadState('networkidle', { timeout: 30_000 });
     await respirar(page, 1_500);
+
+    // Seleciona o tipo de projeto: "60 - Microgeração Distribuída Baixa Tensão"
+    const tipoMicro = page.getByText(/60\s*[-–]\s*Microgeração Distribuída Baixa Tensão/i).first()
+      .or(page.getByText(/Microgeração Distribuída Baixa Tensão/i).first());
+    if (await tipoMicro.count() > 0) {
+      await tipoMicro.click({ timeout: 10_000 });
+      await page.waitForLoadState('networkidle', { timeout: 30_000 });
+      await respirar(page, 1_500);
+    }
+    // Se não apareceu a seleção de tipo, pode já estar no formulário — continua.
   } catch (e) {
     const msg = e instanceof ErroLudmilla ? e.message : `Passo 1 falhou: ${(e as Error).message}`;
     await registrarPasso(page, dados, 1, 'introducao', 'erro', msg);
