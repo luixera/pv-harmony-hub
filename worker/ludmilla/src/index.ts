@@ -1,10 +1,11 @@
 import { chromium, Browser, BrowserContext, Page } from 'playwright';
-import { classificarErro } from './erros.js';
+import { classificarErro, ErroLudmilla } from './erros.js';
 import { conector, type CanalCaptcha, type Conector } from './conectores/index.js';
 import {
-  anexoEnviado, anexoErro, anexosPendentes, conectorDaConta, credenciais, entrarNaEstacao, fecharCaptcha, finalizarRun,
-  lerCaptcha, pedirCaptcha, pegarRun, protocolosDeInteresse, pulsar, sessaoViva, subirDocumento, subirPrint, subirTexto, Run,
+  anexoEnviado, anexoErro, anexosPendentes, conectorDaConta, credenciais, dadosCriacaoCpfl, entrarNaEstacao, fecharCaptcha, finalizarRun,
+  lerCaptcha, pedirCaptcha, pegarRun, protocolosDeInteresse, pulsar, sessaoViva, subirDocumento, subirPrint, subirTexto, temCriacaoPendente, Run,
 } from './fila.js';
+import { criarProjeto } from './conectores/cpfl-criar.js';
 import { avisar, carregarEnvDaEstacao, dirPerfilChrome, modoAtual, pedirLoginNoTerminal } from './local.js';
 
 /**
@@ -161,6 +162,18 @@ async function executar(abrir: Abrir, run: Run): Promise<Fim | null> {
       return { chave: c.chave, contexto, page, conector: c, ok };
     }
 
+    if (run.tipo === 'criar_projeto') {
+      const projectId = run.dados?.['project_id'] as string | undefined;
+      if (!projectId) throw new ErroLudmilla('falhou', 'Run criar_projeto sem project_id nos dados.');
+      const dadosCriacao = await dadosCriacaoCpfl(run.id, projectId, run.tenant_id);
+      await criarProjeto(page, dadosCriacao);
+      printPath = await print();
+      await finalizarRun(run.id, { situacao: 'ok', printPath, situacaoConta: 'ok' });
+      log('criação CPFL ok', { run: run.id, project: projectId });
+      ok = true;
+      return { chave: c.chave, contexto, page, conector: c, ok };
+    }
+
     const protocolos = await c.varrer(page, creds, { protocolosDeInteresse: await protocolosDeInteresse(run.account_id), captcha });
     // print da tela onde a leitura terminou (a lista, na aba certa) — só a
     // janela, não a página inteira: é prova do caminho, não cópia da lista
@@ -286,7 +299,9 @@ async function principal() {
     }
     if (!run) {
       if (modo === 'local') await tocarVivas();
-      await dormir(POLL_SEGUNDOS * 1000);
+      // Poll dinâmico: 5 s quando há criação pendente; normal quando quieto
+      const criacao = await temCriacaoPendente().catch(() => false);
+      await dormir(criacao ? 5_000 : POLL_SEGUNDOS * 1_000);
       continue;
     }
     const fim = await executar(abrir, run);

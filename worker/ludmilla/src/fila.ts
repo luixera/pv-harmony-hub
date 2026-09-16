@@ -14,8 +14,9 @@ export interface Run {
   id: string;
   tenant_id: string;
   account_id: string;
-  tipo: 'reconhecimento' | 'teste_login' | 'descoberta' | 'varredura';
+  tipo: 'reconhecimento' | 'teste_login' | 'descoberta' | 'varredura' | 'criar_projeto';
   situacao: string;
+  dados?: Record<string, unknown>;
 }
 
 export interface Credenciais {
@@ -122,6 +123,50 @@ export async function credenciais(accountId: string): Promise<Credenciais> {
   const linha = ((data ?? []) as Credenciais[])[0];
   if (!linha) throw new Error('A conta não tem credencial gravada ou está desativada.');
   return linha;
+}
+
+// ── Criação de projeto na CPFL ───────────────────────────────────────────────
+
+import type { DadosCriacaoCpfl } from './conectores/cpfl-criar.js';
+
+/** Carrega todos os dados necessários para criar um projeto na CPFL. */
+export async function dadosCriacaoCpfl(
+  runId: string,
+  projectId: string,
+  tenantId: string,
+): Promise<DadosCriacaoCpfl> {
+  const { data, error } = await supabase().rpc('ludmilla_dados_criacao_cpfl' as never, {
+    p_run_id:     runId,
+    p_project_id: projectId,
+  } as never);
+  if (error) throw new Error(`Não consegui carregar dados para criação: ${error.message}`);
+  const d = ((data ?? []) as Record<string, unknown>[])[0];
+  if (!d) throw new Error('Dados de criação não encontrados para o projeto.');
+  return {
+    project_id:    projectId,
+    tenant_id:     tenantId,
+    run_id:        runId,
+    uc_number:     String(d['uc_number'] ?? ''),
+    coordinates:   String(d['coordinates'] ?? ''),
+    customer_name: String(d['customer_name'] ?? ''),
+    customer_cpf:  String(d['customer_cpf'] ?? ''),
+    project_title: String(d['project_title'] ?? ''),
+    modulos:       (d['modulos'] ?? []) as { quantidade: number; potencia_wp: number }[],
+    entry_phase:   d['entry_phase'] ? String(d['entry_phase']) : null,
+    entry_breaker: d['entry_breaker'] ? String(d['entry_breaker']) : null,
+  };
+}
+
+/** Retorna true se houver algum run `criar_projeto` na_fila. Usado para poll dinâmico. */
+export async function temCriacaoPendente(): Promise<boolean> {
+  const { data, error } = await supabase()
+    .from('portal_sync_runs' as never)
+    .select('id')
+    .eq('tipo', 'criar_projeto')
+    .eq('situacao', 'na_fila')
+    .limit(1);
+  if (error) return false;
+  return ((data as unknown[]) ?? []).length > 0;
 }
 
 /** Sobe um arquivo de texto (HTML da descoberta) no bucket, na pasta do run. */
