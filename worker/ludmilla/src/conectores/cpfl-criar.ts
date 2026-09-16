@@ -4,7 +4,7 @@ import { comPaciencia } from '../paciencia.js';
 import { supabase } from '../fila.js';
 import { decimalParaDms, parsearCoordenadas } from '../dms.js';
 
-const URL_CRIACAO = 'https://www.cpfl.com.br/gestao-projetos/node/add/project_60';
+const URL_MEUS_PROJETOS = 'https://www.cpfl.com.br/gestao-projetos/meus-projetos';
 
 export interface DadosCriacaoCpfl {
   project_id: string;
@@ -59,39 +59,47 @@ const respirar = (page: Page, ms = 1_200) => page.waitForTimeout(ms);
  */
 export async function criarProjeto(page: Page, dados: DadosCriacaoCpfl): Promise<void> {
 
-  // ── Passo 1: Introdução ────────────────────────────────────────────────────
+  // ── Passo 1: Navegar até "Criar projeto" em Orçamentos de Conexão ──────────
   await registrarPasso(page, dados, 1, 'introducao', 'rodando');
   try {
-    await page.goto(URL_CRIACAO, { waitUntil: 'networkidle', timeout: 60_000 });
-    await respirar(page, 1_500);
+    // Se a sessão expirou, o portal redireciona para fora do gestao-projetos
+    if (!/gestao-projetos/.test(page.url())) {
+      await page.goto(URL_MEUS_PROJETOS, { waitUntil: 'networkidle', timeout: 60_000 });
+      await respirar(page, 1_500);
+    }
 
-    // Fecha banner de cookies
+    // Após navigate, checa de novo — sessão expirada redireciona para login/perfil
+    if (!/gestao-projetos/.test(page.url())) {
+      throw new ErroLudmilla('sessao_expirada',
+        'Sessão no portal CPFL expirada. Faça uma varredura manual para renovar o login antes de criar o projeto.');
+    }
+
+    // Fecha banner de cookies se aparecer
     const rejeitar = page.getByText(/Rejeitar todos/i).first();
     if (await rejeitar.count() > 0 && await rejeitar.isVisible().catch(() => false)) {
       await rejeitar.click({ timeout: 5_000 }).catch(() => undefined);
       await respirar(page, 600);
     }
 
-    // Seleciona "Orçamento de Conexão"
-    const orcamento = page.getByText(/Orçamento de Conexão/i).first();
-    if (await orcamento.count() === 0) {
-      throw new ErroLudmilla('pagina_mudou', 'Opção "Orçamento de Conexão" não encontrada no passo 1.');
+    // Clica na aba "Orçamentos de Conexão"
+    const abaOrcamento = page.getByText(/OR[CÇ]AMENTOS DE CONEX[AÃ]O/i).first();
+    if (await abaOrcamento.count() === 0) {
+      throw new ErroLudmilla('pagina_mudou', 'Aba "Orçamentos de Conexão" não encontrada na tela Meus Projetos.');
     }
-    await orcamento.click({ timeout: 10_000 });
-    await respirar(page, 800);
-
-    // Desmarca checkboxes de necessidades especiais (se marcados)
-    const checkboxes = page.locator('input[type="checkbox"]');
-    const count = await checkboxes.count();
-    for (let i = 0; i < count; i++) {
-      const cb = checkboxes.nth(i);
-      if (await cb.isChecked().catch(() => false)) await cb.uncheck();
-    }
-    await respirar(page, 600);
-
-    await page.getByRole('button', { name: /Avançar/i }).first().click({ timeout: 10_000 });
+    await abaOrcamento.click({ timeout: 10_000 });
     await page.waitForLoadState('networkidle', { timeout: 30_000 });
     await respirar(page, 1_000);
+
+    // Clica em "Criar projeto"
+    const btnCriar = page.getByRole('link', { name: /Criar projeto/i })
+      .or(page.getByRole('button', { name: /Criar projeto/i }))
+      .or(page.getByText(/Criar projeto/i));
+    if (await btnCriar.first().count() === 0) {
+      throw new ErroLudmilla('pagina_mudou', 'Botão "Criar projeto" não encontrado na aba Orçamentos de Conexão.');
+    }
+    await btnCriar.first().click({ timeout: 10_000 });
+    await page.waitForLoadState('networkidle', { timeout: 30_000 });
+    await respirar(page, 1_500);
   } catch (e) {
     const msg = e instanceof ErroLudmilla ? e.message : `Passo 1 falhou: ${(e as Error).message}`;
     await registrarPasso(page, dados, 1, 'introducao', 'erro', msg);
