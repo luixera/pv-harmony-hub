@@ -1,8 +1,9 @@
 import type { Locator, Page } from 'playwright';
 import { ErroLudmilla } from '../erros.js';
 import { comPaciencia } from '../paciencia.js';
-import { supabase, type Credenciais } from '../fila.js';
+import { subirTexto, supabase, type Credenciais } from '../fila.js';
 import { decimalParaDms, parsearCoordenadas } from '../dms.js';
+import { semSegredos } from '../veredito.js';
 import { logarNaCpfl } from './cpfl.js';
 
 const URL_MEUS_PROJETOS = 'https://www.cpfl.com.br/gestao-projetos/meus-projetos';
@@ -30,6 +31,27 @@ export interface DadosCriacaoCpfl {
   autonomia: Record<string, string>;
 }
 
+/** Todos os controles do formulário, com rótulo e visibilidade — o mapa da tela. */
+async function mapaDeCampos(page: Page): Promise<Record<string, unknown>[]> {
+  return page.evaluate(() =>
+    Array.from(document.querySelectorAll('input, select, textarea, button, a[role="button"]')).map(el => {
+      const e = el as HTMLInputElement;
+      const id = e.id;
+      const rotulo = (id && document.querySelector(`label[for="${CSS.escape(id)}"]`)?.textContent)
+        || e.closest('label')?.textContent
+        || e.getAttribute('aria-label') || '';
+      return {
+        tag: e.tagName.toLowerCase(), type: e.type || null, name: e.name || null, id: id || null,
+        placeholder: e.placeholder || null, rotulo: rotulo.replace(/\s+/g, ' ').trim().slice(0, 80) || null,
+        texto: e.tagName === 'BUTTON' || e.tagName === 'A' ? (e.textContent ?? '').replace(/\s+/g, ' ').trim().slice(0, 60) : null,
+        visivel: e.getClientRects().length > 0 && getComputedStyle(e).visibility !== 'hidden',
+        opcoes: e.tagName === 'SELECT'
+          ? Array.from((e as unknown as HTMLSelectElement).options).slice(0, 40).map(o => `${o.value}=${o.text.trim()}`)
+          : undefined,
+      };
+    }));
+}
+
 /** Captura screenshot, sobe no bucket e registra o passo no banco. */
 async function registrarPasso(
   page: Page,
@@ -48,6 +70,19 @@ async function registrarPasso(
       .upload(path, buf, { contentType: 'image/png', upsert: true });
     if (!error) printPath = path;
   } catch { /* screenshot falhou: registra sem print */ }
+
+  // Em erro, guarda o que a Ludmilla VIU: HTML limpo e o mapa dos campos
+  // (name/id/label/visível). É por isto que o roteiro é corrigido sem chute.
+  if (status === 'erro') {
+    try {
+      const html = semSegredos((await page.content())
+        .replace(/<script[\s\S]*?<\/script>/gi, '')
+        .replace(/<style[\s\S]*?<\/style>/gi, ''));
+      await subirTexto(dados.tenant_id, dados.run_id, `criacao-passo-${passo}.html`, html);
+      await subirTexto(dados.tenant_id, dados.run_id, `criacao-passo-${passo}.campos.json`,
+        JSON.stringify(await mapaDeCampos(page), null, 1));
+    } catch { /* diagnóstico é bônus, nunca derruba o registro do passo */ }
+  }
 
   const { error } = await supabase().rpc('ludmilla_registrar_passo_criacao' as never, {
     p_run_id:     dados.run_id,

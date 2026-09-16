@@ -267,7 +267,20 @@ export default function Ludmilla() {
   const { data: concessionarias = [] } = useEnergyConcessionaires(false);
   const { data: captchas = [] } = usePortalCaptchas();
   const { data: runsCriacao = [] } = useRunsCriacaoCpfl();
+  const [historicoCriacoes, setHistoricoCriacoes] = useState(false);
   const pedir = usePedirRun();
+
+  // Cada tentativa vira um run: sem isto, 20 cartões de erro do mesmo projeto
+  // empurram as Recomendações para fora da tela. Por padrão, o último por projeto.
+  const criacoesVisiveis = (() => {
+    if (historicoCriacoes) return runsCriacao;
+    const porProjeto = new Map<string, PortalRun>();
+    for (const r of runsCriacao) {
+      const chave = String(r.dados?.['project_id'] ?? r.id);
+      if (!porProjeto.has(chave)) porProjeto.set(chave, r);
+    }
+    return [...porProjeto.values()].slice(0, 5);
+  })();
 
   if (!disponivel) {
     return (
@@ -351,9 +364,16 @@ export default function Ludmilla() {
         {/* Criações CPFL */}
         {runsCriacao.length > 0 && (
           <div className="space-y-3">
-            <h2 className="font-semibold">Criações no portal CPFL</h2>
+            <div className="flex items-center gap-2">
+              <h2 className="font-semibold">Criações no portal CPFL</h2>
+              {runsCriacao.length > criacoesVisiveis.length || historicoCriacoes ? (
+                <Button size="sm" variant="ghost" className="ml-auto" onClick={() => setHistoricoCriacoes(v => !v)}>
+                  {historicoCriacoes ? 'Só a última por projeto' : `Ver histórico (${runsCriacao.length})`}
+                </Button>
+              ) : null}
+            </div>
             <div className="space-y-2">
-              {runsCriacao.map(r => <CardCriacaoCpfl key={r.id} run={r} />)}
+              {criacoesVisiveis.map(r => <CardCriacaoCpfl key={r.id} run={r} />)}
             </div>
           </div>
         )}
