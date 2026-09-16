@@ -244,12 +244,50 @@ da Ludmilla não se repetem. Antes de ler a API o robô clica na aba
 **Orçamentos de conexão** (regra do usuário) e a varredura ok guarda um
 print da tela final.
 
+## CAPTCHA remoto pela equipe e sessão viva (15/09/2026, noite)
+
+Pedido do usuário: "descubra um jeito do preenchimento do CAPTCHA acontecer"
+sem pessoa no coworking. **A Ludmilla não resolve CAPTCHA** (nem OCR, nem
+IA, nem serviço de terceiros — terceira vez pedido, terceira recusa). Não há
+API da Neoenergia (só o Portal GD e o 0800). O que foi construído tira a
+exigência de estar *naquele PC* e reduz a frequência:
+
+**CAPTCHA remoto** (`20260915220000_ludmilla_captcha_remoto.sql`,
+`portal_captchas`). A estação fotografa o código (`fotoDoCaptcha`: a `<img>`
+que se diz captcha ou a imagem mais próxima antes do campo — **antes** de
+preencher a senha, para a foto não ser interrompida por quem está no PC),
+sobe em `ludmilla/{tenant}/captcha/…png` e chama `ludmilla_captcha_pedir`
+(sino "📡 Ludmilla precisa do código da ELEKTRO" para admin+staff do tenant,
+só na 1ª foto). A página `/ludmilla` mostra o cartão "Digite o código da
+imagem" (foto, campo, Enviar, contagem de 5 min) → `ludmilla_captcha_responder`
+(equipe do tenant; 2–12 caracteres; só `aguardando` dentro do prazo). A
+estação lê a cada 2 s (`ludmilla_captcha_ler`), preenche, envia (botão do
+form ou Enter) e fecha `usado` (`ludmilla_captcha_fechar`, foto apagada).
+Portal recusou → o JSF redesenha o form → pedido `recusado` com a mensagem
+do portal, nova foto, `tentativa` 2 (até 3). Pessoa no PC digitou antes →
+pedido `usado`/`cancelado`. Ninguém em 5 min → `expirado` + run
+`sessao_expirada` como antes. O canal falhar não impede o balão local. As
+RPCs aceitam service role OU operador (`ludmilla_robo_ok`) — o mesmo nome
+nos dois modos. Testes: 5 cenários com canal de mentira + impersonação
+15/15.
+
+**Sessão viva.** `Conector.manterViva(page)` (Elektro: GET na URL base —
+nunca `reload` de um POST do JSF — e confere que o formulário não voltou).
+Na estação, depois de um run que entrou, o Chrome **não fecha**: o contexto
+fica em `vivas` por portal, é reaproveitado pelo próximo run, tocado a cada
+10 min (`LUDMILLA_SESSAO_VIVA_MIN`) no laço ocioso e fechado quando o portal
+pede login (log com `durou_min`). `ludmilla_sessao_viva(account, viva)` →
+`portal_accounts.sessao_viva_desde` → a página mostra "sessão no portal viva
+desde …". Quanto tempo a Elektro mantém a sessão é a medida que o aceite
+vai dar.
+
 ## Próximos
 
 1. **Aceite da estação** no PC do coworking: instalar, "Verificar agora" na
-   Elektro (descoberta), pessoa digita o código, telas no bucket. Risco a
-   observar: o Chrome do Playwright carrega `navigator.webdriver=true` — se a
-   Akamai bloquear mesmo com gente, conversar antes de qualquer mudança.
+   Elektro (descoberta), responder o código pela /ludmilla (celular) ou no
+   PC, telas no bucket, e observar por quanto tempo a sessão fica viva. Risco
+   a observar: o Chrome do Playwright carrega `navigator.webdriver=true` — se
+   a Akamai bloquear mesmo com gente, conversar antes de qualquer mudança.
 2. Roteiro `varrer` da Elektro sobre as telas da descoberta (plano próprio).
 3. Mostrar `portal_anexos` (enviados/bloqueados) na página /ludmilla; 3
    projetos em andamento sem par no portal; os 4 cartões que a lista não
