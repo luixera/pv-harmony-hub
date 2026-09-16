@@ -1,9 +1,9 @@
 import { chromium, Browser, BrowserContext, Page } from 'playwright';
 import { classificarErro } from './erros.js';
-import { conector } from './conectores/index.js';
+import { conector, type CanalCaptcha, type Conector } from './conectores/index.js';
 import {
-  anexoEnviado, anexoErro, anexosPendentes, conectorDaConta, credenciais, entrarNaEstacao, finalizarRun, pegarRun,
-  protocolosDeInteresse, pulsar, subirDocumento, subirPrint, subirTexto, Run,
+  anexoEnviado, anexoErro, anexosPendentes, conectorDaConta, credenciais, entrarNaEstacao, fecharCaptcha, finalizarRun,
+  lerCaptcha, pedirCaptcha, pegarRun, protocolosDeInteresse, pulsar, sessaoViva, subirDocumento, subirPrint, subirTexto, Run,
 } from './fila.js';
 import { avisar, carregarEnvDaEstacao, dirPerfilChrome, modoAtual, pedirLoginNoTerminal } from './local.js';
 
@@ -11,27 +11,31 @@ import { avisar, carregarEnvDaEstacao, dirPerfilChrome, modoAtual, pedirLoginNoT
  * LUDMILLA — o laço.
  *
  * A cada N segundos pergunta à fila se há trabalho. Com run: abre um contexto
- * NOVO de navegador (nada de sessão vazando entre contas), executa o roteiro
- * do portal, grava resultado e print, fecha o contexto. Sem run: dorme.
+ * de navegador, executa o roteiro do portal, grava resultado e print. Sem
+ * run: dorme.
  *
  * Dois modos, o mesmo laço:
- *  - VPS (padrão): service role, Chromium headless, contas `modo='vps'`.
+ *  - VPS (padrão): service role, Chromium headless, contas `modo='vps'`,
+ *    contexto NOVO por run (nada de sessão vazando entre contas).
  *  - local (LUDMILLA_MODO=local): máquina de pessoa (coworking), usuário
  *    operador, Chrome de verdade com janela e perfil por portal, contas
- *    `modo='local'`. É por onde a Elektro entra: a pessoa digita o CAPTCHA.
+ *    `modo='local'`. É por onde a Elektro entra: a pessoa digita o código da
+ *    imagem — no PC ou de longe, pela /ludmilla. Portal que sabe `manterViva`
+ *    fica com o Chrome aberto entre visitas (sessão viva): o código só volta
+ *    a ser pedido quando o servidor derruba a sessão.
  *
- * Só leitura, sempre: a Ludmilla nunca envia formulário no portal, e nunca
- * tenta resolver CAPTCHA — quando encontra um, para e explica (ou, na
- * estação, chama a pessoa).
+ * Só leitura, sempre: a Ludmilla nunca envia formulário no portal além do
+ * login, e nunca tenta resolver CAPTCHA — quem resolve é uma pessoa.
  */
 
 const POLL_SEGUNDOS = Number(process.env.LUDMILLA_POLL_SECONDS ?? 30);
+const TOQUE_MINUTOS = Number(process.env.LUDMILLA_SESSAO_VIVA_MIN ?? 10);
 const log = (msg: string, extra: Record<string, unknown> = {}) =>
   console.log(JSON.stringify({ t: new Date().toISOString(), msg, ...extra }));
 
 const dormir = (ms: number) => new Promise(r => setTimeout(r, ms));
 
-/** Abre o contexto de navegador para um portal (chave do conector). */
+/** Abre (ou reaproveita) o contexto de navegador para um portal (chave do conector). */
 type Abrir = (chave: string) => Promise<BrowserContext>;
 
 /** VPS: contexto com cara de Chrome comum em português — o portal vê um navegador normal. */
@@ -60,13 +64,54 @@ async function contextoLocal(chave: string): Promise<BrowserContext> {
   });
 }
 
-async function executar(abrir: Abrir, run: Run): Promise<void> {
+/** Sessões vivas da estação: um Chrome aberto por portal, tocado de tempos em tempos. */
+interface SessaoViva { contexto: BrowserContext; conector: Conector; accountId: string; desde: number; ultimoToque: number }
+const vivas = new Map<string, SessaoViva>();
+
+async function encerrarViva(chave: string, motivo: string) {
+  const v = vivas.get(chave);
+  if (!v) return;
+  vivas.delete(chave);
+  log('sessão no portal encerrada', { portal: chave, motivo, durou_min: Math.round((Date.now() - v.desde) / 60_000) });
+  await sessaoViva(v.accountId, false);
+  await v.contexto.close().catch(() => undefined);
+}
+
+/** Toca os portais com sessão viva; quem já não está logado é fechado. */
+async function tocarVivas() {
+  for (const [chave, v] of [...vivas.entries()]) {
+    if (Date.now() - v.ultimoToque < TOQUE_MINUTOS * 60_000) continue;
+    const page = v.contexto.pages()[0];
+    const continua = page && v.conector.manterViva ? await v.conector.manterViva(page).catch(() => false) : false;
+    if (continua) {
+      v.ultimoToque = Date.now();
+      log('sessão no portal continua viva', { portal: chave, ha_min: Math.round((Date.now() - v.desde) / 60_000) });
+    } else {
+      await encerrarViva(chave, 'o portal pediu login de novo');
+    }
+  }
+}
+
+/** O que sobra de um run para o laço decidir o destino do navegador. */
+interface Fim { chave: string; contexto: BrowserContext; page?: Page; conector: Conector; ok: boolean }
+
+/** Canal pelo qual a equipe responde o código da imagem deste run (pela /ludmilla). */
+const canalDoRun = (run: Run): CanalCaptcha => ({
+  pedir: (png, tentativa, mensagem) => pedirCaptcha(run, png, tentativa, mensagem),
+  ler: lerCaptcha,
+  fechar: fecharCaptcha,
+});
+
+async function executar(abrir: Abrir, run: Run): Promise<Fim | null> {
   let contexto: BrowserContext | undefined;
   let page: Page | undefined;
+  let c: Conector | undefined;
   let printPath: string | undefined;
+  let ok = false;
   const print = async () => page ? subirPrint(run.tenant_id, run.id, await page.screenshot({ fullPage: true })) : undefined;
+  const captcha = canalDoRun(run);
   try {
-    const c = conector(await conectorDaConta(run.account_id));
+    c = conector(await conectorDaConta(run.account_id));
     log('run iniciado', { run: run.id, tipo: run.tipo, portal: c.chave });
     contexto = await abrir(c.chave);
     page = contexto.pages()[0] ?? await contexto.newPage();
@@ -76,14 +121,14 @@ async function executar(abrir: Abrir, run: Run): Promise<void> {
       printPath = await print();
       await finalizarRun(run.id, { situacao: 'ok', resultado: r, printPath });
       log('reconhecimento ok', { run: run.id, captcha: r.captcha, campos: r.campos.length, waf: r.bloqueado_por_waf });
-      return;
+      return { chave: c.chave, contexto, page, conector: c, ok: false }; // reconhecimento não entra: nada a manter
     }
 
     // daqui em diante precisa de senha: lida só agora, morre com o contexto
     const creds = await credenciais(run.account_id);
 
     if (run.tipo === 'teste_login') {
-      const v = await c.testarLogin(page, creds);
+      const v = await c.testarLogin(page, creds, { captcha });
       printPath = await print();
       // senha recusada é erro da CONTA (fica em ultimo_erro); o resto é informação
       const recusada = v.veredito === 'senha_recusada';
@@ -94,7 +139,8 @@ async function executar(abrir: Abrir, run: Run): Promise<void> {
         situacaoConta: recusada ? 'erro' : v.veredito === 'entrou' ? 'ok' : undefined,
       });
       log('teste de login', { run: run.id, veredito: v.veredito });
-      return;
+      ok = v.veredito === 'entrou';
+      return { chave: c.chave, contexto, page, conector: c, ok };
     }
 
     if (run.tipo === 'descoberta') {
@@ -104,17 +150,18 @@ async function executar(abrir: Abrir, run: Run): Promise<void> {
         if (t.rede) await subirTexto(run.tenant_id, run.id, `${t.nome}.rede.json`, JSON.stringify(t.rede, null, 1));
         if (t.png) await subirPrint(run.tenant_id, `${run.id}/${t.nome}`, t.png);
         if (t.api) await subirTexto(run.tenant_id, run.id, `${t.nome}.api.json`, JSON.stringify(t.api, null, 1));
-      });
+      }, { captcha });
       printPath = await print();
       await finalizarRun(run.id, {
         situacao: 'ok', printPath, situacaoConta: 'ok',
         resultado: { telas: d.telas.map((t, k) => ({ nome: t.nome, url: t.url, arquivo: arquivos[k], bytes: t.html.length, requisicoes: t.rede?.length ?? 0 })) },
       });
       log('descoberta ok', { run: run.id, telas: d.telas.map(t => t.nome) });
-      return;
+      ok = true;
+      return { chave: c.chave, contexto, page, conector: c, ok };
     }
 
-    const protocolos = await c.varrer(page, creds, { protocolosDeInteresse: await protocolosDeInteresse(run.account_id) });
+    const protocolos = await c.varrer(page, creds, { protocolosDeInteresse: await protocolosDeInteresse(run.account_id), captcha });
     // print da tela onde a leitura terminou (a lista, na aba certa) — só a
     // janela, não a página inteira: é prova do caminho, não cópia da lista
     printPath = await subirPrint(run.tenant_id, run.id, await page.screenshot({ fullPage: false })).catch(() => undefined);
@@ -122,6 +169,7 @@ async function executar(abrir: Abrir, run: Run): Promise<void> {
       situacao: 'ok', resultado: { protocolos }, protocolos: protocolos.length, situacaoConta: 'ok', printPath,
     });
     log('varredura ok', { run: run.id, protocolos: protocolos.length });
+    ok = true;
 
     // Anexos: o fechamento do run já decidiu (no banco) quais arquivos podem
     // ir para qual card — projeto casado pelo número E titular/UC conferidos.
@@ -146,6 +194,7 @@ async function executar(abrir: Abrir, run: Run): Promise<void> {
       }
       if (pendentes.length > 0) log('anexos', { pedidos: pendentes.length, enviados });
     }
+    return { chave: c.chave, contexto, page, conector: c, ok };
   } catch (e) {
     const erro = classificarErro(e);
     try {
@@ -156,10 +205,32 @@ async function executar(abrir: Abrir, run: Run): Promise<void> {
       situacaoConta: erro.situacaoConta === 'ok' ? undefined : erro.situacaoConta,
     });
     log('run com erro', { run: run.id, classe: erro.classe, mensagem: erro.mensagem });
-  } finally {
-    // no modo local isto fecha o Chrome inteiro — a janela só existe enquanto há trabalho
-    await contexto?.close().catch(() => undefined);
+    return contexto && c ? { chave: c.chave, contexto, page, conector: c, ok: false } : null;
   }
+}
+
+/**
+ * Destino do navegador depois do run. VPS: fecha sempre. Estação: se o portal
+ * sabe manter a sessão e o run entrou, o Chrome fica aberto (sessão viva);
+ * senão fecha — no modo local isto fecha o Chrome inteiro, a janela só
+ * existe enquanto há trabalho ou sessão.
+ */
+async function destino(fim: Fim | null, modo: 'vps' | 'local', accountId: string) {
+  if (!fim) return;
+  const { chave, contexto, page, conector: c, ok } = fim;
+  if (modo === 'local' && c.manterViva && ok && page) {
+    const continua = await c.manterViva(page).catch(() => false);
+    if (continua) {
+      const jaViva = vivas.get(chave);
+      vivas.set(chave, { contexto, conector: c, accountId, desde: jaViva?.desde ?? Date.now(), ultimoToque: Date.now() });
+      await sessaoViva(accountId, true);
+      log('sessão no portal viva', { portal: chave });
+      return;
+    }
+  }
+  vivas.delete(chave);
+  await sessaoViva(accountId, false);
+  await contexto.close().catch(() => undefined);
 }
 
 /** `node dist/index.js --login`: primeira vez na estação — grava a sessão do operador. */
@@ -191,7 +262,8 @@ async function principal() {
     log('estação pronta', { usuario: email });
     await pulsar();
     batimento = setInterval(() => { void pulsar(); }, 60_000);
-    abrir = contextoLocal;
+    // sessão viva: o próximo run do mesmo portal reaproveita o Chrome aberto
+    abrir = async chave => vivas.get(chave)?.contexto ?? contextoLocal(chave);
   } else {
     // Headless shell. O Chromium completo (channel 'chromium') cai com SIGTRAP no
     // crashpad sob o endurecimento do systemd; e a leitura dos portais é pela
@@ -212,12 +284,18 @@ async function principal() {
     } catch (e) {
       log('fila indisponível', { erro: (e as Error).message });
     }
-    if (!run) { await dormir(POLL_SEGUNDOS * 1000); continue; }
-    await executar(abrir, run);
+    if (!run) {
+      if (modo === 'local') await tocarVivas();
+      await dormir(POLL_SEGUNDOS * 1000);
+      continue;
+    }
+    const fim = await executar(abrir, run);
+    await destino(fim, modo, run.account_id);
     // pausa humana entre visitas — nunca martelar o portal
     await dormir(5_000);
   }
   if (batimento) clearInterval(batimento);
+  for (const chave of [...vivas.keys()]) await encerrarViva(chave, 'a estação está parando');
   await navegador?.close();
 }
 

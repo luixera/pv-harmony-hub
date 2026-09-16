@@ -2,9 +2,9 @@ import { test, before, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer, Server, IncomingMessage } from 'node:http';
 import { chromium, Browser, Page } from 'playwright';
-import { descobrirElektro, entrarElektro } from '../src/conectores/elektro.js';
+import { descobrirElektro, entrarElektro, manterVivaElektro } from '../src/conectores/elektro.js';
 import { ErroLudmilla } from '../src/erros.js';
-import type { TelaDescoberta } from '../src/conectores/index.js';
+import type { CanalCaptcha, TelaDescoberta } from '../src/conectores/index.js';
 
 /**
  * Portal GD da Elektro, de mentira: um formulário JSF com e-mail, senha e
@@ -20,6 +20,8 @@ type Modo = 'ok' | 'senha_errada' | 'waf';
 let modo: Modo = 'ok';
 let ultimoPost: Record<string, string> | null = null;
 let posts = 0;
+/** o servidor "derrubou" as sessões: mesmo com cookie, volta o formulário */
+let sessoesDerrubadas = false;
 
 const formulario = (erro = '') => `<html><head><title>Portal GD Acessante</title></head><body>
   <h2>Portal GD Acessante</h2>
@@ -27,10 +29,37 @@ const formulario = (erro = '') => `<html><head><title>Portal GD Acessante</title
   <form id="j_idt14" method="post" action="/login">
     <label>E-mail</label><input type="text" id="j_idt14:j_idt16" name="j_idt14:j_idt16" value="">
     <label>Senha</label><input type="password" id="j_idt14:j_idt18" name="j_idt14:j_idt18" value="">
-    <img src="/captcha.jpg" alt=""><input type="text" id="j_idt14:captchaCode" name="j_idt14:captchaCode" value="">
+    <img src="/captcha.jpg" alt="" width="120" height="40"><input type="text" id="j_idt14:captchaCode" name="j_idt14:captchaCode" value="">
     <input type="hidden" name="javax.faces.ViewState" value="-123:456">
     <button type="submit" id="entrar">Entrar</button>
   </form></body></html>`;
+
+/**
+ * Canal remoto de mentira: a "pessoa de longe" responde cada pedido com o
+ * próximo item de `respostas`, `demoraMs` depois de o pedido abrir. Guarda o
+ * que o robô pediu e como fechou — é o que os testes conferem.
+ */
+function canalDeMentira(respostas: (string | null)[], demoraMs = 300) {
+  const pedidos: { id: string; png: Buffer; tentativa: number; mensagem?: string; abertoEm: number }[] = [];
+  const fechados: { id: string; situacao: string; mensagem?: string }[] = [];
+  const canal: CanalCaptcha = {
+    async pedir(png, tentativa, mensagem) {
+      const id = `pedido-${pedidos.length + 1}`;
+      pedidos.push({ id, png, tentativa, mensagem, abertoEm: Date.now() });
+      return id;
+    },
+    async ler(id) {
+      const p = pedidos.find(x => x.id === id);
+      if (!p) return { situacao: 'cancelado' };
+      if (fechados.some(f => f.id === id)) return { situacao: fechados.find(f => f.id === id)!.situacao };
+      const resposta = respostas[pedidos.indexOf(p)] ?? null;
+      if (resposta && Date.now() - p.abertoEm >= demoraMs) return { situacao: 'respondido', resposta };
+      return { situacao: 'aguardando' };
+    },
+    async fechar(id, situacao, mensagem) { fechados.push({ id, situacao, mensagem }); },
+  };
+  return { canal, pedidos, fechados };
+}
 
 const PAGINAS: Record<string, string> = {
   '/inicio': `<html><head><title>Portal GD Acessante</title></head><body>
@@ -65,7 +94,7 @@ before(async () => {
       if (ultimoPost['j_idt14:captchaCode'] !== CAPTCHA_CERTO) return html(200, formulario('Código da imagem inválido.'));
       res.writeHead(302, { Location: '/inicio', 'Set-Cookie': 'sessao=1; Path=/' }); return res.end();
     }
-    if (url === '/' || url === '') return html(200, logado ? PAGINAS['/inicio'] : formulario());
+    if (url === '/' || url === '') return html(200, logado && !sessoesDerrubadas ? PAGINAS['/inicio'] : formulario());
     if (PAGINAS[url]) return html(200, PAGINAS[url]);
     html(404, '<html><title>404</title></html>');
   });
@@ -75,7 +104,7 @@ before(async () => {
   navegador = await chromium.launch();
 });
 after(async () => { await navegador?.close(); servidor?.close(); });
-beforeEach(() => { modo = 'ok'; ultimoPost = null; posts = 0; });
+beforeEach(() => { modo = 'ok'; ultimoPost = null; posts = 0; sessoesDerrubadas = false; });
 
 /**
  * A pessoa: espera o robô preencher a senha (e, na segunda tentativa, o aviso
@@ -192,4 +221,89 @@ test('descoberta: guarda início, menu, lista e primeiro detalhe — sem abrir "
   assert.ok(d.telas[3].url.endsWith('/solicitacao/2024001'));
   assert.ok(d.telas.every(t => !/NUNCA DEVERIA ABRIR/.test(t.html)));
   await page.close();
+});
+
+// ── Código respondido de longe (pela /ludmilla) ──────────────────────────────
+
+test('remoto: o robô fotografa o código, a pessoa de longe responde, o robô envia e fecha como usado', async () => {
+  const page = await navegador.newPage();
+  const { canal, pedidos, fechados } = canalDeMentira([CAPTCHA_CERTO]);
+  const avisos: string[] = [];
+  const r = await entrarElektro(page, CREDS, opcoes(avisos, { captcha: canal }));
+  assert.equal(r, 'entrou');
+  assert.equal(pedidos.length, 1);
+  assert.equal(pedidos[0].tentativa, 1);
+  // a foto é um PNG de verdade (o <img> do código), não a página inteira
+  assert.equal(pedidos[0].png.subarray(1, 4).toString(), 'PNG');
+  assert.ok(pedidos[0].png.length > 100 && pedidos[0].png.length < 20_000);
+  assert.deepEqual(fechados.map(f => f.situacao), ['usado']);
+  // o servidor recebeu e-mail/senha do cofre e o código que a PESSOA DE LONGE digitou
+  assert.equal(ultimoPost?.['j_idt14:j_idt16'], CREDS.login);
+  assert.equal(ultimoPost?.['j_idt14:captchaCode'], CAPTCHA_CERTO);
+  assert.equal(posts, 1);
+  await page.close();
+});
+
+test('remoto: código errado → pedido fechado como recusado com a mensagem do portal, nova foto (tentativa 2), certo → entrou', async () => {
+  const page = await navegador.newPage();
+  const { canal, pedidos, fechados } = canalDeMentira(['zzzz', CAPTCHA_CERTO]);
+  const r = await entrarElektro(page, CREDS, opcoes([], { captcha: canal }));
+  assert.equal(r, 'entrou');
+  assert.equal(pedidos.length, 2);
+  assert.equal(pedidos[1].tentativa, 2);
+  assert.match(pedidos[1].mensagem ?? '', /Código da imagem inválido/);
+  assert.deepEqual(fechados.map(f => f.situacao), ['recusado', 'usado']);
+  assert.match(fechados[0].mensagem ?? '', /Código da imagem inválido/);
+  assert.equal(posts, 2);
+  await page.close();
+});
+
+test('remoto: a pessoa no PC digita antes da resposta de longe → entrou, pedido fechado como usado', async () => {
+  const page = await navegador.newPage();
+  const { canal, pedidos, fechados } = canalDeMentira([null]);   // ninguém responde de longe
+  const [r] = await Promise.all([entrarElektro(page, CREDS, opcoes([], { captcha: canal })), pessoaDigita(page, CAPTCHA_CERTO)]);
+  assert.equal(r, 'entrou');
+  assert.equal(pedidos.length, 1);
+  assert.deepEqual(fechados.map(f => f.situacao), ['usado']);
+  await page.close();
+});
+
+test('remoto: ninguém responde → sessao_expirada e pedido fechado como expirado', async () => {
+  const page = await navegador.newPage();
+  const { canal, pedidos, fechados } = canalDeMentira([null]);
+  await assert.rejects(entrarElektro(page, CREDS, opcoes([], { captcha: canal, timeoutMs: 1_500 })), (e: unknown) => {
+    assert.ok(e instanceof ErroLudmilla); assert.equal(e.classe, 'sessao_expirada'); return true;
+  });
+  assert.equal(pedidos.length, 1);
+  assert.deepEqual(fechados.map(f => f.situacao), ['expirado']);
+  assert.equal(posts, 0);
+  await page.close();
+});
+
+test('remoto: o canal falhar não impede a pessoa no PC (o balão continua)', async () => {
+  const page = await navegador.newPage();
+  const canal: CanalCaptcha = {
+    async pedir() { throw new Error('GD Manager fora do ar'); },
+    async ler() { return { situacao: 'cancelado' }; },
+    async fechar() { /* nada */ },
+  };
+  const avisos: string[] = [];
+  const [r] = await Promise.all([entrarElektro(page, CREDS, opcoes(avisos, { captcha: canal })), pessoaDigita(page, CAPTCHA_CERTO)]);
+  assert.equal(r, 'entrou');
+  assert.equal(avisos.length, 1);
+  await page.close();
+});
+
+// ── Sessão viva ──────────────────────────────────────────────────────────────
+
+test('sessão viva: logado → true; servidor derrubou as sessões → false (só GET, nunca reenvia formulário)', async () => {
+  const contexto = await navegador.newContext();
+  await contexto.addCookies([{ name: 'sessao', value: '1', url: base + '/' }]);
+  const page = await contexto.newPage();
+  const postsAntes = posts;
+  assert.equal(await manterVivaElektro(page, { loginUrl: base + '/' }), true);
+  sessoesDerrubadas = true;
+  assert.equal(await manterVivaElektro(page, { loginUrl: base + '/' }), false);
+  assert.equal(posts, postsAntes);
+  await contexto.close();
 });

@@ -187,6 +187,48 @@ export async function anexoErro(anexoId: string, motivo: string): Promise<void> 
   await supabase().rpc(nomeRpc('ludmilla_anexo_erro'), { p_anexo_id: anexoId, p_motivo: motivo.slice(0, 500) });
 }
 
+// ── Código da imagem respondido pela equipe (de longe) ───────────────────────
+// Mesmas RPCs nos dois modos: o banco aceita service role OU o operador da conta.
+
+/** foto de cada pedido aberto, para apagar do bucket ao fechar */
+const fotosPorPedido = new Map<string, string>();
+
+/** Sobe a foto do código no bucket e abre o pedido; a equipe recebe o sino. */
+export async function pedirCaptcha(run: Run, png: Buffer, tentativa: number, mensagem?: string): Promise<string> {
+  const path = `${run.tenant_id}/captcha/${run.id}-${tentativa}-${Date.now()}.png`;
+  const { error: eUp } = await supabase().storage.from('ludmilla').upload(path, png, { contentType: 'image/png', upsert: true });
+  if (eUp) throw new Error(`Não consegui guardar a foto do código: ${eUp.message}`);
+  const { data, error } = await supabase().rpc('ludmilla_captcha_pedir', {
+    p_run_id: run.id, p_imagem_path: path, p_tentativa: tentativa, p_mensagem: mensagem ?? null,
+  });
+  if (error) throw new Error(`Não consegui pedir o código à equipe: ${error.message}`);
+  const id = String(data);
+  fotosPorPedido.set(id, path);
+  return id;
+}
+
+export async function lerCaptcha(id: string): Promise<{ situacao: string; resposta?: string | null }> {
+  const { data, error } = await supabase().rpc('ludmilla_captcha_ler', { p_captcha_id: id });
+  if (error) throw new Error(`Não consegui ler a resposta do código: ${error.message}`);
+  const linha = ((data ?? []) as { situacao: string; resposta: string | null }[])[0];
+  return linha ?? { situacao: 'cancelado' };
+}
+
+export async function fecharCaptcha(id: string, situacao: 'usado' | 'recusado' | 'expirado' | 'cancelado', mensagem?: string): Promise<void> {
+  await supabase().rpc('ludmilla_captcha_fechar', { p_captcha_id: id, p_situacao: situacao, p_mensagem: mensagem ?? null });
+  // a foto já cumpriu o papel: some do bucket (melhor esforço)
+  const path = fotosPorPedido.get(id);
+  if (path) {
+    fotosPorPedido.delete(id);
+    await supabase().storage.from('ludmilla').remove([path]).then(() => undefined, () => undefined);
+  }
+}
+
+/** A página mostra "sessão no portal viva desde …" por isto. */
+export async function sessaoViva(accountId: string, viva: boolean): Promise<void> {
+  await supabase().rpc('ludmilla_sessao_viva', { p_account_id: accountId, p_viva: viva }).then(() => undefined, () => undefined);
+}
+
 /** Protocolos dos projetos que a conta acompanha — o robô lê o detalhe deles mesmo sem mexida recente. */
 export async function protocolosDeInteresse(accountId: string): Promise<string[]> {
   const { data, error } = await supabase().rpc(nomeRpc('ludmilla_protocolos_de_interesse'), { p_account_id: accountId });

@@ -36,8 +36,24 @@ export interface TelaDescoberta {
   api?: { url: string; status: number; body: string }[];
 }
 
+/**
+ * Canal para uma PESSOA responder o código da imagem de longe (pela página
+ * /ludmilla). O robô fotografa o código e espera; nunca lê a imagem.
+ */
+export interface CanalCaptcha {
+  /** sobe a foto e abre o pedido; devolve o id do pedido */
+  pedir(png: Buffer, tentativa: number, mensagem?: string): Promise<string>;
+  ler(id: string): Promise<{ situacao: string; resposta?: string | null }>;
+  fechar(id: string, situacao: 'usado' | 'recusado' | 'expirado' | 'cancelado', mensagem?: string): Promise<void>;
+}
+
+/** O que o robô recebe para entrar num portal com login assistido. */
+export interface OpcoesLogin {
+  captcha?: CanalCaptcha;
+}
+
 /** O que o banco sabe e o robô não: quais protocolos merecem o detalhe. */
-export interface OpcoesVarredura {
+export interface OpcoesVarredura extends OpcoesLogin {
   protocolosDeInteresse?: string[];
 }
 
@@ -47,13 +63,19 @@ export interface Conector {
   loginUrl: string;
   reconhecer(page: Page): Promise<Reconhecimento>;
   /** Entra com a credencial, PARA depois da senha e conta o que viu. */
-  testarLogin(page: Page, creds: Credenciais): Promise<VereditoLogin>;
+  testarLogin(page: Page, creds: Credenciais, opcoes?: OpcoesLogin): Promise<VereditoLogin>;
   /** Entra, navega até a lista de projetos e guarda o HTML das telas. */
-  descobrir(page: Page, creds: Credenciais, guardarTela: (t: TelaDescoberta) => Promise<void>): Promise<Descoberta>;
+  descobrir(page: Page, creds: Credenciais, guardarTela: (t: TelaDescoberta) => Promise<void>, opcoes?: OpcoesLogin): Promise<Descoberta>;
   /** Entra e lê a lista. Só existe depois da descoberta logada. */
   varrer(page: Page, creds: Credenciais, opcoes?: OpcoesVarredura): Promise<Protocolo[]>;
   /** Baixa um anexo do portal (na mesma sessão da varredura). Null = não veio. */
   baixarAnexo?(page: Page, idArquivo: string): Promise<Buffer | null>;
+  /**
+   * Sessão viva: toca o portal (só GET) e diz se continua logado. Quem tem
+   * isto pode ficar com o navegador aberto entre visitas — o login (e o
+   * código da imagem) só volta quando o servidor derruba a sessão.
+   */
+  manterViva?(page: Page): Promise<boolean>;
 }
 
 export const CONECTORES: Record<string, Conector> = {

@@ -1,5 +1,5 @@
 import type { Page } from 'playwright';
-import type { Conector, Descoberta, TelaDescoberta } from './index.js';
+import type { CanalCaptcha, Conector, Descoberta, OpcoesLogin, TelaDescoberta } from './index.js';
 import type { Credenciais } from '../fila.js';
 import { ErroLudmilla } from '../erros.js';
 import { reconhecerPagina } from '../reconhecer.js';
@@ -17,9 +17,12 @@ import { avisar as avisarNaEstacao, modoAtual } from '../local.js';
  *   gerado pelo JSF e pode mudar — os seletores vão pelo sufixo).
  *
  * LOGIN ASSISTIDO: a Ludmilla preenche e-mail e senha (do cofre), deixa o
- * cursor no campo do código e chama a pessoa. Ela NUNCA lê nem tenta o
+ * cursor no campo do código e chama a pessoa — no PC (balão) e, se houver
+ * canal, de longe: fotografa o código, sobe para o GD Manager e quem
+ * responder primeiro na /ludmilla libera a visita. Ela NUNCA lê nem tenta o
  * CAPTCHA — só espera o formulário sumir. O perfil persistente do Chrome
- * guarda a sessão: nas visitas seguintes, muitas vezes nem pede login.
+ * guarda a sessão, e `manterViva` toca o portal entre visitas: muitas vezes
+ * nem pede login.
  *
  * `varrer` vem depois da descoberta, escrito sobre as telas reais.
  */
@@ -32,9 +35,13 @@ export const SELETOR_ELEKTRO = {
   /** primeiro campo de texto do formulário que tem senha — e que não é o CAPTCHA */
   email: 'form:has(input[type="password"]) input[type="text"]:not([id*="captcha" i]):not([name*="captcha" i]), form:has(input[type="password"]) input[type="email"]',
   erro: '.ui-messages-error, .ui-message-error, [id$=":messages"] li, .alert-danger, [role="alert"]',
+  enviar: 'form:has(input[type="password"]) button[type="submit"], form:has(input[type="password"]) input[type="submit"], form:has(input[type="password"]) .ui-button',
 };
 
-export interface OpcoesElektro {
+/** Quantas fotos do código por visita (o portal recusou as anteriores). */
+const MAX_FOTOS = 3;
+
+export interface OpcoesElektro extends OpcoesLogin {
   loginUrl?: string;
   /** como chamar a pessoa (na estação: balão do Windows) */
   avisar?: (titulo: string, texto: string) => void;
@@ -42,6 +49,45 @@ export interface OpcoesElektro {
   timeoutMs?: number;
   /** de quanto em quanto tempo olhar a tela (padrão 2 s) */
   intervaloMs?: number;
+}
+
+/**
+ * Foto do código da imagem: a <img> que se diz captcha ou, senão, a imagem
+ * mais próxima antes do campo. É o que a pessoa de longe vê. Null = não achei.
+ */
+export async function fotoDoCaptcha(page: Page): Promise<Buffer | null> {
+  const achou = await page.evaluate(() => {
+    document.querySelectorAll('[data-ludmilla-captcha]').forEach(e => e.removeAttribute('data-ludmilla-captcha'));
+    const campo = document.querySelector('input[id$=":captchaCode"], input[id*="captcha" i]');
+    if (!campo) return false;
+    let img: Element | null = document.querySelector('img[src*="captcha" i], img[id*="captcha" i], img[alt*="captcha" i]');
+    if (!img) {
+      // sobe pelos irmãos anteriores do campo (e dos pais) até achar uma imagem
+      let no: Element | null = campo;
+      while (no && !img && no.tagName !== 'FORM') {
+        let irmao = no.previousElementSibling;
+        while (irmao && !img) {
+          img = irmao.tagName === 'IMG' ? irmao : irmao.querySelector('img');
+          irmao = irmao.previousElementSibling;
+        }
+        no = no.parentElement;
+      }
+    }
+    if (!img) return false;
+    img.setAttribute('data-ludmilla-captcha', '1');
+    return true;
+  }).catch(() => false);
+  if (!achou) return null;
+  return page.locator('[data-ludmilla-captcha="1"]').first().screenshot({ timeout: 5_000 }).catch(() => null);
+}
+
+/** Preenche o código que a pessoa de longe mandou e envia o formulário. */
+async function enviarCodigo(page: Page, codigo: string) {
+  const campo = page.locator(SELETOR_ELEKTRO.captcha).first();
+  await campo.fill(codigo, { timeout: 5_000 });
+  const botao = page.locator(SELETOR_ELEKTRO.enviar).first();
+  if (await botao.count() > 0) await botao.click({ timeout: 5_000 }).catch(() => campo.press('Enter'));
+  else await campo.press('Enter');
 }
 
 export type EntradaElektro = 'entrou' | 'sessao_mantida';
@@ -101,8 +147,35 @@ export async function entrarElektro(page: Page, creds: Credenciais, o: OpcoesEle
     throw new ErroLudmilla('pagina_mudou', 'A tela de login da Elektro não tem mais o campo do CAPTCHA que o roteiro conhece.');
   }
 
+  // Canal remoto: a foto do código vai para a equipe; a resposta volta por aqui.
+  // Qualquer falha do canal só desliga o remoto — a pessoa no PC continua valendo.
+  // A foto é tirada ANTES de preencher: quem está no PC pode ser rápido, e a
+  // página navegando no meio do print deixaria a equipe sem pedido.
+  const canal: CanalCaptcha | undefined = o.captcha;
+  const remoto: { pedido: { id: string; tentativa: number } | null; fotos: number; enviado: boolean } = { pedido: null, fotos: 0, enviado: false };
+  const fotografar = () => (canal && remoto.fotos < MAX_FOTOS ? fotoDoCaptcha(page) : Promise.resolve(null));
+  const abrirPedido = async (png: Buffer | null, mensagem?: string) => {
+    if (!canal || !png) return;
+    remoto.fotos++;
+    try {
+      remoto.pedido = { id: await canal.pedir(png, remoto.fotos, mensagem), tentativa: remoto.fotos };
+      remoto.enviado = false;
+    } catch {
+      remoto.pedido = null;
+    }
+  };
+  const fecharPedido = async (situacao: 'usado' | 'recusado' | 'expirado' | 'cancelado', mensagem?: string) => {
+    if (!canal || !remoto.pedido) return;
+    const id = remoto.pedido.id;
+    remoto.pedido = null;
+    await canal.fechar(id, situacao, mensagem).catch(() => undefined);
+  };
+
+  const primeiraFoto = await fotografar();
   await preencher(page, creds);
+  await page.bringToFront().catch(() => undefined);
   avisar('Ludmilla precisa de você', 'Digite o código da imagem no Chrome da Elektro e clique em Entrar. E-mail e senha já estão preenchidos.');
+  await abrirPedido(primeiraFoto);
 
   const inicio = Date.now();
   while (Date.now() - inicio < timeoutMs) {
@@ -119,18 +192,20 @@ export async function entrarElektro(page: Page, creds: Credenciais, o: OpcoesEle
       await page.waitForLoadState('load', { timeout: 60_000 }).catch(() => undefined);
       await respirar(page);
       const aindaSem = await page.locator(SELETOR_ELEKTRO.captcha).count().then(n => n === 0).catch(() => false);
-      if (aindaSem) return 'entrou';
+      if (aindaSem) { await fecharPedido('usado'); return 'entrou'; }
       continue;
     }
     // o formulário continua: o portal reclamou de alguma coisa?
     const erro = await erroVisivel(page);
     if (erro && /senha|usu[aá]rio|credencia|login inv/i.test(erro) && !/imagem|captcha|c[oó]digo/i.test(erro)) {
+      await fecharPedido('cancelado', erro);
       throw new ErroLudmilla('login_recusado', `O Portal GD disse: "${erro}"`);
     }
     // CAPTCHA errado: o JSF redesenha o formulário vazio — preenche de novo e chama de novo
     // (leitura com prazo curto: se a página navegar no meio, deixa para a próxima volta)
     const senhaAtual = await page.locator(SELETOR_ELEKTRO.senha).first().inputValue({ timeout: 1_000 }).catch(() => creds.senha);
     if (senhaAtual === '') {
+      const novaFoto = await fotografar();
       try {
         await preencher(page, creds);
       } catch {
@@ -139,10 +214,37 @@ export async function entrarElektro(page: Page, creds: Credenciais, o: OpcoesEle
       // a mensagem do portal é lida de novo AGORA: a leitura de cima pode ter sido da página anterior
       const motivo = (await erroVisivel(page)) || erro;
       avisar('Ludmilla precisa de você', `${motivo ? `O portal disse "${motivo}". ` : ''}Digite o código da imagem de novo e clique em Entrar. E-mail e senha já estão preenchidos.`);
+      // a imagem mudou: o pedido antigo não vale mais (recusado se foi a resposta de longe; cancelado se foi alguém no PC)
+      await fecharPedido(remoto.enviado ? 'recusado' : 'cancelado', motivo || undefined);
+      await abrirPedido(novaFoto, motivo || undefined);
+      continue;
+    }
+    // resposta de longe?
+    if (canal && remoto.pedido && !remoto.enviado) {
+      const r = await canal.ler(remoto.pedido.id).catch(() => ({ situacao: 'aguardando' as string, resposta: null as string | null }));
+      if (r.situacao === 'respondido' && r.resposta) {
+        remoto.enviado = true;
+        await enviarCodigo(page, r.resposta).catch(() => undefined);
+      } else if (r.situacao !== 'aguardando') {
+        remoto.pedido = null; // expirou ou foi cancelado do outro lado — só a pessoa no PC agora
+      }
     }
   }
+  await fecharPedido('expirado');
   throw new ErroLudmilla('sessao_expirada',
     `Ninguém digitou o código da imagem da Elektro em ${Math.round(timeoutMs / 60_000)} minutos. Na próxima visita a estação chama de novo.`);
+}
+
+/**
+ * Sessão viva: abre a URL base (só GET — nunca recarrega um POST do JSF) e
+ * diz se continua logado (sem formulário de login na tela).
+ */
+export async function manterVivaElektro(page: Page, o: { loginUrl?: string } = {}): Promise<boolean> {
+  const resposta = await page.goto(o.loginUrl ?? LOGIN_URL, { waitUntil: 'load', timeout: 60_000 }).catch(() => null);
+  if (!resposta || resposta.status() >= 400) return false;
+  await respirar(page, 500);
+  const temLogin = await page.locator(`${SELETOR_ELEKTRO.captcha}, ${SELETOR_ELEKTRO.senha}`).count().catch(() => 1);
+  return temLogin === 0;
 }
 
 /** HTML da página sem scripts nem estilos — o que interessa é a estrutura. */
@@ -242,10 +344,10 @@ export const elektro: Conector = {
     return reconhecerPagina(page, resposta?.status() ?? 0);
   },
 
-  async testarLogin(page: Page, creds: Credenciais) {
+  async testarLogin(page: Page, creds: Credenciais, opcoes?: OpcoesLogin) {
     soNaEstacao();
     try {
-      const r = await entrarElektro(page, creds);
+      const r = await entrarElektro(page, creds, { captcha: opcoes?.captcha });
       return {
         veredito: 'entrou',
         explicacao: r === 'sessao_mantida'
@@ -261,14 +363,18 @@ export const elektro: Conector = {
     }
   },
 
-  async descobrir(page: Page, creds: Credenciais, guardarTela) {
+  async descobrir(page: Page, creds: Credenciais, guardarTela, opcoes?: OpcoesLogin) {
     soNaEstacao();
-    return descobrirElektro(page, creds, guardarTela);
+    return descobrirElektro(page, creds, guardarTela, { captcha: opcoes?.captcha });
   },
 
   async varrer() {
     throw new ErroLudmilla('pagina_mudou',
       'O roteiro de leitura da Elektro é escrito depois da descoberta logada do Portal GD (telas no bucket).');
+  },
+
+  manterViva(page: Page) {
+    return manterVivaElektro(page);
   },
 };
 
