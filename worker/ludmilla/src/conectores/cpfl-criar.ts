@@ -20,6 +20,13 @@ export interface DadosCriacaoCpfl {
   modulos: { quantidade: number; potencia_wp: number }[];
   entry_phase: string | null;
   entry_breaker: string | null;
+  /**
+   * Respostas autônomas para escolhas do formulário CPFL.
+   * Se uma chave estiver ausente, Ludmilla usa o padrão para projetos de GD.
+   * Choices disponíveis:
+   *   tipo_conexao: 'conexao' (padrão, UC existente) | 'ligacao_nova'
+   */
+  autonomia: Record<string, string>;
 }
 
 /** Captura screenshot, sobe no bucket e registra o passo no banco. */
@@ -101,7 +108,29 @@ export async function criarProjeto(page: Page, dados: DadosCriacaoCpfl, creds: C
       await page.waitForLoadState('networkidle', { timeout: 30_000 });
       await respirar(page, 1_500);
     }
-    // Se não apareceu a seleção de tipo, pode já estar no formulário — continua.
+
+    // Tela Introdução — escolha autônoma entre tipo de conexão:
+    //   'conexao'      = "Conexão de microgeração"  (UC existente, padrão para GD)
+    //   'ligacao_nova' = "Ligação nova com microgeração" (nova UC, raro)
+    const tipoConexao = dados.autonomia['tipo_conexao'] ?? 'conexao';
+    const labelConexao = tipoConexao === 'ligacao_nova'
+      ? /Ligação nova com microgeração/i
+      : /Conexão de microgeração/i;
+
+    const cardConexao = page.locator('div, section, li, article').filter({ hasText: labelConexao }).last();
+    if (await cardConexao.count() > 0) {
+      const btnIniciar = cardConexao.getByRole('button', { name: /Iniciar/i })
+        .or(cardConexao.getByRole('link', { name: /Iniciar/i }))
+        .or(cardConexao.getByText(/Iniciar/i).first());
+      if (await btnIniciar.count() === 0) {
+        throw new ErroLudmilla('pagina_mudou',
+          `Botão "Iniciar" não encontrado no card "${tipoConexao === 'ligacao_nova' ? 'Ligação nova com microgeração' : 'Conexão de microgeração'}". Verifique o tipo de conexão em autonomia.tipo_conexao.`);
+      }
+      await btnIniciar.first().click({ timeout: 10_000 });
+      await page.waitForLoadState('networkidle', { timeout: 30_000 });
+      await respirar(page, 1_500);
+    }
+    // Se a tela de escolha não apareceu, o formulário já carregou diretamente — continua.
   } catch (e) {
     const msg = e instanceof ErroLudmilla ? e.message : `Passo 1 falhou: ${(e as Error).message}`;
     await registrarPasso(page, dados, 1, 'introducao', 'erro', msg);

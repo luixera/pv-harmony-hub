@@ -167,6 +167,9 @@ async function executar(abrir: Abrir, run: Run): Promise<Fim | null> {
       if (!projectId) throw new ErroLudmilla('falhou', 'Run criar_projeto sem project_id nos dados.');
       const creds = await credenciais(run.account_id);
       const dadosCriacao = await dadosCriacaoCpfl(run.id, projectId, run.tenant_id);
+      // autonomia do run sobrescreve defaults (o frontend pode enviar choices personalizadas)
+      const autonomiaRun = (run.dados?.['autonomia'] ?? {}) as Record<string, string>;
+      dadosCriacao.autonomia = { ...dadosCriacao.autonomia, ...autonomiaRun };
       await criarProjeto(page, dadosCriacao, creds);
       printPath = await print();
       await finalizarRun(run.id, { situacao: 'ok', printPath, situacaoConta: 'ok' });

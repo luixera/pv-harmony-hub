@@ -142,6 +142,12 @@ export async function dadosCriacaoCpfl(
   if (error) throw new Error(`Não consegui carregar dados para criação: ${error.message}`);
   const d = ((data ?? []) as Record<string, unknown>[])[0];
   if (!d) throw new Error('Dados de criação não encontrados para o projeto.');
+  // Defaults de autonomia para projetos de GD (sobrescritos pelo que vier em dados do run)
+  const autonomiaBase: Record<string, string> = {
+    tipo_conexao: 'conexao', // UC existente com fornecimento — padrão para GD
+  };
+  const autonomiaRun = (d['autonomia'] ?? {}) as Record<string, string>;
+
   return {
     project_id:    projectId,
     tenant_id:     tenantId,
@@ -154,6 +160,7 @@ export async function dadosCriacaoCpfl(
     modulos:       (d['modulos'] ?? []) as { quantidade: number; potencia_wp: number }[],
     entry_phase:   d['entry_phase'] ? String(d['entry_phase']) : null,
     entry_breaker: d['entry_breaker'] ? String(d['entry_breaker']) : null,
+    autonomia:     { ...autonomiaBase, ...autonomiaRun },
   };
 }
 
