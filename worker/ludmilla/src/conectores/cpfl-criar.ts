@@ -109,24 +109,24 @@ export async function criarProjeto(page: Page, dados: DadosCriacaoCpfl, creds: C
       await respirar(page, 1_500);
     }
 
-    // Tela Introdução — escolha autônoma entre tipo de conexão:
-    //   'conexao'      = "Conexão de microgeração"  (UC existente, padrão para GD)
-    //   'ligacao_nova' = "Ligação nova com microgeração" (nova UC, raro)
-    const tipoConexao = dados.autonomia['tipo_conexao'] ?? 'conexao';
-    const labelConexao = tipoConexao === 'ligacao_nova'
-      ? /Ligação nova com microgeração/i
-      : /Conexão de microgeração/i;
+    // Tela Introdução — escolha autônoma entre tipo de conexão.
+    // A página exibe SEMPRE nesta ordem:
+    //   [0] Ligação nova com microgeração
+    //   [1] Conexão de microgeração  ← padrão para GD (UC existente)
+    // Detectamos pelo texto de qualquer opção e clicamos pelo índice.
+    const estaEmIntroducao = await page.getByText(/Ligação nova com microgeração|Conexão de microgeração/i).count() > 0;
+    if (estaEmIntroducao) {
+      const tipoConexao = dados.autonomia['tipo_conexao'] ?? 'conexao';
+      // índice: 0 = Ligação nova, 1 = Conexão de microgeração
+      const indice = tipoConexao === 'ligacao_nova' ? 0 : 1;
 
-    const cardConexao = page.locator('div, section, li, article').filter({ hasText: labelConexao }).last();
-    if (await cardConexao.count() > 0) {
-      const btnIniciar = cardConexao.getByRole('button', { name: /Iniciar/i })
-        .or(cardConexao.getByRole('link', { name: /Iniciar/i }))
-        .or(cardConexao.getByText(/Iniciar/i).first());
-      if (await btnIniciar.count() === 0) {
-        throw new ErroLudmilla('pagina_mudou',
-          `Botão "Iniciar" não encontrado no card "${tipoConexao === 'ligacao_nova' ? 'Ligação nova com microgeração' : 'Conexão de microgeração'}". Verifique o tipo de conexão em autonomia.tipo_conexao.`);
+      const botoesIniciar = page.getByRole('button', { name: /Iniciar/i })
+        .or(page.getByRole('link', { name: /Iniciar/i }));
+      const total = await botoesIniciar.count();
+      if (total === 0) {
+        throw new ErroLudmilla('pagina_mudou', 'Botões "Iniciar" não encontrados na tela de introdução do formulário.');
       }
-      await btnIniciar.first().click({ timeout: 10_000 });
+      await botoesIniciar.nth(Math.min(indice, total - 1)).click({ timeout: 10_000 });
       await page.waitForLoadState('networkidle', { timeout: 30_000 });
       await respirar(page, 1_500);
     }
