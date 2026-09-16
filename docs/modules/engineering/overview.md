@@ -246,6 +246,19 @@ leitura passa):
 Campo descartado = campo ausente: o motor volta ao valor-padrão das Regras e
 avisa. Nunca entra número duvidoso no cálculo.
 
+**Incidente 16/09/2026 — "Edge Function returned a non-2xx status code"** ao
+ler o datasheet do Growatt NEO 2500M-X2 (microinversor, família, rótulos
+deslocados no PDF). Causa: o raciocínio adaptativo do modelo conta dentro de
+`max_tokens`, que era 3000 — o modelo gastou tudo pensando (as três chamadas
+com falha registraram `output_tokens = 3000` no `ai_usage_log`), o JSON saiu
+cortado no meio dos `warnings`, o `JSON.parse` falhou → 422. Correção:
+`max_tokens: 16000` (também em `bidu-chat`, `diagram-recognize` e
+`diagram-review`, que tinham o mesmo risco), `stop_reason === 'max_tokens'`
+vira a frase "a leitura ficou longa demais e foi cortada", e o hook
+`useDatasheetExtract` lê o corpo do `FunctionsHttpError` para mostrar a frase
+da função em vez do texto genérico. Diagnóstico de repetição: no extrato de
+IA, `output_tokens == max_tokens` = resposta cortada.
+
 **Onde fica o botão** — nos dois lugares: no cadastro do equipamento
 (preenche os campos para conferência antes de salvar) e **na aba Unifilar**,
 ao lado de "falta: Voc, Vmp…" (lê e grava, e as sugestões recalculam). O
