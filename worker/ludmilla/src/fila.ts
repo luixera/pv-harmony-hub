@@ -144,8 +144,8 @@ export async function dadosCriacaoCpfl(
   if (!d) throw new Error('Dados de criação não encontrados para o projeto.');
   // Defaults de autonomia para projetos de GD (sobrescritos pelo que vier em dados do run)
   const autonomiaBase: Record<string, string> = {
-    tipo_conexao:  'conexao',           // UC existente — padrão para GD
-    tipo_servico:  'orcamento_conexao', // tipo de serviço na tela Dados da UC
+    tipo_conexao:    'conexao', // Introdução: "Conexão de microgeração" (UC existente)
+    opcao_orcamento: 'conexao', // Dados da UC: "Orçamento de Conexão" (não o Estimado)
   };
   const autonomiaRun = (d['autonomia'] ?? {}) as Record<string, string>;
 

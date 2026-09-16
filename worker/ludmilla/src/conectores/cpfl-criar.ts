@@ -24,7 +24,8 @@ export interface DadosCriacaoCpfl {
    * Respostas autônomas para escolhas do formulário CPFL.
    * Se uma chave estiver ausente, Ludmilla usa o padrão para projetos de GD.
    * Choices disponíveis:
-   *   tipo_conexao: 'conexao' (padrão, UC existente) | 'ligacao_nova'
+   *   tipo_conexao:    'conexao' (padrão, UC existente) | 'ligacao_nova'   — tela Introdução
+   *   opcao_orcamento: 'conexao' (padrão) | 'estimado'                     — tela Dados da UC
    */
   autonomia: Record<string, string>;
 }
@@ -61,6 +62,34 @@ async function registrarPasso(
 
 /** Pausa humanizada entre ações. */
 const respirar = (page: Page, ms = 1_200) => page.waitForTimeout(ms);
+
+/**
+ * Marca o radio cujo <label> COMEÇA com o rótulo pedido e confere que ficou
+ * marcado. Nunca usa "contém" no bloco inteiro: na CPFL a descrição de uma
+ * opção cita o nome da outra ("Orçamento Estimado … solicitação de Orçamento
+ * de Conexão …"), e um match frouxo marca a opção errada.
+ */
+async function marcarRadioPeloRotulo(page: Page, rotulo: RegExp, oQue: string): Promise<void> {
+  const radios = page.locator('input[type="radio"]');
+  const n = await radios.count();
+  const vistos: string[] = [];
+  for (let i = 0; i < n; i++) {
+    const radio = radios.nth(i);
+    const id = await radio.getAttribute('id');
+    const label = id ? page.locator(`label[for="${id}"]`).first() : radio.locator('xpath=..');
+    const texto = ((await label.textContent().catch(() => '')) ?? '').replace(/\s+/g, ' ').trim();
+    if (!texto) continue;
+    vistos.push(texto.slice(0, 40));
+    if (!rotulo.test(texto)) continue;
+    // radios do Drupal costumam ter o input escondido atrás do label estilizado
+    await radio.check({ force: true, timeout: 10_000 }).catch(() => label.click({ timeout: 10_000 }));
+    await respirar(page, 800);
+    if (await radio.isChecked()) return;
+    throw new ErroLudmilla('pagina_mudou', `Cliquei em "${texto.slice(0, 40)}" (${oQue}) mas o radio não ficou marcado.`);
+  }
+  throw new ErroLudmilla('pagina_mudou',
+    `Não achei a opção ${rotulo.source} (${oQue}). Opções na tela: ${vistos.join(' | ') || 'nenhuma'}.`);
+}
 
 /**
  * Preenche o formulário multi-passo de criação de projeto na CPFL.
@@ -143,64 +172,59 @@ export async function criarProjeto(page: Page, dados: DadosCriacaoCpfl, creds: C
   let valorDisjuntorCpfl: string | null = null;
   let valorFaseCpfl: string | null = null;
   try {
-    // Seleciona o tipo de serviço antes de preencher a UC.
-    // Autonomia: tipo_servico = 'orcamento_conexao' (padrão para GD) | 'ligacao_nova'
-    const tipoServico = dados.autonomia['tipo_servico'] ?? 'orcamento_conexao';
-    const textoServico = tipoServico === 'ligacao_nova'
-      ? /Ligação nova/i
-      : /Orçamento de conexão/i;
-
-    // Pode ser label (radio), select option ou card clicável
-    const labelServico = page.locator('label').filter({ hasText: textoServico }).first();
-    if (await labelServico.count() > 0) {
-      await labelServico.click({ timeout: 10_000 });
-      await respirar(page, 800);
-    } else {
-      const inputRadio = page.locator('input[type="radio"]').filter({ has: page.locator(`xpath=following-sibling::*[contains(text(),"${tipoServico === 'ligacao_nova' ? 'Ligação' : 'Orçamento'}")]`) }).first();
-      if (await inputRadio.count() > 0) {
-        await inputRadio.check({ timeout: 10_000 });
-        await respirar(page, 800);
-      } else {
-        // Tenta clicar no texto diretamente (card ou link)
-        const textoClicavel = page.getByText(textoServico).first();
-        if (await textoClicavel.count() > 0) {
-          await textoClicavel.click({ timeout: 10_000 });
-          await respirar(page, 800);
-        }
-      }
-    }
+    // 2a. "Selecione uma opção de orçamento" → Orçamento de Conexão (regra do
+    // usuário, 16/09/2026). Autonomia: opcao_orcamento = 'conexao' | 'estimado'.
+    const opcaoOrcamento = dados.autonomia['opcao_orcamento'] ?? 'conexao';
+    await marcarRadioPeloRotulo(
+      page,
+      opcaoOrcamento === 'estimado' ? /^Orçamento Estimado/i : /^Orçamento de Conexão/i,
+      'opção de orçamento',
+    );
     await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => undefined);
 
+    // 2b. O campo da UC fica dentro do acordeão "Insira os dados do local da
+    // unidade consumidora", que abre fechado — abrir antes de preencher.
     const campoUc = page.locator(
-      'input[name*="uc"], input[placeholder*="UC"], input[id*="uc"], input[name*="field_uc"]'
+      'input[name*="field_uc"], input[id*="field-uc"], input[name*="uc"], input[id*="uc"]'
     ).first();
-    if (await campoUc.count() === 0) {
-      throw new ErroLudmilla('pagina_mudou', 'Campo Nº da UC não encontrado no passo 2. O tipo de serviço pode estar errado em autonomia.tipo_servico.');
+    if (!(await campoUc.isVisible().catch(() => false))) {
+      const acordeao = page.getByText(/Insira os dados do local da unidade consumidora/i).first();
+      if (await acordeao.count() > 0) {
+        await acordeao.click({ timeout: 10_000 });
+        await respirar(page, 800);
+      }
+    }
+    await campoUc.waitFor({ state: 'visible', timeout: 15_000 }).catch(() => undefined);
+    if (!(await campoUc.isVisible().catch(() => false))) {
+      throw new ErroLudmilla('pagina_mudou',
+        'Campo Nº da UC não ficou visível no passo 2, mesmo depois de marcar a opção de orçamento e abrir o acordeão.');
     }
     await campoUc.fill(dados.uc_number);
     await respirar(page, 600);
 
-    await page.getByRole('button', { name: /Buscar/i }).first().click({ timeout: 10_000 });
+    // 2c. Se houver "Buscar", o portal preenche o titular a partir da UC.
+    const btnBuscar = page.getByRole('button', { name: /Buscar/i }).first();
+    if (await btnBuscar.count() > 0 && await btnBuscar.isVisible().catch(() => false)) {
+      await btnBuscar.click({ timeout: 10_000 });
+      await comPaciencia('auto-preenchimento da UC pelo portal', async () => {
+        await page.waitForLoadState('networkidle', { timeout: 15_000 });
+        await respirar(page, 1_500);
+        const campoNome = page.locator(
+          'input[name*="nome"], input[name*="name"], input[id*="nome"], input[id*="name"]'
+        ).first();
+        const val = await campoNome.inputValue().catch(() => '');
+        if (!val.trim()) throw new Error('nome do cliente ainda vazio após Buscar');
+      }, { tentativas: 2, pausaMs: 3_000 });
 
-    // Aguarda auto-preenchimento: nome do titular aparece após o Buscar
-    await comPaciencia('auto-preenchimento da UC pelo portal', async () => {
-      await page.waitForLoadState('networkidle', { timeout: 15_000 });
-      await respirar(page, 1_500);
-      const campoNome = page.locator(
+      // UC não encontrada = campo nome ainda vazio depois do Buscar
+      const campoNomeCheck = page.locator(
         'input[name*="nome"], input[name*="name"], input[id*="nome"], input[id*="name"]'
       ).first();
-      const val = await campoNome.inputValue().catch(() => '');
-      if (!val.trim()) throw new Error('nome do cliente ainda vazio após Buscar');
-    }, { tentativas: 2, pausaMs: 3_000 });
-
-    // UC não encontrada = campo nome ainda vazio
-    const campoNomeCheck = page.locator(
-      'input[name*="nome"], input[name*="name"], input[id*="nome"], input[id*="name"]'
-    ).first();
-    const nomePreenchido = await campoNomeCheck.inputValue().catch(() => '');
-    if (!nomePreenchido.trim()) {
-      throw new ErroLudmilla('falhou',
-        'UC não encontrada no portal CPFL. Verifique o número UC no GD Manager e tente novamente.');
+      const nomePreenchido = await campoNomeCheck.inputValue().catch(() => '');
+      if (!nomePreenchido.trim()) {
+        throw new ErroLudmilla('falhou',
+          'UC não encontrada no portal CPFL. Verifique o número UC no GD Manager e tente novamente.');
+      }
     }
 
     // Lê disjuntor e fase retornados pela CPFL (fonte primária)
