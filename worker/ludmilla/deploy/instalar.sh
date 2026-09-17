@@ -55,12 +55,31 @@ chown -R "$USUARIO:$USUARIO" "$APP"
 sudo -u "$USUARIO" -H env PLAYWRIGHT_BROWSERS_PATH=/home/$USUARIO/.cache/ms-playwright \
   npx --prefix "$APP" playwright install chromium || falhar "download do Chromium falhou"
 
+passo "agent-browser (criação de projetos na CPFL)"
+# CLI da vercel-labs: o robô a chama por processo, com sessão própria por run.
+# Libs de sistema como root; o Chrome for Testing vai no HOME do usuário.
+npm i -g agent-browser@latest --no-audit --no-fund || falhar "npm i -g agent-browser falhou"
+agent-browser install --with-deps >/dev/null 2>&1 || echo "aviso: 'agent-browser install --with-deps' falhou (as libs do Playwright costumam bastar)"
+mkdir -p "/home/$USUARIO/.agent-browser"
+chown -R "$USUARIO:$USUARIO" "/home/$USUARIO/.agent-browser"
+sudo -u "$USUARIO" -H agent-browser install || falhar "download do Chrome (agent-browser) para o usuário $USUARIO falhou"
+echo "agent-browser: $(agent-browser --version 2>/dev/null)"
+# fumaça: abre, lê o título e fecha — com os mesmos argumentos do serviço
+AB_ARGS='--no-sandbox,--disable-crashpad,--disable-crash-reporter,--disable-gpu,--disable-dev-shm-usage'
+if sudo -u "$USUARIO" -H agent-browser --session fumaca --args "$AB_ARGS" open https://example.com >/dev/null 2>&1; then
+  echo "fumaça: $(sudo -u "$USUARIO" -H agent-browser --session fumaca get title 2>/dev/null)"
+  sudo -u "$USUARIO" -H agent-browser --session fumaca close >/dev/null 2>&1
+else
+  echo "aviso: o Chrome do agent-browser não abriu no teste de fumaça — a criação na CPFL vai falhar até ajustar LUDMILLA_AB_EXEC/LUDMILLA_AB_ARGS"
+fi
+
 passo "ambiente em $ENV_DIR/env (só root lê)"
 mkdir -p "$ENV_DIR"
 cat > "$ENV_DIR/env" <<EOF
 SUPABASE_URL=$SUPABASE_URL
 SUPABASE_SERVICE_ROLE_KEY=$SUPABASE_SERVICE_ROLE_KEY
 LUDMILLA_POLL_SECONDS=30
+LUDMILLA_AB_ARGS=$AB_ARGS
 EOF
 chmod 600 "$ENV_DIR/env"
 

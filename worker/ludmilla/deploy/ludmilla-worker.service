@@ -11,6 +11,9 @@ WorkingDirectory=/opt/ludmilla
 EnvironmentFile=/etc/ludmilla/env
 # o Chromium do Playwright fica no HOME do usuário ludmilla
 Environment=PLAYWRIGHT_BROWSERS_PATH=/home/ludmilla/.cache/ms-playwright
+# a CLI agent-browser (criação na CPFL) guarda Chrome, sessões e cofre em ~/.agent-browser
+Environment=HOME=/home/ludmilla
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
 ExecStart=/usr/bin/node dist/index.js
 Restart=always
 RestartSec=10
@@ -25,7 +28,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=full
 ProtectHome=read-only
-ReadWritePaths=/opt/ludmilla /home/ludmilla/.cache
+ReadWritePaths=/opt/ludmilla /home/ludmilla/.cache /home/ludmilla/.agent-browser
 
 [Install]
 WantedBy=multi-user.target

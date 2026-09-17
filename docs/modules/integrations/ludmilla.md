@@ -289,18 +289,34 @@ só equipe GD Manager). Run `criar_projeto` em `portal_sync_runs`, com
 `dados = { project_id, autonomia? }`; cada etapa vira uma linha em
 `portal_criacao_passos` (print no bucket, Realtime no modal e na /ludmilla).
 
-Fonte do roteiro: **"Roteiro CPFL: Orçamento de Conexão MMGD"** (PDF do
-usuário, feito de duas gravações no Chrome) — seletores reais do Drupal.
-O conector é `worker/ludmilla/src/conectores/cpfl-criar.ts`.
+**Reconstruído do zero em 17/09/2026 sobre a CLI `agent-browser`**
+(vercel-labs), depois de o conector Playwright falhar 8× por chute. Fonte do
+roteiro: a sessão de mapeamento tela a tela
+(`docs/superpowers/specs/2026-09-17-cpfl60-criacao-design.md`, mapas em
+`2026-09-17-cpfl60-mapa/`) + o PDF do usuário "Roteiro CPFL: Orçamento de
+Conexão MMGD". Validado ponta a ponta: projeto **node 546581** criado à mão
+(PRJ-14848) e o roteiro automático repetiu tudo até a revisão em 1 min 15 s.
 
-| Passo | Nome | O que faz | Seletores-chave |
+Código: `worker/ludmilla/src/criacao/` — `agente.ts` (invólucro da CLI, sem
+shell, valores só por `eval --stdin`), `login.ts` (cofre `auth save
+--password-stdin` com a senha do Vault → `auth login` → `auth delete`),
+`roteiro-cpfl60.ts` (as 6 etapas), `js.ts` (trechos que rodam na página),
+`util.ts` (puro, testado), `index.ts` (run: dados → login → roteiro → node →
+finalizarRun). Validação local sem banco e sem salvar:
+`npm run build && LUDMILLA_AB_SESSAO=<sessão logada> node
+scripts/validar-criacao-local.mjs`. VPS: `instalar.sh` instala a CLI e o
+Chrome no HOME do `ludmilla`, unit libera `~/.agent-browser`,
+`LUDMILLA_AB_ARGS` leva `--no-sandbox,--disable-crashpad,…`
+(`LUDMILLA_AB_EXEC` aponta outro Chromium se o completo cair).
+
+| Passo | Nome | O que faz | Seletores-chave (mapa de 17/09) |
 |---|---|---|---|
-| 1 | `introducao` | login B2C (`logarNaCpfl`) → abre `node/add/project_60` direto; se cair na Introdução, "Conexão de microgeração → Iniciar" (índice 1) | título da aba termina em "Dados da unidade consumidora"; `#edit-field-flux-type-conexo` |
-| 2 | `dados_uc` | radio **Orçamento de Conexão** (pelo rótulo — a descrição do Estimado cita o outro), 3 × Não em "Necessidades", UC + **Buscar**, espera os campos cinza, confere Empresa = CPFL, Lat/Long em DMS `20° 52' 45.7"`, 2 × Não, Avançar | `#edit-field-quotation-options-60-connection`, `#edit-field-consumer-unit-0-consumer-unit-code`, `#edit-field-consumer-unit-0-send-uc-code`, `[id^="edit-field-consumer-unit-0-latitude"]`, `#edit-next` |
-| 3 | `dados_projeto` | título, alteração de carga = Não, data (hoje + 30), compensação "Geração Local", categoria (B1… **resolvida como no front**), padrão de entrada GED 13, aéreo, fases, cabos/caixa/carga/disjuntor da regra, geração (ENERGIA SOLAR, módulos em kWp, área = módulos × 3 m², inversores) | `title[0][value]`, `field_*`, `[name$="[modules_qt]"]`… |
-| 4 | `dados_cliente` | CPF (Consultar se vazio), celular/e-mail se faltarem, endereços = "Endereço da Instalação", 2 × Sim (documentos com o orçamento; contagem de prazo REN 1.000) | radios pelo rótulo dentro do bloco da pergunta |
-| 5 | `revisao` | print da revisão e **Salvar** → URL `/node/<id>/edit` → `projects.cpfl_node_id` | `#edit-submit` |
-| 6 | `concluido` | **para** em "Envio de documentos": arquivos ou "Enviar Depois" é decisão da pessoa | — |
+| 1 | `introducao` | login pelo cofre → `gestao-projetos/criar-projeto` → link 60 → Introdução → "Conexão de microgeração" e **confere** `flux_type = conexão`. Nunca abre `node/add/project_60` direto (retoma formulário velho) | `a[href$="node/add/project_60"]`, `#edit-next-new-connection`, `#edit-field-flux-type-conexo` |
+| 2 | `dados_uc` | **Orçamento de Conexão** (rótulo conferido), 3 × Não (`-0`), UC + Buscar, espera Nome do Cliente, Empresa = CPFL, Lat/Long DMS, 2 × Não (`-1`!), perguntas condicionais, FormData, Avançar | `#edit-field-quotation-options-60-connection`, `#edit-field-consumer-unit-0-consumer-unit-code`, `…-send-uc-code`, `[id^="edit-field-consumer-unit-0-latitude"]`, `#edit-next` |
+| 3 | `dados_projeto` | título, Não, ENERGIA SOLAR (2721), data +30 (JS), Geração Local (2771), categoria (regra do front), GED 13 (2761), aéreo (2866), fases (2751), **Cabos = nº de fases**, caixa, carga = Demanda, disjuntor da regra, geração (651, módulos kWp, área, inversores); **FormData dos totais conferido**; Avançar | ids `edit-field-*` e `#edit-field-complementary-generation-0-subform-field-*` |
+| 4 | `dados_cliente` | Pessoa Física, Consultar CPF (espera Nome), celular/e-mail só se vazios, endereços = instalação, 2 × Sim (`-1`!) | `[id^="edit-field-physicalperson-0-*"]`, `[id^="edit-field-address-type-mesmo"]`, `…authorize-pay-connec-costs-1`, `…solicitacao-de-vistoria-1` |
+| 5 | `revisao` | print da revisão e **Salvar** → URL `/node/<id>/edit?step=6` → `projects.cpfl_node_id`. `run.dados.simular = true` para antes | `#edit-next-save-draft` |
+| 6 | `concluido` | **para** em "Envio de documentos" (27 inputs `files[field_*]` mapeados para a fase seguinte) | `#edit-next-send-later` / `#edit-next` — não clica |
 
 **Autonomia** (`DadosCriacaoCpfl.autonomia`, padrões em `AUTONOMIA_PADRAO`):
 respostas que a Ludmilla dá sozinha num projeto de GD comum

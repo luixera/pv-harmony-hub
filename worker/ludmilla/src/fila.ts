@@ -127,7 +127,7 @@ export async function credenciais(accountId: string): Promise<Credenciais> {
 
 // ── Criação de projeto na CPFL ───────────────────────────────────────────────
 
-import { AUTONOMIA_PADRAO, type DadosCriacaoCpfl } from './conectores/cpfl-criar.js';
+import { AUTONOMIA_PADRAO, type DadosCriacaoCpfl } from './criacao/tipos.js';
 
 /**
  * Carrega o que o formulário da CPFL pede (RPC ludmilla_dados_criacao_cpfl):

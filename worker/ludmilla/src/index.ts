@@ -2,10 +2,10 @@ import { chromium, Browser, BrowserContext, Page } from 'playwright';
 import { classificarErro, ErroLudmilla } from './erros.js';
 import { conector, type CanalCaptcha, type Conector } from './conectores/index.js';
 import {
-  anexoEnviado, anexoErro, anexosPendentes, conectorDaConta, credenciais, dadosCriacaoCpfl, entrarNaEstacao, fecharCaptcha, finalizarRun,
+  anexoEnviado, anexoErro, anexosPendentes, conectorDaConta, credenciais, entrarNaEstacao, fecharCaptcha, finalizarRun,
   lerCaptcha, pedirCaptcha, pegarRun, protocolosDeInteresse, pulsar, sessaoViva, subirDocumento, subirPrint, subirTexto, temCriacaoPendente, Run,
 } from './fila.js';
-import { criarProjeto } from './conectores/cpfl-criar.js';
+import { executarCriacao } from './criacao/index.js';
 import { avisar, carregarEnvDaEstacao, dirPerfilChrome, modoAtual, pedirLoginNoTerminal } from './local.js';
 
 /**
@@ -162,21 +162,6 @@ async function executar(abrir: Abrir, run: Run): Promise<Fim | null> {
       return { chave: c.chave, contexto, page, conector: c, ok };
     }
 
-    if (run.tipo === 'criar_projeto') {
-      const projectId = run.dados?.['project_id'] as string | undefined;
-      if (!projectId) throw new ErroLudmilla('falhou', 'Run criar_projeto sem project_id nos dados.');
-      const creds = await credenciais(run.account_id);
-      // respostas que o front mandou (run.dados.autonomia) vencem os padrões de GD
-      const autonomiaRun = (run.dados?.['autonomia'] ?? {}) as Record<string, string>;
-      const dadosCriacao = await dadosCriacaoCpfl(run.id, projectId, run.tenant_id, autonomiaRun);
-      await criarProjeto(page, dadosCriacao, creds);
-      printPath = await print();
-      await finalizarRun(run.id, { situacao: 'ok', printPath, situacaoConta: 'ok' });
-      log('criação CPFL ok', { run: run.id, project: projectId });
-      ok = true;
-      return { chave: c.chave, contexto, page, conector: c, ok };
-    }
-
     const protocolos = await c.varrer(page, creds, { protocolosDeInteresse: await protocolosDeInteresse(run.account_id), captcha });
     // print da tela onde a leitura terminou (a lista, na aba certa) — só a
     // janela, não a página inteira: é prova do caminho, não cópia da lista
@@ -305,6 +290,12 @@ async function principal() {
       // Poll dinâmico: 5 s quando há criação pendente; normal quando quieto
       const criacao = await temCriacaoPendente().catch(() => false);
       await dormir(criacao ? 5_000 : POLL_SEGUNDOS * 1_000);
+      continue;
+    }
+    if (run.tipo === 'criar_projeto') {
+      // criação de projeto: navegador próprio (agent-browser), fora do laço do Playwright
+      await executarCriacao(run);
+      await dormir(5_000);
       continue;
     }
     const fim = await executar(abrir, run);
