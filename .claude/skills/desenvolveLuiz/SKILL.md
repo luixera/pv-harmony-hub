@@ -28,6 +28,8 @@ as skills certas. Regra do usuário (set/2026): **roda em todo prompt.**
 | pedido de revisão | `requesting-code-review` / `receiving-code-review` | — |
 | trabalho paralelo em várias frentes | `dispatching-parallel-agents` / `using-git-worktrees` | só se o usuário pedir agentes |
 | "crie uma skill / melhore essa skill / a skill não dispara" | `skill-creator` (oficial anthropics) — captar intenção, entrevistar, rascunhar, testar com evals, otimizar a descrição | `writing-skills` (TDD do texto da skill) → `quick_validate.py` → instalar em `.claude/skills/` → registrar aqui na §3 |
+| mexer em auth, RLS/política, edge function, segredo, upload/Storage, endpoint novo, pagamento, dado sensível, CORS/CSP, dependência | `security-review` (checklist OWASP, **só quando necessário** — não roda em todo prompt) | passar o checklist adaptado (§3) antes de `verification-before-completion`; achado grave → memória `security-posture` |
+| "abra o portal / preencha / clique / veja a tela / automatize no navegador / a Ludmilla precisa fazer X no portal" | `agent-browser` (vercel-labs) — explorar a tela real com `snapshot -i` antes de codificar | roteiro escrito sobre o que a exploração mostrou; worker chama a CLI |
 
 ## 3. find-skills — antes de construir do zero
 
@@ -63,10 +65,42 @@ Reportar ao usuário o que foi encontrado, mesmo quando nada serve.
   5. `scripts/improve_description.py` quando a skill não dispara;
   6. skill do repositório fica em `.claude/skills/<nome>/` (commit), entra
      na §3 desta tabela e ganha memória do módulo.
+- `security-review` (`affaan-m/ecc`, instalada em 17/09/2026; **fora do
+  critério oficial/1K+ — aceita por decisão do usuário**) — checklist de
+  segurança **sob demanda**: só entra quando a tarefa toca auth, RLS,
+  edge function, segredo, upload, endpoint, pagamento, dado sensível ou
+  dependência. Não é rotina de todo prompt. Adaptação à casa (a skill é
+  genérica, com exemplos Next.js/Solana — ignorar o que não se aplica):
+  - "RLS habilitada" aqui significa **política RESTRICTIVE por `tenant_id`**
+    e papel lido de `app_metadata`; ver `docs/project/security.md`.
+  - Segredos: Supabase Vault / secrets da edge function / GitHub Secrets do
+    deploy — nunca em `src/`, nunca em migração, nunca em `.env` commitado.
+  - Edge function: validar tenant do alvo, usar service role só no servidor,
+    CORS restrito ao domínio da VPS.
+  - Storage: buckets fechados (auditoria jul/2026), acesso por URL assinada.
+  - Rate limit e CSRF: cobertos por Supabase Auth + Turnstile; conferir só
+    em endpoint público novo.
+  - Ao final, `npm audit` e registrar pendências na memória
+    `security-posture`.
+
+- `agent-browser` (oficial `vercel-labs`, instalada em 17/09/2026 a pedido
+  do usuário) — **toda automação ou exploração de navegador**: portais das
+  concessionárias (Ludmilla), preencher formulário, testar tela, QA. Usar
+  ANTES de escrever um roteiro Playwright "no escuro". Rotina:
+  1. `agent-browser skills get core` (o guia vive na CLI, sempre na versão
+     instalada; `npm i -g agent-browser && agent-browser install` se faltar);
+  2. sessão nomeada sempre (`--session`), nunca a compartilhada; login por
+     `--headed` com a pessoa digitando a senha na janela, `--profile <pasta>`
+     para a sessão sobreviver, ou cofre `auth save --password-stdin` —
+     senha NUNCA em argumento nem no chat;
+  3. explorar com `snapshot -i` (refs `@eN`), `find label/text/role`, `get
+     title`, `wait --text/--url`; só depois codificar o roteiro;
+  4. em produção (VPS Linux) roda como CLI chamada pelo worker: `install
+     --with-deps`, `--headed` usa Xvfb sozinho em servidor sem tela.
 
 Procurado e descartado em 13/09/2026: skills de Playwright/scraping — a
-mais instalada tinha 760 instalações e autor desconhecido; não passa no
-critério. Reavaliar quando houver uma oficial (`microsoft`).
+mais instalada tinha 760 instalações e autor desconhecido; não passava no
+critério. Superado em 17/09/2026 pela `agent-browser` (vercel-labs).
 
 ## 4. Regras da casa (vencem as skills)
 
