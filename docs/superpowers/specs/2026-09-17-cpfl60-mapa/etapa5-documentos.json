@@ -1,0 +1,802 @@
+{
+  "controles": [
+    {
+      "id": "edit-1",
+      "name": "op",
+      "pergunta": null,
+      "rotulo": null,
+      "sanfona": null,
+      "t": "button:submit",
+      "txt": "Introdução",
+      "vis": true
+    },
+    {
+      "id": "edit-2",
+      "name": "op",
+      "pergunta": null,
+      "rotulo": null,
+      "sanfona": null,
+      "t": "button:submit",
+      "txt": "Dados da unidade consumidora",
+      "vis": true
+    },
+    {
+      "id": "edit-3",
+      "name": "op",
+      "pergunta": null,
+      "rotulo": null,
+      "sanfona": null,
+      "t": "button:submit",
+      "txt": "Dados do projeto",
+      "vis": true
+    },
+    {
+      "id": "edit-4",
+      "name": "op",
+      "pergunta": null,
+      "rotulo": null,
+      "sanfona": null,
+      "t": "button:submit",
+      "txt": "Dados do cliente",
+      "vis": true
+    },
+    {
+      "id": "edit-5",
+      "name": "op",
+      "pergunta": null,
+      "rotulo": null,
+      "sanfona": null,
+      "t": "button:submit",
+      "txt": "Revisão do projeto",
+      "vis": true
+    },
+    {
+      "id": "edit-6",
+      "name": "op",
+      "pergunta": null,
+      "rotulo": null,
+      "sanfona": null,
+      "t": "button:submit",
+      "txt": "Envio de documentos",
+      "vis": true
+    },
+    {
+      "id": "edit-group-protocol-step",
+      "name": "op",
+      "pergunta": null,
+      "rotulo": null,
+      "sanfona": null,
+      "t": "button:submit",
+      "txt": "Protocolo e acompanhamento",
+      "vis": true
+    },
+    {
+      "id": "edit-1",
+      "name": "op",
+      "pergunta": null,
+      "rotulo": null,
+      "sanfona": null,
+      "t": "button:submit",
+      "txt": "Introdução",
+      "vis": true
+    },
+    {
+      "id": "edit-2",
+      "name": "op",
+      "pergunta": null,
+      "rotulo": null,
+      "sanfona": null,
+      "t": "button:submit",
+      "txt": "Dados da unidade consumidora",
+      "vis": true
+    },
+    {
+      "id": "edit-3",
+      "name": "op",
+      "pergunta": null,
+      "rotulo": null,
+      "sanfona": null,
+      "t": "button:submit",
+      "txt": "Dados do projeto",
+      "vis": true
+    },
+    {
+      "id": "edit-4",
+      "name": "op",
+      "pergunta": null,
+      "rotulo": null,
+      "sanfona": null,
+      "t": "button:submit",
+      "txt": "Dados do cliente",
+      "vis": true
+    },
+    {
+      "id": "edit-5",
+      "name": "op",
+      "pergunta": null,
+      "rotulo": null,
+      "sanfona": null,
+      "t": "button:submit",
+      "txt": "Revisão do projeto",
+      "vis": true
+    },
+    {
+      "id": "edit-6",
+      "name": "op",
+      "pergunta": null,
+      "rotulo": null,
+      "sanfona": null,
+      "t": "button:submit",
+      "txt": "Envio de documentos",
+      "vis": true
+    },
+    {
+      "id": "edit-group-protocol-step",
+      "name": "op",
+      "pergunta": null,
+      "rotulo": null,
+      "sanfona": null,
+      "t": "button:submit",
+      "txt": "Protocolo e acompanhamento",
+      "vis": false
+    },
+    {
+      "id": "edit-field-is-mgc-value",
+      "marcado": false,
+      "name": "field_is_mgc[value]",
+      "pergunta": null,
+      "rotulo": "Flag intro: é Conexão de microgeração?",
+      "sanfona": null,
+      "t": "input:checkbox",
+      "valor": "1",
+      "vis": false
+    },
+    {
+      "id": "edit-field-finished-project-value",
+      "marcado": false,
+      "name": "field_finished_project[value]",
+      "pergunta": null,
+      "rotulo": "Projeto finalizado",
+      "sanfona": null,
+      "t": "input:checkbox",
+      "valor": "1",
+      "vis": false
+    },
+    {
+      "id": "edit-field-uc-concession-area-0-value",
+      "name": "field_uc_concession_area[0][value]",
+      "pergunta": null,
+      "preenchido": false,
+      "rotulo": "UC: Área de concessão",
+      "sanfona": null,
+      "t": "input:number",
+      "vis": false
+    },
+    {
+      "id": "edit-field-register-cat-0-value",
+      "name": "field_register_cat[0][value]",
+      "pergunta": null,
+      "preenchido": false,
+      "rotulo": "cat cadastrada",
+      "sanfona": null,
+      "t": "input:text",
+      "vis": false
+    },
+    {
+      "id": "edit-field-uc-tariff-0-value",
+      "name": "field_uc_tariff[0][value]",
+      "pergunta": null,
+      "preenchido": true,
+      "rotulo": "uc_tariff",
+      "sanfona": null,
+      "t": "input:text",
+      "vis": false
+    },
+    {
+      "id": "edit-field-flux-type-none",
+      "marcado": false,
+      "name": "field_flux_type",
+      "pergunta": "Tipo de fluxo",
+      "rotulo": "N/A",
+      "sanfona": null,
+      "t": "input:radio",
+      "valor": "_none",
+      "vis": false
+    },
+    {
+      "id": "edit-field-flux-type-ligao",
+      "marcado": false,
+      "name": "field_flux_type",
+      "pergunta": "Tipo de fluxo",
+      "rotulo": "ligação",
+      "sanfona": null,
+      "t": "input:radio",
+      "valor": "ligação",
+      "vis": false
+    },
+    {
+      "id": "edit-field-flux-type-conexo",
+      "marcado": true,
+      "name": "field_flux_type",
+      "pergunta": "Tipo de fluxo",
+      "rotulo": "conexão",
+      "sanfona": null,
+      "t": "input:radio",
+      "valor": "conexão",
+      "vis": false
+    },
+    {
+      "id": "edit-field-voltage-text-selected-0-value",
+      "name": "field_voltage_text_selected[0][value]",
+      "pergunta": null,
+      "preenchido": false,
+      "rotulo": "Tensão de fornecimento selecionada",
+      "sanfona": null,
+      "t": "input:text",
+      "vis": false
+    },
+    {
+      "id": "edit-field-tech-responsibility-doc-0-upload",
+      "name": "files[field_tech_responsibility_doc_0]",
+      "pergunta": null,
+      "preenchido": false,
+      "rotulo": "Documento de Responsabilidade Técnica ou Equivalente",
+      "sanfona": "Documentos para análise técnica",
+      "t": "input:file",
+      "vis": false
+    },
+    {
+      "id": "edit-field-tech-responsibility-doc-0-upload-button",
+      "name": "field_tech_responsibility_doc_0_upload_button",
+      "pergunta": null,
+      "rotulo": null,
+      "sanfona": "Documentos para análise técnica",
+      "t": "button:submit",
+      "txt": "Upload",
+      "vis": false
+    },
+    {
+      "id": "edit-field-electrical-project-0-upload",
+      "name": "files[field_electrical_project_0]",
+      "pergunta": null,
+      "preenchido": false,
+      "rotulo": "Projeto elétrico das unidades consumidoras de conexão, memorial descritivo",
+      "sanfona": "Documentos para análise técnica",
+      "t": "input:file",
+      "vis": false
+    },
+    {
+      "id": "edit-field-electrical-project-0-upload-button",
+      "name": "field_electrical_project_0_upload_button",
+      "pergunta": null,
+      "rotulo": null,
+      "sanfona": "Documentos para análise técnica",
+      "t": "button:submit",
+      "txt": "Upload",
+      "vis": false
+    },
+    {
+      "id": "edit-field-single-line-diagram-0-upload",
+      "name": "files[field_single_line_diagram_0]",
+      "pergunta": null,
+      "preenchido": false,
+      "rotulo": "Diagrama unifilar",
+      "sanfona": "Documentos para análise técnica",
+      "t": "input:file",
+      "vis": false
+    },
+    {
+      "id": "edit-field-single-line-diagram-0-upload-button",
+      "name": "field_single_line_diagram_0_upload_button",
+      "pergunta": null,
+      "rotulo": null,
+      "sanfona": "Documentos para análise técnica",
+      "t": "button:submit",
+      "txt": "Upload",
+      "vis": false
+    },
+    {
+      "id": "edit-field-inverter-certificate-0-upload",
+      "name": "files[field_inverter_certificate_0]",
+      "pergunta": null,
+      "preenchido": false,
+      "rotulo": "Certificado do Inversor",
+      "sanfona": "Documentos para análise técnica",
+      "t": "input:file",
+      "vis": false
+    },
+    {
+      "id": "edit-field-inverter-certificate-0-upload-button",
+      "name": "field_inverter_certificate_0_upload_button",
+      "pergunta": null,
+      "rotulo": null,
+      "sanfona": "Documentos para análise técnica",
+      "t": "button:submit",
+      "txt": "Upload",
+      "vis": false
+    },
+    {
+      "id": "edit-field-needed-aneel-docs-0-upload",
+      "name": "files[field_needed_aneel_docs_0]",
+      "pergunta": null,
+      "preenchido": false,
+      "rotulo": "ANEXO F - Dados necessários para registro da central geradora conforme disponíve",
+      "sanfona": "Documentos para análise técnica",
+      "t": "input:file",
+      "vis": false
+    },
+    {
+      "id": "edit-field-needed-aneel-docs-0-upload-button",
+      "name": "field_needed_aneel_docs_0_upload_button",
+      "pergunta": null,
+      "rotulo": null,
+      "sanfona": "Documentos para análise técnica",
+      "t": "button:submit",
+      "txt": "Upload",
+      "vis": false
+    },
+    {
+      "id": "edit-field-aneel-acknowledgment-doc-0-upload",
+      "name": "files[field_aneel_acknowledgment_doc_0]",
+      "pergunta": null,
+      "preenchido": false,
+      "rotulo": "Documento que comprove o reconhecimento pela ANEEL da cogeração qualificada, se ",
+      "sanfona": "Documentos para análise técnica",
+      "t": "input:file",
+      "vis": false
+    },
+    {
+      "id": "edit-field-aneel-acknowledgment-doc-0-upload-button",
+      "name": "field_aneel_acknowledgment_doc_0_upload_button",
+      "pergunta": null,
+      "rotulo": null,
+      "sanfona": "Documentos para análise técnica",
+      "t": "button:submit",
+      "txt": "Upload",
+      "vis": false
+    },
+    {
+      "id": "edit-field-rural-activity-proof-0-upload",
+      "name": "files[field_rural_activity_proof_0]",
+      "pergunta": null,
+      "preenchido": false,
+      "rotulo": "CNPJ ou Sintegra ou outro documento que comprove a atividade rural",
+      "sanfona": "Documentos para análise técnica",
+      "t": "input:file",
+      "vis": false
+    },
+    {
+      "id": "edit-field-rural-activity-proof-0-upload-button",
+      "name": "field_rural_activity_proof_0_upload_button",
+      "pergunta": null,
+      "rotulo": null,
+      "sanfona": "Documentos para análise técnica",
+      "t": "button:submit",
+      "txt": "Upload",
+      "vis": false
+    },
+    {
+      "id": "edit-field-itr-or-ccir-0-upload",
+      "name": "files[field_itr_or_ccir_0]",
+      "pergunta": null,
+      "preenchido": false,
+      "rotulo": "ITR ou CCIR, se localização rural. IPTU, se localização urbana",
+      "sanfona": "Documentos para análise técnica",
+      "t": "input:file",
+      "vis": false
+    },
+    {
+      "id": "edit-field-itr-or-ccir-0-upload-button",
+      "name": "field_itr_or_ccir_0_upload_button",
+      "pergunta": null,
+      "rotulo": null,
+      "sanfona": "Documentos para análise técnica",
+      "t": "button:submit",
+      "txt": "Upload",
+      "vis": false
+    },
+    {
+      "id": "edit-field-other-docs-comercial-0-upload",
+      "name": "files[field_other_docs_comercial_0][]",
+      "pergunta": null,
+      "preenchido": false,
+      "rotulo": "Adicionar um novo arquivo",
+      "sanfona": "Outros",
+      "t": "input:file",
+      "vis": false
+    },
+    {
+      "id": "edit-field-other-docs-comercial-0-upload-button",
+      "name": "field_other_docs_comercial_0_upload_button",
+      "pergunta": null,
+      "rotulo": null,
+      "sanfona": "Outros",
+      "t": "button:submit",
+      "txt": "Upload",
+      "vis": false
+    },
+    {
+      "id": "edit-field-rg-rne-0-upload",
+      "name": "files[field_rg_rne_0]",
+      "pergunta": null,
+      "preenchido": false,
+      "rotulo": "RG\\RNE e CPF - Copia - Representante legal",
+      "sanfona": "Documentos para análise comercial",
+      "t": "input:file",
+      "vis": false
+    },
+    {
+      "id": "edit-field-rg-rne-0-upload-button",
+      "name": "field_rg_rne_0_upload_button",
+      "pergunta": null,
+      "rotulo": null,
+      "sanfona": "Documentos para análise comercial",
+      "t": "button:submit",
+      "txt": "Upload",
+      "vis": false
+    },
+    {
+      "id": "edit-field-cnpj-doc-0-upload",
+      "name": "files[field_cnpj_doc_0]",
+      "pergunta": null,
+      "preenchido": false,
+      "rotulo": "CNPJ",
+      "sanfona": "Documentos para análise comercial",
+      "t": "input:file",
+      "vis": false
+    },
+    {
+      "id": "edit-field-cnpj-doc-0-upload-button",
+      "name": "field_cnpj_doc_0_upload_button",
+      "pergunta": null,
+      "rotulo": null,
+      "sanfona": "Documentos para análise comercial",
+      "t": "button:submit",
+      "txt": "Upload",
+      "vis": false
+    },
+    {
+      "id": "edit-field-legal-representative-doc-0-upload",
+      "name": "files[field_legal_representative_doc_0]",
+      "pergunta": null,
+      "preenchido": false,
+      "rotulo": "Documento de identificação do Representante Legal da empresa",
+      "sanfona": "Documentos para análise comercial",
+      "t": "input:file",
+      "vis": false
+    },
+    {
+      "id": "edit-field-legal-representative-doc-0-upload-button",
+      "name": "field_legal_representative_doc_0_upload_button",
+      "pergunta": null,
+      "rotulo": null,
+      "sanfona": "Documentos para análise comercial",
+      "t": "button:submit",
+      "txt": "Upload",
+      "vis": false
+    },
+    {
+      "id": "edit-field-legal-representative-powe-0-upload",
+      "name": "files[field_legal_representative_powe_0]",
+      "pergunta": null,
+      "preenchido": false,
+      "rotulo": "Procuração representante legal",
+      "sanfona": "Documentos para análise comercial",
+      "t": "input:file",
+      "vis": false
+    },
+    {
+      "id": "edit-field-legal-representative-powe-0-upload-button",
+      "name": "field_legal_representative_powe_0_upload_button",
+      "pergunta": null,
+      "rotulo": null,
+      "sanfona": "Documentos para análise comercial",
+      "t": "button:submit",
+      "txt": "Upload",
+      "vis": false
+    },
+    {
+      "id": "edit-field-commercial-class-municipa-0-upload",
+      "name": "files[field_commercial_class_municipa_0]",
+      "pergunta": null,
+      "preenchido": false,
+      "rotulo": "Inscrição municipal classe comercial",
+      "sanfona": "Documentos para análise comercial",
+      "t": "input:file",
+      "vis": false
+    },
+    {
+      "id": "edit-field-commercial-class-municipa-0-upload-button",
+      "name": "field_commercial_class_municipa_0_upload_button",
+      "pergunta": null,
+      "rotulo": null,
+      "sanfona": "Documentos para análise comercial",
+      "t": "button:submit",
+      "txt": "Upload",
+      "vis": false
+    },
+    {
+      "id": "edit-field-rural-class-producer-rece-0-upload",
+      "name": "files[field_rural_class_producer_rece_0]",
+      "pergunta": null,
+      "preenchido": false,
+      "rotulo": "Talão de produtor classe rural (Cadesp)",
+      "sanfona": "Documentos para análise comercial",
+      "t": "input:file",
+      "vis": false
+    },
+    {
+      "id": "edit-field-rural-class-producer-rece-0-upload-button",
+      "name": "field_rural_class_producer_rece_0_upload_button",
+      "pergunta": null,
+      "rotulo": null,
+      "sanfona": "Documentos para análise comercial",
+      "t": "button:submit",
+      "txt": "Upload",
+      "vis": false
+    },
+    {
+      "id": "edit-field-syndic-document-0-upload",
+      "name": "files[field_syndic_document_0]",
+      "pergunta": null,
+      "preenchido": false,
+      "rotulo": "Documento de identificação (frente/ verso) do síndico",
+      "sanfona": "Documentos para análise comercial",
+      "t": "input:file",
+      "vis": false
+    },
+    {
+      "id": "edit-field-syndic-document-0-upload-button",
+      "name": "field_syndic_document_0_upload_button",
+      "pergunta": null,
+      "rotulo": null,
+      "sanfona": "Documentos para análise comercial",
+      "t": "button:submit",
+      "txt": "Upload",
+      "vis": false
+    },
+    {
+      "id": "edit-field-admin-id-0-upload",
+      "name": "files[field_admin_id_0]",
+      "pergunta": null,
+      "preenchido": false,
+      "rotulo": "Documento de identificação (frente/verso) do Admin. do Instrumento (se PJ) ou do",
+      "sanfona": "Documentos para análise comercial",
+      "t": "input:file",
+      "vis": false
+    },
+    {
+      "id": "edit-field-admin-id-0-upload-button",
+      "name": "field_admin_id_0_upload_button",
+      "pergunta": null,
+      "rotulo": null,
+      "sanfona": "Documentos para análise comercial",
+      "t": "button:submit",
+      "txt": "Upload",
+      "vis": false
+    },
+    {
+      "id": "edit-field-social-constitution-0-upload",
+      "name": "files[field_social_constitution_0]",
+      "pergunta": null,
+      "preenchido": false,
+      "rotulo": "Estatuto Social/ Contrato Social",
+      "sanfona": "Documentos para análise comercial",
+      "t": "input:file",
+      "vis": false
+    },
+    {
+      "id": "edit-field-social-constitution-0-upload-button",
+      "name": "field_social_constitution_0_upload_button",
+      "pergunta": null,
+      "rotulo": null,
+      "sanfona": "Documentos para análise comercial",
+      "t": "button:submit",
+      "txt": "Upload",
+      "vis": false
+    },
+    {
+      "id": "edit-field-election-meeting-minutes-0-upload",
+      "name": "files[field_election_meeting_minutes_0]",
+      "pergunta": null,
+      "preenchido": false,
+      "rotulo": "Ata da Assembleia de Eleição da Diretoria (PJ), ou Ata de posse do Prefeito (Pod",
+      "sanfona": "Documentos para análise comercial",
+      "t": "input:file",
+      "vis": false
+    },
+    {
+      "id": "edit-field-election-meeting-minutes-0-upload-button",
+      "name": "field_election_meeting_minutes_0_upload_button",
+      "pergunta": null,
+      "rotulo": null,
+      "sanfona": "Documentos para análise comercial",
+      "t": "button:submit",
+      "txt": "Upload",
+      "vis": false
+    },
+    {
+      "id": "edit-field-condo-constitution-0-upload",
+      "name": "files[field_condo_constitution_0]",
+      "pergunta": null,
+      "preenchido": false,
+      "rotulo": "Contrato/Estatuto Social/ Ata de Assembleia",
+      "sanfona": "Documentos para análise comercial",
+      "t": "input:file",
+      "vis": false
+    },
+    {
+      "id": "edit-field-condo-constitution-0-upload-button",
+      "name": "field_condo_constitution_0_upload_button",
+      "pergunta": null,
+      "rotulo": null,
+      "sanfona": "Documentos para análise comercial",
+      "t": "button:submit",
+      "txt": "Upload",
+      "vis": false
+    },
+    {
+      "id": "edit-field-condo-constitution02-0-upload",
+      "name": "files[field_condo_constitution02_0]",
+      "pergunta": null,
+      "preenchido": false,
+      "rotulo": "Estatuto do condomínio e última Ata de Eleição: deverá ser apresentada para veri",
+      "sanfona": "Documentos para análise comercial",
+      "t": "input:file",
+      "vis": false
+    },
+    {
+      "id": "edit-field-condo-constitution02-0-upload-button",
+      "name": "field_condo_constitution02_0_upload_button",
+      "pergunta": null,
+      "rotulo": null,
+      "sanfona": "Documentos para análise comercial",
+      "t": "button:submit",
+      "txt": "Upload",
+      "vis": false
+    },
+    {
+      "id": "edit-field-condo-convention-0-upload",
+      "name": "files[field_condo_convention_0]",
+      "pergunta": null,
+      "preenchido": false,
+      "rotulo": "Convenção do Condomínio registrada em cartório de registro de imóveis, com a rel",
+      "sanfona": "Documentos para análise comercial",
+      "t": "input:file",
+      "vis": false
+    },
+    {
+      "id": "edit-field-condo-convention-0-upload-button",
+      "name": "field_condo_convention_0_upload_button",
+      "pergunta": null,
+      "rotulo": null,
+      "sanfona": "Documentos para análise comercial",
+      "t": "button:submit",
+      "txt": "Upload",
+      "vis": false
+    },
+    {
+      "id": "edit-field-attachment-e-0-upload",
+      "name": "files[field_attachment_e_0]",
+      "pergunta": null,
+      "preenchido": false,
+      "rotulo": "Anexo E",
+      "sanfona": "Documentos para análise comercial",
+      "t": "input:file",
+      "vis": false
+    },
+    {
+      "id": "edit-field-attachment-e-0-upload-button",
+      "name": "field_attachment_e_0_upload_button",
+      "pergunta": null,
+      "rotulo": null,
+      "sanfona": "Documentos para análise comercial",
+      "t": "button:submit",
+      "txt": "Upload",
+      "vis": false
+    },
+    {
+      "id": "edit-field-attachment-g-0-upload",
+      "name": "files[field_attachment_g_0]",
+      "pergunta": null,
+      "preenchido": false,
+      "rotulo": "Formulário para cadastro de Unidades Consumidoras ( Anexo G) participantes do Si",
+      "sanfona": "Documentos para análise comercial",
+      "t": "input:file",
+      "vis": false
+    },
+    {
+      "id": "edit-field-attachment-g-0-upload-button",
+      "name": "field_attachment_g_0_upload_button",
+      "pergunta": null,
+      "rotulo": null,
+      "sanfona": "Documentos para análise comercial",
+      "t": "button:submit",
+      "txt": "Upload",
+      "vis": false
+    },
+    {
+      "id": "edit-field-solidarity-doc-0-upload",
+      "name": "files[field_solidarity_doc_0]",
+      "pergunta": null,
+      "preenchido": false,
+      "rotulo": "Documento de comprovação de compromisso de solidariedade",
+      "sanfona": "Documentos para análise comercial",
+      "t": "input:file",
+      "vis": false
+    },
+    {
+      "id": "edit-field-solidarity-doc-0-upload-button",
+      "name": "field_solidarity_doc_0_upload_button",
+      "pergunta": null,
+      "rotulo": null,
+      "sanfona": "Documentos para análise comercial",
+      "t": "button:submit",
+      "txt": "Upload",
+      "vis": false
+    },
+    {
+      "id": "edit-field-declaration-cnpj-proof-0-upload",
+      "name": "files[field_declaration_cnpj_proof_0]",
+      "pergunta": null,
+      "preenchido": false,
+      "rotulo": "Declaração de CNPJ para endereço distinto",
+      "sanfona": "Documentos para análise comercial",
+      "t": "input:file",
+      "vis": false
+    },
+    {
+      "id": "edit-field-declaration-cnpj-proof-0-upload-button",
+      "name": "field_declaration_cnpj_proof_0_upload_button",
+      "pergunta": null,
+      "rotulo": null,
+      "sanfona": "Documentos para análise comercial",
+      "t": "button:submit",
+      "txt": "Upload",
+      "vis": false
+    },
+    {
+      "id": "edit-field-other-docs-0-upload",
+      "name": "files[field_other_docs_0][]",
+      "pergunta": null,
+      "preenchido": false,
+      "rotulo": "Adicionar um novo arquivo",
+      "sanfona": "Outros",
+      "t": "input:file",
+      "vis": false
+    },
+    {
+      "id": "edit-field-other-docs-0-upload-button",
+      "name": "field_other_docs_0_upload_button",
+      "pergunta": null,
+      "rotulo": null,
+      "sanfona": "Outros",
+      "t": "button:submit",
+      "txt": "Upload",
+      "vis": false
+    },
+    {
+      "id": "edit-next-send-later",
+      "name": "op",
+      "pergunta": null,
+      "rotulo": null,
+      "sanfona": null,
+      "t": "button:submit",
+      "txt": "Enviar Depois",
+      "vis": true
+    },
+    {
+      "id": "edit-next",
+      "name": "op",
+      "pergunta": null,
+      "rotulo": null,
+      "sanfona": null,
+      "t": "button:submit",
+      "txt": "Avançar",
+      "vis": true
+    }
+  ],
+  "erros": [],
+  "titulo": "60 - Microgeração Distribuída Baixa Tensão - Introdução | Acquia CMS",
+  "url": "https://www.cpfl.com.br/gestao-projetos/node/546581/edit?new=true&step=6"
+}

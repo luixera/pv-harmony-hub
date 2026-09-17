@@ -1,0 +1,262 @@
+{
+  "controles": [
+    {
+      "id": "edit-1",
+      "name": "op",
+      "pergunta": null,
+      "rotulo": null,
+      "sanfona": null,
+      "t": "button:submit",
+      "txt": "Introdução",
+      "vis": true
+    },
+    {
+      "id": "edit-2",
+      "name": "op",
+      "pergunta": null,
+      "rotulo": null,
+      "sanfona": null,
+      "t": "button:submit",
+      "txt": "Dados da unidade consumidora",
+      "vis": true
+    },
+    {
+      "id": "edit-3",
+      "name": "op",
+      "pergunta": null,
+      "rotulo": null,
+      "sanfona": null,
+      "t": "button:submit",
+      "txt": "Dados do projeto",
+      "vis": true
+    },
+    {
+      "id": "edit-4",
+      "name": "op",
+      "pergunta": null,
+      "rotulo": null,
+      "sanfona": null,
+      "t": "button:submit",
+      "txt": "Dados do cliente",
+      "vis": true
+    },
+    {
+      "id": "edit-5",
+      "name": "op",
+      "pergunta": null,
+      "rotulo": null,
+      "sanfona": null,
+      "t": "button:submit",
+      "txt": "Revisão do projeto",
+      "vis": true
+    },
+    {
+      "id": "edit-6",
+      "name": "op",
+      "pergunta": null,
+      "rotulo": null,
+      "sanfona": null,
+      "t": "button:submit",
+      "txt": "Envio de documentos",
+      "vis": true
+    },
+    {
+      "id": "edit-group-protocol-step",
+      "name": "op",
+      "pergunta": null,
+      "rotulo": null,
+      "sanfona": null,
+      "t": "button:submit",
+      "txt": "Protocolo e acompanhamento",
+      "vis": true
+    },
+    {
+      "id": "edit-1",
+      "name": "op",
+      "pergunta": null,
+      "rotulo": null,
+      "sanfona": null,
+      "t": "button:submit",
+      "txt": "Introdução",
+      "vis": true
+    },
+    {
+      "id": "edit-2",
+      "name": "op",
+      "pergunta": null,
+      "rotulo": null,
+      "sanfona": null,
+      "t": "button:submit",
+      "txt": "Dados da unidade consumidora",
+      "vis": true
+    },
+    {
+      "id": "edit-3",
+      "name": "op",
+      "pergunta": null,
+      "rotulo": null,
+      "sanfona": null,
+      "t": "button:submit",
+      "txt": "Dados do projeto",
+      "vis": true
+    },
+    {
+      "id": "edit-4",
+      "name": "op",
+      "pergunta": null,
+      "rotulo": null,
+      "sanfona": null,
+      "t": "button:submit",
+      "txt": "Dados do cliente",
+      "vis": true
+    },
+    {
+      "id": "edit-5",
+      "name": "op",
+      "pergunta": null,
+      "rotulo": null,
+      "sanfona": null,
+      "t": "button:submit",
+      "txt": "Revisão do projeto",
+      "vis": true
+    },
+    {
+      "id": "edit-6",
+      "name": "op",
+      "pergunta": null,
+      "rotulo": null,
+      "sanfona": null,
+      "t": "button:submit",
+      "txt": "Envio de documentos",
+      "vis": true
+    },
+    {
+      "id": "edit-group-protocol-step",
+      "name": "op",
+      "pergunta": null,
+      "rotulo": null,
+      "sanfona": null,
+      "t": "button:submit",
+      "txt": "Protocolo e acompanhamento",
+      "vis": false
+    },
+    {
+      "id": "edit-field-is-mgc-value",
+      "marcado": false,
+      "name": "field_is_mgc[value]",
+      "pergunta": null,
+      "rotulo": "Flag intro: é Conexão de microgeração?",
+      "sanfona": null,
+      "t": "input:checkbox",
+      "valor": "1",
+      "vis": false
+    },
+    {
+      "id": "edit-field-finished-project-value",
+      "marcado": false,
+      "name": "field_finished_project[value]",
+      "pergunta": null,
+      "rotulo": "Projeto finalizado",
+      "sanfona": null,
+      "t": "input:checkbox",
+      "valor": "1",
+      "vis": false
+    },
+    {
+      "id": "edit-field-uc-concession-area-0-value",
+      "name": "field_uc_concession_area[0][value]",
+      "pergunta": null,
+      "preenchido": false,
+      "rotulo": "UC: Área de concessão",
+      "sanfona": null,
+      "t": "input:number",
+      "vis": false
+    },
+    {
+      "id": "edit-field-register-cat-0-value",
+      "name": "field_register_cat[0][value]",
+      "pergunta": null,
+      "preenchido": false,
+      "rotulo": "cat cadastrada",
+      "sanfona": null,
+      "t": "input:text",
+      "vis": false
+    },
+    {
+      "id": "edit-field-uc-tariff-0-value",
+      "name": "field_uc_tariff[0][value]",
+      "pergunta": null,
+      "preenchido": false,
+      "rotulo": "uc_tariff",
+      "sanfona": null,
+      "t": "input:text",
+      "vis": false
+    },
+    {
+      "id": "edit-field-flux-type-none",
+      "marcado": false,
+      "name": "field_flux_type",
+      "pergunta": "Tipo de fluxo",
+      "rotulo": "N/A",
+      "sanfona": null,
+      "t": "input:radio",
+      "valor": "_none",
+      "vis": false
+    },
+    {
+      "id": "edit-field-flux-type-ligao",
+      "marcado": false,
+      "name": "field_flux_type",
+      "pergunta": "Tipo de fluxo",
+      "rotulo": "ligação",
+      "sanfona": null,
+      "t": "input:radio",
+      "valor": "ligação",
+      "vis": false
+    },
+    {
+      "id": "edit-field-flux-type-conexo",
+      "marcado": false,
+      "name": "field_flux_type",
+      "pergunta": "Tipo de fluxo",
+      "rotulo": "conexão",
+      "sanfona": null,
+      "t": "input:radio",
+      "valor": "conexão",
+      "vis": false
+    },
+    {
+      "id": "edit-field-voltage-text-selected-0-value",
+      "name": "field_voltage_text_selected[0][value]",
+      "pergunta": null,
+      "preenchido": false,
+      "rotulo": "Tensão de fornecimento selecionada",
+      "sanfona": null,
+      "t": "input:text",
+      "vis": false
+    },
+    {
+      "id": "edit-next",
+      "name": "op",
+      "pergunta": null,
+      "rotulo": null,
+      "sanfona": null,
+      "t": "button:submit",
+      "txt": "Iniciar",
+      "vis": true
+    },
+    {
+      "id": "edit-next-new-connection",
+      "name": "op",
+      "pergunta": null,
+      "rotulo": null,
+      "sanfona": null,
+      "t": "button:submit",
+      "txt": "Iniciar",
+      "vis": true
+    }
+  ],
+  "erros": [],
+  "titulo": "60 - Microgeração Distribuída Baixa Tensão - Introdução | Acquia CMS",
+  "url": "https://www.cpfl.com.br/gestao-projetos/node/add/project_60"
+}
