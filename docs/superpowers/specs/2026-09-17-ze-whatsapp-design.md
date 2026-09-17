@@ -262,9 +262,10 @@ dono onde indicado. Identificadores em português (módulo novo).
 
 - A API da Anthropic aceita imagem e PDF, **não áudio**. Transcrição por um
   serviço de fala-para-texto atrás de `_shared/stt.ts` (`transcrever(bytes, mime) → texto`),
-  provedor por `STT_PROVIDER` — **decisão pendente do usuário**: Groq
-  (Whisper large-v3-turbo; rápido e barato, pt-BR bom) ou OpenAI
-  (`gpt-4o-transcribe`/Whisper). Trocar = mudar o secret.
+  provedor por `STT_PROVIDER` — **decisão do usuário (17/09): Groq**
+  (`whisper-large-v3-turbo`, endpoint compatível com o formato da OpenAI,
+  `language=pt`). OpenAI fica como segundo provedor da mesma interface;
+  trocar = mudar o secret.
 - Política `ze_config.transcrever_audios`: `todos` (chats individuais; grupos
   seguem `ignorar_grupos`), `so_meus` (só o self-chat), `nenhum`. Limite 5 min
   por áudio; acima disso `[áudio longo, N min]`.
@@ -385,10 +386,10 @@ SQL em transação com rollback para RPCs e RLS; fixtures da Evolution.
   Plano C: segundo chip.
 - **JIDs `@lid`** — o WhatsApp vem trocando `@s.whatsapp.net` por `@lid` em
   alguns fluxos; guardar os dois e casar por telefone quando possível.
-- **Provedor de transcrição** — decisão do usuário (§9); conta e chave
-  criadas por ele, chave só em secret.
-- **Modelo padrão** — spec adota `claude-opus-5` (mesmo patamar do Bidu) com
-  esforço `medium`; Sonnet 5 é troca de configuração, não de código.
+- **Provedor de transcrição** — Groq (decidido 17/09); conta e chave
+  criadas pelo usuário, chave só em secret (`STT_API_KEY`).
+- **Modelo padrão** — `claude-opus-5` com esforço `medium` (confirmado pelo
+  usuário em 17/09); Sonnet 5 é troca de configuração, não de código.
 - **Ban da Meta** — volume baixíssimo (só leitura + mensagens para si mesmo).
 - **Evolution/Baileys quebram com updates do WhatsApp** — o workflow de
   atualização é o mesmo da instalação; `situacao` + sino avisam.
