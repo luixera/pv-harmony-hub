@@ -27,6 +27,7 @@ as skills certas. Regra do usuário (set/2026): **roda em todo prompt.**
 | "terminei?" / antes de dizer pronto | `verification-before-completion` | prova (saída de comando), não promessa |
 | pedido de revisão | `requesting-code-review` / `receiving-code-review` | — |
 | trabalho paralelo em várias frentes | `dispatching-parallel-agents` / `using-git-worktrees` | só se o usuário pedir agentes |
+| "crie uma skill / melhore essa skill / a skill não dispara" | `skill-creator` (oficial anthropics) — captar intenção, entrevistar, rascunhar, testar com evals, otimizar a descrição | `writing-skills` (TDD do texto da skill) → `quick_validate.py` → instalar em `.claude/skills/` → registrar aqui na §3 |
 
 ## 3. find-skills — antes de construir do zero
 
@@ -51,6 +52,17 @@ Reportar ao usuário o que foi encontrado, mesmo quando nada serve.
   Functions, Storage, Vault, cron, logs.
 - `supabase-postgres-best-practices` (oficial) — **antes** de escrever
   migração, tabela, índice, política, função ou job no Postgres.
+- `skill-creator` (oficial `anthropics/skills`, instalada em 16/09/2026) —
+  criar, editar, medir e otimizar skills. Rotina da casa ao criar uma skill:
+  1. `find-skills` primeiro — só criar do zero se não houver oficial/1K+;
+  2. `skill-creator` → captar intenção, entrevistar, escrever `SKILL.md`,
+     casos de teste e evals (`scripts/run_eval.py`, viewer);
+  3. `writing-skills` — teste vermelho (Claude sem a skill) → verde (com);
+  4. `python .claude/skills/skill-creator/scripts/quick_validate.py <pasta>`
+     antes de dar por pronta (scripts são Python — instalar se faltar);
+  5. `scripts/improve_description.py` quando a skill não dispara;
+  6. skill do repositório fica em `.claude/skills/<nome>/` (commit), entra
+     na §3 desta tabela e ganha memória do módulo.
 
 Procurado e descartado em 13/09/2026: skills de Playwright/scraping — a
 mais instalada tinha 760 instalações e autor desconhecido; não passa no
