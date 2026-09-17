@@ -2511,7 +2511,7 @@ export function ProjectModal({ projectId, onClose, initialTab = 'geral', viewAsC
                 )}
                 {activeTab === 'bidu' && temBidu && (
                   <div style={{ padding: '18px 22px' }}>
-                    <BiduPanel projectId={project.id} />
+                    <BiduPanel projectId={project.id} project={project} />
                   </div>
                 )}
                 {activeTab === 'historico' && (

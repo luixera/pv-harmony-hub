@@ -22,13 +22,9 @@ import { gerarFormularioEnel, baixarArquivo } from '@/utils/formFill/gerarFormul
 import { ehFormularioCemig, gerarFormularioCemig } from '@/utils/formFill/gerarFormularioCemig';
 import { PerguntasCemigDialog } from '@/components/projects/PerguntasCemigDialog';
 import type { RespostasCemig } from '@/utils/formFill/cemigForm';
-import { useEquipmentCatalog } from '@/hooks/useEquipmentCatalog';
 import { useDocuments } from '@/hooks/useDocuments';
 import { supabase } from '@/integrations/supabase/client';
-import { useEntryRules, resolveEntryRule, entryRuleValues } from '@/hooks/useEntryRules';
-import { useEngineeringRuleMap } from '@/hooks/useEngineeringRules';
-import { engineeringTemplateValues } from '@/utils/engineering/templateValues';
-import { buildProjectValues as buildProjectValues_ } from '@/utils/projectValues';
+import { useValoresDoProjeto } from '@/hooks/useValoresDoProjeto';
 import { logEvent } from '@/lib/tracking';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -167,10 +163,8 @@ export function GenerateDocumentDialog({
   const { data: templates = [], isLoading } = useConcessionaireTemplates(
     project.concessionaire_id ?? undefined,
   );
-  const { data: entryRules = [] } = useEntryRules(project.concessionaire_id ?? undefined);
-  const { ruleMap } = useEngineeringRuleMap();
-  // catálogo compartilhado — de onde vem o nº do INMETRO de cada modelo
-  const { data: catalogo = [] } = useEquipmentCatalog();
+  // fonte única das variáveis do projeto (a mesma que o Engenheiro Bidu usa)
+  const { construir: construirValores } = useValoresDoProjeto(project);
 
   // ── Foto do padrão de entrada, para embutir no memorial ────────────────────
   // O documento já é coletado no projeto (tipo "Foto do padrão de entrada").
@@ -218,60 +212,11 @@ export function GenerateDocumentDialog({
     .filter(([k, v]) => v !== originalValues[k]).length;
 
   // ── Template values builder ────────────────────────────────────────────────
-  // Delega para a fonte única de variáveis (a mesma usada pelo pacote do
-  // projetista), só acrescentando o que é específico daqui: os dados da
-  // revisão selecionada e as colunas do padrão de entrada da concessionária.
-  /**
-   * Nº do INMETRO do módulo e do inversor, buscados no Catálogo.
-   *
-   * Casa pelo vínculo quando ele ainda bate com o modelo escrito no projeto, e
-   * cai para marca+modelo quando não bate — mesma precaução da aba Unifilar:
-   * editar o equipamento à mão troca o texto e deixa o vínculo velho para trás.
-   */
-  const inmetroValues = (e: { inverter_brand?: string | null; inverter_model?: string | null;
-                              module_brand?: string | null; module_model?: string | null } | null | undefined) => {
-    const norm = (s?: string | null) => (s ?? '').trim().toUpperCase();
-    const acha = (tipo: 'inverter' | 'module', marca?: string | null, modelo?: string | null) => {
-      const mo = norm(modelo);
-      if (!mo) return null;
-      const doTipo = catalogo.filter(i => i.type === tipo);
-      return doTipo.find(i => norm(i.model) === mo && norm(i.brand) === norm(marca))
-          ?? doTipo.find(i => norm(i.model) === mo)
-          ?? null;
-    };
-    return {
-      inmetro_modulo: acha('module', e?.module_brand, e?.module_model)?.inmetro_number ?? '',
-      inmetro_inversor: acha('inverter', e?.inverter_brand, e?.inverter_model)?.inmetro_number ?? '',
-    };
-  };
-
-  const buildProjectValues = (): Record<string, string> => {
-    const g = revisionData?.general_data ?? project.generalData;
-    const e = revisionData?.equipment ?? project.equipment;
-    const entryRule = resolveEntryRule(entryRules, g);
-
-    return {
-      ...entryRuleValues(entryRule),
-      // variáveis de engenharia (arranjo, bitolas, disjuntores) — Rules Engine
-      ...engineeringTemplateValues({
-        totalModules: e?.module_quantity,
-        modulePowerW: e?.module_power,
-        inverterPowerKw: e?.inverter_power,
-        inverterCount: e?.inverter_quantity,
-        phaseType: g?.phase_type,
-      }, ruleMap),
-      ...buildProjectValues_(project, {
-        generalData: revisionData?.general_data,
-        equipment:   revisionData?.equipment,
-      }),
-      // O nº do INMETRO é do MODELO e mora no Catálogo de Equipamentos — o
-      // projeto guarda só marca/modelo. Resolve aqui, onde o catálogo está
-      // disponível, em vez de duplicar o número em cada projeto.
-      ...inmetroValues(e),
-      // tag de IMAGEM: no template escreve-se {%foto_padrao_entrada}
-      foto_padrao_entrada: fotoPadrao,
-    };
-  };
+  // Fonte única (`useValoresDoProjeto`): variáveis gerais, colunas do padrão de
+  // entrada, engenharia e INMETRO. Daqui só entram os dados da revisão
+  // selecionada e a foto do padrão (tag de IMAGEM: {%foto_padrao_entrada}).
+  const buildProjectValues = (): Record<string, string> =>
+    construirValores(revisionData, { foto_padrao_entrada: fotoPadrao });
 
   // ── Debounced reactive preview ─────────────────────────────────────────────
   useEffect(() => {

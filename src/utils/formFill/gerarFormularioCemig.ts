@@ -25,11 +25,12 @@ export interface ResultadoCemig extends FormularioGerado {
   avisos: string[];
 }
 
-export function gerarFormularioCemig(
-  modelo: ArrayBuffer,
-  valoresDoProjeto: Record<string, string>,
-  respostas: RespostasCemig,
-): ResultadoCemig {
+/**
+ * O que a CEMIG devolveria reprovado: coordenada fora da faixa do fuso e
+ * campos marcados com asterisco vazios. Separado do gerador para a tela (e o
+ * Bidu) mostrarem as pendências ANTES de gerar o arquivo.
+ */
+export function avisosFormularioCemig(valoresDoProjeto: Record<string, string>, respostas: RespostasCemig): string[] {
   const v = valoresFormularioCemig(valoresDoProjeto, respostas);
   const avisos: string[] = [];
 
@@ -53,6 +54,16 @@ export function gerarFormularioCemig(
     avisos.push(`Sem preencher no cadastro do projeto: ${faltando.join(', ')}. `
       + 'A CEMIG marca esses campos como obrigatórios.');
   }
+  return avisos;
+}
+
+export function gerarFormularioCemig(
+  modelo: ArrayBuffer,
+  valoresDoProjeto: Record<string, string>,
+  respostas: RespostasCemig,
+): ResultadoCemig {
+  const v = valoresFormularioCemig(valoresDoProjeto, respostas);
+  const avisos = avisosFormularioCemig(valoresDoProjeto, respostas);
 
   const sufixo = (valoresDoProjeto.codigo_projeto || 'projeto').replace(/[^\w-]/g, '');
   return {

@@ -1,8 +1,13 @@
-import { useState, useRef, useEffect } from 'react';
-import { HardHat, Send, Loader2, GraduationCap, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
+import { useState, useRef, useEffect, useMemo } from 'react';
+import { HardHat, Send, Loader2, GraduationCap, Trash2, ChevronDown, ChevronUp, FileSpreadsheet } from 'lucide-react';
 import {
-  useBiduMessages, useBiduSkills, useFalarComBidu, useDeleteBiduSkill,
+  useBiduMessages, useBiduSkills, useFalarComBidu, useDeleteBiduSkill, useBiduPreencherCemig, projetoDaCemig,
 } from '@/hooks/useBidu';
+import type { ProjectWithDetails } from '@/hooks/useProjects';
+import { useValoresDoProjeto } from '@/hooks/useValoresDoProjeto';
+import { proporRespostasCemig, type PropostaCemig, type RespostasInformadas } from '@/utils/bidu/proporRespostasCemig';
+import type { ResultadoCemig } from '@/utils/formFill/gerarFormularioCemig';
+import { BiduFormularioCemigDialog } from '@/components/projects/BiduFormularioCemigDialog';
 
 /**
  * Painel do ENGENHEIRO BIDU dentro do projeto.
@@ -12,18 +17,47 @@ import {
  * banco e passa a valer nas próximas conversas — o "mando lá e ele aprende"
  * que o usuário pediu.
  *
- * As funções pesadas (preencher o formulário da CEMIG, montar a prancha de
- * situação) entram aqui como botões nas próximas etapas do escopo.
+ * As funções pesadas entram aqui como AÇÕES: a primeira é preencher o
+ * formulário da CEMIG (botão, ou pedido no chat) — ele propõe as três
+ * respostas que o cadastro não tem, a pessoa confirma, e o arquivo vai para
+ * os documentos do projeto com comentário dele no card. A prancha de
+ * situação e a posição dos módulos vêm depois.
  */
-export function BiduPanel({ projectId }: { projectId?: string }) {
+export function BiduPanel({ projectId, project }: { projectId?: string; project?: ProjectWithDetails | null }) {
   const { data: mensagens = [], isLoading } = useBiduMessages(projectId);
   const { data: habilidades = [] } = useBiduSkills();
   const falar = useFalarComBidu(projectId);
   const apagarHabilidade = useDeleteBiduSkill();
+  const { construir: construirValores } = useValoresDoProjeto(project);
+  const preencherCemig = useBiduPreencherCemig(project);
 
   const [texto, setTexto] = useState('');
   const [verHabilidades, setVerHabilidades] = useState(false);
   const fimDaLista = useRef<HTMLDivElement>(null);
+
+  // ── Ação: formulário da CEMIG ────────────────────────────────────────────────
+  const ehCemig = projetoDaCemig(project);
+  const [cemigAberto, setCemigAberto] = useState(false);
+  const [proposta, setProposta] = useState<PropostaCemig | null>(null);
+  const [resultadoCemig, setResultadoCemig] = useState<ResultadoCemig | null>(null);
+  const valores = useMemo(() => (project ? construirValores() : {}), [project, construirValores]);
+
+  /** Abre o diálogo com a proposta do Bidu (o que a pessoa disse no chat entra por cima). */
+  const abrirFormularioCemig = (informado: RespostasInformadas = {}) => {
+    if (!project) return;
+    const e = project.equipment;
+    const kwModulos = e?.module_power && e?.module_quantity ? (e.module_power * e.module_quantity) / 1000 : null;
+    const kwInversores = e?.inverter_power && e?.inverter_quantity ? e.inverter_power * e.inverter_quantity : null;
+    const potenciaKw = [kwModulos, kwInversores].filter((n): n is number => n != null && n > 0).sort((a, b) => a - b)[0] ?? null;
+    const gd = project.generalData as (Record<string, unknown> | undefined);
+    setProposta(proporRespostasCemig({
+      potenciaKw,
+      categoriaEscolhidaManual: !!gd?.entry_rule_id,
+      textoLivre: `${project.title ?? ''} ${(gd?.observations as string | null) ?? ''}`,
+    }, habilidades, informado));
+    setResultadoCemig(null);
+    setCemigAberto(true);
+  };
 
   useEffect(() => {
     fimDaLista.current?.scrollIntoView({ behavior: 'smooth' });
@@ -36,6 +70,11 @@ export function BiduPanel({ projectId }: { projectId?: string }) {
     falar.mutate({
       mensagem: msg,
       historico: mensagens.map(m => ({ autor: m.autor, conteudo: m.conteudo })),
+    }, {
+      // o Bidu entendeu o pedido como uma AÇÃO dele: executa
+      onSuccess: (r) => {
+        if (r.acao === 'preencher_formulario_cemig' && ehCemig) abrirFormularioCemig(r.parametros ?? {});
+      },
     });
   };
 
@@ -52,6 +91,16 @@ export function BiduPanel({ projectId }: { projectId?: string }) {
             Projetista automático · {habilidades.length} habilidade{habilidades.length === 1 ? '' : 's'}
           </p>
         </div>
+        {ehCemig && project && (
+          <button
+            onClick={() => abrirFormularioCemig()}
+            disabled={preencherCemig.isPending}
+            title="O Bidu preenche o Formulário MicroGD com os dados do projeto e anexa nos documentos"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 9px', borderRadius: 7, border: 'none', background: '#2D7A3A', color: '#fff', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+          >
+            <FileSpreadsheet size={12} /> Preencher formulário da CEMIG
+          </button>
+        )}
         <button
           onClick={() => setVerHabilidades(v => !v)}
           style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 9px', borderRadius: 7, border: '1px solid #C9DCC9', background: '#fff', color: '#2D7A3A', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
@@ -152,6 +201,16 @@ export function BiduPanel({ projectId }: { projectId?: string }) {
           <Send size={14} />
         </button>
       </div>
+
+      <BiduFormularioCemigDialog
+        open={cemigAberto}
+        onOpenChange={setCemigAberto}
+        proposta={proposta}
+        valores={valores}
+        gerando={preencherCemig.isPending}
+        resultado={resultadoCemig}
+        onGerar={respostas => preencherCemig.mutate({ valores, respostas }, { onSuccess: r => setResultadoCemig(r) })}
+      />
     </div>
   );
 }

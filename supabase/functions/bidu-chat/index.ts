@@ -103,6 +103,21 @@ faz, de forma específica e curta:
 Perguntar não é fraqueza aqui; é o comportamento certo. Entregar um número
 inventado é o erro grave.
 
+O QUE VOCÊ SABE EXECUTAR (ações — a tela executa quando você devolve "acao"):
+- "preencher_formulario_cemig": preencher o Formulário MicroGD da CEMIG com os
+  dados do projeto aberto e anexá-lo nos documentos do projeto. Use quando o
+  usuário pedir para preencher/gerar/fazer o formulário (ou a planilha) da
+  CEMIG — inclusive com outras palavras ("manda o MicroGD", "faz o formulário
+  padrão"). Precisa de um projeto aberto e de a concessionária ser a CEMIG;
+  se não for o caso, explique isso em vez de devolver a ação.
+  As três respostas que o cadastro não tem (FAST TRACK, Grid Zero, tipo de
+  solicitação) a tela propõe pelas suas habilidades e a pessoa confirma —
+  você NÃO precisa perguntá-las. Se o usuário já disse alguma na mensagem
+  ("com fast track sim", "grid zero não", "sem alteração de potência" /
+  "nova UC"), passe em "parametros"; senão deixe null.
+  Na "resposta", diga curto que vai preencher e que ela confirma as três
+  respostas na tela.
+
 QUANDO A MENSAGEM FOR UM ENSINAMENTO:
 Se a mensagem estabelece uma regra, um procedimento ou uma preferência para o
 futuro ("sempre que...", "na CEMIG faça...", "daqui pra frente..."), ou se ela
@@ -114,11 +129,16 @@ Responda SEMPRE em JSON puro, sem cercas de código, neste formato:
 {
   "resposta": "sua resposta em português",
   "habilidade": { "titulo": "resumo curto", "instrucao": "a regra completa" } | null,
-  "pergunta": true | false
+  "pergunta": true | false,
+  "acao": "preencher_formulario_cemig" | null,
+  "parametros": { "fastTrack": "Sim"|"Não", "gridZero": "Sim"|"Não", "tipoSolicitacao": 1|2|3|4 } | null
 }
 "habilidade" só vem preenchida quando a mensagem for de fato um ensinamento
 (ou a resposta a uma pergunta sua). "pergunta" é true quando sua resposta
-termina perguntando como executar algo.`
+termina perguntando como executar algo. "acao" só quando o usuário pediu uma
+das ações acima; em "parametros" só o que ele disse explicitamente
+("tipoSolicitacao": 1 = UC existente COM alteração de potência, 2 = SEM
+alteração, 3 = GD existente com alteração da potência instalada, 4 = nova UC).`
 }
 
 Deno.serve(async (req) => {
@@ -217,7 +237,10 @@ Deno.serve(async (req) => {
 
     // O modelo às vezes embrulha o JSON em cercas de código, mesmo instruído.
     const limpo = texto.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')
-    let parsed: { resposta?: string; habilidade?: { titulo: string; instrucao: string } | null; pergunta?: boolean }
+    let parsed: {
+      resposta?: string; habilidade?: { titulo: string; instrucao: string } | null; pergunta?: boolean
+      acao?: string | null; parametros?: Record<string, unknown> | null
+    }
     try {
       parsed = JSON.parse(limpo)
     } catch {
@@ -225,11 +248,24 @@ Deno.serve(async (req) => {
       parsed = { resposta: texto, habilidade: null }
     }
 
+    // só as ações que a tela sabe executar passam; o resto é conversa
+    const ACOES = new Set(['preencher_formulario_cemig'])
+    const acao = typeof parsed.acao === 'string' && ACOES.has(parsed.acao) ? parsed.acao : null
+    const parametros = acao && parsed.parametros && typeof parsed.parametros === 'object'
+      ? {
+          fastTrack: parsed.parametros.fastTrack ?? undefined,
+          gridZero: parsed.parametros.gridZero ?? undefined,
+          tipoSolicitacao: parsed.parametros.tipoSolicitacao ?? undefined,
+        }
+      : null
+
     return json({
       ok: true,
       resposta: parsed.resposta ?? texto,
       habilidade: parsed.habilidade ?? null,
       pergunta: parsed.pergunta === true,
+      acao,
+      parametros,
       uso: data.usage ?? null,
     })
   } catch (e) {
