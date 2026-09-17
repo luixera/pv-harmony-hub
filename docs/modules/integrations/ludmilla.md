@@ -281,6 +281,55 @@ pede login (log com `durou_min`). `ludmilla_sessao_viva(account, viva)` →
 desde …". Quanto tempo a Elektro mantém a sessão é a medida que o aceite
 vai dar.
 
+## Criar projeto na CPFL — "60 - Microgeração Distribuída BT" (16/09/2026)
+
+A primeira ESCRITA da Ludmilla num portal, pedida pelo botão **Criar na
+CPFL** no modal do projeto (só projetos cuja concessionária contém "CPFL",
+só equipe GD Manager). Run `criar_projeto` em `portal_sync_runs`, com
+`dados = { project_id, autonomia? }`; cada etapa vira uma linha em
+`portal_criacao_passos` (print no bucket, Realtime no modal e na /ludmilla).
+
+Fonte do roteiro: **"Roteiro CPFL: Orçamento de Conexão MMGD"** (PDF do
+usuário, feito de duas gravações no Chrome) — seletores reais do Drupal.
+O conector é `worker/ludmilla/src/conectores/cpfl-criar.ts`.
+
+| Passo | Nome | O que faz | Seletores-chave |
+|---|---|---|---|
+| 1 | `introducao` | login B2C (`logarNaCpfl`) → abre `node/add/project_60` direto; se cair na Introdução, "Conexão de microgeração → Iniciar" (índice 1) | título da aba termina em "Dados da unidade consumidora"; `#edit-field-flux-type-conexo` |
+| 2 | `dados_uc` | radio **Orçamento de Conexão** (pelo rótulo — a descrição do Estimado cita o outro), 3 × Não em "Necessidades", UC + **Buscar**, espera os campos cinza, confere Empresa = CPFL, Lat/Long em DMS `20° 52' 45.7"`, 2 × Não, Avançar | `#edit-field-quotation-options-60-connection`, `#edit-field-consumer-unit-0-consumer-unit-code`, `#edit-field-consumer-unit-0-send-uc-code`, `[id^="edit-field-consumer-unit-0-latitude"]`, `#edit-next` |
+| 3 | `dados_projeto` | título, alteração de carga = Não, data (hoje + 30), compensação "Geração Local", categoria (B1… **resolvida como no front**), padrão de entrada GED 13, aéreo, fases, cabos/caixa/carga/disjuntor da regra, geração (ENERGIA SOLAR, módulos em kWp, área = módulos × 3 m², inversores) | `title[0][value]`, `field_*`, `[name$="[modules_qt]"]`… |
+| 4 | `dados_cliente` | CPF (Consultar se vazio), celular/e-mail se faltarem, endereços = "Endereço da Instalação", 2 × Sim (documentos com o orçamento; contagem de prazo REN 1.000) | radios pelo rótulo dentro do bloco da pergunta |
+| 5 | `revisao` | print da revisão e **Salvar** → URL `/node/<id>/edit` → `projects.cpfl_node_id` | `#edit-submit` |
+| 6 | `concluido` | **para** em "Envio de documentos": arquivos ou "Enviar Depois" é decisão da pessoa | — |
+
+**Autonomia** (`DadosCriacaoCpfl.autonomia`, padrões em `AUTONOMIA_PADRAO`):
+respostas que a Ludmilla dá sozinha num projeto de GD comum
+(`opcao_orcamento`, `mais_de_um_medidor`, `ramal_subterraneo`,
+`medicao_no_poste`, `mudanca_ponto_entrega`, `extensao_fase`,
+`alteracao_carga`, `sistema_compensacao`, `outorga_registro`,
+`padrao_entrada`, `tipo_atendimento`, `fonte_geradora`, endereços,
+`autoriza_documentos`, `contagem_prazo_vistoria`, `dias_para_ligacao`,
+`m2_por_modulo`, e opcionais `carga_instalada_kw`, `disjuntor_a`,
+`area_arranjos_m2`). O front pode sobrescrever em `run.dados.autonomia`.
+Pergunta que não está no roteiro ("Já possui projeto aprovado?", "Medidor
+do Vizinho?") → o passo falha com a pergunta e a chave a responder
+(`ja_possui_projeto_aprovado`, `uc_medidor_vizinho`); o modal mostra.
+
+**Regras aprendidas a ferro (16/09):** escolher SEMPRE pelo texto do rótulo
+(Sim/Não têm código invertido entre perguntas: `-0` é Não em "mais de 1
+medidor", `-1` é Não em "ponto de entrega"); preencher só a cópia VISÍVEL
+do campo (o Drupal guarda cópias escondidas por opção condicional);
+campos cinza não se digitam; cada Avançar recarrega e a etapa aparece só
+no título. Em erro de passo o robô sobe `criacao-passo-N.html` e
+`.campos.json` (mapa name/id/rótulo/visível) na pasta do run — é por aí que
+o roteiro se corrige. Erro de criação **não** mexe em
+`portal_accounts.ultimo_erro` (`20260916200000`): a varredura é outra coisa.
+
+Dados: RPC `ludmilla_dados_criacao_cpfl` v2 (`20260916210000`) — UC,
+titular com e-mail/telefone, módulos e inversores de `project_equipment`,
+padrão de entrada de `concessionaire_entry_rules` (regra escolhida à mão >
+menor disjuntor da classe que comporta o do projeto > maior da classe).
+
 ## Próximos
 
 1. **Aceite da estação** no PC do coworking: instalar, "Verificar agora" na

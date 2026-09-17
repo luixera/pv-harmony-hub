@@ -2,24 +2,28 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { decimalParaDms, parsearCoordenadas } from '../src/dms.js';
 
-test('converte latitude sul negativa', () => {
-  assert.equal(decimalParaDms(-23.207407, 'lat'), "23°12'26.7\"S");
+// Formato do portal CPFL (gravação de 16/09/2026): 20° 52' 45.7" — sem letra
+// de hemisfério; a área da CPFL é toda Sul/Oeste, o sinal não é digitado.
+
+test('converte latitude sul negativa no formato do portal', () => {
+  assert.equal(decimalParaDms(-20.879367, 'lat'), "20° 52' 45.7\"");
 });
 
-test('converte longitude oeste negativa', () => {
-  assert.equal(decimalParaDms(-46.891502, 'lng'), "46°53'29.4\"W");
+test('converte longitude oeste negativa no formato do portal', () => {
+  assert.equal(decimalParaDms(-49.574528, 'lng'), "49° 34' 28.3\"");
 });
 
-test('converte latitude norte positiva', () => {
-  assert.equal(decimalParaDms(22.906847, 'lat'), "22°54'24.6\"N");
-});
-
-test('converte longitude leste positiva', () => {
-  assert.equal(decimalParaDms(43.172897, 'lng'), "43°10'22.4\"E");
+test('valor positivo sai igual (só o módulo)', () => {
+  assert.equal(decimalParaDms(22.906847, 'lat'), "22° 54' 24.6\"");
 });
 
 test('zero graus', () => {
-  assert.equal(decimalParaDms(0, 'lat'), "0°0'0.0\"N");
+  assert.equal(decimalParaDms(0, 'lat'), "0° 0' 0.0\"");
+});
+
+test('segundos que arredondam para 60 sobem o minuto', () => {
+  // 10°29'59.97" → arredonda para 10°30'0.0"
+  assert.equal(decimalParaDms(-10.499992, 'lat'), "10° 30' 0.0\"");
 });
 
 test('parsearCoordenadas extrai lat/lng do formato do banco', () => {

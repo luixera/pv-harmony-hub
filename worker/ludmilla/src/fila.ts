@@ -127,13 +127,19 @@ export async function credenciais(accountId: string): Promise<Credenciais> {
 
 // ── Criação de projeto na CPFL ───────────────────────────────────────────────
 
-import type { DadosCriacaoCpfl } from './conectores/cpfl-criar.js';
+import { AUTONOMIA_PADRAO, type DadosCriacaoCpfl } from './conectores/cpfl-criar.js';
 
-/** Carrega todos os dados necessários para criar um projeto na CPFL. */
+/**
+ * Carrega o que o formulário da CPFL pede (RPC ludmilla_dados_criacao_cpfl):
+ * UC, titular com contato, módulos, inversores e o padrão de entrada já
+ * resolvido como no front. `autonomiaRun` são respostas que o front mandou
+ * em run.dados.autonomia — vencem os padrões de GD.
+ */
 export async function dadosCriacaoCpfl(
   runId: string,
   projectId: string,
   tenantId: string,
+  autonomiaRun: Record<string, string> = {},
 ): Promise<DadosCriacaoCpfl> {
   const { data, error } = await supabase().rpc('ludmilla_dados_criacao_cpfl' as never, {
     p_run_id:     runId,
@@ -142,26 +148,40 @@ export async function dadosCriacaoCpfl(
   if (error) throw new Error(`Não consegui carregar dados para criação: ${error.message}`);
   const d = ((data ?? []) as Record<string, unknown>[])[0];
   if (!d) throw new Error('Dados de criação não encontrados para o projeto.');
-  // Defaults de autonomia para projetos de GD (sobrescritos pelo que vier em dados do run)
-  const autonomiaBase: Record<string, string> = {
-    tipo_conexao:    'conexao', // Introdução: "Conexão de microgeração" (UC existente)
-    opcao_orcamento: 'conexao', // Dados da UC: "Orçamento de Conexão" (não o Estimado)
-  };
-  const autonomiaRun = (d['autonomia'] ?? {}) as Record<string, string>;
+
+  const s = (k: string) => (d[k] == null ? '' : String(d[k]));
+  const n = (k: string) => (d[k] == null || d[k] === '' ? null : Number(d[k]));
+  const extra = (d['rule_extra'] ?? {}) as Record<string, string>;
+  const demanda = Object.entries(extra).find(([k]) => /demanda/i.test(k))?.[1] ?? null;
 
   return {
-    project_id:    projectId,
-    tenant_id:     tenantId,
-    run_id:        runId,
-    uc_number:     String(d['uc_number'] ?? ''),
-    coordinates:   String(d['coordinates'] ?? ''),
-    customer_name: String(d['customer_name'] ?? ''),
-    customer_cpf:  String(d['customer_cpf'] ?? ''),
-    project_title: String(d['project_title'] ?? ''),
-    modulos:       (d['modulos'] ?? []) as { quantidade: number; potencia_wp: number }[],
-    entry_phase:   d['entry_phase'] ? String(d['entry_phase']) : null,
-    entry_breaker: d['entry_breaker'] ? String(d['entry_breaker']) : null,
-    autonomia:     { ...autonomiaBase, ...autonomiaRun },
+    project_id:     projectId,
+    tenant_id:      tenantId,
+    run_id:         runId,
+    uc_number:      s('uc_number'),
+    coordinates:    s('coordinates'),
+    customer_name:  s('customer_name'),
+    customer_cpf:   s('customer_cpf'),
+    customer_email: s('customer_email'),
+    customer_phone: s('customer_phone'),
+    project_title:  s('project_title'),
+    is_rural:       d['is_rural'] === true,
+    concessionaire: s('concessionaire'),
+    entry_phase:    s('entry_phase') || null,
+    entry_breaker:  s('entry_breaker') || null,
+    modulo: n('module_quantity') ? {
+      fabricante: s('module_brand'), modelo: s('module_model'),
+      quantidade: n('module_quantity') ?? 0, potencia_wp: n('module_power_wp') ?? 0,
+    } : null,
+    inversor: n('inverter_quantity') ? {
+      fabricante: s('inverter_brand'), modelo: s('inverter_model'),
+      quantidade: n('inverter_quantity') ?? 0, potencia_kw: n('inverter_power_kw') ?? 0,
+    } : null,
+    padrao: s('rule_categoria') ? {
+      categoria: s('rule_categoria'), num_fases: n('rule_num_fases'), bitola: s('rule_bitola') || null,
+      disjuntor: n('rule_disjuntor'), caixa: s('rule_caixa') || null, demanda_kw: demanda,
+    } : null,
+    autonomia: { ...AUTONOMIA_PADRAO, ...autonomiaRun },
   };
 }
 

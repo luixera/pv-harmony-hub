@@ -1,20 +1,17 @@
 /**
- * Conversão de graus decimais para graus-minutos-segundos (DMS).
- * O portal CPFL exige DMS nos campos Latitude e Longitude.
- * Exemplo: -23.207407 → "23°12'26.7\"S"
+ * Conversão de graus decimais para graus-minutos-segundos (DMS), no formato
+ * que o portal CPFL aceita nos campos Latitude/Longitude (gravação de
+ * 16/09/2026): `20° 52' 45.7"` — módulo do valor, sem letra de hemisfério.
  */
-export function decimalParaDms(decimal: number, eixo: 'lat' | 'lng'): string {
+export function decimalParaDms(decimal: number, _eixo: 'lat' | 'lng'): string {
   const abs = Math.abs(decimal);
-  const graus = Math.floor(abs);
+  let graus = Math.floor(abs);
   const minutosDec = (abs - graus) * 60;
-  const minutos = Math.floor(minutosDec);
-  const segundos = (minutosDec - minutos) * 60;
-
-  const hemisferio = eixo === 'lat'
-    ? (decimal >= 0 ? 'N' : 'S')
-    : (decimal >= 0 ? 'E' : 'W');
-
-  return `${graus}°${minutos}'${segundos.toFixed(1)}"${hemisferio}`;
+  let minutos = Math.floor(minutosDec);
+  let segundos = Math.round((minutosDec - minutos) * 600) / 10;
+  if (segundos >= 60) { segundos -= 60; minutos += 1; }
+  if (minutos >= 60) { minutos -= 60; graus += 1; }
+  return `${graus}° ${minutos}' ${segundos.toFixed(1)}"`;
 }
 
 /** Extrai lat/lng do formato "{lat}, {lng}" gravado no banco. Retorna null se inválido. */
