@@ -151,3 +151,37 @@ empilhados:
 É o alvo do que o Bidu deve gerar. O sistema já tem a peça mais difícil: o
 recorte de satélite embutido (`cadEngine/locationMap.ts`) e o editor de cena
 com elementos arrastáveis.
+
+## O Bidu preenche e anexa (17/09/2026)
+
+Até aqui o formulário só saía pela aba Documentos → Gerar documento, com as
+três perguntas em branco e o arquivo indo para download — e o Engenheiro Bidu,
+que só conversava, respondia a "preenche o formulário da CEMIG" perguntando
+como se faz. Agora é uma **ação dele** (spec:
+`docs/superpowers/specs/2026-09-17-bidu-formulario-cemig-design.md`):
+
+- **Disparo**: botão "Preencher formulário da CEMIG" no painel do Bidu (só
+  quando a concessionária do projeto é CEMIG) ou pedido no chat — o
+  `bidu-chat` devolve `acao: "preencher_formulario_cemig"` e, se a pessoa já
+  disse alguma resposta na mensagem, `parametros`.
+- **Proposta das 3 respostas** (`src/utils/bidu/proporRespostasCemig.ts`,
+  puro, 10 testes vitest): o que a pessoa disse > habilidades ensinadas
+  ("FAST TRACK = Sim até 10 kW", "Grid Zero sempre Não", "tipo de
+  solicitação SEM alteração…") > cadastro (categoria do padrão escolhida à
+  mão → COM alteração de potência; texto com "UC nova"/"ligação nova" → nova
+  UC; "ampliação"/"GD existente" → 3ª opção) > padrão (SEM alteração, Grid
+  Zero Não, FAST TRACK Não com confiança baixa e pedido de ensino). Cada
+  resposta traz motivo e confiança (alta/média/baixa) —
+  `BiduFormularioCemigDialog` mostra e a pessoa confirma ou ajusta.
+- **Pendências antes de gerar**: `avisosFormularioCemig` (UTM fora do fuso,
+  obrigatórios vazios) aparece no diálogo; dá para gerar mesmo assim.
+- **Entrega** (`useBiduPreencherCemig`): modelo da pasta da concessionária →
+  `gerarFormularioCemig` → upload em `project-documents`
+  (`{empresa}/{projeto}/extra_attachment/…`) → RPC `bidu_anexar_documento`
+  (documento + comentário em nome do Bidu; só equipe GD Manager, projeto do
+  tenant) → mensagem do Bidu no chat → download. O bucket
+  `project-documents` passou a aceitar xlsx/docx.
+- `useValoresDoProjeto` é a fonte única das variáveis do projeto (o diálogo
+  de geração delega para ele).
+
+Próximos entregáveis do Bidu: planta de situação e posição dos módulos.
