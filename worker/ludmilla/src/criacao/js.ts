@@ -99,9 +99,20 @@ export const jsPerguntaVisivel = (trecho: string) => `(() => {
   return !!fs && fs.getClientRects().length > 0 && getComputedStyle(fs).display !== 'none';
 })()`;
 
-/** Clica no elemento cujo texto começa com o trecho (links/botões) — para "Serviços para projetistas", "Rejeitar todos". */
-export const jsClicarTexto = (trecho: string, tags = 'a, button, [role="button"], div, span') => `(() => {
+/**
+ * Clica no elemento cujo texto começa com o trecho — para "Serviços para
+ * projetistas", "Rejeitar todos". Procura a FOLHA visível com o texto (como o
+ * getByText do Playwright) e clica no clicável mais próximo (a/button/role),
+ * ou nela mesma; o evento sobe até o cartão.
+ */
+export const jsClicarTexto = (trecho: string, _tags = '') => `(() => {
   const alvo = ${j(trecho)}.toLowerCase();
-  const el = Array.from(document.querySelectorAll(${j(tags)})).find(x => x.getClientRects().length > 0 && (x.textContent || '').replace(/\\s+/g, ' ').trim().toLowerCase().startsWith(alvo));
-  if (!el) return false; el.click(); return true;
+  const vis = x => x.getClientRects().length > 0;
+  const texto = x => (x.textContent || '').replace(/\\s+/g, ' ').trim().toLowerCase();
+  const folhas = Array.from(document.querySelectorAll('body *')).filter(x => vis(x) && texto(x).startsWith(alvo) && !Array.from(x.children).some(c => texto(c).startsWith(alvo)));
+  const el = folhas[0];
+  if (!el) return false;
+  const clicavel = el.closest('a, button, [role="button"], [onclick]') || el;
+  clicavel.click();
+  return true;
 })()`;

@@ -82,18 +82,50 @@ export async function entrarNaCpfl(ag: Agente, creds: Credenciais, nomeCofre: st
   await ag.esperar(1_500);
   await ag.js<boolean>(jsClicarTexto('Rejeitar todos')).catch(() => false);
 
-  // tela "Selecionar perfil": o cartão Projetos Particulares tem o subtítulo "Serviços para projetistas"
-  if (await ag.js<boolean>(jsClicarTexto('Serviços para projetistas', 'a, button, p, span, div, h3, h4')).catch(() => false)) {
-    await ag.esperarCarga('load');
-    await ag.esperar(1_500);
+  // Tela "Selecionar perfil": o cartão Projetos Particulares (subtítulo
+  // "Serviços para projetistas") é o que CRIA a sessão do app gestao-projetos.
+  // Abrir meus-projetos direto, sem esse clique, dá uma sessão anônima e
+  // "Access denied" em criar-projeto (simulação de 18/09). A tela pode
+  // renderizar tarde: espera o cartão até 20 s, clica, e espera a navegação.
+  let clicou = false;
+  for (let i = 0; i < 20 && !clicou; i++) {
+    if (/gestao-projetos/.test(await ag.url())) break;
+    clicou = await ag.js<boolean>(jsClicarTexto('Serviços para projetistas')).catch(() => false);
+    if (!clicou) await ag.esperar(1_000);
+  }
+  if (clicou) {
+    log('perfil "Serviços para projetistas" escolhido');
+    await esperarUrl(ag, /gestao-projetos/, 40);
   }
   if (!/gestao-projetos/.test(await ag.url())) {
+    log('sem tela de perfil — abrindo meus-projetos');
     await ag.abrir(URL_MEUS_PROJETOS);
-    await ag.esperarCarga('load');
+    await ag.esperarCarga('networkidle');
     await ag.esperar(1_000);
   }
   if (!/gestao-projetos/.test(await ag.url())) {
     throw new ErroLudmilla('sessao_expirada', 'Entrei na CPFL mas não cheguei ao portal de projetos (gestao-projetos).');
   }
+  // prova de sessão no app de projetos: o menu "GERENCIE SEUS PROJETOS" (ou o link Sair) está na tela
+  const autenticado = await ag.js<boolean>(JS_AUTENTICADO).catch(() => false);
+  if (!autenticado) {
+    throw new ErroLudmilla('sessao_expirada', `Cheguei em gestao-projetos mas a página não está autenticada ("${await ag.titulo()}") — o cartão "Serviços para projetistas" não foi acionado.`);
+  }
   log('login na CPFL ok', { url: (await ag.url()).replace(/\?.*$/, '') });
 }
+
+/** Espera a URL casar com o padrão (navegações em cadeia do portal). */
+async function esperarUrl(ag: Agente, padrao: RegExp, segundos: number): Promise<boolean> {
+  const ate = Date.now() + segundos * 1_000;
+  while (Date.now() < ate) {
+    if (padrao.test(await ag.url())) { await ag.esperarCarga('networkidle'); return true; }
+    await ag.esperar(1_000);
+  }
+  return false;
+}
+
+const JS_AUTENTICADO = `(() => {
+  const t = (document.body.textContent || '');
+  if (/Access denied|Acesso negado/i.test(document.title)) return false;
+  return /GERENCIE SEUS PROJETOS/i.test(t) || !!Array.from(document.querySelectorAll('a')).find(a => /^\\s*Sair\\s*$/i.test(a.textContent || ''));
+})()`;

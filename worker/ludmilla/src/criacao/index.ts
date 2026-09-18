@@ -51,7 +51,9 @@ async function printParaBucket(ag: Agente, caminho: string, nomeTmp: string): Pr
 /** Grava cada passo em portal_criacao_passos com print; em erro, sobe também o mapa da tela. */
 function registradorDePassos(ag: Agente, dados: DadosCriacaoCpfl) {
   return async (passo: number, nome: NomePasso, status: StatusPasso, erro?: string): Promise<void> => {
-    const printPath = await printParaBucket(ag, `${dados.tenant_id}/criacao/${dados.run_id}/passo-${passo}.png`, `ludmilla-${dados.run_id}-${passo}.png`);
+    // "rodando" = a tela ANTES do passo; ok/erro = a tela DEPOIS. Os dois ficam no bucket.
+    const sufixo = status === 'rodando' ? '-inicio' : '';
+    const printPath = await printParaBucket(ag, `${dados.tenant_id}/criacao/${dados.run_id}/passo-${passo}${sufixo}.png`, `ludmilla-${dados.run_id}-${passo}${sufixo}.png`);
     if (status === 'erro') {
       try {
         const mapa = await ag.js(JS_MAPA);
