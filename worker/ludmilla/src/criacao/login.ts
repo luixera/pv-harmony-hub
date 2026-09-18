@@ -89,7 +89,7 @@ export async function entrarNaCpfl(
   await esperarUrl(ag, /cpfl\.com\.br\/(?!b2c-auth)/i, 30);
   await ag.esperarCarga('networkidle');
   await ag.esperar(1_500);
-  await ag.js<boolean>(jsClicarTexto('Rejeitar todos')).catch(() => false);
+  await fecharCookies(ag);
   log('depois do B2C', await ondeEstou(ag));
   await print('login-1-chegada');
 
@@ -113,7 +113,7 @@ export async function entrarNaCpfl(
       log('cartão de perfil não está na página de chegada — abrindo selecionar-perfil', await ondeEstou(ag));
       await ag.abrir(URL_SELECIONAR_PERFIL);
       await ag.esperarCarga('networkidle');
-      await ag.js<boolean>(jsClicarTexto('Rejeitar todos')).catch(() => false);
+      await fecharCookies(ag);
     }
     if (i === 12) {
       log('ainda sem cartão de perfil', { links: await ag.js(JS_LINKS_DO_MIOLO).catch(() => null), ...(await ondeEstou(ag)) });
@@ -159,6 +159,13 @@ const JS_LINKS_DO_MIOLO = `(() => {
     .map(x => ((x.textContent || '').replace(/\\s+/g, ' ').trim().slice(0, 50) || '(sem texto)') + (x.getAttribute('href') ? ' → ' + x.getAttribute('href').slice(0, 80) : ''))
     .slice(0, 30);
 })()`;
+
+/** Banner de cookies (OneTrust): "Rejeitar todos" em pt-BR, "Reject All" quando o Chrome está em inglês. */
+async function fecharCookies(ag: Agente): Promise<void> {
+  for (const texto of ['Rejeitar todos', 'Reject All']) {
+    if (await ag.js<boolean>(jsClicarTexto(texto)).catch(() => false)) { await ag.esperar(600); return; }
+  }
+}
 
 /** URL (sem query), título e começo do texto da página — para o log dizer onde o robô estava. */
 async function ondeEstou(ag: Agente): Promise<Record<string, unknown>> {

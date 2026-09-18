@@ -65,7 +65,8 @@ chown -R "$USUARIO:$USUARIO" "/home/$USUARIO/.agent-browser"
 sudo -u "$USUARIO" -H agent-browser install || falhar "download do Chrome (agent-browser) para o usuário $USUARIO falhou"
 echo "agent-browser: $(agent-browser --version 2>/dev/null)"
 # fumaça: abre, lê o título e fecha — com os mesmos argumentos do serviço
-AB_ARGS='--no-sandbox,--disable-crashpad,--disable-crash-reporter,--disable-gpu,--disable-dev-shm-usage'
+# --lang: a Agência/OneTrust mudam de cara com o idioma do navegador; o Playwright roda em pt-BR
+AB_ARGS='--no-sandbox,--disable-crashpad,--disable-crash-reporter,--disable-gpu,--disable-dev-shm-usage,--lang=pt-BR,--accept-lang=pt-BR'
 if sudo -u "$USUARIO" -H agent-browser --session fumaca --args "$AB_ARGS" open https://example.com >/dev/null 2>&1; then
   echo "fumaça: $(sudo -u "$USUARIO" -H agent-browser --session fumaca get title 2>/dev/null)"
   sudo -u "$USUARIO" -H agent-browser --session fumaca close >/dev/null 2>&1
