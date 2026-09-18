@@ -86,12 +86,21 @@ export async function executarCriacao(run: Run): Promise<void> {
     const dados = await dadosCriacaoCpfl(run.id, projectId, run.tenant_id, autonomiaRun);
     const creds = await credenciais(run.account_id);
 
-    await entrarNaCpfl(ag, creds, nomeCofre, log);
-    const resultado = await roteiroCpfl60({
-      agente: ag, dados, log,
-      registrar: registradorDePassos(ag, dados),
-      simular,
-    });
+    // Passo 0 = login: aparece no painel com print, como os outros. Prints de
+    // cada estágio (chegada do B2C, tela de perfil) ficam na pasta do run.
+    const registrar = registradorDePassos(ag, dados);
+    const printExtra = (nome: string) => printParaBucket(ag, `${dados.tenant_id}/criacao/${dados.run_id}/${nome}.png`, `ludmilla-${dados.run_id}-${nome}.png`).then(() => undefined);
+    await registrar(0, 'login', 'rodando');
+    try {
+      await entrarNaCpfl(ag, creds, nomeCofre, log, printExtra);
+    } catch (e) {
+      const msg = e instanceof ErroLudmilla ? e.message : `Login falhou: ${(e as Error).message.split('\n')[0].slice(0, 300)}`;
+      await registrar(0, 'login', 'erro', msg).catch(() => undefined);
+      throw e;
+    }
+    await registrar(0, 'login', 'ok');
+
+    const resultado = await roteiroCpfl60({ agente: ag, dados, log, registrar, simular });
 
     if (resultado.nodeId) {
       const { error } = await supabase().rpc('ludmilla_salvar_node_cpfl' as never, { p_project_id: projectId, p_node_id: resultado.nodeId } as never);

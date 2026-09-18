@@ -165,6 +165,7 @@ export function LinhaRecomendacao({ u }: { u: PortalUpdate }) {
 }
 
 const NOMES_PASSO: Record<PassoCriacao['nome'], string> = {
+  login:          'Login na CPFL',
   introducao:     'Introdução',
   dados_uc:       'Dados da UC',
   dados_projeto:  'Dados do Projeto',

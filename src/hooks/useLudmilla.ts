@@ -182,7 +182,7 @@ export interface PassoCriacao {
   id: string;
   run_id: string;
   passo: number;
-  nome: 'introducao' | 'dados_uc' | 'dados_projeto' | 'dados_cliente' | 'revisao' | 'concluido' | 'simulado';
+  nome: 'login' | 'introducao' | 'dados_uc' | 'dados_projeto' | 'dados_cliente' | 'revisao' | 'concluido' | 'simulado';
   status: 'rodando' | 'ok' | 'erro';
   screenshot: string | null;
   erro: string | null;

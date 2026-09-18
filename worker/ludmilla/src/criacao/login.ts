@@ -39,7 +39,11 @@ const JS_ERRO_B2C = `(() => {
     .filter(vis).map(e => (e.textContent || '').replace(/\\s+/g, ' ').trim()).filter(Boolean).join(' | ').slice(0, 200);
 })()`;
 
-export async function entrarNaCpfl(ag: Agente, creds: Credenciais, nomeCofre: string, log: (m: string, x?: Record<string, unknown>) => void): Promise<void> {
+export async function entrarNaCpfl(
+  ag: Agente, creds: Credenciais, nomeCofre: string,
+  log: (m: string, x?: Record<string, unknown>) => void,
+  print: (nome: string) => Promise<void> = async () => undefined,
+): Promise<void> {
   await ag.abrir(LOGIN_URL);
   await ag.esperarCarga('load');
 
@@ -87,6 +91,7 @@ export async function entrarNaCpfl(ag: Agente, creds: Credenciais, nomeCofre: st
   await ag.esperar(1_500);
   await ag.js<boolean>(jsClicarTexto('Rejeitar todos')).catch(() => false);
   log('depois do B2C', await ondeEstou(ag));
+  await print('login-1-chegada');
 
   // Tela "Selecionar perfil": o cartão Projetos Particulares (subtítulo
   // "Serviços para projetistas") é o que CRIA a sessão do app gestao-projetos.
@@ -110,7 +115,10 @@ export async function entrarNaCpfl(ag: Agente, creds: Credenciais, nomeCofre: st
       await ag.esperarCarga('networkidle');
       await ag.js<boolean>(jsClicarTexto('Rejeitar todos')).catch(() => false);
     }
-    if (i === 12) log('ainda sem cartão de perfil', { links: await ag.js(JS_LINKS_DO_MIOLO).catch(() => null), ...(await ondeEstou(ag)) });
+    if (i === 12) {
+      log('ainda sem cartão de perfil', { links: await ag.js(JS_LINKS_DO_MIOLO).catch(() => null), ...(await ondeEstou(ag)) });
+      await print('login-2-perfil');
+    }
     await ag.esperar(1_000);
   }
   if (clicou) {

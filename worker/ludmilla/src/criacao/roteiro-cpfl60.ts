@@ -14,7 +14,7 @@ import { areaArranjos, camposFaltando, dataMais, errosDoHtml, extrairNodeId, num
  * FormData/título → só então avançar. Para em "Envio de documentos".
  */
 
-export type NomePasso = 'introducao' | 'dados_uc' | 'dados_projeto' | 'dados_cliente' | 'revisao' | 'concluido' | 'simulado';
+export type NomePasso = 'login' | 'introducao' | 'dados_uc' | 'dados_projeto' | 'dados_cliente' | 'revisao' | 'concluido' | 'simulado';
 export type StatusPasso = 'rodando' | 'ok' | 'erro';
 
 export interface ContextoRoteiro {
