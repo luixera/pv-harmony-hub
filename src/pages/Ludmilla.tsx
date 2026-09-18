@@ -171,6 +171,7 @@ const NOMES_PASSO: Record<PassoCriacao['nome'], string> = {
   dados_cliente:  'Dados do Cliente',
   revisao:        'Revisão',
   concluido:      'Concluído',
+  simulado:       'Simulação concluída (sem salvar)',
 };
 
 function CardCriacaoCpfl({ run }: { run: PortalRun }) {

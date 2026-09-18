@@ -6,6 +6,7 @@ import {
   useCriarProjetoCpfl,
   usePassosCriacao,
   usePortalAccounts,
+  useRunCriacao,
   useLudmillaDisponivel,
   urlDoPrint,
   type PassoCriacao,
@@ -20,6 +21,7 @@ const NOMES_PASSO: Record<PassoCriacao['nome'], string> = {
   dados_cliente:  'Dados do Cliente',
   revisao:        'Revisão',
   concluido:      'Concluído',
+  simulado:       'Simulação concluída — nada foi salvo',
 };
 
 function PassoItem({ passo }: { passo: PassoCriacao }) {
@@ -94,75 +96,96 @@ export function CriarNaCpflPanel({ projectId, cpflNodeId, concessionaireName }: 
 
   const [runId, setRunId] = useState<string | null>(null);
   const criarMutation = useCriarProjetoCpfl();
-  const { data: passosNovos = [] } = usePassosCriacao(runId);
 
-  // Busca run ativo (na_fila ou rodando) para este projeto ao montar
-  const { data: runAtivo } = useQuery({
-    queryKey: ['run-ativo-criacao', projectId],
+  // Último run deste projeto ao montar (ativo ou o que acabou de terminar):
+  // é o que mostra "na fila" e o erro de quem falhou antes do passo 1 (login).
+  const { data: runRecente } = useQuery({
+    queryKey: ['run-recente-criacao', projectId],
     queryFn: async (): Promise<string | null> => {
       const { data } = await supabase
         .from('portal_sync_runs' as never)
-        .select('id')
+        .select('id, situacao, terminado_em')
         .eq('tipo', 'criar_projeto')
-        .in('situacao', ['na_fila', 'rodando'])
         .filter('dados->>project_id', 'eq', projectId)
-        .order('created_at', { ascending: false })
+        .order('pedido_em', { ascending: false })
         .limit(1)
         .maybeSingle();
-      return (data as { id: string } | null)?.id ?? null;
+      const r = data as { id: string; situacao: string; terminado_em: string | null } | null;
+      if (!r) return null;
+      // terminado há mais de 1 h não interessa mais
+      if (r.terminado_em && Date.now() - new Date(r.terminado_em).getTime() > 3_600_000) return null;
+      return r.id;
     },
     enabled: disponivel && !runId,
   });
 
-  const idEfetivo = runId ?? runAtivo ?? null;
-  const { data: passosAtivos = [] } = usePassosCriacao(runId ? null : idEfetivo);
-  const passosExibidos = runId ? passosNovos : passosAtivos;
+  const idEfetivo = runId ?? runRecente ?? null;
+  const { data: run } = useRunCriacao(idEfetivo);
+  const runTerminou = run?.situacao === 'ok' || run?.situacao === 'erro';
+  const { data: passosExibidos = [] } = usePassosCriacao(idEfetivo, runTerminou);
 
   if (!disponivel || !cpflAccount || !ehCpfl) return null;
 
-  const concluido = passosExibidos.some(p => p.nome === 'concluido' && p.status === 'ok');
-  const comErro    = passosExibidos.some(p => p.status === 'erro');
-  const rodando    = !concluido && !comErro && passosExibidos.length > 0;
+  const concluido    = passosExibidos.some(p => p.nome === 'concluido' && p.status === 'ok');
+  const simulado     = passosExibidos.some(p => p.nome === 'simulado' && p.status === 'ok');
+  const passoComErro = passosExibidos.some(p => p.status === 'erro');
+  const comErro      = passoComErro || run?.situacao === 'erro';
+  const naFila       = run?.situacao === 'na_fila' && passosExibidos.length === 0;
+  const rodando      = !concluido && !simulado && !comErro && (passosExibidos.length > 0 || naFila || run?.situacao === 'rodando');
 
-  function iniciar() {
+  function iniciar(simular = false) {
     if (!cpflAccount) return;
     criarMutation.mutate(
-      { accountId: cpflAccount.id, projectId },
+      { accountId: cpflAccount.id, projectId, simular },
       { onSuccess: (id) => setRunId(id) },
     );
   }
 
-  if (cpflNodeId) {
+  const botaoSimular = !rodando && (
+    <Button size="sm" variant="outline" onClick={() => iniciar(true)} disabled={criarMutation.isPending}
+      title="A Ludmilla preenche o formulário inteiro, tira os prints de cada etapa e para antes do Salvar — nada é criado no portal.">
+      Simular
+    </Button>
+  );
+
+  if (cpflNodeId && passosExibidos.length === 0) {
     return (
       <div className="rounded-md border px-4 py-3 bg-green-50 dark:bg-green-950/20 text-sm text-green-700 dark:text-green-400 flex items-center gap-2">
         <CheckCircle2 className="h-4 w-4 shrink-0" />
-        <span>Projeto registrado na CPFL — node <strong>{cpflNodeId}</strong></span>
+        <span className="flex-1">Projeto registrado na CPFL — node <strong>{cpflNodeId}</strong></span>
+        {botaoSimular}
       </div>
     );
   }
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         <div className="text-sm text-muted-foreground">
-          {rodando ? 'A Ludmilla está preenchendo o formulário…'
+          {naFila ? 'Na fila — a Ludmilla começa em instantes…'
+           : rodando ? 'A Ludmilla está preenchendo o formulário…'
            : comErro ? 'Ocorreu um erro durante a criação.'
            : concluido ? 'Projeto criado com sucesso!'
+           : simulado ? 'Simulação concluída: tudo preenchido até a revisão, sem salvar.'
+           : cpflNodeId ? `Projeto registrado na CPFL — node ${cpflNodeId}`
            : 'Ainda não registrado na CPFL.'}
         </div>
-        {!rodando && !concluido && (
-          <Button
-            size="sm"
-            variant={comErro ? 'destructive' : 'default'}
-            onClick={iniciar}
-            disabled={criarMutation.isPending}
-          >
-            {criarMutation.isPending && (
-              <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
-            )}
-            {comErro ? 'Tentar novamente' : 'Criar na CPFL'}
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          {botaoSimular}
+          {!rodando && !concluido && !cpflNodeId && (
+            <Button
+              size="sm"
+              variant={comErro ? 'destructive' : 'default'}
+              onClick={() => iniciar(false)}
+              disabled={criarMutation.isPending}
+            >
+              {criarMutation.isPending && (
+                <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+              )}
+              {comErro ? 'Tentar novamente' : 'Criar na CPFL'}
+            </Button>
+          )}
+        </div>
         {rodando && (
           <Badge variant="secondary" className="gap-1">
             <Loader2 className="h-3 w-3 animate-spin" />
@@ -170,6 +193,11 @@ export function CriarNaCpflPanel({ projectId, cpflNodeId, concessionaireName }: 
           </Badge>
         )}
       </div>
+
+      {/* erro antes do passo 1 (login, dados do projeto): só o run sabe contar */}
+      {run?.situacao === 'erro' && !passoComErro && run.erro && (
+        <p className="text-xs text-red-600 rounded-md border border-red-200 bg-red-50 dark:bg-red-950/20 px-3 py-2">{run.erro}</p>
+      )}
 
       {passosExibidos.length > 0 && (
         <div className="space-y-1.5">

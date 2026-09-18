@@ -14,7 +14,7 @@ import { areaArranjos, camposFaltando, dataMais, errosDoHtml, extrairNodeId, num
  * FormData/título → só então avançar. Para em "Envio de documentos".
  */
 
-export type NomePasso = 'introducao' | 'dados_uc' | 'dados_projeto' | 'dados_cliente' | 'revisao' | 'concluido';
+export type NomePasso = 'introducao' | 'dados_uc' | 'dados_projeto' | 'dados_cliente' | 'revisao' | 'concluido' | 'simulado';
 export type StatusPasso = 'rodando' | 'ok' | 'erro';
 
 export interface ContextoRoteiro {
@@ -354,7 +354,11 @@ export async function roteiroCpfl60(ctx: ContextoRoteiro): Promise<ResultadoRote
     ctx.log('projeto criado', { node: nodeId });
   });
 
-  if (ctx.simular) return { nodeId: null, simulado: true, leituras };
+  if (ctx.simular) {
+    // passo final próprio: o painel sabe que acabou e que nada foi salvo
+    await passo(ctx, 6, 'simulado', async () => { await ag.esperar(300); });
+    return { nodeId: null, simulado: true, leituras };
+  }
 
   // ── 6. Envio de documentos: a Ludmilla PARA aqui (decisão da pessoa)
   await passo(ctx, 6, 'concluido', async () => {

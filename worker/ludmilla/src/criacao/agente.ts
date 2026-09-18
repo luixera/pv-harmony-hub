@@ -104,7 +104,13 @@ export class Agente {
     return this.cmd(['auth', 'save', nome, '--url', c.url, '--username', c.usuario, '--password-stdin',
       '--username-selector', c.selUsuario, '--password-selector', c.selSenha, '--submit-selector', c.selEnviar], { stdin: c.senha + '\n' });
   }
-  authEntrar(nome: string) { return this.cmd(['auth', 'login', nome], { timeoutMs: 120_000 }); }
+  /** `semNavegar` + `origem`: usa a página já aberta (o B2C redireciona para outra origem). */
+  authEntrar(nome: string, o: { semNavegar?: boolean; origem?: string } = {}) {
+    const args = ['auth', 'login', nome];
+    if (o.semNavegar) args.push('--no-navigate');
+    if (o.origem) args.push('--url', o.origem);
+    return this.cmd(args, { timeoutMs: 120_000 });
+  }
   authApagar(nome: string) { return this.cmd(['auth', 'delete', nome], { tolerar: true }); }
 
   /** Última resposta de documento POST (o HTML que o servidor devolveu ao Avançar). */

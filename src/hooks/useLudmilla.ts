@@ -182,7 +182,7 @@ export interface PassoCriacao {
   id: string;
   run_id: string;
   passo: number;
-  nome: 'introducao' | 'dados_uc' | 'dados_projeto' | 'dados_cliente' | 'revisao' | 'concluido';
+  nome: 'introducao' | 'dados_uc' | 'dados_projeto' | 'dados_cliente' | 'revisao' | 'concluido' | 'simulado';
   status: 'rodando' | 'ok' | 'erro';
   screenshot: string | null;
   erro: string | null;
@@ -289,15 +289,18 @@ export async function urlDoPrint(printPath: string): Promise<string | null> {
 
 // ── Criação de projeto na CPFL ───────────────────────────────────────────────
 
-/** Solicita criação do projeto na CPFL. Devolve o run_id para subscrição Realtime. */
+/**
+ * Solicita criação do projeto na CPFL. Devolve o run_id para subscrição Realtime.
+ * `simular` = a Ludmilla preenche tudo, tira os prints, e PARA antes do Salvar.
+ */
 export function useCriarProjetoCpfl() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ accountId, projectId }: { accountId: string; projectId: string }): Promise<string> => {
+    mutationFn: async ({ accountId, projectId, simular }: { accountId: string; projectId: string; simular?: boolean }): Promise<string> => {
       const { data, error } = await supabase.rpc('ludmilla_pedir_run' as never, {
         p_account_id: accountId,
         p_tipo:       'criar_projeto',
-        p_dados:      { project_id: projectId },
+        p_dados:      { project_id: projectId, ...(simular ? { simular: true } : {}) },
       } as never);
       if (error) throw error;
       return data as string;
@@ -309,8 +312,8 @@ export function useCriarProjetoCpfl() {
   });
 }
 
-/** Subscreve em tempo real os passos de um run de criação. */
-export function usePassosCriacao(runId: string | null) {
+/** Subscreve em tempo real os passos de um run de criação. `terminado` = o run acabou: para de consultar. */
+export function usePassosCriacao(runId: string | null, terminado = false) {
   const qc = useQueryClient();
 
   useEffect(() => {
@@ -343,11 +346,38 @@ export function usePassosCriacao(runId: string | null) {
     },
     enabled: !!runId,
     refetchInterval: (q) => {
+      if (terminado) return false;
       const passos = q.state.data ?? [];
-      const terminado = passos.some(
-        p => (p.nome === 'concluido' && p.status === 'ok') || p.status === 'erro'
+      const acabou = passos.some(
+        p => ((p.nome === 'concluido' || p.nome === 'simulado') && p.status === 'ok') || p.status === 'erro'
       );
-      return terminado ? false : 3_000;
+      return acabou ? false : 3_000;
+    },
+  });
+}
+
+/**
+ * Acompanha UM run de criação (situação e erro): é o que mostra falhas que
+ * acontecem antes do passo 1 (login) e o "na fila". Consulta a cada 3 s até
+ * o run terminar.
+ */
+export function useRunCriacao(runId: string | null) {
+  return useQuery({
+    queryKey: ['run-criacao', runId],
+    queryFn: async (): Promise<PortalRun | null> => {
+      if (!runId) return null;
+      const { data, error } = await supabase
+        .from('portal_sync_runs' as never)
+        .select('*')
+        .eq('id', runId)
+        .maybeSingle();
+      if (error) throw error;
+      return (data as PortalRun | null) ?? null;
+    },
+    enabled: !!runId,
+    refetchInterval: (q) => {
+      const s = q.state.data?.situacao;
+      return s === 'na_fila' || s === 'rodando' || !s ? 3_000 : false;
     },
   });
 }

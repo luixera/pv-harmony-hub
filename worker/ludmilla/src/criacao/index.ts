@@ -75,9 +75,10 @@ export async function executarCriacao(run: Run): Promise<void> {
     const projectId = run.dados?.['project_id'] as string | undefined;
     if (!projectId) throw new ErroLudmilla('falhou', 'Run criar_projeto sem project_id nos dados.');
 
+    const simular = run.dados?.['simular'] === true;
     const { data: proj } = await supabase().from('projects').select('cpfl_node_id').eq('id', projectId).maybeSingle();
     const nodeExistente = (proj as { cpfl_node_id?: string | null } | null)?.cpfl_node_id;
-    if (nodeExistente) throw new ErroLudmilla('falhou', `Este projeto já está registrado na CPFL (projeto nº ${nodeExistente}). Não vou criar outro.`);
+    if (nodeExistente && !simular) throw new ErroLudmilla('falhou', `Este projeto já está registrado na CPFL (projeto nº ${nodeExistente}). Não vou criar outro.`);
 
     const autonomiaRun = (run.dados?.['autonomia'] ?? {}) as Record<string, string>;
     const dados = await dadosCriacaoCpfl(run.id, projectId, run.tenant_id, autonomiaRun);
@@ -87,7 +88,7 @@ export async function executarCriacao(run: Run): Promise<void> {
     const resultado = await roteiroCpfl60({
       agente: ag, dados, log,
       registrar: registradorDePassos(ag, dados),
-      simular: run.dados?.['simular'] === true,
+      simular,
     });
 
     if (resultado.nodeId) {
