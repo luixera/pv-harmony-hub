@@ -20,6 +20,8 @@ import { jsClicarTexto } from './js.js';
 
 const LOGIN_URL = 'https://www.cpfl.com.br/cpfl-auth/redirect-arame?redirect_uri=/Internet/Projeto';
 const URL_MEUS_PROJETOS = 'https://www.cpfl.com.br/gestao-projetos/meus-projetos';
+/** Tela "Selecionar perfil" da Agência: o cartão Projetos Particulares vive aqui (roteiro PDF, passo 2). */
+const URL_SELECIONAR_PERFIL = 'https://www.cpfl.com.br/agencia/area-cliente/selecionar-perfil-instalacao';
 
 /** O botão Entrar está na tela e nada o cobre? */
 const JS_BOTAO_LIVRE = `(() => {
@@ -91,11 +93,22 @@ export async function entrarNaCpfl(ag: Agente, creds: Credenciais, nomeCofre: st
   // Abrir meus-projetos direto, sem esse clique, dá uma sessão anônima e
   // "Access denied" em criar-projeto (simulação de 18/09). A tela pode
   // renderizar tarde: espera o cartão até 20 s, clica, e espera a navegação.
+  // A chegada do B2C pode ser outra página da Agência (18/09: area-cliente/
+  // cadastro); a tela de perfil tem URL própria — abrir depois de 5 s sem cartão.
   let clicou = false;
-  for (let i = 0; i < 20 && !clicou; i++) {
+  let foiParaPerfil = false;
+  for (let i = 0; i < 25 && !clicou; i++) {
     if (/gestao-projetos/.test(await ag.url())) break;
     clicou = await ag.js<boolean>(jsClicarTexto('Serviços para projetistas')).catch(() => false);
-    if (!clicou) await ag.esperar(1_000);
+    if (clicou) break;
+    if (i === 5 && !foiParaPerfil) {
+      foiParaPerfil = true;
+      log('cartão de perfil não está na página de chegada — abrindo selecionar-perfil', await ondeEstou(ag));
+      await ag.abrir(URL_SELECIONAR_PERFIL);
+      await ag.esperarCarga('networkidle');
+      await ag.js<boolean>(jsClicarTexto('Rejeitar todos')).catch(() => false);
+    }
+    await ag.esperar(1_000);
   }
   if (clicou) {
     log('perfil "Serviços para projetistas" escolhido');
