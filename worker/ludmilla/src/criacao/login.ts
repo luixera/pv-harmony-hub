@@ -19,6 +19,8 @@ import { jsClicarTexto } from './js.js';
  */
 
 const LOGIN_URL = 'https://www.cpfl.com.br/cpfl-auth/redirect-arame?redirect_uri=/Internet/Projeto';
+/** O mesmo User-Agent do contexto Playwright da varredura (index.ts → novoContexto). */
+const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36';
 const URL_MEUS_PROJETOS = 'https://www.cpfl.com.br/gestao-projetos/meus-projetos';
 /** Tela "Selecionar perfil" da Agência: o cartão Projetos Particulares vive aqui (roteiro PDF, passo 2). */
 const URL_SELECIONAR_PERFIL = 'https://www.cpfl.com.br/agencia/area-cliente/selecionar-perfil-instalacao';
@@ -44,6 +46,12 @@ export async function entrarNaCpfl(
   log: (m: string, x?: Record<string, unknown>) => void,
   print: (nome: string) => Promise<void> = async () => undefined,
 ): Promise<void> {
+  // A mesma cara do contexto da varredura (que entra todo dia): navegador
+  // comum em português, 1366×768. Na VPS a CLI se apresentaria como Linux
+  // headless — e a Agência não mostrava os cartões de perfil (18/09).
+  await ag.abrir('about:blank');
+  await ag.definirCabecalhos({ 'User-Agent': USER_AGENT, 'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.5' });
+  await ag.definirViewport(1366, 768);
   await ag.abrir(LOGIN_URL);
   await ag.esperarCarga('load');
 

@@ -50,10 +50,11 @@ async function printParaBucket(ag: Agente, caminho: string, nomeTmp: string): Pr
 
 /** Grava cada passo em portal_criacao_passos com print; em erro, sobe também o mapa da tela. */
 function registradorDePassos(ag: Agente, dados: DadosCriacaoCpfl) {
-  return async (passo: number, nome: NomePasso, status: StatusPasso, erro?: string): Promise<void> => {
+  return async (passo: number, nome: NomePasso, status: StatusPasso, erro?: string, printPronto?: string): Promise<void> => {
     // "rodando" = a tela ANTES do passo; ok/erro = a tela DEPOIS. Os dois ficam no bucket.
     const sufixo = status === 'rodando' ? '-inicio' : '';
-    const printPath = await printParaBucket(ag, `${dados.tenant_id}/criacao/${dados.run_id}/passo-${passo}${sufixo}.png`, `ludmilla-${dados.run_id}-${passo}${sufixo}.png`);
+    const printPath = printPronto
+      ?? await printParaBucket(ag, `${dados.tenant_id}/criacao/${dados.run_id}/passo-${passo}${sufixo}.png`, `ludmilla-${dados.run_id}-${passo}${sufixo}.png`);
     if (status === 'erro') {
       try {
         const mapa = await ag.js(JS_MAPA);
@@ -89,13 +90,18 @@ export async function executarCriacao(run: Run): Promise<void> {
     // Passo 0 = login: aparece no painel com print, como os outros. Prints de
     // cada estágio (chegada do B2C, tela de perfil) ficam na pasta do run.
     const registrar = registradorDePassos(ag, dados);
-    const printExtra = (nome: string) => printParaBucket(ag, `${dados.tenant_id}/criacao/${dados.run_id}/${nome}.png`, `ludmilla-${dados.run_id}-${nome}.png`).then(() => undefined);
+    let ultimoPrintDoLogin: string | undefined;
+    const printExtra = async (nome: string) => {
+      const p = await printParaBucket(ag, `${dados.tenant_id}/criacao/${dados.run_id}/${nome}.png`, `ludmilla-${dados.run_id}-${nome}.png`);
+      if (p) ultimoPrintDoLogin = p;
+    };
     await registrar(0, 'login', 'rodando');
     try {
       await entrarNaCpfl(ag, creds, nomeCofre, log, printExtra);
     } catch (e) {
       const msg = e instanceof ErroLudmilla ? e.message : `Login falhou: ${(e as Error).message.split('\n')[0].slice(0, 300)}`;
-      await registrar(0, 'login', 'erro', msg).catch(() => undefined);
+      // o print útil é o último estágio antes da falha (chegada do B2C / tela de perfil), não o "Access denied"
+      await registrar(0, 'login', 'erro', msg, ultimoPrintDoLogin).catch(() => undefined);
       throw e;
     }
     await registrar(0, 'login', 'ok');

@@ -82,6 +82,9 @@ export class Agente {
   }
 
   abrir(url: string) { return this.cmd(['open', url], { timeoutMs: 120_000 }); }
+  /** Cabeçalhos extras para a aba atual e as futuras (User-Agent, Accept-Language). */
+  definirCabecalhos(cabecalhos: Record<string, string>) { return this.cmd(['set', 'headers', JSON.stringify(cabecalhos)], { tolerar: true }); }
+  definirViewport(largura: number, altura: number) { return this.cmd(['set', 'viewport', String(largura), String(altura)], { tolerar: true }); }
   async titulo(): Promise<string> { return String((await this.cmd(['get', 'title'])).title ?? ''); }
   async url(): Promise<string> { return String((await this.cmd(['get', 'url'])).url ?? ''); }
   clicar(seletor: string) { return this.cmd(['click', seletor]); }
