@@ -185,3 +185,28 @@ como se faz. Agora é uma **ação dele** (spec:
   de geração delega para ele).
 
 Próximos entregáveis do Bidu: planta de situação e posição dos módulos.
+
+## Caixas da seção 8 e fórmulas do modelo (18/09/2026)
+
+As caixas 8.3, 8.4 e 8.6 já vêm com "X" no modelo. **8.5.1 (Grid Zero, `C206`)
+e 8.5.3 (FAST TRACK, `C211`) são FÓRMULAS do próprio formulário**
+(`=SE(O14="Sim";"X";"")` e `=SE(AL12="Sim";"X";"")`; `Dados!V5` = "Sim").
+Elas apareciam vazias porque o Excel abre o arquivo com o valor em cache e
+não recalcula sozinho. Solução (em `preencherXlsx`, vale para todo xlsx):
+
+- célula mapeada que tem `<f>` **mantém a fórmula** e recebe o valor como
+  cache (`<v>`; texto com `t="str"`, número sem `t`) — `cemig_x_fast_track`
+  e `cemig_x_grid_zero` escrevem o "X"; vazio não toca a célula. `AT95`
+  (potência ativa) também mantém a fórmula `MIN(L116;AI116)` da CEMIG;
+- `xl/workbook.xml` ganha `<calcPr fullCalcOnLoad="1"/>`: o Excel recalcula
+  as 53 fórmulas da aba ao abrir (avisos "Ver itens 8.5.3 e 10", "potência ≤
+  7,5 kW…", título com a potência, mensagens de UTM).
+
+Testado contra o modelo real (`cemigForm.test.ts`) e com modelo sintético
+(`fillXlsx.test.ts`).
+
+**Regra do FAST TRACK escrita no formulário** (aviso `B96`): "No inciso III
+do art. 73-A, a potência deve ser menor ou igual a 7,5 kW e a modalidade
+autoconsumo local. Apenas a unidade geradora pode utilizar os créditos." A
+proposta do Bidu usa isso como padrão (≤ 7,5 kW → Sim, confiança média; sem
+potência → Não, baixa); habilidade ensinada vence.

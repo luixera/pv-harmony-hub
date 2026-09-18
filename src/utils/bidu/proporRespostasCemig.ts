@@ -54,6 +54,9 @@ export interface RespostasInformadas {
 
 const [COM_ALTERACAO, SEM_ALTERACAO, GD_EXISTENTE, NOVA_UC] = TIPOS_SOLICITACAO_CEMIG;
 
+/** Limite do inciso III do art. 73-A, como está escrito no aviso B96 do formulário da CEMIG (Rev. N4). */
+const FAST_TRACK_KW_MAX_FORMULARIO = 7.5;
+
 const semAcento = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
 /** "sim"/"não" (ou yes/no, true/false) → 'Sim' | 'Não' | null */
@@ -108,11 +111,19 @@ export function proporRespostasCemig(
   const texto = semAcento(ctx.textoLivre ?? '');
 
   // ── FAST TRACK ─────────────────────────────────────────────────────────────
-  let fastTrack: PropostaCampo<'Sim' | 'Não'> = {
-    valor: 'Não',
-    confianca: 'baixa',
-    motivo: 'Ninguém me ensinou a regra do FAST TRACK ainda. Ensine no chat — por exemplo: "na CEMIG, FAST TRACK = Sim até 10 kW".',
-  };
+  // Padrão = a regra escrita no próprio formulário da CEMIG (aviso B96, aparece
+  // quando AL12 = Sim): "inciso III do art. 73-A: potência ≤ 7,5 kW e
+  // modalidade autoconsumo local" — e a modalidade nós sempre preenchemos
+  // como autoconsumo local. Uma habilidade ensinada vence este padrão.
+  let fastTrack: PropostaCampo<'Sim' | 'Não'> = ctx.potenciaKw == null
+    ? {
+        valor: 'Não', confianca: 'baixa',
+        motivo: 'O formulário da CEMIG enquadra no FAST TRACK até 7,5 kW em autoconsumo local, mas o projeto está sem potência cadastrada.',
+      }
+    : {
+        valor: ctx.potenciaKw <= FAST_TRACK_KW_MAX_FORMULARIO ? 'Sim' : 'Não', confianca: 'media',
+        motivo: `Regra do próprio formulário da CEMIG (inciso III do art. 73-A): FAST TRACK até 7,5 kW em autoconsumo local — o projeto tem ${ctx.potenciaKw} kW. Se a regra de vocês for outra, ensine no chat.`,
+      };
   const hFast = sobre(habilidades, /fast\s*-?\s*track/);
   if (hFast.length > 0) {
     const h = hFast[hFast.length - 1];

@@ -18,14 +18,22 @@ const base: ContextoProjetoCemig = {
 };
 
 describe('proporRespostasCemig — padrões sem habilidade', () => {
-  it('sem nada ensinado: SEM alteração (média), Grid Zero Não (média), FAST TRACK Não (baixa, pede ensino)', () => {
+  it('sem nada ensinado: SEM alteração (média), Grid Zero Não (média), FAST TRACK pela regra do próprio formulário (≤ 7,5 kW → Sim, média)', () => {
     const p = proporRespostasCemig(base, []);
     expect(p.tipoSolicitacao.valor).toBe(SEM_ALTERACAO);
     expect(p.tipoSolicitacao.confianca).toBe('media');
     expect(p.gridZero.valor).toBe('Não');
-    expect(p.fastTrack.valor).toBe('Não');
-    expect(p.fastTrack.confianca).toBe('baixa');
-    expect(p.fastTrack.motivo).toMatch(/ensine/i);
+    expect(p.fastTrack.valor).toBe('Sim');
+    expect(p.fastTrack.confianca).toBe('media');
+    expect(p.fastTrack.motivo).toMatch(/7,5 kW/);
+  });
+
+  it('FAST TRACK pela regra do formulário: acima de 7,5 kW → Não; sem potência cadastrada → Não com confiança baixa', () => {
+    expect(proporRespostasCemig({ ...base, potenciaKw: 12 }, []).fastTrack).toMatchObject({ valor: 'Não', confianca: 'media' });
+    expect(proporRespostasCemig({ ...base, potenciaKw: 7.5 }, []).fastTrack.valor).toBe('Sim');
+    const semPotencia = proporRespostasCemig({ ...base, potenciaKw: null }, []).fastTrack;
+    expect(semPotencia).toMatchObject({ valor: 'Não', confianca: 'baixa' });
+    expect(semPotencia.motivo).toMatch(/potência/i);
   });
 
   it('categoria do padrão escolhida à mão = provável aumento de carga → COM alteração', () => {
@@ -74,7 +82,7 @@ describe('proporRespostasCemig — habilidades ensinadas', () => {
 
   it('habilidade que não fala do assunto não interfere', () => {
     const p = proporRespostasCemig(base, [{ titulo: 'Cabos', instrucao: 'Na CEMIG use cabo de 6 mm² no CA' }]);
-    expect(p.fastTrack.confianca).toBe('baixa');
+    expect(p.fastTrack).toMatchObject({ valor: 'Sim', confianca: 'media' }); // regra do formulário, não da habilidade
     expect(p.tipoSolicitacao.valor).toBe(SEM_ALTERACAO);
   });
 });

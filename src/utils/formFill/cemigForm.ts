@@ -129,6 +129,12 @@ export function valoresFormularioCemig(
     cemig_fast_track: respostas.fastTrack,
     cemig_grid_zero: respostas.gridZero,
     cemig_tipo_solicitacao: respostas.tipoSolicitacao,
+    // Caixas 8.5.3 (FAST TRACK) e 8.5.1 (Grid Zero) da seção 8: no modelo são
+    // fórmulas `=SE(AL12="Sim";"X";"")` / `=SE(O14="Sim";"X";"")`. Gravamos o
+    // "X" como valor em cache (a fórmula fica) para a caixa aparecer marcada
+    // mesmo sem recálculo — pedido do usuário, 17/09/2026. Vazio = não toca.
+    cemig_x_fast_track: respostas.fastTrack === 'Sim' ? 'X' : '',
+    cemig_x_grid_zero: respostas.gridZero === 'Sim' ? 'X' : '',
     cemig_tipo_edificacao: 'Edificação Individual',
     cemig_tipo_disjuntor: tipoDisjuntorCemig(v.fase ?? ''),
     cemig_disjuntor: numero(v.disjuntor ?? ''),
@@ -218,5 +224,8 @@ export const FORMULARIO_CEMIG: MapaPlanilha = {
 
     // 5 — Armazenamento
     { celula: 'R134', chave: 'cemig_nao' },
+    // seção 8 — as caixas 8.5.1 (Grid Zero) e 8.5.3 (FAST TRACK) são fórmulas do modelo
+    { celula: 'C206', chave: 'cemig_x_grid_zero' },
+    { celula: 'C211', chave: 'cemig_x_fast_track' },
   ],
 };

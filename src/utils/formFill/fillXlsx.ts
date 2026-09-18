@@ -53,8 +53,17 @@ export function preencherXlsx(
     //    preservando o estilo `s="..."` para não perder a formatação
     const existente = new RegExp(`<c r="${celula}"([^>]*?)(?:/>|>([\\s\\S]*?)</c>)`);
     if (existente.test(xml)) {
-      xml = xml.replace(existente, (_m, attrs: string) => {
+      xml = xml.replace(existente, (_m, attrs: string, corpo: string | undefined) => {
         const estilo = /s="\d+"/.exec(attrs)?.[0] ?? '';
+        // Célula com FÓRMULA (as caixas 8.5.x da CEMIG são `=SE(AL12="Sim";"X";"")`):
+        // a fórmula fica — é da concessionária — e o valor entra como cache,
+        // para a caixa aparecer marcada mesmo onde não há recálculo ao abrir.
+        // Texto vai com t="str"; número puro, sem t (como o Excel grava).
+        const formula = corpo ? /<f\b[^>]*>[\s\S]*?<\/f>|<f\b[^>]*\/>/.exec(corpo)?.[0] : undefined;
+        if (formula) {
+          const numero = /^-?\d+(\.\d+)?$/.test(valor);
+          return `<c r="${celula}" ${estilo}${numero ? '' : ' t="str"'}>${formula}<v>${escapar(valor)}</v></c>`;
+        }
         return `<c r="${celula}" ${estilo} t="inlineStr">${conteudo}</c>`;
       });
       continue;
@@ -82,6 +91,24 @@ export function preencherXlsx(
   }
 
   zip.file(caminho, xml);
+
+  // O formulário da CEMIG tem 53 fórmulas que dependem do que escrevemos
+  // (caixas 8.5.x, avisos do FAST TRACK, título com a potência, mensagens de
+  // UTM). O Excel abre com os valores em cache e NÃO recalcula sozinho —
+  // `fullCalcOnLoad` obriga o recálculo completo na abertura.
+  const workbook = zip.file('xl/workbook.xml');
+  if (workbook) {
+    let wb = workbook.asText();
+    if (/<calcPr\b[^>]*fullCalcOnLoad=/.test(wb)) {
+      wb = wb.replace(/(<calcPr\b[^>]*?)fullCalcOnLoad="[^"]*"/, '$1fullCalcOnLoad="1"');
+    } else if (/<calcPr\b/.test(wb)) {
+      wb = wb.replace(/<calcPr\b/, '<calcPr fullCalcOnLoad="1"');
+    } else {
+      wb = wb.replace('</workbook>', '<calcPr fullCalcOnLoad="1"/></workbook>');
+    }
+    zip.file('xl/workbook.xml', wb);
+  }
+
   return zip.generate({ type: 'uint8array', compression: 'DEFLATE' });
 }
 
