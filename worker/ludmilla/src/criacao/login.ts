@@ -99,7 +99,9 @@ export async function entrarNaCpfl(ag: Agente, creds: Credenciais, nomeCofre: st
   let foiParaPerfil = false;
   for (let i = 0; i < 25 && !clicou; i++) {
     if (/gestao-projetos/.test(await ag.url())) break;
-    clicou = await ag.js<boolean>(jsClicarTexto('Serviços para projetistas')).catch(() => false);
+    // 1º o subtítulo do cartão; 2º qualquer link visível do miolo para gestao-projetos
+    clicou = await ag.js<boolean>(jsClicarTexto('Serviços para projetistas')).catch(() => false)
+      || await ag.js<boolean>(JS_CLICAR_LINK_PROJETOS).catch(() => false);
     if (clicou) break;
     if (i === 5 && !foiParaPerfil) {
       foiParaPerfil = true;
@@ -108,6 +110,7 @@ export async function entrarNaCpfl(ag: Agente, creds: Credenciais, nomeCofre: st
       await ag.esperarCarga('networkidle');
       await ag.js<boolean>(jsClicarTexto('Rejeitar todos')).catch(() => false);
     }
+    if (i === 12) log('ainda sem cartão de perfil', { links: await ag.js(JS_LINKS_DO_MIOLO).catch(() => null), ...(await ondeEstou(ag)) });
     await ag.esperar(1_000);
   }
   if (clicou) {
@@ -131,6 +134,23 @@ export async function entrarNaCpfl(ag: Agente, creds: Credenciais, nomeCofre: st
   }
   log('login na CPFL ok', { url: (await ag.url()).replace(/\?.*$/, '') });
 }
+
+/** Clica no primeiro link VISÍVEL fora do cabeçalho/rodapé que leva a gestao-projetos (é o que o cartão faz). */
+const JS_CLICAR_LINK_PROJETOS = `(() => {
+  const vis = e => e.getClientRects().length > 0;
+  const foraDoMenu = e => !e.closest('header, footer, nav, [role="navigation"]');
+  const a = Array.from(document.querySelectorAll('a[href*="gestao-projetos"]')).find(x => vis(x) && foraDoMenu(x));
+  if (!a) return false; a.click(); return true;
+})()`;
+
+/** Links e botões do miolo da página (fora de cabeçalho/rodapé/menu) — o que a tela oferece. */
+const JS_LINKS_DO_MIOLO = `(() => {
+  const vis = e => e.getClientRects().length > 0;
+  const foraDoMenu = e => !e.closest('header, footer, nav, [role="navigation"]');
+  return Array.from(document.querySelectorAll('a, button')).filter(x => vis(x) && foraDoMenu(x))
+    .map(x => ((x.textContent || '').replace(/\\s+/g, ' ').trim().slice(0, 50) || '(sem texto)') + (x.getAttribute('href') ? ' → ' + x.getAttribute('href').slice(0, 80) : ''))
+    .slice(0, 30);
+})()`;
 
 /** URL (sem query), título e começo do texto da página — para o log dizer onde o robô estava. */
 async function ondeEstou(ag: Agente): Promise<Record<string, unknown>> {
