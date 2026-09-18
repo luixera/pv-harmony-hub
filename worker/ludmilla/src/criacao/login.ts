@@ -78,9 +78,13 @@ export async function entrarNaCpfl(ag: Agente, creds: Credenciais, nomeCofre: st
   if (/b2clogin\.com/i.test(url)) {
     throw new ErroLudmilla('login_recusado', 'O portal da CPFL não saiu da tela de login — usuário ou senha recusados.');
   }
+  // A cadeia continua no site (receive-token → /Internet/Projeto): espera
+  // sair do receive-token e a página assentar antes de procurar o cartão.
+  await esperarUrl(ag, /cpfl\.com\.br\/(?!b2c-auth)/i, 30);
   await ag.esperarCarga('networkidle');
   await ag.esperar(1_500);
   await ag.js<boolean>(jsClicarTexto('Rejeitar todos')).catch(() => false);
+  log('depois do B2C', await ondeEstou(ag));
 
   // Tela "Selecionar perfil": o cartão Projetos Particulares (subtítulo
   // "Serviços para projetistas") é o que CRIA a sessão do app gestao-projetos.
@@ -98,20 +102,29 @@ export async function entrarNaCpfl(ag: Agente, creds: Credenciais, nomeCofre: st
     await esperarUrl(ag, /gestao-projetos/, 40);
   }
   if (!/gestao-projetos/.test(await ag.url())) {
-    log('sem tela de perfil — abrindo meus-projetos');
+    log('sem tela de perfil — abrindo meus-projetos', await ondeEstou(ag));
     await ag.abrir(URL_MEUS_PROJETOS);
     await ag.esperarCarga('networkidle');
     await ag.esperar(1_000);
+    log('meus-projetos aberto', await ondeEstou(ag));
   }
   if (!/gestao-projetos/.test(await ag.url())) {
-    throw new ErroLudmilla('sessao_expirada', 'Entrei na CPFL mas não cheguei ao portal de projetos (gestao-projetos).');
+    throw new ErroLudmilla('pagina_mudou', 'Entrei na CPFL mas não cheguei ao portal de projetos (gestao-projetos).');
   }
   // prova de sessão no app de projetos: o menu "GERENCIE SEUS PROJETOS" (ou o link Sair) está na tela
   const autenticado = await ag.js<boolean>(JS_AUTENTICADO).catch(() => false);
   if (!autenticado) {
-    throw new ErroLudmilla('sessao_expirada', `Cheguei em gestao-projetos mas a página não está autenticada ("${await ag.titulo()}") — o cartão "Serviços para projetistas" não foi acionado.`);
+    throw new ErroLudmilla('pagina_mudou', `Cheguei em gestao-projetos mas a página não está autenticada ("${await ag.titulo()}") — o cartão "Serviços para projetistas" não foi acionado.`);
   }
   log('login na CPFL ok', { url: (await ag.url()).replace(/\?.*$/, '') });
+}
+
+/** URL (sem query), título e começo do texto da página — para o log dizer onde o robô estava. */
+async function ondeEstou(ag: Agente): Promise<Record<string, unknown>> {
+  const url = (await ag.url().catch(() => '')).replace(/\?.*$/, '');
+  const titulo = await ag.titulo().catch(() => '');
+  const texto = await ag.js<string>(`(document.body && document.body.innerText || '').replace(/\\s+/g, ' ').trim().slice(0, 240)`).catch(() => '');
+  return { url, titulo, texto };
 }
 
 /** Espera a URL casar com o padrão (navegações em cadeia do portal). */
