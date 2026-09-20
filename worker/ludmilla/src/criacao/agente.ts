@@ -18,6 +18,8 @@ export interface OpcoesAgente {
   executavel?: string;
   /** argumentos extras do Chrome, separados por vírgula */
   argsChrome?: string;
+  /** variáveis de ambiente extras para a CLI (ex.: AGENT_BROWSER_INIT_SCRIPTS) */
+  env?: Record<string, string>;
   timeoutMs?: number;
 }
 
@@ -58,7 +60,7 @@ export class Agente {
   async cmd(args: string[], o: { stdin?: string; timeoutMs?: number; tolerar?: boolean } = {}): Promise<Record<string, unknown>> {
     const todos = [...this.base(), ...args];
     const saida = await new Promise<{ code: number | null; out: string; err: string }>((resolve, reject) => {
-      const p = spawn(BIN, todos, { windowsHide: true });
+      const p = spawn(BIN, todos, { windowsHide: true, env: { ...process.env, ...(this.o.env ?? {}) } });
       let out = ''; let err = '';
       const t = setTimeout(() => { p.kill(); reject(new Error(`agent-browser ${args[0]} demorou mais de ${o.timeoutMs ?? this.o.timeoutMs ?? 90_000} ms`)); }, o.timeoutMs ?? this.o.timeoutMs ?? 90_000);
       p.stdout.on('data', d => { out += d; });

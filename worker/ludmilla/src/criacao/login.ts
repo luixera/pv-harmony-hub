@@ -2,6 +2,7 @@ import { ErroLudmilla } from '../erros.js';
 import type { Credenciais } from '../fila.js';
 import type { Agente } from './agente.js';
 import { jsClicarTexto } from './js.js';
+import { USER_AGENT_LUDMILLA } from './tipos.js';
 
 /**
  * Entra na CPFL (Azure AD B2C) pelo cofre da CLI: a senha vai por stdin para
@@ -20,7 +21,7 @@ import { jsClicarTexto } from './js.js';
 
 const LOGIN_URL = 'https://www.cpfl.com.br/cpfl-auth/redirect-arame?redirect_uri=/Internet/Projeto';
 /** O mesmo User-Agent do contexto Playwright da varredura (index.ts → novoContexto). */
-const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36';
+const USER_AGENT = USER_AGENT_LUDMILLA;
 const URL_MEUS_PROJETOS = 'https://www.cpfl.com.br/gestao-projetos/meus-projetos';
 /** Tela "Selecionar perfil" da Agência: o cartão Projetos Particulares vive aqui (roteiro PDF, passo 2). */
 const URL_SELECIONAR_PERFIL = 'https://www.cpfl.com.br/agencia/area-cliente/selecionar-perfil-instalacao';
@@ -180,7 +181,8 @@ async function ondeEstou(ag: Agente): Promise<Record<string, unknown>> {
   const url = (await ag.url().catch(() => '')).replace(/\?.*$/, '');
   const titulo = await ag.titulo().catch(() => '');
   const texto = await ag.js<string>(`(document.body && document.body.innerText || '').replace(/\\s+/g, ' ').trim().slice(0, 240)`).catch(() => '');
-  return { url, titulo, texto };
+  const navegador = await ag.js<string>(`navigator.userAgent + ' | webdriver=' + navigator.webdriver + ' | ' + navigator.language + ' | ' + innerWidth + 'x' + innerHeight`).catch(() => '');
+  return { url, titulo, texto, navegador };
 }
 
 /** Espera a URL casar com o padrão (navegações em cadeia do portal). */

@@ -6,6 +6,21 @@
 
 const j = (v: unknown) => JSON.stringify(v);
 
+/**
+ * Init script (roda antes de qualquer script da página, em toda aba da
+ * sessão): a mesma cara do contexto Playwright da varredura. Na VPS o Chrome
+ * da CLI dizia "HeadlessChrome/153" e a Agência da CPFL não mostrava os
+ * cartões de perfil (18/09/2026).
+ */
+export const jsInitNavegador = (userAgent: string) => `(() => {
+  const ua = ${j(userAgent)};
+  try { Object.defineProperty(navigator, 'userAgent', { get: () => ua, configurable: true }); } catch {}
+  try { Object.defineProperty(navigator, 'appVersion', { get: () => ua.replace(/^Mozilla\\//, ''), configurable: true }); } catch {}
+  try { Object.defineProperty(navigator, 'webdriver', { get: () => false, configurable: true }); } catch {}
+  try { Object.defineProperty(navigator, 'language', { get: () => 'pt-BR', configurable: true }); } catch {}
+  try { Object.defineProperty(navigator, 'languages', { get: () => ['pt-BR', 'pt', 'en'], configurable: true }); } catch {}
+})();`;
+
 /** Mapa dos controles do formulário (mesmo formato de docs/superpowers/specs/2026-09-17-cpfl60-mapa/mapa.js). */
 export const JS_MAPA = `(() => {
   const limpo = s => (s || '').replace(/\\s+/g, ' ').trim();

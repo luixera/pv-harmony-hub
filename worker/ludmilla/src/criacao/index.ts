@@ -1,13 +1,14 @@
+import { writeFileSync } from 'node:fs';
 import { readFile, unlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { classificarErro, ErroLudmilla } from '../erros.js';
 import { credenciais, dadosCriacaoCpfl, finalizarRun, subirTexto, supabase, type Run } from '../fila.js';
 import { Agente } from './agente.js';
-import { JS_MAPA } from './js.js';
+import { JS_MAPA, jsInitNavegador } from './js.js';
 import { entrarNaCpfl } from './login.js';
 import { roteiroCpfl60, type NomePasso, type StatusPasso } from './roteiro-cpfl60.js';
-import type { DadosCriacaoCpfl } from './tipos.js';
+import { USER_AGENT_LUDMILLA, type DadosCriacaoCpfl } from './tipos.js';
 
 /**
  * Run `criar_projeto`: da fila até o projeto salvo na CPFL, pela CLI
@@ -23,13 +24,18 @@ import type { DadosCriacaoCpfl } from './tipos.js';
 const log = (msg: string, extra: Record<string, unknown> = {}) =>
   console.log(JSON.stringify({ t: new Date().toISOString(), msg, ...extra }));
 
+
 export function agenteDoAmbiente(sessao: string): Agente {
+  // init script da sessão: corrige navigator.userAgent/webdriver/language antes da página
+  const initScript = join(tmpdir(), 'ludmilla-init-navegador.js');
+  try { writeFileSync(initScript, jsInitNavegador(USER_AGENT_LUDMILLA)); } catch { /* sem init script: segue assim mesmo */ }
   return new Agente({
     sessao,
     headed: process.env.LUDMILLA_AB_HEADED === '1',
     perfil: process.env.LUDMILLA_AB_PERFIL || undefined,
     executavel: process.env.LUDMILLA_AB_EXEC || undefined,
     argsChrome: process.env.LUDMILLA_AB_ARGS || undefined,
+    env: { AGENT_BROWSER_INIT_SCRIPTS: initScript },
   });
 }
 

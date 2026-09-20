@@ -48,3 +48,6 @@ export const PERGUNTAS_CONDICIONAIS = {
   ja_possui_projeto_aprovado: 'Já possui projeto aprovado?',
   uc_medidor_vizinho:         'Unidade Consumidora ou Medidor do Vizinho?',
 } as const;
+
+/** O mesmo User-Agent do contexto Playwright da varredura (index.ts → novoContexto). */
+export const USER_AGENT_LUDMILLA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36';

@@ -64,11 +64,15 @@ mkdir -p "/home/$USUARIO/.agent-browser"
 chown -R "$USUARIO:$USUARIO" "/home/$USUARIO/.agent-browser"
 sudo -u "$USUARIO" -H agent-browser install || falhar "download do Chrome (agent-browser) para o usuário $USUARIO falhou"
 echo "agent-browser: $(agent-browser --version 2>/dev/null)"
-# fumaça: abre, lê o título e fecha — com os mesmos argumentos do serviço
-# --lang: a Agência/OneTrust mudam de cara com o idioma do navegador; o Playwright roda em pt-BR
+# Chrome COM janela num display virtual (xvfb): o headless se apresenta como
+# "HeadlessChrome" e a Agência da CPFL não mostrava os cartões de perfil
+# (18/09/2026). Com --headed a CLI sobe o Xvfb sozinha quando não há DISPLAY.
+apt-get install -y xvfb >/dev/null 2>&1 || echo "aviso: não consegui instalar o xvfb"
+# fumaça: abre, lê título e a cara do navegador, fecha — com os mesmos argumentos do serviço
 AB_ARGS='--no-sandbox,--disable-crashpad,--disable-crash-reporter,--disable-gpu,--disable-dev-shm-usage,--lang=pt-BR,--accept-lang=pt-BR'
-if sudo -u "$USUARIO" -H agent-browser --session fumaca --args "$AB_ARGS" open https://example.com >/dev/null 2>&1; then
+if sudo -u "$USUARIO" -H agent-browser --session fumaca --headed --args "$AB_ARGS" open https://example.com >/dev/null 2>&1; then
   echo "fumaça: $(sudo -u "$USUARIO" -H agent-browser --session fumaca get title 2>/dev/null)"
+  echo "navegador: $(echo 'navigator.userAgent + " | " + navigator.language' | sudo -u "$USUARIO" -H agent-browser --session fumaca eval --stdin 2>/dev/null)"
   sudo -u "$USUARIO" -H agent-browser --session fumaca close >/dev/null 2>&1
 else
   echo "aviso: o Chrome do agent-browser não abriu no teste de fumaça — a criação na CPFL vai falhar até ajustar LUDMILLA_AB_EXEC/LUDMILLA_AB_ARGS"
@@ -81,6 +85,7 @@ SUPABASE_URL=$SUPABASE_URL
 SUPABASE_SERVICE_ROLE_KEY=$SUPABASE_SERVICE_ROLE_KEY
 LUDMILLA_POLL_SECONDS=30
 LUDMILLA_AB_ARGS=$AB_ARGS
+LUDMILLA_AB_HEADED=1
 EOF
 chmod 600 "$ENV_DIR/env"
 
