@@ -399,3 +399,40 @@ caminhos: arrastar o card encerra com o motivo e avisa o responsável; quem
 move sendo o próprio responsável não recebe aviso; o Aplicar da Ludmilla
 conta as encerradas no comentário; repetir a mesma etapa não encerra nada;
 tarefa manual e tarefa da etapa nova ficam abertas.
+
+## Tarefas vencidas e REGISTRO na aba (23/09/2026)
+
+`20260923100000_ludmilla_tarefas_vencidas_e_registro.sql`, dois pedidos do
+usuário:
+
+**1. As tarefas que já estavam abertas.** O encerramento de 22/09 só age na
+hora em que o card muda de etapa — as tarefas antigas de projetos que já
+haviam saído continuavam vencendo. `ludmilla_encerrar_tarefas_vencidas(tenant,
+avisar)` varre todas as tarefas de automação abertas e encerra as que
+pertencem a etapa diferente da atual do projeto, assinando como **Ludmilla**
+(`completed_by` = usuária Ludmilla) e explicando na descrição. É chamada a
+cada **varredura que termina bem** (`ludmilla_finalizar_run_impl`), então a
+conferência é rotina, não mutirão. `encerrar_tarefas_da_etapa` ganhou
+`p_avisar` para a limpeza de lote não disparar dezenas de sinos.
+Limpeza inicial de 23/09: **8 tarefas** encerradas (7 projetos já em
+Concluído, 1 em Vistoria reprovada); as outras 21 seguem abertas porque os
+projetos ainda estão em Vistoria solicitada.
+
+**2. Registro na aba.** `ludmilla_registro(limite, ator)` — leitura unificada
+do que já está gravado, sem tabela de log nova (por isso o histórico inteiro
+aparece desde o primeiro dia):
+
+| Fonte | Evento |
+|---|---|
+| `portal_sync_runs` | visita ao portal (varredura, criação, teste, descoberta) com protocolos/recomendações ou o erro |
+| `portal_updates` (detectado) | recomendação levantada: status do portal, protocolo, titular, etapa sugerida, casamento |
+| `portal_updates` (aplicada/ignorada) | decisão da equipe, com o nome de quem decidiu |
+| `portal_anexos` | anexo da concessionária no card / bloqueado / erro |
+| `portal_pareceres` | parecer virando comentário |
+| `portal_captchas` | código pedido (ela) e respondido (quem respondeu) |
+| `tasks` | tarefa encerrada, com o motivo |
+
+`ator` = `ludmilla` (ela fez) ou `equipe` (feito através dela); a página
+filtra por isso ("Tudo · Ela fez · A equipe fez"), mostra 60 e tem "Ver mais"
+(até 400). Só equipe do tenant GD Manager — outro tenant e empresa recebem
+"Sem acesso à Ludmilla" (testado: 6 checagens de isolamento).

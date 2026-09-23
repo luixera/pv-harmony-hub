@@ -474,3 +474,44 @@ export function useIgnorarUpdate() {
     onError: (e: Error) => toast.error(e.message),
   });
 }
+
+// ── Registro: o que a Ludmilla fez e o que foi feito através dela ────────────
+
+export type AtorLudmilla = 'ludmilla' | 'equipe';
+
+export interface RegistroLudmilla {
+  quando: string;
+  ator: AtorLudmilla;
+  /** nome de quem fez (ou "Ludmilla" / "agendamento") */
+  quem: string | null;
+  acao: 'visita' | 'recomendacao' | 'aplicada' | 'ignorada' | 'anexo' | 'parecer'
+      | 'captcha_pedido' | 'captcha_respondido' | 'tarefa_encerrada';
+  titulo: string;
+  detalhe: string | null;
+  situacao: 'ok' | 'erro' | 'aviso';
+  project_id: string | null;
+  /** código do projeto, quando o evento é de um projeto */
+  projeto: string | null;
+  protocolo: string | null;
+}
+
+/**
+ * Leitura unificada do que já está gravado (visitas, recomendações, decisões
+ * da equipe, anexos, pareceres, códigos de imagem, tarefas encerradas) — por
+ * isso o registro já nasce com todo o histórico, sem tabela de log nova.
+ */
+export function useRegistroLudmilla(limite = 120, ator?: AtorLudmilla) {
+  const disponivel = useLudmillaDisponivel();
+  return useQuery({
+    queryKey: ['ludmilla-registro', limite, ator ?? 'todos'],
+    queryFn: async (): Promise<RegistroLudmilla[]> => {
+      const { data, error } = await supabase.rpc('ludmilla_registro' as never, {
+        p_limite: limite, p_ator: ator ?? null,
+      } as never);
+      if (error) throw error;
+      return (data ?? []) as RegistroLudmilla[];
+    },
+    enabled: disponivel,
+    staleTime: 30_000,
+  });
+}
