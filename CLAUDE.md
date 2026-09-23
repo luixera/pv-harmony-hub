@@ -63,7 +63,7 @@ Detalhes: [docs/project/tech-stack.md](docs/project/tech-stack.md).
 | Notificações e automações | ✅ | [modules/notifications](docs/modules/notifications/overview.md) |
 | Integrações | ✅ | [modules/integrations](docs/modules/integrations/overview.md) |
 | Ludmilla (portais das concessionárias) | 🟡 CPFL pronta (VPS); Elektro pela estação local — aguarda aceite; só GD Manager | [modules/integrations/ludmilla](docs/modules/integrations/ludmilla.md) |
-| Zé (assistente no WhatsApp) | 🟡 Entrega 1 (conexão + espelho) pronta; falta instalar na VPS; só GD Manager | [modules/ze](docs/modules/ze/overview.md) |
+| Zé (assistente no WhatsApp) | 🟡 Entrega 1 (conexão + espelho) NO AR; cérebro pendente; só GD Manager | [modules/ze](docs/modules/ze/overview.md) |
 | Usuários | ✅ | [modules/users](docs/modules/users/overview.md) |
 | Permissões (RLS) | ✅ | [modules/permissions](docs/modules/permissions/overview.md) |
 | Geração compartilhada | 🟡 Parcial | [modules/shared-generation](docs/modules/shared-generation/overview.md) |

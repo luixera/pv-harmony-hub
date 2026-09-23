@@ -10,9 +10,11 @@ e entende áudio. **Nunca envia mensagem a terceiros.**
 Spec: [`docs/superpowers/specs/2026-09-17-ze-whatsapp-design.md`](../../superpowers/specs/2026-09-17-ze-whatsapp-design.md).
 Plano da fundação: [`docs/superpowers/plans/2026-09-17-ze-fundacao.md`](../../superpowers/plans/2026-09-17-ze-fundacao.md).
 
-**Estado: Entrega 1 (fundação) construída e testada no servidor; falta a
-instalação na VPS** (depende do registro DNS `zap`). Entregas 2–6 (cérebro,
-escrita, aprendizado/áudio, rotinas/eventos, skill) pendentes.
+**Estado: Entrega 1 (fundação) NO AR e aceita em 23/09/2026** — Evolution
+2.3.7 em `https://zap.homologamanager.com.br`, número conectado, espelho
+funcionando nos dois sentidos e envio para o próprio número confirmado (o
+plano B do grupo, previsto na spec §16, foi descartado). Entregas 2–6
+(cérebro, escrita, aprendizado/áudio, rotinas/eventos, skill) pendentes.
 
 ## Regras duras (no código, não no prompt)
 1. **Só envia ao próprio JID** (`ze_config.phone_jid`). A única ferramenta de
@@ -90,5 +92,12 @@ flowchart LR
 - **JIDs `@lid`** não são telefone (`telefoneDoJid` devolve null). O
   `jid_alt` fica guardado para o casamento futuro.
 - **`.env` da Evolution é preservado** pelo workflow, de propósito.
+- **O WhatsApp despeja o histórico do aparelho na Evolution ao conectar**
+  (8.987 mensagens pessoais na primeira conexão, set/2026). Desligado com
+  `acao=limpar_historico` no workflow (`DATABASE_SAVE_DATA_HISTORIC=false` +
+  `DELETE FROM "Message"`). Mensagens **novas** continuam salvas lá de
+  propósito: o download de áudio para transcrição depende delas. As tabelas
+  `Chat` e `Contact` (metadados: número, nome, foto) ficam.
+- Reiniciar o container da API **não** derruba a sessão do WhatsApp.
 - O `vitest.config.ts` coleta `supabase/functions/_shared` — ao criar outro
   módulo puro lá, o teste roda junto com `npm test`.
