@@ -23,8 +23,19 @@ const LOGIN_URL = 'https://www.cpfl.com.br/cpfl-auth/redirect-arame?redirect_uri
 /** O mesmo User-Agent do contexto Playwright da varredura (index.ts → novoContexto). */
 const USER_AGENT = USER_AGENT_LUDMILLA;
 const URL_MEUS_PROJETOS = 'https://www.cpfl.com.br/gestao-projetos/meus-projetos';
-/** Tela "Selecionar perfil" da Agência: o cartão Projetos Particulares vive aqui (roteiro PDF, passo 2). */
-const URL_SELECIONAR_PERFIL = 'https://www.cpfl.com.br/agencia/area-cliente/selecionar-perfil-instalacao';
+/**
+ * Telas onde o cartão "Projetos Particulares / Serviços para projetistas"
+ * pode estar, na ordem de tentativa:
+ *  1. /Internet/Projeto — destino do redirect_uri do login; é onde a varredura
+ *     (Playwright, funciona todo dia) encontra o cartão logo após entrar;
+ *  2. Todos os serviços do integrador — link que a própria Agência oferece;
+ *  3. Selecionar perfil — a tela do roteiro PDF (passo 2).
+ */
+const TELAS_DO_CARTAO = [
+  'https://www.cpfl.com.br/Internet/Projeto',
+  'https://www.cpfl.com.br/integrador/servicos/home',
+  'https://www.cpfl.com.br/agencia/area-cliente/selecionar-perfil-instalacao',
+];
 
 /** O botão Entrar está na tela e nada o cobre? */
 const JS_BOTAO_LIVRE = `(() => {
@@ -102,36 +113,29 @@ export async function entrarNaCpfl(
   log('depois do B2C', await ondeEstou(ag));
   await print('login-1-chegada');
 
-  // Tela "Selecionar perfil": o cartão Projetos Particulares (subtítulo
-  // "Serviços para projetistas") é o que CRIA a sessão do app gestao-projetos.
-  // Abrir meus-projetos direto, sem esse clique, dá uma sessão anônima e
-  // "Access denied" em criar-projeto (simulação de 18/09). A tela pode
-  // renderizar tarde: espera o cartão até 20 s, clica, e espera a navegação.
-  // A chegada do B2C pode ser outra página da Agência (18/09: area-cliente/
-  // cadastro); a tela de perfil tem URL própria — abrir depois de 5 s sem cartão.
-  let clicou = false;
-  let foiParaPerfil = false;
-  for (let i = 0; i < 25 && !clicou; i++) {
-    if (/gestao-projetos/.test(await ag.url())) break;
-    // 1º o subtítulo do cartão; 2º qualquer link visível do miolo para gestao-projetos
-    clicou = await ag.js<boolean>(jsClicarTexto('Serviços para projetistas')).catch(() => false)
-      || await ag.js<boolean>(JS_CLICAR_LINK_PROJETOS).catch(() => false);
-    if (clicou) break;
-    if (i === 5 && !foiParaPerfil) {
-      foiParaPerfil = true;
-      log('cartão de perfil não está na página de chegada — abrindo selecionar-perfil', await ondeEstou(ag));
-      await ag.abrir(URL_SELECIONAR_PERFIL);
+  // O cartão Projetos Particulares (subtítulo "Serviços para projetistas") é o
+  // que CRIA a sessão do app gestao-projetos; abrir meus-projetos direto dá
+  // "Access denied" do Drupal (simulações de 18–20/09). A chegada do B2C nem
+  // sempre é a tela do cartão — na VPS caiu em area-cliente/cadastro. Então
+  // procuramos o cartão na página de chegada e, se não estiver, nas telas
+  // conhecidas em ordem: /Internet/Projeto (destino do redirect_uri, onde a
+  // varredura o encontra), Todos os serviços do integrador e Selecionar perfil.
+  let clicou = await procurarCartao(ag, 6);
+  if (!clicou) {
+    for (const url of TELAS_DO_CARTAO) {
+      log('procurando o cartão de perfil', { abrindo: url });
+      await ag.abrir(url);
       await ag.esperarCarga('networkidle');
       await fecharCookies(ag);
-    }
-    if (i === 12) {
-      log('ainda sem cartão de perfil', { links: await ag.js(JS_LINKS_DO_MIOLO).catch(() => null), ...(await ondeEstou(ag)) });
+      if (/gestao-projetos/.test(await ag.url())) { clicou = true; break; }
+      clicou = await procurarCartao(ag, 8);
+      if (clicou) break;
+      log('sem o cartão nesta tela', { links: await ag.js(JS_LINKS_DO_MIOLO).catch(() => null), ...(await ondeEstou(ag)) });
       await print('login-2-perfil');
     }
-    await ag.esperar(1_000);
   }
   if (clicou) {
-    log('perfil "Serviços para projetistas" escolhido');
+    log('cartão de perfil acionado', await ondeEstou(ag));
     await esperarUrl(ag, /gestao-projetos/, 40);
   }
   if (!/gestao-projetos/.test(await ag.url())) {
@@ -150,6 +154,21 @@ export async function entrarNaCpfl(
     throw new ErroLudmilla('pagina_mudou', `Cheguei em gestao-projetos mas a página não está autenticada ("${await ag.titulo()}") — o cartão "Serviços para projetistas" não foi acionado.`);
   }
   log('login na CPFL ok', { url: (await ag.url()).replace(/\?.*$/, '') });
+}
+
+/**
+ * Procura o cartão de perfil na tela atual por N segundos (a Agência é React:
+ * o miolo chega depois do HTML). Tenta o subtítulo do cartão e, em seguida,
+ * qualquer link visível do miolo para gestao-projetos.
+ */
+async function procurarCartao(ag: Agente, segundos: number): Promise<boolean> {
+  for (let i = 0; i < segundos; i++) {
+    if (/gestao-projetos/.test(await ag.url())) return true;
+    if (await ag.js<boolean>(jsClicarTexto('Serviços para projetistas')).catch(() => false)) return true;
+    if (await ag.js<boolean>(JS_CLICAR_LINK_PROJETOS).catch(() => false)) return true;
+    await ag.esperar(1_000);
+  }
+  return false;
 }
 
 /** Clica no primeiro link VISÍVEL fora do cabeçalho/rodapé que leva a gestao-projetos (é o que o cartão faz). */
