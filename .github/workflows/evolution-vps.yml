@@ -20,7 +20,7 @@ on:
       acao:
         description: 'O que fazer na VPS'
         type: choice
-        options: [simular, instalar, atualizar, status]
+        options: [simular, instalar, atualizar, status, limpar_historico]
         default: simular
       imagem_tag:
         description: 'Tag da imagem evoapicloud/evolution-api'
@@ -68,6 +68,50 @@ jobs:
             $S docker compose -f "$DIR/docker-compose.yml" ps 2>/dev/null || echo "(compose não instalado)"
             curl -s -m 5 http://127.0.0.1:8080/ | head -c 300; echo
             $S ls -1 /etc/nginx/sites-enabled/ 2>/dev/null | grep -i zap || echo "(sem site nginx)"
+            exit 0
+          fi
+
+          # ── limpar_historico ────────────────────────────────────────────────
+          # Ao conectar, o WhatsApp despeja o histórico do aparelho na Evolution.
+          # Isso não é o que o Zé precisa (ele trabalha com o que chega DEPOIS,
+          # espelhado no Supabase por 30 dias) e deixa a conversa pessoal inteira
+          # parada num Postgres da VPS. Aqui desligamos a sincronização e
+          # apagamos o que já entrou. As mensagens NOVAS continuam sendo salvas
+          # (o download de áudio para transcrição depende delas).
+          if [ "$ACAO" = "limpar_historico" ]; then
+            cd "$DIR" || { echo "ERRO: $DIR não existe"; exit 1; }
+            PSQL="$S docker compose exec -T postgres psql -U evolution -d evolution -tA"
+
+            echo "=== antes ==="
+            $PSQL -c 'SELECT '\''Message: '\'' || count(*) FROM "Message";' 2>/dev/null || echo "(não consegui contar)"
+            $PSQL -c 'SELECT '\''Chat: '\'' || count(*) FROM "Chat";' 2>/dev/null
+            $PSQL -c 'SELECT '\''Contact: '\'' || count(*) FROM "Contact";' 2>/dev/null
+
+            echo "=== .env: desligando a sincronização de histórico ==="
+            if $S grep -q '^DATABASE_SAVE_DATA_HISTORIC=' .env; then
+              $S sed -i 's/^DATABASE_SAVE_DATA_HISTORIC=.*/DATABASE_SAVE_DATA_HISTORIC=false/' .env
+            else
+              echo 'DATABASE_SAVE_DATA_HISTORIC=false' | $S tee -a .env >/dev/null
+            fi
+            $S grep '^DATABASE_SAVE_DATA_HISTORIC=' .env
+
+            echo "=== apagando mensagens guardadas ==="
+            $PSQL -c 'DELETE FROM "MessageUpdate";' 2>/dev/null || echo "(MessageUpdate: nada a apagar)"
+            $PSQL -c 'DELETE FROM "Message";'       2>/dev/null || echo "(Message: nada a apagar)"
+
+            echo "=== reiniciando a API para pegar o .env ==="
+            $S docker compose up -d --force-recreate api
+            for i in $(seq 1 20); do
+              curl -s -m 3 http://127.0.0.1:8080/ | grep -q '"version"' && { echo "API de pé"; break; }
+              sleep 3
+            done
+
+            echo "=== depois ==="
+            $PSQL -c 'SELECT '\''Message: '\'' || count(*) FROM "Message";' 2>/dev/null
+            $PSQL -c 'SELECT '\''Chat: '\'' || count(*) FROM "Chat";' 2>/dev/null
+            $PSQL -c 'SELECT '\''Contact: '\'' || count(*) FROM "Contact";' 2>/dev/null
+            $S docker compose exec -T api printenv DATABASE_SAVE_DATA_HISTORIC 2>/dev/null
+            echo "(Chat/Contact são metadados — números e nomes. Diga se quiser apagar também.)"
             exit 0
           fi
 
