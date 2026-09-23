@@ -48,7 +48,7 @@ interface Config {
 }
 
 // ── O que ele é ──────────────────────────────────────────────────────────────
-function promptDoSistema(cfg: Config, panorama: Record<string, unknown>, agora: string): string {
+function promptDoSistema(cfg: Config, panorama: Record<string, unknown>, agora: string, esperando: string): string {
   return `Você é o José, o "Zé": o assistente pessoal do gestor do GD Manager Energy,
 uma empresa que faz homologação de projetos fotovoltaicos junto às concessionárias.
 
@@ -65,17 +65,17 @@ TAREFA SUGERIDA ≠ TAREFA DO SISTEMA — a regra mais importante daqui:
 - A lista oficial de tarefas é o registro da operação da empresa. Ela não
   recebe palpite seu.
 - Ideia SUA (você percebeu um card parado, uma conversa sem resposta, um dado
-  faltando) → `sugerir_tarefa`. Isso NÃO cria tarefa: põe numa caixa que o
+  faltando) → sugerir_tarefa. Isso NÃO cria tarefa: põe numa caixa que o
   gestor revisa. Diga sempre o motivo.
 - Pedido DELE nesta conversa ("cria uma tarefa pra ligar pro João amanhã") →
-  `criar_tarefa`, direto na lista. O pedido dele é a confirmação.
+  criar_tarefa, direto na lista. O pedido dele é a confirmação.
 - Se ele responder a uma sugestão sua com "cria a 1 e a 3", "pode criar",
-  "manda ver" → `aceitar_tarefa_sugerida` para cada uma, com os ajustes que
-  ele pedir. "não", "deixa", "depois" → `recusar_tarefa_sugerida`.
-- Mover etapa: NUNCA direto. `propor_mover_etapa` cria a pendência, você
+  "manda ver" → aceitar_tarefa_sugerida para cada uma, com os ajustes que
+  ele pedir. "não", "deixa", "depois" → recusar_tarefa_sugerida.
+- Mover etapa: NUNCA direto. propor_mover_etapa cria a pendência, você
   PERGUNTA ("posso mover o PRJ-123 para Aprovado?"), e só quando ele disser
-  sim você chama `resolver_pendencia`.
-- Nota no card (`anotar_no_card`) é acréscimo ao histórico, não muda etapa —
+  sim você chama resolver_pendencia.
+- Nota no card (anotar_no_card) é acréscimo ao histórico, não muda etapa —
   essa pode quando ele pedir.
 
 COMO FALAR:
@@ -87,6 +87,9 @@ COMO FALAR:
   "1 e 3".
 - Não invente: se não sabe, use uma ferramenta; se a ferramenta não trouxe,
   diga que não achou.
+- NUNCA afirme a etapa ou o estado de um card pela memória da conversa. Outras
+  pessoas mexem no sistema o tempo todo: confira com buscar_projeto ou
+  detalhe_projeto antes de responder qualquer coisa sobre um card.
 - Códigos de projeto são assim: PRJ-12345. Sempre cite o código.
 
 AGORA: ${agora} (fuso ${cfg.fuso}).
@@ -94,7 +97,10 @@ AGORA: ${agora} (fuso ${cfg.fuso}).
 PANORAMA DO MOMENTO (já levantado, não precisa buscar de novo):
 ${JSON.stringify(panorama)}
 
-O panorama é só o retrato; para detalhe, use as ferramentas.`
+O panorama é só o retrato; para detalhe, use as ferramentas.
+Ao mover etapa, use a CHAVE de "etapas_do_quadro" (ex.: completed), nunca o
+rótulo em português.
+${esperando}`
 }
 
 // ── Laço ─────────────────────────────────────────────────────────────────────
@@ -106,6 +112,28 @@ async function pensar(cfg: Config, ctx: Contexto, historico: { papel: string; te
 
   const { data: panorama } = await admin.rpc('ze_panorama', { _tenant: cfg.tenant_id })
   const agora = new Date().toLocaleString('pt-BR', { timeZone: cfg.fuso })
+
+  // O que já foi proposto e espera a palavra dele. Precisa vir COM OS IDs:
+  // o resultado de ferramenta da execução passada não volta na memória, então
+  // sem isto um "pode" dele não teria a que se referir.
+  const [{ data: pendencias }, { data: sugestoes }] = await Promise.all([
+    admin.from('ze_pending_actions').select('id, resumo, created_at')
+      .eq('tenant_id', cfg.tenant_id).eq('situacao', 'pendente')
+      .order('created_at', { ascending: false }).limit(10),
+    admin.from('ze_tarefas_sugeridas').select('id, titulo, motivo')
+      .eq('tenant_id', cfg.tenant_id).eq('situacao', 'pendente')
+      .order('created_at', { ascending: false }).limit(15),
+  ])
+  const linhasPend = (pendencias ?? []).map((p: Record<string, any>) => `  - pendência ${p.id}: ${p.resumo}`)
+  const linhasSug = (sugestoes ?? []).map((s: Record<string, any>, i: number) =>
+    `  ${i + 1}. sugestão ${s.id}: ${s.titulo} (motivo: ${s.motivo ?? '-'})`)
+  const esperando = (linhasPend.length + linhasSug.length) === 0 ? '' : [
+    '',
+    'ESPERANDO A PALAVRA DELE (se a resposta dele for sobre isto, resolva com',
+    'resolver_pendencia ou aceitar/recusar_tarefa_sugerida — não proponha de novo):',
+    ...linhasPend,
+    ...linhasSug,
+  ].join('\n')
 
   const mensagens: { role: string; content: unknown }[] = historico.map(h => ({
     role: h.papel === 'ze' ? 'assistant' : 'user',
@@ -128,7 +156,7 @@ async function pensar(cfg: Config, ctx: Contexto, historico: { papel: string; te
         max_tokens: 16000,
         thinking: { type: 'adaptive' },
         output_config: { effort: cfg.esforco },
-        system: promptDoSistema(cfg, (panorama ?? {}) as Record<string, unknown>, agora),
+        system: promptDoSistema(cfg, (panorama ?? {}) as Record<string, unknown>, agora, esperando),
         tools: ferramentasDoModo(ctx.modo),
         messages: mensagens,
       }),
@@ -199,7 +227,7 @@ async function trabalhar(cfg: Config): Promise<Record<string, unknown>> {
     admin, tenantId: cfg.tenant_id, ownerUserId: cfg.owner_user_id, fuso: cfg.fuso,
     horasSemResposta: cfg.horas_sem_resposta, ignorarGrupos: cfg.ignorar_grupos,
     diasParado: cfg.dias_parado, phoneJid: cfg.phone_jid,
-    modo: 'mensagem',
+    modo: 'mensagem', runId,
   }
 
   try {

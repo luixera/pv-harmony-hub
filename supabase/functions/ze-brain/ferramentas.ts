@@ -25,6 +25,8 @@ export interface Contexto {
   phoneJid: string | null
   /** 'mensagem' = o gestor está falando agora; 'rotina' = o Zé acordou sozinho. */
   modo: 'mensagem' | 'rotina'
+  /** Execução atual — uma pendência criada AGORA não pode ser confirmada agora. */
+  runId: string
 }
 
 export interface DefinicaoFerramenta {
@@ -509,10 +511,27 @@ export async function executarFerramenta(ctx: Contexto, nome: string, args: Reco
         .select('code, status').eq('tenant_id', tenantId).eq('id', projectId).maybeSingle()
       if (!p) return 'projeto não encontrado neste tenant'
       if ((p as Record<string, any>).status === to) return 'o card já está nessa etapa'
+      // Confere a CHAVE agora: se deixar para a confirmação, o gestor já teria
+      // dito "sim" para uma pendência condenada a falhar.
+      const { data: etapas } = await admin.rpc('ze_panorama', { _tenant: tenantId })
+      const validas: string[] = (((etapas as Record<string, any> | null)?.etapas_do_quadro ?? []) as Record<string, string>[])
+        .map(e => e.chave)
+      if (validas.length > 0 && !validas.includes(to)) {
+        return `"${to}" não é uma etapa deste quadro. As que existem: ${validas.join(', ')}`
+      }
+      // Não empilhar: se a mesma proposta já espera resposta, reaproveita.
+      const { data: jaTem } = await admin.from('ze_pending_actions')
+        .select('id, payload').eq('tenant_id', tenantId).eq('situacao', 'pendente').eq('tipo', 'mover_etapa')
+      const repetida = (jaTem ?? []).find((x: Record<string, any>) =>
+        x.payload?.project_id === projectId && x.payload?.to_status === to)
+      if (repetida) {
+        return `essa proposta já está esperando resposta (id ${(repetida as Record<string, any>).id}) — pergunte ao gestor em vez de propor de novo`
+      }
       const { data, error } = await admin.from('ze_pending_actions').insert({
         tenant_id: tenantId, tipo: 'mover_etapa',
         payload: { project_id: projectId, to_status: to, motivo: String(args.motivo ?? '') },
         resumo: `mover ${(p as Record<string, any>).code} de ${(p as Record<string, any>).status} para ${to}`,
+        run_id: ctx.runId,
       }).select('id').single()
       if (error) return `erro: ${error.message}`
       return `pendência criada (id ${(data as Record<string, any>).id}). O card NÃO se mexeu — pergunte ao gestor se pode e chame resolver_pendencia com a resposta dele.`
@@ -623,6 +642,14 @@ async function executarEscritaDireta(ctx: Contexto, nome: string, args: Record<s
     }
 
     case 'resolver_pendencia': {
+      // O card só anda depois que o gestor responde — e responder é OUTRA
+      // mensagem, outra execução. Propor e confirmar no mesmo fôlego seria
+      // mover sem perguntar, por mais que a frase dele pareça autorização.
+      const { data: pend } = await admin.from('ze_pending_actions')
+        .select('run_id').eq('tenant_id', tenantId).eq('id', String(args.pendencia_id ?? '')).maybeSingle()
+      if ((pend as Record<string, any> | null)?.run_id === ctx.runId) {
+        return 'essa pendência acabou de nascer: pergunte ao gestor e espere a resposta dele para confirmar'
+      }
       const { data, error } = await admin.rpc('ze_resolver_pendencia', {
         _id: String(args.pendencia_id ?? ''), _confirmar: args.confirmar === true, _como_usuario: ownerUserId,
       })
