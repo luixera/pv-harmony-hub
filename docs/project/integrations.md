@@ -32,8 +32,14 @@
 - **Cloudflare Turnstile** — anti-bot no form público
   (`VITE_TURNSTILE_SITE_KEY`).
 - **ip-api.com** — geolocalização por IP no login (best-effort).
-- **Evolution API (WhatsApp)** — planejado: motor de regras evento→WhatsApp por
-  tenant, rodando na VPS. Ver [roadmap.md](roadmap.md).
+- **Evolution API (WhatsApp)** — auto-hospedada na VPS (`/opt/evolution`,
+  Docker; Nginx `zap.homologamanager.com.br`), conecta o WhatsApp do gestor
+  por QR Code para o **Zé** ler as conversas e falar com ele no chat "Você".
+  Não-oficial (Baileys por baixo): risco pequeno de bloqueio da Meta, aceito
+  pelo usuário. Instalação/atualização pelo workflow manual
+  `evolution-vps.yml`; chave em secret (`EVOLUTION_API_KEY`), webhook
+  autenticado por `x-ze-token`. Ver [modules/ze](../modules/ze/overview.md).
+  O motor de regras evento→WhatsApp por tenant continua no [roadmap.md](roadmap.md).
 
 ## Segredos (GitHub Actions / Supabase)
 - GitHub: `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`,
