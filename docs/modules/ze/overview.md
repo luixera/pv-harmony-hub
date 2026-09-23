@@ -105,10 +105,37 @@ ferramentas de leitura, respondendo pelo WhatsApp.
   `telefone.ts`), com 26 testes no vitest e fixtures em
   `_shared/fixtures/evolution/` — dá para testar tudo sem WhatsApp nenhum.
 
-## Tela
-`/ze` (admin + `is_library`): conexão (QR, estado, teste de envio,
-desconectar) e preferências. Hook `src/hooks/useZe.ts`; item na sidebar com
-`requiresZe`.
+## Escrita com confirmação (Entrega 3)
+
+| Quem teve a ideia | Ferramenta | Onde grava |
+|---|---|---|
+| O Zé (rotina, varredura, leu uma conversa) | `sugerir_tarefa` | `ze_tarefas_sugeridas`, pendente |
+| O gestor, pedindo no chat | `criar_tarefa` | `tasks` direto — o pedido é a confirmação |
+
+- **A guarda é de código, não de prompt**: `ferramentasDoModo('rotina')` não
+  inclui as ferramentas que escrevem em `tasks`, e `executarFerramenta`
+  recusa de novo se o modelo inventar o nome.
+- **Mover etapa nunca é direto**: `propor_mover_etapa` cria a pendência com o
+  `run_id` da execução, e `resolver_pendencia` **recusa confirmar o que
+  nasceu na mesma execução**. O card só anda depois de uma resposta em outra
+  mensagem — mesmo quando a frase parece autorização ("pode mover").
+- **O que espera resposta entra no prompt, com os ids**: resultado de
+  ferramenta não volta na memória, então sem isso um "pode" do gestor não
+  teria a que se referir.
+- RPCs compartilhadas pela tela e pelo WhatsApp: `ze_aceitar_tarefa_sugerida`
+  (com ajustes), `ze_recusar_tarefa_sugerida`, `ze_resolver_pendencia`. Nelas
+  `auth.uid()` tem precedência sobre `_como_usuario` — ninguém logado se passa
+  por outro. Cron `ze-expirar` (04:00) fecha pendência de 24 h e sugestão de
+  7 dias.
+
+## Telas
+- `/ze` (admin + `is_library`): pendências no topo, conexão (QR, estado, teste
+  de envio, desconectar), caixa de sugestões e preferências.
+- `/tasks`: aba **Sugestões do Zé** com contador, apartada da lista oficial.
+  A tela diz, em texto, que aquilo não está nas tarefas e só entra se o gestor
+  criar. Aceitar permite ajustar título e prazo antes.
+- Componentes `src/components/ze/SugestoesDoZe.tsx` e `PendenciasDoZe.tsx`;
+  hook `src/hooks/useZe.ts`; item na sidebar com `requiresZe`.
 
 ## Fluxo (Entrega 1)
 ```mermaid
