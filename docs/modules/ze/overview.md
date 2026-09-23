@@ -10,11 +10,12 @@ e entende áudio. **Nunca envia mensagem a terceiros.**
 Spec: [`docs/superpowers/specs/2026-09-17-ze-whatsapp-design.md`](../../superpowers/specs/2026-09-17-ze-whatsapp-design.md).
 Plano da fundação: [`docs/superpowers/plans/2026-09-17-ze-fundacao.md`](../../superpowers/plans/2026-09-17-ze-fundacao.md).
 
-**Estado: Entrega 1 (fundação) NO AR e aceita em 23/09/2026** — Evolution
-2.3.7 em `https://zap.homologamanager.com.br`, número conectado, espelho
-funcionando nos dois sentidos e envio para o próprio número confirmado (o
-plano B do grupo, previsto na spec §16, foi descartado). Entregas 2–6
-(cérebro, escrita, aprendizado/áudio, rotinas/eventos, skill) pendentes.
+**Estado: Entregas 1 e 2 NO AR (23/09/2026).** Evolution 2.3.7 em
+`https://zap.homologamanager.com.br`, número conectado, espelho nos dois
+sentidos, envio para o próprio número confirmado (o plano B do grupo,
+previsto na spec §16, foi descartado) e o **cérebro respondendo**: escreveu
+no chat "Você" → resposta em 10-15 s. Entregas 3–6 (escrita com confirmação,
+aprendizado/áudio, rotinas/eventos, skill) pendentes.
 
 ## Regras duras (no código, não no prompt)
 1. **Só envia ao próprio JID** (`ze_config.phone_jid`). A única ferramenta de
@@ -58,6 +59,40 @@ plano B do grupo, previsto na spec §16, foi descartado). Entregas 2–6
 RPCs: `ze_admin_ok()` (admin de tenant `is_library`), `ze_dono_ok(tenant)`
 (dono do WhatsApp), `ze_ativar()` (cria a config do tenant de quem chama).
 
+## O cérebro (Entrega 2)
+
+`ze-brain` recebe `{modo:'mensagem', tenant_id}`, monta o prompt com o
+**panorama** (tarefas de hoje/atrasadas, projetos por etapa, e-mails e
+recomendações pendentes, equipe) e roda um laço de **tool use** com 12
+ferramentas de leitura, respondendo pelo WhatsApp.
+
+- **Modelo**: `ze_config.modelo_ia` (padrão `claude-opus-5`), thinking
+  adaptativo, `effort` da config, `max_tokens` 16000. Os blocos da resposta
+  voltam **inteiros** (inclusive `thinking`) na próxima volta — exigência da
+  API quando o raciocínio adaptativo está ligado. Resultados de ferramentas
+  paralelas vão numa **única** mensagem de usuário.
+- **Ferramentas**: tarefas · projetos · projetos_parados ·
+  projetos_dados_faltando · buscar_projeto · detalhe_projeto ·
+  conversas_sem_resposta · ler_conversa · mensagens_recebidas ·
+  contexto_do_contato · emails_pendentes · recomendacoes_ludmilla.
+  Todas recebem o `tenant_id` da config, nunca do modelo (regra dura 3), e
+  devolvem **texto compacto** com corte em 15-25 linhas (`… e mais N`).
+- **Leituras pesadas são SQL** (`ze_panorama`, `ze_conversas_sem_resposta`,
+  `ze_projetos_parados`, `ze_projetos_dados_faltando`); as simples são
+  `.from()` no TypeScript.
+- **Trava** `ze_lock` (3 min) para não rodar dois cérebros ao mesmo tempo;
+  cada execução vira uma linha em `ze_runs` (ferramentas, duração, tokens).
+- **Resposta**: markdown vira o pouco que o WhatsApp entende (`paraWhatsapp`)
+  e é partida em pedaços de 1500 caracteres (`partirMensagem`), cada um
+  gravado em `ze_messages` com o `wa_id` — é isso que impede o webhook de
+  tratar a fala do Zé como fala do gestor.
+- **Assíncrono por padrão**: responde `202` na hora e pensa em segundo plano
+  (`EdgeRuntime.waitUntil`), senão a Evolution reenviaria o evento achando
+  que o webhook caiu. `{"aguardar": true}` faz esperar — é para teste e para
+  o botão "Rodar agora".
+- **Custo real medido**: ~US$ 0,08 por pergunta (12 mil tokens de entrada,
+  600 de saída, Opus 5). Aparece no extrato do `/painel` como `ze_chat`.
+
 ## Edge functions
 - **`ze-webhook`** (`--no-verify-jwt`, autentica por `x-ze-token`):
   `qrcode.updated` → QR na config; `connection.update` → situação e
@@ -99,5 +134,14 @@ flowchart LR
   propósito: o download de áudio para transcrição depende delas. As tabelas
   `Chat` e `Contact` (metadados: número, nome, foto) ficam.
 - Reiniciar o container da API **não** derruba a sessão do WhatsApp.
+- **`update_ai_usage_tokens` não serve para rotina de servidor**: ela filtra
+  por `tenant_id = get_user_tenant_id(auth.uid())` e, sem sessão, o UPDATE
+  não acha linha e **não faz nada, sem erro** — o lançamento fica com
+  model/tokens nulos e cai na estimativa genérica de US$ 0,02. Use
+  `update_ai_usage_tokens_servidor(log_id, tenant, model, in, out)`. Mesma
+  armadilha de `consume_ai_quota` → `consume_ai_quota_servidor`.
+- Concatenar colunas que podem ser nulas em SQL de diagnóstico esconde o
+  problema (`'a' || NULL` = NULL): foi o que quase fez a falha acima passar
+  batido. Usar `coalesce` em cada pedaço.
 - O `vitest.config.ts` coleta `supabase/functions/_shared` — ao criar outro
   módulo puro lá, o teste roda junto com `npm test`.
