@@ -217,9 +217,13 @@ async function trabalhar(cfg: Config): Promise<Record<string, unknown>> {
       .eq('tenant_id', cfg.tenant_id).eq('papel', 'user').is('processada_em', null)
 
     if (logId) {
-      await admin.rpc('update_ai_usage_tokens', {
-        _log_id: logId, _model: cfg.modelo_ia, _input_tokens: entrada, _output_tokens: saida,
+      // A versão comum filtra por auth.uid() e, sem sessão, não atualiza nada
+      // em silêncio — daí a `_servidor`, que recebe o tenant.
+      const { data: gravou, error: errTok } = await admin.rpc('update_ai_usage_tokens_servidor', {
+        _log_id: logId, _tenant: cfg.tenant_id, _model: cfg.modelo_ia,
+        _input_tokens: entrada, _output_tokens: saida,
       })
+      if (errTok || gravou !== true) console.error('tokens não lançados no extrato', errTok, gravou)
     }
     await admin.from('ze_runs').update({
       terminado_em: new Date().toISOString(), ok: true,
