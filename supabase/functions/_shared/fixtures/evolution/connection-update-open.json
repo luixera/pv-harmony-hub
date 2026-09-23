@@ -1,0 +1,17 @@
+{
+  "event": "connection.update",
+  "instance": "ze-teste",
+  "data": {
+    "instance": "ze-teste",
+    "wuid": "5519999990000@s.whatsapp.net",
+    "profileName": "Luiz",
+    "profilePictureUrl": null,
+    "state": "open",
+    "statusReason": 200
+  },
+  "destination": "https://yqsqrdndvsnhbsoaoilf.supabase.co/functions/v1/ze-webhook",
+  "date_time": "2026-09-17T10:09:00.000Z",
+  "sender": "5519999990000@s.whatsapp.net",
+  "server_url": "https://zap.homologamanager.com.br",
+  "apikey": "REDACTED"
+}

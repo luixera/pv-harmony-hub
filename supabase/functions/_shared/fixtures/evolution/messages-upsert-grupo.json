@@ -1,0 +1,23 @@
+{
+  "event": "messages.upsert",
+  "instance": "ze-teste",
+  "data": {
+    "key": {
+      "remoteJid": "120363012345678@g.us",
+      "fromMe": false,
+      "id": "3EB0A1B2C3D4E5F60005",
+      "participant": "5511988887777@s.whatsapp.net"
+    },
+    "pushName": "João Titular",
+    "message": { "conversation": "alguém tem o contato da CPFL?" },
+    "messageType": "conversation",
+    "messageTimestamp": 1758100400,
+    "instanceId": "abc",
+    "source": "android"
+  },
+  "destination": "https://yqsqrdndvsnhbsoaoilf.supabase.co/functions/v1/ze-webhook",
+  "date_time": "2026-09-17T10:06:40.000Z",
+  "sender": "5519999990000@s.whatsapp.net",
+  "server_url": "https://zap.homologamanager.com.br",
+  "apikey": "REDACTED"
+}

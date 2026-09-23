@@ -1,0 +1,15 @@
+{
+  "event": "connection.update",
+  "instance": "ze-teste",
+  "data": {
+    "instance": "ze-teste",
+    "state": "close",
+    "statusReason": 401,
+    "statusCode": 401
+  },
+  "destination": "https://yqsqrdndvsnhbsoaoilf.supabase.co/functions/v1/ze-webhook",
+  "date_time": "2026-09-17T10:10:00.000Z",
+  "sender": "5519999990000@s.whatsapp.net",
+  "server_url": "https://zap.homologamanager.com.br",
+  "apikey": "REDACTED"
+}

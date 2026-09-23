@@ -1,0 +1,18 @@
+{
+  "event": "messages.upsert",
+  "instance": "ze-teste",
+  "data": {
+    "key": { "remoteJid": "5519999990000@s.whatsapp.net", "fromMe": true, "id": "3EB0A1B2C3D4E5F60006" },
+    "pushName": "Luiz",
+    "message": { "conversation": "Zé, o que tenho pra hoje?" },
+    "messageType": "conversation",
+    "messageTimestamp": 1758100500,
+    "instanceId": "abc",
+    "source": "android"
+  },
+  "destination": "https://yqsqrdndvsnhbsoaoilf.supabase.co/functions/v1/ze-webhook",
+  "date_time": "2026-09-17T10:08:20.000Z",
+  "sender": "5519999990000@s.whatsapp.net",
+  "server_url": "https://zap.homologamanager.com.br",
+  "apikey": "REDACTED"
+}
