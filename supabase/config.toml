@@ -10,3 +10,6 @@ verify_jwt = false
 
 [functions.ze-admin]
 verify_jwt = false
+
+[functions.ze-brain]
+verify_jwt = false

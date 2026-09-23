@@ -120,6 +120,16 @@ jobs:
             --project-ref yqsqrdndvsnhbsoaoilf \
             --no-verify-jwt
 
+      # O cérebro. Quem chama é o ze-webhook (service role) ou a tela; a
+      # checagem é feita dentro da função.
+      - name: Deploy ze-brain
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          supabase functions deploy ze-brain \
+            --project-ref yqsqrdndvsnhbsoaoilf \
+            --no-verify-jwt
+
   build-and-deploy:
     runs-on: ubuntu-latest
     timeout-minutes: 15

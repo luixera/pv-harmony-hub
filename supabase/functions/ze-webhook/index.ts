@@ -76,8 +76,30 @@ async function espelhar(cfg: Config, data: unknown): Promise<string> {
 
   const texto = m.tipo === 'audio' ? `🎤 ${m.texto ?? '[áudio]'}` : (m.texto ?? `[${m.tipo}]`)
   await admin.from('ze_messages').insert({ tenant_id: tenantId, papel: 'user', texto, wa_id: m.wa_id })
-  // Entrega 2: acionar ze-brain aqui ({ modo: 'mensagem', tenant_id }).
+  await acionarCerebro(tenantId)
   return 'fala_do_gestor'
+}
+
+/**
+ * Chama o cérebro. Sem esperar a resposta: ele pode levar até 2 minutos e o
+ * webhook precisa devolver 200 rápido, senão a Evolution reenvia o evento.
+ * Se duas mensagens chegarem juntas, a trava (ze_lock) resolve — a segunda
+ * chamada sai de lado e a primeira lê as duas falas.
+ */
+async function acionarCerebro(tenantId: string): Promise<void> {
+  const url = `${Deno.env.get('SUPABASE_URL')}/functions/v1/ze-brain`
+  try {
+    await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+      },
+      body: JSON.stringify({ modo: 'mensagem', tenant_id: tenantId }),
+    })
+  } catch (e) {
+    console.error('acionarCerebro', e)
+  }
 }
 
 Deno.serve(async (req) => {
