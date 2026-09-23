@@ -369,17 +369,22 @@ atualização seguinte do portal (vistoria aprovada → Concluído, reprovada �
 Vistoria reprovada, indeferido → Pendência) e a equipe clica em **Aplicar**,
 a tarefa perdia o sentido mas continuava aberta, vencendo o prazo.
 
-Agora `ludmilla_aplicar_update`, depois de mover o card, chama
-`ludmilla_encerrar_tarefas_da_etapa(projeto, novo_status, quem, motivo)`:
+Quem encerra é o MESMO gatilho que cria as tarefas (`trg_task_automations`,
+`AFTER UPDATE OF status`), chamando `encerrar_tarefas_da_etapa(projeto,
+novo_status, quem, motivo)` — então vale para TODO caminho que muda a etapa:
+arrastar no quadro, seletor do modal, aplicação de etapa do /email-updates e
+o "Aplicar" da Ludmilla (decisão do usuário, 22/09/2026; a primeira versão
+só pegava o Aplicar):
 
 - encerra toda tarefa **de automação de etapa** (`tasks.automation_id`) ainda
   aberta cuja regra aponta para uma etapa **diferente da atual** — ou seja, a
   etapa que a gerou ficou para trás;
-- `completed_by` = quem aplicou (a Ludmilla é a origem, a pessoa é a autora,
-  como no resto do módulo); o motivo entra ao fim da descrição da tarefa
-  ("✅ Encerrada automaticamente: a Ludmilla leu … e o projeto saiu de X para Y")
-  sem apagar o texto original;
-- o responsável recebe um aviso no sino ("✅ Tarefa encerrada pela Ludmilla");
+- `completed_by` = quem moveu o card (a pessoa é a autora, mesmo quando a
+  origem é a Ludmilla); o motivo entra ao fim da descrição da tarefa
+  ("✅ Encerrada automaticamente: o projeto saiu de X para Y") sem apagar o
+  texto original;
+- o responsável recebe um aviso no sino ("✅ Tarefa encerrada automaticamente")
+  — menos quando ele mesmo moveu o card;
 - o comentário e o histórico do card ganham a linha "✅ N tarefa(s)
   automática(s) encerrada(s)".
 
@@ -389,6 +394,8 @@ Agora `ludmilla_aplicar_update`, depois de mover o card, chama
 novo, então ela sobrevive). Nada acontece se a etapa aplicada for igual à
 atual. A função é interna (sem GRANT para `authenticated`).
 
-Testado por impersonação (8 checagens, `begin … rollback`): tarefa do gatilho
-encerrada com o motivo, manual intacta, tarefa da etapa nova aberta, um aviso
-ao responsável, projetos de outros cards intocados, chamada direta bloqueada.
+Testado por impersonação (12 checagens, `begin … rollback`), nos quatro
+caminhos: arrastar o card encerra com o motivo e avisa o responsável; quem
+move sendo o próprio responsável não recebe aviso; o Aplicar da Ludmilla
+conta as encerradas no comentário; repetir a mesma etapa não encerra nada;
+tarefa manual e tarefa da etapa nova ficam abertas.
