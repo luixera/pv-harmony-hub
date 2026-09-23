@@ -26,6 +26,7 @@ confirmação). Ele **aprende** com o que o gestor ensina e com o diálogo, e
 | Envio a terceiros | **Nunca.** Ele lê, interpreta e fala **só com o gestor**. |
 | "Inputs de projetos" | Fase 1: **lembra/cobra o que falta**. Fase 2: criar projeto pelo chat (foto da conta + OCR do Claudinho). |
 | Escrita na Fase 1 | Tarefas (criar/concluir/adiar/reatribuir), nota no card, **mover etapa só com confirmação**. |
+| Tarefa sugerida ≠ tarefa do sistema (23/09) | A lista oficial (`tasks`) **não** recebe palpite de robô. O que o Zé sugere por conta própria fica numa **caixa de sugestões** separada e só vira tarefa do sistema quando o gestor aceita. Pedido direto do gestor no chat cria na hora (o pedido já é a confirmação). Caixa visível na aba do `/ze` **e** numa aba própria em `/tasks`, apartada da lista oficial; dá para aceitar pelo WhatsApp ("cria 1 e 3"). |
 | Rotinas | 08h, 13h, 18h (seg–sex), editáveis. |
 | Nome | **José, apelido Zé.** |
 | Aprendizado | Deve **aprender o contexto das mensagens, interpretar áudios e aprender com as respostas e o diálogo** (adendo de 17/09). |
@@ -48,6 +49,10 @@ confirmação). Ele **aprende** com o que o gestor ensina e com o diálogo, e
 6. **Ações gravadas com autor = gestor, origem = Zé** (padrão Ludmilla):
    `tasks.origin = 'ze'`, `project_history.user_name = "<nome> (via Zé)"`.
    O Zé não é usuário do sistema nesta fase.
+7. **A lista oficial de tarefas não recebe palpite.** O que parte da
+   iniciativa dele vai para `ze_tarefas_sugeridas` e só entra em `tasks`
+   quando o gestor aceita. Em modo `rotina`, as ferramentas que escrevem em
+   `tasks` nem são oferecidas ao modelo (§7.1).
 
 ## 3. Arquitetura
 
@@ -68,7 +73,8 @@ confirmação). Ele **aprende** com o que o gestor ensina e com o diálogo, e
 │ pg_cron `ze-rotinas` (15 min) ─► ze-brain {modo: rotinas}                │
 │ trg_notify_status_changed (projects) ─► notify-dispatch (canal whatsapp) │
 │ tabelas: ze_config, ze_routines, ze_messages, ze_pending_actions,        │
-│          ze_runs, ze_learnings, ze_suggestions, wa_*                     │
+│          ze_runs, ze_learnings, ze_suggestions, ze_tarefas_sugeridas,    │
+│          wa_*                                                            │
 └──────────────────────────────────────────────────────────────────────────┘
 ┌─ SPA ─┐  /ze (conexão, rotinas, conversa, aprendizados, execuções)
 │       │  /admin/automations (regras "WhatsApp (Zé)" de→para etapa)
@@ -117,7 +123,8 @@ dono onde indicado. Identificadores em português (módulo novo).
 | `ze_pending_actions` | `id`, `tenant_id`, `tipo` (`mover_etapa`), `payload` jsonb (`project_id`, `to_status`, `motivo`), `resumo`, `situacao` (`pendente`/`confirmada`/`cancelada`/`expirada`), `expira_em` (+24 h), `resolvida_em` | |
 | `ze_runs` | `id`, `tenant_id`, `tipo` (`mensagem`/`rotina`/`manual`), `rotina`, `iniciado_em`, `terminado_em`, `ok`, `erro`, `ferramentas` jsonb (nome + ms cada), `input_tokens`, `output_tokens`, `ai_log_id` | Diagnóstico na tela. Retenção 90 dias. |
 | `ze_learnings` | `id`, `tenant_id`, `titulo`, `instrucao`, `origem` (`ensinado`/`inferido`/`correcao`), `escopo` (`geral`/`contato`/`rotina`/`conversa`), `enabled`, `usos`, `ultimo_uso_em`, `created_from` (ze_message id), `created_by`, timestamps | Molde: `bidu_skills`. Entra no prompt. |
-| `ze_suggestions` | `id`, `tenant_id`, `run_id`, `numero` (1..n na mensagem), `tipo` (`tarefa`/`mover_etapa`/`responder_conversa`/`anotar`), `payload` jsonb, `resultado` (`aceita`/`recusada`/`ignorada`/nulo), `resolvida_em` | Ciclo de feedback (§8.3). |
+| `ze_suggestions` | `id`, `tenant_id`, `run_id`, `numero` (1..n na mensagem), `tipo` (`tarefa`/`mover_etapa`/`responder_conversa`/`anotar`), `payload` jsonb, `resultado` (`aceita`/`recusada`/`ignorada`/nulo), `resolvida_em` | Ciclo de feedback (§8.3). Para `tipo='tarefa'`, aponta a linha de `ze_tarefas_sugeridas`. |
+| `ze_tarefas_sugeridas` | `id`, `tenant_id`, `titulo`, `descricao`, `vencimento` (date), `prioridade`, `project_id`, `assigned_to` (sugerido), `motivo` (por que ele sugeriu), `origem` (`rotina`/`conversa`/`varredura`), `run_id`, `situacao` (`pendente`/`aceita`/`recusada`/`expirada`), `task_id` (preenchido quando vira tarefa do sistema), `resolvida_em`, `resolvida_por`, `created_at` | **Caixa de sugestões** (§7.1). Nunca é lida pelas telas de tarefa comuns — a lista oficial continua sendo só `tasks`. |
 | `notification_rules` | + `from_status text`, + `to_status text` | `status_filter` fica para compatibilidade. `channel` aceita `whatsapp`; `destination = 'ze'`. |
 
 **Funções/RPCs**
@@ -203,7 +210,9 @@ dono onde indicado. Identificadores em português (módulo novo).
   `mensagens_recebidas(horas=24)`, `contexto_do_contato(jid)`,
   `emails_pendentes()` (email_updates sem aplicar), `recomendacoes_ludmilla()`,
   `aprendizados(busca?)`.
-- **Ferramentas de escrita**: `criar_tarefa(titulo, descricao?, vencimento?, prioridade?, project_id?, responsavel?)`,
+- **Ferramentas de escrita**: `sugerir_tarefa(titulo, motivo, descricao?, vencimento?, prioridade?, project_id?, responsavel?)`,
+  `aceitar_tarefa_sugerida(id, ajustes?)` / `recusar_tarefa_sugerida(id)`,
+  `criar_tarefa(…)` (**só a pedido direto** — ver §7.1),
   `concluir_tarefa(id)`, `adiar_tarefa(id, nova_data)`, `reatribuir_tarefa(id, responsavel)`,
   `anotar_no_card(project_id, texto)` (`comments` + `project_history`),
   `propor_mover_etapa(project_id, to_status, motivo)` → pendência,
@@ -211,6 +220,36 @@ dono onde indicado. Identificadores em português (módulo novo).
   `esquecer(id)`, `anotar_contato(jid, papel?, nome?, project_id?, notas?, ignorar?)`,
   `registrar_sugestoes([{numero, tipo, payload}])`, `resolver_sugestoes([{numero, resultado}])`,
   `responder(texto)`.
+
+### 7.1 Tarefa sugerida × tarefa do sistema (decisão de 23/09)
+
+A lista oficial (`tasks`, tela `/tasks`) é o registro da operação e **não
+recebe nada que o gestor não tenha aprovado**. Duas portas, separadas no
+código:
+
+| Situação | Ferramenta | Onde grava |
+|---|---|---|
+| O Zé teve a ideia (rotina, varredura, leu uma conversa) | `sugerir_tarefa` | `ze_tarefas_sugeridas`, `situacao='pendente'` |
+| O gestor pediu na conversa ("cria tarefa pra ligar pro João amanhã") | `criar_tarefa` | `tasks` direto — o pedido **é** a confirmação |
+
+- **Guarda no código, não no prompt**: `criar_tarefa`, `concluir_tarefa`,
+  `adiar_tarefa` e `reatribuir_tarefa` **só são oferecidas ao modelo no modo
+  `mensagem`** (respondendo ao gestor). No modo `rotina` elas não existem no
+  array de `tools` — em rotina ele só consegue sugerir. Assim nenhuma
+  alucinação de madrugada entra na lista oficial.
+- **Aceitar** (`ze_aceitar_tarefa_sugerida`, SECURITY DEFINER) cria a linha em
+  `tasks` com `created_by` = quem aceitou, `origin = 'ze'` e
+  `ze_tarefas_sugeridas.task_id` apontando para ela; a sugestão vira
+  `aceita`. Aceitar com ajustes (mudar título, prazo, responsável) é o caminho
+  normal — o ajuste também alimenta o aprendizado (§8.3).
+- **Três caminhos para resolver**, todos na mesma linha: aba **Sugestões do
+  Zé** em `/tasks` (apartada da lista oficial, com contador), bloco na tela
+  `/ze`, ou resposta no WhatsApp ("cria 1 e 3", "só a 2", "não").
+- Sugestão não respondida em **7 dias** vira `expirada` (a rotina de limpeza
+  cuida) e conta como recusa branda na estatística.
+- Sugerir **não empilha**: antes de sugerir, o Zé confere se já existe
+  sugestão pendente parecida (mesmo projeto + título semelhante) ou tarefa
+  aberta com o mesmo fim.
 - **Etapas** válidas para mover = `status_key` do template de Kanban ativo
   (`kanban_columns`), lidas na hora — mesma regra das tarefas automáticas.
 - **Extrato de IA**: `consume_ai_quota_servidor(tenant, 'ze_chat'|'ze_rotina', owner)`
@@ -312,6 +351,10 @@ dono onde indicado. Identificadores em português (módulo novo).
   (`DELETE /instance/logout`), política de áudio, grupos, horas sem resposta.
 - **Rotinas**: hora, dias, ligada, instruções, *Rodar agora*.
 - **Conversa**: `ze_messages` (só leitura) + pendências com *Confirmar*/*Cancelar*.
+- **Sugestões**: as tarefas que ele sugeriu (§7.1) com *Aceitar* (editando o
+  que quiser antes), *Recusar* e o motivo que ele deu. A mesma lista aparece
+  na aba **Sugestões do Zé** em `/tasks`, com contador — separada da lista
+  oficial, que continua só com `tasks`.
 - **Aprendizados**: CRUD (§8.1) e contatos conhecidos (papel, vínculo, ignorar).
 - **Execuções**: últimos 50 `ze_runs` (tipo, duração, ferramentas, tokens,
   erro) e taxas de aceitação das sugestões.
@@ -369,7 +412,7 @@ O "manual do Zé" para quem for evoluí-lo (o usuário pediu explicitamente):
 |---|---|---|
 | 1 | Infra: DNS, workflow `evolution-vps.yml`, Evolution no ar; migração base (`ze_config`, `wa_*`); `ze-admin` + `ze-webhook`; tela `/ze` só com Conexão | QR lido no celular; mensagem enviada de outro número aparece em `wa_messages`; mensagem no chat "Você" chega ao webhook com `from_me` e JID próprio; **envio ao próprio número funciona** (spike de 10 min — plano B na §16). |
 | 2 | Cérebro de leitura: `ze-brain` (mensagem), ferramentas de leitura, `responder`, `ze_messages`, extrato | "o que tenho pra hoje?" no chat "Você" → resposta correta em < 60 s; `ze_runs` e `ai_usage_log` registrados. |
-| 3 | Escrita + confirmação: tarefas, nota, mover etapa; pendências na tela | "cria tarefa ligar pro João amanhã" → tarefa com `origin='ze'`; "move #123 pra aprovado" → pergunta → "sim" → etapa muda com histórico "(via Zé)" e tarefas automáticas disparam. |
+| 3 | Escrita + confirmação: caixa de sugestões (`ze_tarefas_sugeridas`, aba em `/tasks` e bloco no `/ze`), tarefas, nota, mover etapa; pendências na tela | "cria tarefa ligar pro João amanhã" → tarefa direto em `tasks` com `origin='ze'`; sugestão de rotina **não** entra em `tasks` até aceitar, e aceitar cria a tarefa com `task_id` preenchido; em modo rotina a ferramenta `criar_tarefa` **não existe** no array de tools; "move #123 pra aprovado" → pergunta → "sim" → etapa muda com histórico "(via Zé)" e tarefas automáticas disparam. |
 | 4 | Aprendizado + áudio: `ze_learnings`, `wa_contacts`, `ze_suggestions`, STT, abas Aprendizados/Execuções | Instrução "sempre…" vira aprendizado e muda a resposta seguinte; áudio no chat "Você" é entendido; contato de titular é reconhecido pelo telefone. |
 | 5 | Rotinas + eventos: cron, `ze_routines`, gatilho `status_changed`, canal WhatsApp no `notify-dispatch`, tela de automações | 08h/13h/18h chegam no horário local; mover um projeto para Aprovado gera a mensagem em < 1 min; regra editável na tela. |
 | 6 | Skill `.claude/skills/ze/`, docs (`docs/modules/ze/overview.md`, ADR 0008, notificações, integrações, segurança, roadmap, CLAUDE.md), memória | Docs revisadas; `tsc` no baseline (65) e `build` ok. |

@@ -23,6 +23,12 @@ escrita, aprendizado/áudio, rotinas/eventos, skill) pendentes.
 5. `wa_*` e `ze_messages`: **só o dono lê** (RLS `ze_dono_ok`). Retenção de
    30 dias para mensagens de terceiros (Entrega 5).
 6. O que ele grava tem autor = gestor e `origin = 'ze'`.
+7. **A lista oficial de tarefas (`tasks`) não recebe palpite de robô.** O que
+   ele sugere por conta própria fica em `ze_tarefas_sugeridas` e só vira
+   tarefa do sistema quando o gestor aceita (aba **Sugestões do Zé** em
+   `/tasks`, bloco no `/ze`, ou "cria 1 e 3" pelo WhatsApp). Pedido direto do
+   gestor no chat cria na hora. Em modo `rotina` as ferramentas que escrevem
+   em `tasks` nem entram no array de tools — Entrega 3, spec §7.1.
 
 ## Infra
 - **Evolution API v2** na VPS (`/opt/evolution`, Docker: api + postgres +
