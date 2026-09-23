@@ -16,11 +16,15 @@ import { diasEmPalavras } from '../_shared/ze-texto.ts'
 export interface Contexto {
   admin: SupabaseClient
   tenantId: string
+  /** Dono do WhatsApp: é ele quem assina tudo que o Zé grava. */
+  ownerUserId: string
   fuso: string
   horasSemResposta: number
   ignorarGrupos: boolean
   diasParado: number
   phoneJid: string | null
+  /** 'mensagem' = o gestor está falando agora; 'rotina' = o Zé acordou sozinho. */
+  modo: 'mensagem' | 'rotina'
 }
 
 export interface DefinicaoFerramenta {
@@ -145,6 +149,145 @@ export const FERRAMENTAS_LEITURA: DefinicaoFerramenta[] = [
     input_schema: { type: 'object', properties: {} },
   },
 ]
+
+/**
+ * Escrita que o Zé pode fazer por conta própria: sugerir e propor. Nada aqui
+ * mexe na lista oficial de tarefas nem no card sem um "sim" depois.
+ */
+export const FERRAMENTAS_SUGESTAO: DefinicaoFerramenta[] = [
+  {
+    name: 'sugerir_tarefa',
+    description: 'Sugere uma tarefa ao gestor. NÃO cria nada na lista oficial: fica numa caixa de sugestões esperando ele aceitar. Use sempre que a ideia for SUA. Diga o motivo — é o que ele lê para decidir.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        titulo: { type: 'string' },
+        motivo: { type: 'string', description: 'por que você está sugerindo isto agora' },
+        descricao: { type: 'string' },
+        vencimento: { type: 'string', description: 'AAAA-MM-DD' },
+        prioridade: { type: 'string', enum: ['low', 'medium', 'high'] },
+        project_id: { type: 'string' },
+        responsavel: { type: 'string', description: 'id de alguém da equipe' },
+      },
+      required: ['titulo', 'motivo'],
+    },
+  },
+  {
+    name: 'propor_mover_etapa',
+    description: 'Propõe mover um card de etapa. NÃO move: cria uma pendência que só sai do lugar quando o gestor confirmar. Depois de chamar, pergunte a ele se pode.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        project_id: { type: 'string' },
+        to_status: { type: 'string', description: 'status_key da etapa de destino' },
+        motivo: { type: 'string' },
+      },
+      required: ['project_id', 'to_status', 'motivo'],
+    },
+  },
+  {
+    name: 'listar_sugestoes',
+    description: 'As tarefas que você sugeriu e ainda esperam decisão do gestor.',
+    input_schema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'listar_pendencias',
+    description: 'As ações (mover etapa) que esperam o "sim" do gestor.',
+    input_schema: { type: 'object', properties: {} },
+  },
+]
+
+/**
+ * Escrita DIRETA — só existe quando o gestor está falando (modo 'mensagem').
+ * Em rotina estas ferramentas nem entram no array enviado ao modelo: é a
+ * guarda de código da regra dura 7, e não uma instrução de prompt.
+ */
+export const FERRAMENTAS_DIRETAS: DefinicaoFerramenta[] = [
+  {
+    name: 'criar_tarefa',
+    description: 'Cria a tarefa DIRETO na lista oficial. Use SOMENTE quando o gestor pediu a tarefa nesta conversa — o pedido dele é a confirmação. Se a ideia for sua, use sugerir_tarefa.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        titulo: { type: 'string' },
+        descricao: { type: 'string' },
+        vencimento: { type: 'string', description: 'AAAA-MM-DD' },
+        prioridade: { type: 'string', enum: ['low', 'medium', 'high'] },
+        project_id: { type: 'string' },
+        responsavel: { type: 'string' },
+      },
+      required: ['titulo'],
+    },
+  },
+  {
+    name: 'concluir_tarefa',
+    description: 'Marca uma tarefa como concluída.',
+    input_schema: { type: 'object', properties: { task_id: { type: 'string' } }, required: ['task_id'] },
+  },
+  {
+    name: 'adiar_tarefa',
+    description: 'Muda o vencimento de uma tarefa.',
+    input_schema: {
+      type: 'object',
+      properties: { task_id: { type: 'string' }, nova_data: { type: 'string', description: 'AAAA-MM-DD' } },
+      required: ['task_id', 'nova_data'],
+    },
+  },
+  {
+    name: 'reatribuir_tarefa',
+    description: 'Troca o responsável de uma tarefa (só admin ou projetista do tenant).',
+    input_schema: {
+      type: 'object',
+      properties: { task_id: { type: 'string' }, responsavel: { type: 'string' } },
+      required: ['task_id', 'responsavel'],
+    },
+  },
+  {
+    name: 'anotar_no_card',
+    description: 'Escreve uma nota no card do projeto (comentário interno + histórico). Não muda etapa.',
+    input_schema: {
+      type: 'object',
+      properties: { project_id: { type: 'string' }, texto: { type: 'string' } },
+      required: ['project_id', 'texto'],
+    },
+  },
+  {
+    name: 'aceitar_tarefa_sugerida',
+    description: 'O gestor aceitou uma sugestão sua ("cria a 1", "pode criar"): vira tarefa da lista oficial. Aceite os ajustes que ele pedir.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        sugestao_id: { type: 'string' },
+        titulo: { type: 'string', description: 'só se ele mudou' },
+        vencimento: { type: 'string', description: 'só se ele mudou (AAAA-MM-DD)' },
+        prioridade: { type: 'string', enum: ['low', 'medium', 'high'] },
+        responsavel: { type: 'string', description: 'só se ele mudou' },
+      },
+      required: ['sugestao_id'],
+    },
+  },
+  {
+    name: 'recusar_tarefa_sugerida',
+    description: 'O gestor dispensou a sugestão.',
+    input_schema: { type: 'object', properties: { sugestao_id: { type: 'string' } }, required: ['sugestao_id'] },
+  },
+  {
+    name: 'resolver_pendencia',
+    description: 'O gestor disse sim ou não para uma ação pendente (mover etapa). Só chame com a palavra dele.',
+    input_schema: {
+      type: 'object',
+      properties: { pendencia_id: { type: 'string' }, confirmar: { type: 'boolean' } },
+      required: ['pendencia_id', 'confirmar'],
+    },
+  },
+]
+
+/** O que o modelo enxerga depende do modo — regra dura 7 em código. */
+export function ferramentasDoModo(modo: 'mensagem' | 'rotina'): DefinicaoFerramenta[] {
+  return modo === 'mensagem'
+    ? [...FERRAMENTAS_LEITURA, ...FERRAMENTAS_SUGESTAO, ...FERRAMENTAS_DIRETAS]
+    : [...FERRAMENTAS_LEITURA, ...FERRAMENTAS_SUGESTAO]
+}
 
 // ── Execução ────────────────────────────────────────────────────────────────
 export async function executarFerramenta(ctx: Contexto, nome: string, args: Record<string, unknown>): Promise<string> {
@@ -332,6 +475,161 @@ export async function executarFerramenta(ctx: Contexto, nome: string, args: Reco
       const linhas = (data ?? []).map((u: Record<string, any>) =>
         `${u.projects?.code ?? u.protocolo} | portal: ${u.status_portal} | recomenda: ${u.recomendacao ?? '-'} | ${u.titular_portal ?? ''}`)
       return `${linhas.length} recomendações da Ludmilla (decidir em /ludmilla).\n${corta(linhas)}`
+    }
+
+    // ── Escrita: sugerir e propor (vale em qualquer modo) ──────────────────
+    case 'sugerir_tarefa': {
+      const titulo = String(args.titulo ?? '').trim()
+      if (!titulo) return 'sugestão sem título'
+      // Não empilhar: se já existe sugestão pendente parecida, não cria outra.
+      const { data: iguais } = await admin.from('ze_tarefas_sugeridas')
+        .select('id, titulo').eq('tenant_id', tenantId).eq('situacao', 'pendente')
+        .eq('project_id', args.project_id ? String(args.project_id) : null as unknown as string)
+      if ((iguais ?? []).some((s: Record<string, any>) => String(s.titulo).toLowerCase() === titulo.toLowerCase())) {
+        return 'já existe uma sugestão pendente igual — não criei outra'
+      }
+      const { data, error } = await admin.from('ze_tarefas_sugeridas').insert({
+        tenant_id: tenantId, titulo,
+        descricao: args.descricao ? String(args.descricao) : null,
+        vencimento: args.vencimento ? String(args.vencimento) : null,
+        prioridade: args.prioridade ? String(args.prioridade) : 'medium',
+        project_id: args.project_id ? String(args.project_id) : null,
+        assigned_to: args.responsavel ? String(args.responsavel) : null,
+        motivo: String(args.motivo ?? ''),
+        origem: ctx.modo === 'rotina' ? 'rotina' : 'conversa',
+      }).select('id').single()
+      if (error) return `erro: ${error.message}`
+      return `sugestão criada (id ${(data as Record<string, any>).id}). NÃO virou tarefa ainda — o gestor precisa aceitar.`
+    }
+
+    case 'propor_mover_etapa': {
+      const projectId = String(args.project_id ?? '')
+      const to = String(args.to_status ?? '')
+      const { data: p } = await admin.from('projects')
+        .select('code, status').eq('tenant_id', tenantId).eq('id', projectId).maybeSingle()
+      if (!p) return 'projeto não encontrado neste tenant'
+      if ((p as Record<string, any>).status === to) return 'o card já está nessa etapa'
+      const { data, error } = await admin.from('ze_pending_actions').insert({
+        tenant_id: tenantId, tipo: 'mover_etapa',
+        payload: { project_id: projectId, to_status: to, motivo: String(args.motivo ?? '') },
+        resumo: `mover ${(p as Record<string, any>).code} de ${(p as Record<string, any>).status} para ${to}`,
+      }).select('id').single()
+      if (error) return `erro: ${error.message}`
+      return `pendência criada (id ${(data as Record<string, any>).id}). O card NÃO se mexeu — pergunte ao gestor se pode e chame resolver_pendencia com a resposta dele.`
+    }
+
+    case 'listar_sugestoes': {
+      const { data } = await admin.from('ze_tarefas_sugeridas')
+        .select('id, titulo, motivo, vencimento, created_at, projects:project_id(code)')
+        .eq('tenant_id', tenantId).eq('situacao', 'pendente')
+        .order('created_at', { ascending: false }).limit(20)
+      const linhas = (data ?? []).map((s: Record<string, any>) =>
+        `${s.id} | ${s.titulo}${s.projects?.code ? ` [${s.projects.code}]` : ''} | motivo: ${s.motivo ?? '-'}`)
+      return corta(linhas)
+    }
+
+    case 'listar_pendencias': {
+      const { data } = await admin.from('ze_pending_actions')
+        .select('id, resumo, created_at, expira_em')
+        .eq('tenant_id', tenantId).eq('situacao', 'pendente')
+        .order('created_at', { ascending: false }).limit(10)
+      const linhas = (data ?? []).map((p: Record<string, any>) => `${p.id} | ${p.resumo}`)
+      return corta(linhas, 10)
+    }
+
+    // ── Escrita direta: só quando o gestor está falando ────────────────────
+    case 'criar_tarefa':
+    case 'concluir_tarefa':
+    case 'adiar_tarefa':
+    case 'reatribuir_tarefa':
+    case 'anotar_no_card':
+    case 'aceitar_tarefa_sugerida':
+    case 'recusar_tarefa_sugerida':
+    case 'resolver_pendencia': {
+      // Segunda tranca: em rotina estas ferramentas nem são oferecidas, mas se
+      // o modelo inventar o nome, o servidor recusa do mesmo jeito.
+      if (ctx.modo !== 'mensagem') {
+        return 'em rotina você não escreve direto — use sugerir_tarefa ou propor_mover_etapa'
+      }
+      return executarEscritaDireta(ctx, nome, args)
+    }
+
+    default:
+      return `ferramenta desconhecida: ${nome}`
+  }
+}
+
+async function executarEscritaDireta(ctx: Contexto, nome: string, args: Record<string, unknown>): Promise<string> {
+  const { admin, tenantId, ownerUserId } = ctx
+
+  switch (nome) {
+    case 'criar_tarefa': {
+      const { data, error } = await admin.rpc('ze_criar_tarefa', {
+        _tenant: tenantId, _autor: ownerUserId,
+        _titulo: String(args.titulo ?? ''),
+        _descricao: args.descricao ? String(args.descricao) : null,
+        _vencimento: args.vencimento ? String(args.vencimento) : null,
+        _prioridade: args.prioridade ? String(args.prioridade) : 'medium',
+        _project_id: args.project_id ? String(args.project_id) : null,
+        _assigned_to: args.responsavel ? String(args.responsavel) : null,
+      })
+      if (error) return `erro: ${error.message}`
+      return `tarefa criada na lista oficial (id ${String(data).slice(0, 8)})`
+    }
+
+    case 'concluir_tarefa':
+    case 'adiar_tarefa':
+    case 'reatribuir_tarefa': {
+      const acao = nome === 'concluir_tarefa' ? 'concluir' : nome === 'adiar_tarefa' ? 'adiar' : 'reatribuir'
+      const { data, error } = await admin.rpc('ze_mexer_tarefa', {
+        _tenant: tenantId, _task_id: String(args.task_id ?? ''), _acao: acao,
+        _nova_data: args.nova_data ? String(args.nova_data) : null,
+        _assigned_to: args.responsavel ? String(args.responsavel) : null,
+        _autor: ownerUserId,
+      })
+      if (error) return `erro: ${error.message}`
+      return data === true ? `tarefa ${acao === 'concluir' ? 'concluída' : acao === 'adiar' ? 'adiada' : 'reatribuída'}`
+        : 'não consegui — confira o id da tarefa (e, ao reatribuir, se a pessoa é da equipe)'
+    }
+
+    case 'anotar_no_card': {
+      const { data, error } = await admin.rpc('ze_anotar_no_card', {
+        _tenant: tenantId, _project_id: String(args.project_id ?? ''),
+        _texto: String(args.texto ?? ''), _autor: ownerUserId,
+      })
+      if (error) return `erro: ${error.message}`
+      return data === true ? 'nota gravada no card' : 'projeto não encontrado neste tenant'
+    }
+
+    case 'aceitar_tarefa_sugerida': {
+      const ajustes: Record<string, string> = {}
+      if (args.titulo) ajustes.titulo = String(args.titulo)
+      if (args.vencimento) ajustes.vencimento = String(args.vencimento)
+      if (args.prioridade) ajustes.prioridade = String(args.prioridade)
+      if (args.responsavel) ajustes.assigned_to = String(args.responsavel)
+      const { data, error } = await admin.rpc('ze_aceitar_tarefa_sugerida', {
+        _id: String(args.sugestao_id ?? ''), _ajustes: ajustes, _como_usuario: ownerUserId,
+      })
+      if (error) return `erro: ${error.message}`
+      return `sugestão aceita — virou a tarefa ${String(data).slice(0, 8)} na lista oficial`
+    }
+
+    case 'recusar_tarefa_sugerida': {
+      const { data, error } = await admin.rpc('ze_recusar_tarefa_sugerida', {
+        _id: String(args.sugestao_id ?? ''), _como_usuario: ownerUserId,
+      })
+      if (error) return `erro: ${error.message}`
+      return data === true ? 'sugestão descartada' : 'sugestão não estava pendente'
+    }
+
+    case 'resolver_pendencia': {
+      const { data, error } = await admin.rpc('ze_resolver_pendencia', {
+        _id: String(args.pendencia_id ?? ''), _confirmar: args.confirmar === true, _como_usuario: ownerUserId,
+      })
+      if (error) return `erro: ${error.message}`
+      const r = data as Record<string, any> | null
+      if (r?.ok === true) return r.acao === 'confirmada' ? 'feito — a etapa mudou e o histórico registra você como autor' : 'cancelada'
+      return `não deu: ${r?.motivo ?? 'falhou'}`
     }
 
     default:
