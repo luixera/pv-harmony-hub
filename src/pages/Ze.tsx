@@ -4,7 +4,9 @@ import { Switch } from '@/components/ui/switch';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { MessageCircle, QrCode, RefreshCw, Send, Unplug, Loader2 } from 'lucide-react';
-import { useAtualizarZeConfig, useZeAcao, useZeConfig, useZeDisponivel, type ZeConfig } from '@/hooks/useZe';
+import { useAtualizarZeConfig, useZeAcao, useZeConfig, useZeDisponivel, useZeSugestoes, type ZeConfig } from '@/hooks/useZe';
+import { SugestoesDoZe } from '@/components/ze/SugestoesDoZe';
+import { PendenciasDoZe } from '@/components/ze/PendenciasDoZe';
 import { cn } from '@/lib/utils';
 
 /**
@@ -27,6 +29,7 @@ const numeroBonito = (jid: string | null) => {
 export default function Ze() {
   const disponivel = useZeDisponivel();
   const { data: cfg, isLoading } = useZeConfig();
+  const { data: sugestoes = [] } = useZeSugestoes();
   const acao = useZeAcao();
   const atualizar = useAtualizarZeConfig();
 
@@ -55,6 +58,9 @@ export default function Ze() {
             </p>
           </div>
         </div>
+
+        {/* ── Esperando você ─────────────────────────────────────────────── */}
+        <PendenciasDoZe />
 
         {/* ── Conexão ────────────────────────────────────────────────────── */}
         <section className="rounded-xl border p-5 space-y-4">
@@ -109,6 +115,19 @@ export default function Ze() {
               </>
             )}
           </div>
+        </section>
+
+        {/* ── Caixa de sugestões ─────────────────────────────────────────── */}
+        <section className="rounded-xl border p-5 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="font-medium">Sugestões do Zé</h2>
+            {sugestoes.length > 0 && (
+              <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-800">
+                {sugestoes.length} esperando você
+              </span>
+            )}
+          </div>
+          <SugestoesDoZe />
         </section>
 
         {/* ── Preferências ───────────────────────────────────────────────── */}

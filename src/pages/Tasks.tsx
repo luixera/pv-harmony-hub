@@ -19,6 +19,8 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTasks, useUpdateTask, Task, TaskStatus, TaskPriority } from '@/hooks/useTasks';
 import { TaskDialog } from '@/components/tasks/TaskDialog';
+import { SugestoesDoZe } from '@/components/ze/SugestoesDoZe';
+import { useZeDisponivel, useZeSugestoes } from '@/hooks/useZe';
 import { cn } from '@/lib/utils';
 
 // ─── Priority config ──────────────────────────────────────────────────────────
@@ -37,6 +39,8 @@ const STATUS_LABELS: Record<TaskStatus, string> = {
 };
 
 type FilterView = 'mine' | 'by_me' | 'all';
+/** A caixa do Zé é uma aba à parte: a lista oficial não mistura com sugestão. */
+type Aba = 'tarefas' | 'ze';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function formatDateBR(dateStr: string) {
@@ -279,6 +283,7 @@ export default function Tasks() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
 
+  const [aba, setAba]                 = useState<Aba>('tarefas');
   const [view, setView]               = useState<FilterView>('mine');
   const [statusFilter, setStatus]     = useState<string>('');
   const [priorityFilter, setPriority] = useState<string>('');
@@ -294,6 +299,10 @@ export default function Tasks() {
   };
 
   const { data: tasks = [], isLoading } = useTasks(Object.keys(queryFilters).length ? queryFilters : undefined);
+
+  // A aba do Zé só existe para quem tem o Zé (admin do GD Manager).
+  const zeDisponivel = useZeDisponivel();
+  const { data: sugestoes = [] } = useZeSugestoes();
 
   // Client-side priority filter
   const filtered = priorityFilter
@@ -338,6 +347,38 @@ export default function Tasks() {
           </button>
         </motion.div>
 
+        {/* Abas — a caixa do Zé fica apartada da lista oficial */}
+        {zeDisponivel && (
+          <div className="flex gap-1 border-b border-gray-200">
+            {([
+              { id: 'tarefas' as Aba, label: 'Tarefas' },
+              { id: 'ze' as Aba, label: 'Sugestões do Zé' },
+            ]).map(t => (
+              <button
+                key={t.id}
+                onClick={() => setAba(t.id)}
+                className={cn(
+                  'relative -mb-px px-4 py-2 text-sm font-semibold transition-colors',
+                  aba === t.id
+                    ? 'border-b-2 border-emerald-600 text-emerald-700'
+                    : 'text-gray-400 hover:text-gray-600'
+                )}
+              >
+                {t.label}
+                {t.id === 'ze' && sugestoes.length > 0 && (
+                  <span className="ml-2 rounded-full bg-emerald-600 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                    {sugestoes.length}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {aba === 'ze' ? (
+          <SugestoesDoZe vazio="O Zé ainda não sugeriu nenhuma tarefa. Quando ele achar algo — card parado, cliente sem resposta —, aparece aqui para você aprovar." />
+        ) : (
+        <>
         {/* Filter pills */}
         <motion.div
           initial={{ opacity: 0 }}
@@ -421,6 +462,8 @@ export default function Tasks() {
               <TaskCard key={task.id} task={task} onEdit={openEdit} />
             ))}
           </div>
+        )}
+        </>
         )}
       </div>
 
