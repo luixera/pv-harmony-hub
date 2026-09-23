@@ -359,3 +359,36 @@ menor disjuntor da classe que comporta o do projeto > maior da classe).
    devolve (199 de 203 — 5 "Incompleto" sem atividade).
 4. Solicitar vistoria automática quando a empresa pede pelo painel — a
    conversar (exige a mesma conferência de titular/UC e é a única escrita).
+
+## A atualização da Ludmilla encerra a tarefa da etapa (22/09/2026)
+
+`20260922100000_ludmilla_encerra_tarefas.sql`. A regra de automação
+"entrou em **Vistoria solicitada** → criar tarefa VERIFICAR VISTORIA (6 dias)"
+cumpre o papel enquanto o projeto está lá; quando a Ludmilla traz a
+atualização seguinte do portal (vistoria aprovada → Concluído, reprovada →
+Vistoria reprovada, indeferido → Pendência) e a equipe clica em **Aplicar**,
+a tarefa perdia o sentido mas continuava aberta, vencendo o prazo.
+
+Agora `ludmilla_aplicar_update`, depois de mover o card, chama
+`ludmilla_encerrar_tarefas_da_etapa(projeto, novo_status, quem, motivo)`:
+
+- encerra toda tarefa **de automação de etapa** (`tasks.automation_id`) ainda
+  aberta cuja regra aponta para uma etapa **diferente da atual** — ou seja, a
+  etapa que a gerou ficou para trás;
+- `completed_by` = quem aplicou (a Ludmilla é a origem, a pessoa é a autora,
+  como no resto do módulo); o motivo entra ao fim da descrição da tarefa
+  ("✅ Encerrada automaticamente: a Ludmilla leu … e o projeto saiu de X para Y")
+  sem apagar o texto original;
+- o responsável recebe um aviso no sino ("✅ Tarefa encerrada pela Ludmilla");
+- o comentário e o histórico do card ganham a linha "✅ N tarefa(s)
+  automática(s) encerrada(s)".
+
+**Não são tocadas**: tarefa criada à mão, pedido de vistoria da empresa
+(`origin='vistoria_request'`) e a tarefa da etapa NOVA — que o gatilho
+`trg_task_automations` cria na mesma transação (a função compara com o status
+novo, então ela sobrevive). Nada acontece se a etapa aplicada for igual à
+atual. A função é interna (sem GRANT para `authenticated`).
+
+Testado por impersonação (8 checagens, `begin … rollback`): tarefa do gatilho
+encerrada com o motivo, manual intacta, tarefa da etapa nova aberta, um aviso
+ao responsável, projetos de outros cards intocados, chamada direta bloqueada.
