@@ -40,6 +40,7 @@ import Reports from "./pages/admin/Reports";
 import Tasks from "./pages/Tasks";
 import EmailUpdates from "./pages/EmailUpdates";
 import Ludmilla from "./pages/Ludmilla";
+import Ze from "./pages/Ze";
 import Landing from "./pages/Landing";
 import Signup from "./pages/Signup";
 import PainelConsole from "./pages/painel/PainelConsole";
@@ -102,6 +103,7 @@ function AppRoutes() {
       <Route path="/reports" element={<ProtectedRoute allowedRoles={['admin']}><Reports /></ProtectedRoute>} />
       <Route path="/tasks" element={<ProtectedRoute allowedRoles={['admin', 'staff']}><Tasks /></ProtectedRoute>} />
       <Route path="/ludmilla" element={<ProtectedRoute allowedRoles={['admin', 'staff']}><Ludmilla /></ProtectedRoute>} />
+      <Route path="/ze" element={<ProtectedRoute allowedRoles={['admin']}><Ze /></ProtectedRoute>} />
       <Route path="/email-updates" element={<ProtectedRoute allowedRoles={['admin', 'staff']}><EmailUpdates /></ProtectedRoute>} />
       <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
       {/* Console da plataforma (login próprio, só master) */}

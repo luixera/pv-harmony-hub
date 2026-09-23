@@ -25,8 +25,9 @@ import {
   HelpCircle,
   LayoutTemplate,
 } from 'lucide-react';
-import { Cpu, Radar } from 'lucide-react';
+import { Cpu, Radar, MessageCircle } from 'lucide-react';
 import { useLudmillaDisponivel, usePortalUpdates } from '@/hooks/useLudmilla';
+import { useZeDisponivel } from '@/hooks/useZe';
 import { openWelcomeTour } from '@/components/onboarding/OnboardingController';
 import { useMyPendingTasks } from '@/hooks/useTasks';
 import { useEmailUpdates } from '@/hooks/useEmailUpdates';
@@ -45,6 +46,8 @@ interface SidebarItem {
   requiresDiagramEngine?: boolean;
   /** Só para a equipe do GD Manager (a Ludmilla, como o Bidu). */
   requiresLudmilla?: boolean;
+  /** Só para o ADMIN do GD Manager (o Zé conecta o WhatsApp pessoal do gestor). */
+  requiresZe?: boolean;
 }
 
 const sidebarItems: SidebarItem[] = [
@@ -55,6 +58,7 @@ const sidebarItems: SidebarItem[] = [
   { icon: CheckSquare, label: 'Tarefas', path: '/tasks', roles: ['admin', 'staff'] },
   { icon: Mail, label: 'Email', path: '/email-updates', roles: ['admin', 'staff'] },
   { icon: Radar, label: 'Ludmilla', path: '/ludmilla', roles: ['admin', 'staff'], requiresLudmilla: true },
+  { icon: MessageCircle, label: 'Zé', path: '/ze', roles: ['admin'], requiresZe: true },
   { icon: DollarSign, label: 'Financeiro', path: '/admin/financial', roles: ['admin'] },
   { icon: BarChart2, label: 'Relatórios', path: '/reports', roles: ['admin'] },
   { icon: FolderOpen, label: 'Meus Projetos', path: '/company/projects', roles: ['company'] },
@@ -92,6 +96,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   const features = useTenantFeatures();
   const hasDiagramEngineAccess = useDiagramEngineAccess();
   const ludmillaDisponivel = useLudmillaDisponivel();
+  const zeDisponivel = useZeDisponivel();
   const { data: recomendacoes = [] } = usePortalUpdates('pendente');
   const ludmillaBadge = recomendacoes.length;
 
@@ -107,6 +112,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
     user && item.roles.includes(user.role) && featureGate[item.path] !== false
     && (!item.requiresDiagramEngine || hasDiagramEngineAccess)
     && (!item.requiresLudmilla || ludmillaDisponivel)
+    && (!item.requiresZe || zeDisponivel)
   );
 
   // Marca exibida: logo/nome do tenant, com fallback para a marca padrão
