@@ -1,0 +1,246 @@
+name: Evolution API (Zé) — VPS
+
+# Execução MANUAL (aba Actions → este workflow → "Run workflow").
+#
+# Instala/atualiza a Evolution API v2 (o WhatsApp do Zé) na VPS: Docker Compose
+# em /opt/evolution (api + postgres + redis, só na rede interna; a API escuta
+# apenas em 127.0.0.1:8080), server block do Nginx para
+# zap.homologamanager.com.br e certificado do certbot. Idempotente.
+#
+# Pré-requisitos: registro DNS A `zap` → 143.95.221.114 e os secrets
+# EVOLUTION_API_KEY / EVOLUTION_DB_PASSWORD no GitHub.
+#
+# NOTA de shell: o comando remoto roda com `bash -s`, SEM `-e`. Com errexit o
+# script morre no primeiro grep sem match, antes de imprimir o diagnóstico
+# (lição do nginx-cache-headers.yml, set/2026).
+
+on:
+  workflow_dispatch:
+    inputs:
+      acao:
+        description: 'O que fazer na VPS'
+        type: choice
+        options: [simular, instalar, atualizar, status]
+        default: simular
+      imagem_tag:
+        description: 'Tag da imagem evoapicloud/evolution-api'
+        type: string
+        default: latest
+
+jobs:
+  vps:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p ${{ secrets.VPS_SSH_PORT }} -H "${{ secrets.VPS_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Conexão
+        run: |
+          ssh -i ~/.ssh/deploy_key -p ${{ secrets.VPS_SSH_PORT }} -o StrictHostKeyChecking=no \
+            -o ConnectTimeout=15 ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} \
+            'echo "conectado como $(whoami) em $(hostname)"'
+
+      - name: Executar
+        env:
+          ACAO: ${{ inputs.acao }}
+          IMAGEM_TAG: ${{ inputs.imagem_tag }}
+          EVOLUTION_API_KEY: ${{ secrets.EVOLUTION_API_KEY }}
+          EVOLUTION_DB_PASSWORD: ${{ secrets.EVOLUTION_DB_PASSWORD }}
+          CERTBOT_EMAIL: ${{ secrets.CERTBOT_EMAIL }}
+        run: |
+          ssh -i ~/.ssh/deploy_key -p ${{ secrets.VPS_SSH_PORT }} -o StrictHostKeyChecking=no \
+            ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} \
+            "ACAO='$ACAO' IMAGEM_TAG='$IMAGEM_TAG' EVOLUTION_API_KEY='$EVOLUTION_API_KEY' EVOLUTION_DB_PASSWORD='$EVOLUTION_DB_PASSWORD' CERTBOT_EMAIL='$CERTBOT_EMAIL' bash -s" <<'REMOTO'
+          # SEM `set -e`: o diagnóstico precisa sobreviver a comandos que falham.
+          set -uo pipefail
+          DOMINIO="zap.homologamanager.com.br"
+          DIR="/opt/evolution"
+          if [ "$(id -u)" = "0" ]; then S=""; else S="sudo"; fi
+          echo "usuário: $(whoami) | ação: $ACAO | tag: $IMAGEM_TAG"
+
+          # ── status ──────────────────────────────────────────────────────────
+          if [ "$ACAO" = "status" ]; then
+            $S docker compose -f "$DIR/docker-compose.yml" ps 2>/dev/null || echo "(compose não instalado)"
+            curl -s -m 5 http://127.0.0.1:8080/ | head -c 300; echo
+            $S ls -1 /etc/nginx/sites-enabled/ 2>/dev/null | grep -i zap || echo "(sem site nginx)"
+            exit 0
+          fi
+
+          if [ -z "${EVOLUTION_API_KEY:-}" ] || [ -z "${EVOLUTION_DB_PASSWORD:-}" ]; then
+            echo "ERRO: secrets EVOLUTION_API_KEY / EVOLUTION_DB_PASSWORD não configurados no GitHub."
+            exit 1
+          fi
+
+          # ── 1. Docker ───────────────────────────────────────────────────────
+          if ! command -v docker >/dev/null 2>&1; then
+            echo "docker ausente — instalaria docker.io + compose v2"
+            [ "$ACAO" = "simular" ] || { $S apt-get update -qq && $S apt-get install -y -qq docker.io docker-compose-v2 && $S systemctl enable --now docker; }
+          else
+            echo "docker: $(docker --version)"
+          fi
+
+          # ── 2. Arquivos do compose ──────────────────────────────────────────
+          if [ "$ACAO" = "simular" ]; then
+            echo "SIMULAÇÃO: escreveria $DIR/docker-compose.yml e $DIR/.env (tag $IMAGEM_TAG),"
+            echo "           subiria os containers e configuraria nginx + certbot para $DOMINIO."
+            [ -f "$DIR/.env" ] && echo "(.env já existe — seria preservado; só a tag da imagem mudaria)"
+            echo "--- DNS ---"
+            getent hosts "$DOMINIO" || echo "ATENÇÃO: $DOMINIO ainda não resolve (crie o registro A antes de instalar)"
+            exit 0
+          fi
+
+          $S mkdir -p "$DIR"
+          if [ -f "$DIR/docker-compose.yml" ]; then
+            $S cp "$DIR/docker-compose.yml" "$DIR/docker-compose.yml.bak-$(date +%Y%m%d-%H%M%S)"
+          fi
+
+          $S tee "$DIR/docker-compose.yml" >/dev/null <<COMPOSE
+          services:
+            api:
+              image: evoapicloud/evolution-api:${IMAGEM_TAG}
+              container_name: evolution_api
+              restart: unless-stopped
+              ports:
+                - "127.0.0.1:8080:8080"
+              env_file: .env
+              volumes:
+                - evolution_instances:/evolution/instances
+              depends_on:
+                - postgres
+                - redis
+              networks: [evolution-net]
+            postgres:
+              image: postgres:16
+              container_name: evolution_postgres
+              restart: unless-stopped
+              command: ["postgres", "-c", "max_connections=300"]
+              environment:
+                POSTGRES_DB: evolution
+                POSTGRES_USER: evolution
+                POSTGRES_PASSWORD: ${EVOLUTION_DB_PASSWORD}
+              volumes:
+                - evolution_postgres:/var/lib/postgresql/data
+              networks: [evolution-net]
+            redis:
+              image: redis:7-alpine
+              container_name: evolution_redis
+              restart: unless-stopped
+              command: ["redis-server", "--appendonly", "yes"]
+              volumes:
+                - evolution_redis:/data
+              networks: [evolution-net]
+          volumes:
+            evolution_instances:
+            evolution_postgres:
+            evolution_redis:
+          networks:
+            evolution-net:
+              driver: bridge
+          COMPOSE
+
+          # .env: só escreve se não existir (preserva chave/senha já em uso —
+          # trocar a chave depois quebraria as edge functions em silêncio).
+          if [ ! -f "$DIR/.env" ]; then
+            $S tee "$DIR/.env" >/dev/null <<ENV
+          SERVER_URL=https://${DOMINIO}
+          AUTHENTICATION_API_KEY=${EVOLUTION_API_KEY}
+          LANGUAGE=pt-BR
+          LOG_LEVEL=ERROR,WARN,INFO
+          DEL_INSTANCE=false
+          QRCODE_LIMIT=30
+          CONFIG_SESSION_PHONE_CLIENT=GD Manager
+          CONFIG_SESSION_PHONE_NAME=Chrome
+          DATABASE_PROVIDER=postgresql
+          DATABASE_CONNECTION_URI=postgresql://evolution:${EVOLUTION_DB_PASSWORD}@postgres:5432/evolution?schema=public
+          DATABASE_CONNECTION_CLIENT_NAME=evolution
+          DATABASE_SAVE_DATA_INSTANCE=true
+          DATABASE_SAVE_DATA_NEW_MESSAGE=true
+          DATABASE_SAVE_MESSAGE_UPDATE=true
+          DATABASE_SAVE_DATA_CONTACTS=true
+          DATABASE_SAVE_DATA_CHATS=true
+          DATABASE_SAVE_DATA_LABELS=false
+          DATABASE_SAVE_DATA_HISTORIC=true
+          CACHE_REDIS_ENABLED=true
+          CACHE_REDIS_URI=redis://redis:6379/1
+          CACHE_REDIS_PREFIX_KEY=evolution
+          CACHE_REDIS_SAVE_INSTANCES=false
+          CACHE_LOCAL_ENABLED=false
+          WEBHOOK_GLOBAL_ENABLED=false
+          WEBHOOK_EVENTS_MESSAGES_UPSERT=true
+          WEBHOOK_EVENTS_CONNECTION_UPDATE=true
+          WEBHOOK_EVENTS_QRCODE_UPDATED=true
+          ENV
+            $S chmod 600 "$DIR/.env"
+            echo ".env criado"
+          else
+            echo ".env preservado"
+          fi
+
+          # ── 3. Subir ────────────────────────────────────────────────────────
+          cd "$DIR" || exit 1
+          if [ "$ACAO" = "atualizar" ]; then $S docker compose pull; fi
+          $S docker compose up -d
+          echo "aguardando a API responder…"
+          PRONTA=0
+          for i in $(seq 1 30); do
+            if curl -s -m 3 http://127.0.0.1:8080/ | grep -q '"version"'; then
+              echo "API respondeu: $(curl -s -m 3 http://127.0.0.1:8080/ | head -c 200)"
+              PRONTA=1; break
+            fi
+            sleep 3
+          done
+          if [ "$PRONTA" != "1" ]; then
+            echo "ERRO: API não respondeu em 90 s"; $S docker compose logs --tail 60 api; exit 1
+          fi
+
+          # ── 4. Nginx ────────────────────────────────────────────────────────
+          CONF="/etc/nginx/sites-available/${DOMINIO}"
+          if [ ! -f "$CONF" ]; then
+            $S tee "$CONF" >/dev/null <<NGINX
+          # GD-MANAGER-ZE — proxy para a Evolution API (WhatsApp do Zé)
+          server {
+              listen 80;
+              server_name ${DOMINIO};
+              client_max_body_size 50m;
+              location / {
+                  proxy_pass http://127.0.0.1:8080;
+                  proxy_http_version 1.1;
+                  proxy_set_header Upgrade \$http_upgrade;
+                  proxy_set_header Connection "upgrade";
+                  proxy_set_header Host \$host;
+                  proxy_set_header X-Real-IP \$remote_addr;
+                  proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+                  proxy_set_header X-Forwarded-Proto \$scheme;
+                  proxy_read_timeout 300;
+              }
+          }
+          NGINX
+            $S ln -sf "$CONF" "/etc/nginx/sites-enabled/${DOMINIO}"
+            if $S nginx -t; then
+              $S systemctl reload nginx; echo "nginx: site criado"
+            else
+              echo "ERRO no nginx -t; removendo o site para não derrubar o resto"
+              $S rm -f "/etc/nginx/sites-enabled/${DOMINIO}"; exit 1
+            fi
+          else
+            echo "nginx: site já existia"
+          fi
+
+          # ── 5. SSL ──────────────────────────────────────────────────────────
+          if [ ! -d "/etc/letsencrypt/live/${DOMINIO}" ]; then
+            if [ -n "${CERTBOT_EMAIL:-}" ]; then EM="--email ${CERTBOT_EMAIL}"; else EM="--register-unsafely-without-email"; fi
+            $S certbot --nginx -d "$DOMINIO" --non-interactive --agree-tos --no-eff-email $EM --redirect \
+              && echo "certificado emitido" \
+              || echo "AVISO: certbot falhou — o DNS já propagou? (registro A zap → este IP). Rodar 'instalar' de novo depois."
+          else
+            echo "certificado já existe"
+          fi
+
+          echo "=== pronto: https://${DOMINIO} ==="
+          curl -s -m 5 -k "https://${DOMINIO}/" | head -c 200; echo
+          REMOTO

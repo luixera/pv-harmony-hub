@@ -101,6 +101,25 @@ jobs:
             --project-ref yqsqrdndvsnhbsoaoilf \
             --no-verify-jwt
 
+      # Zé — webhook da Evolution (autentica pelo header x-ze-token, que a
+      # Evolution manda; ela não tem JWT do Supabase) e ações da tela /ze
+      # (essa confere o Authorization e o papel por conta própria).
+      - name: Deploy ze-webhook
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          supabase functions deploy ze-webhook \
+            --project-ref yqsqrdndvsnhbsoaoilf \
+            --no-verify-jwt
+
+      - name: Deploy ze-admin
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          supabase functions deploy ze-admin \
+            --project-ref yqsqrdndvsnhbsoaoilf \
+            --no-verify-jwt
+
   build-and-deploy:
     runs-on: ubuntu-latest
     timeout-minutes: 15
