@@ -28,6 +28,7 @@ import { useStatusLabel } from '@/hooks/useStatusLabel';
 import { useMinhasEmpresasDeStaff } from '@/hooks/useStaffCompanies';
 import { logSystemEvent } from '@/lib/systemLog';
 import { EquipmentModelCombobox } from '@/components/equipment/EquipmentModelCombobox';
+import { EquipmentBrandCombobox } from '@/components/equipment/EquipmentBrandCombobox';
 import { UnifilarTab } from './UnifilarTab';
 import { useDiagramEngineAccess } from '@/hooks/useDiagramEngineAccess';
 import { DeleteProjectDialog } from './DeleteProjectDialog';
@@ -367,6 +368,18 @@ function EquipmentBlock<T extends Record<string, string>>({
                     overflowWrap: 'anywhere', wordBreak: 'break-word', minWidth: 0, paddingLeft: 8,
                   }}>{form[k]}</span>
                 : <em style={{ color: '#ccc', fontSize: 12 }}>—</em>
+            ) : k === campoMarca ? (
+              <div style={{ width: '100%' }}>
+                <EquipmentBrandCombobox
+                  type={type}
+                  value={form[k]}
+                  onChange={v => setForm(f => ({ ...f, [k]: v }))}
+                  // trocou para outra marca do catálogo: o modelo (e a potência)
+                  // eram do fabricante anterior — saem, para a lista de modelos
+                  // já abrir limpa na marca nova
+                  onTrocarMarca={() => setForm(f => ({ ...f, [campoModelo]: '', [campoPotencia]: '' }))}
+                />
+              </div>
             ) : k === campoModelo ? (
               <div style={{ width: '100%' }}>
                 <EquipmentModelCombobox
@@ -380,7 +393,7 @@ function EquipmentBlock<T extends Record<string, string>>({
                     [campoModelo]: sel.model,
                     ...(sel.power != null ? { [campoPotencia]: String(sel.power) } : {}),
                   }))}
-                  placeholder="Buscar no catálogo ou digitar…"
+                  placeholder={form[campoMarca]?.trim() ? `Modelos de ${form[campoMarca].trim()}…` : 'Buscar no catálogo ou digitar…'}
                 />
               </div>
             ) : (

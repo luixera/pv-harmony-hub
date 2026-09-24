@@ -15,6 +15,7 @@ import { brazilianStates } from '@/data/mockData';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTenantFeatures } from '@/hooks/useTenant';
 import { EquipmentModelCombobox } from '@/components/equipment/EquipmentModelCombobox';
+import { EquipmentBrandCombobox } from '@/components/equipment/EquipmentBrandCombobox';
 import { dispatchNotification } from '@/lib/notify';
 import { supabase } from '@/integrations/supabase/client';
 import { DocumentUploadField } from '@/components/forms/DocumentUploadField';
@@ -1254,7 +1255,21 @@ export default function NewProject() {
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <AIField label="Marca *" confidence={fc('inverterBrand')?.confidence} source={fc('inverterBrand')?.source}>
-                      <Input value={formData.inverterBrand} onChange={e => updateField('inverterBrand', e.target.value)} placeholder="Ex: Growatt, Sungrow" />
+                      {invManual ? (
+                        <Input value={formData.inverterBrand} onChange={e => updateField('inverterBrand', e.target.value)} placeholder="Ex: Growatt, Sungrow" />
+                      ) : (
+                        <EquipmentBrandCombobox
+                          type="inverter"
+                          value={formData.inverterBrand}
+                          onChange={v => updateField('inverterBrand', v)}
+                          onTrocarMarca={() => {
+                            // modelo e potência eram da marca anterior
+                            updateField('inverterModel', '');
+                            updateField('inverterPower', '');
+                            setInvCatalogId(null);
+                          }}
+                        />
+                      )}
                     </AIField>
                     <AIField label="Modelo *" confidence={fc('inverterModel')?.confidence} source={fc('inverterModel')?.source}>
                       {invManual ? (
@@ -1271,7 +1286,7 @@ export default function NewProject() {
                             if (sel.power != null) updateField('inverterPower', String(sel.power));
                             setInvCatalogId(sel.catalogId ?? null);
                           }}
-                          placeholder="Buscar no catálogo ou digitar…"
+                          placeholder={formData.inverterBrand.trim() ? `Modelos de ${formData.inverterBrand.trim()}…` : "Buscar no catálogo ou digitar…"}
                         />
                       )}
                     </AIField>
@@ -1295,7 +1310,20 @@ export default function NewProject() {
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <AIField label="Marca *" confidence={fc('moduleBrand')?.confidence} source={fc('moduleBrand')?.source}>
-                      <Input value={formData.moduleBrand} onChange={e => updateField('moduleBrand', e.target.value)} placeholder="Ex: Canadian Solar" />
+                      {modManual ? (
+                        <Input value={formData.moduleBrand} onChange={e => updateField('moduleBrand', e.target.value)} placeholder="Ex: Canadian Solar" />
+                      ) : (
+                        <EquipmentBrandCombobox
+                          type="module"
+                          value={formData.moduleBrand}
+                          onChange={v => updateField('moduleBrand', v)}
+                          onTrocarMarca={() => {
+                            updateField('moduleModel', '');
+                            updateField('modulePower', '');
+                            setModCatalogId(null);
+                          }}
+                        />
+                      )}
                     </AIField>
                     <AIField label="Modelo *" confidence={fc('moduleModel')?.confidence} source={fc('moduleModel')?.source}>
                       {modManual ? (
@@ -1312,7 +1340,7 @@ export default function NewProject() {
                             if (sel.power != null) updateField('modulePower', String(sel.power));
                             setModCatalogId(sel.catalogId ?? null);
                           }}
-                          placeholder="Buscar no catálogo ou digitar…"
+                          placeholder={formData.moduleBrand.trim() ? `Modelos de ${formData.moduleBrand.trim()}…` : "Buscar no catálogo ou digitar…"}
                         />
                       )}
                     </AIField>

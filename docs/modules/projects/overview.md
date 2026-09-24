@@ -36,3 +36,30 @@ admin/staff (conforme `staff_access_mode`); company vê os próprios.
 ## Regras / fluxos / API
 Ver [business-rules.md](business-rules.md) · [flow.md](flow.md) ·
 [api.md](api.md). Etapas em [homologation](../homologation/overview.md).
+
+## Marca e modelo em lista condicional (24/09/2026)
+
+Pedido do usuário: ao trocar o equipamento de um projeto, escolher a **marca**
+numa lista e ver em **modelo** só os modelos daquela marca — para inversor e
+para módulos.
+
+Como estava: o campo **Modelo** já era combobox do catálogo filtrado pela marca
+(`EquipmentModelCombobox`, `brand={...}`) tanto no NewProject quanto no modal
+do projeto; a **Marca** era texto livre nos dois. O formulário **público**
+segue manual de propósito (decisão antiga: a empresa cliente não cadastra
+catálogo).
+
+O que mudou: `EquipmentBrandCombobox` — marca como lista do catálogo
+compartilhado, com busca, contagem de modelos por marca e digitação livre
+(o catálogo não é exaustivo: marca nova não trava o projeto, só avisa que está
+fora do catálogo). Escolher OUTRA marca limpa modelo e potência, porque eram do
+fabricante anterior — e a lista de modelos já abre certa. Usado no
+`ProjectModal` (bloco de equipamentos em edição) e no `NewProject`; o modo
+"Preencher manualmente" continua devolvendo os campos de texto.
+
+A regra das listas virou função pura em `src/components/equipment/catalogoFiltros.ts`
+(`marcasDoCatalogo`, `filtrarMarcas`, `modelosDaMarca`), usada pelos dois
+comboboxes e coberta por 11 testes (vitest): marca repetida com caixa/espaço
+diferentes conta uma vez só, ordem pt-BR, marca fora do catálogo volta a listar
+tudo em vez de lista vazia. Catálogo hoje: 20 marcas/73 modelos de inversor,
+22/41 de módulo.

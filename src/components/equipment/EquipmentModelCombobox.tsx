@@ -3,6 +3,7 @@ import { Input } from '@/components/ui/input';
 import { useEquipmentCatalog, EquipmentType, EquipmentCatalogItem } from '@/hooks/useEquipmentCatalog';
 import { EquipmentFormDialog } from './EquipmentFormDialog';
 import { Plus, Check, FileText, FileCheck, ShieldCheck } from 'lucide-react';
+import { modelosDaMarca } from './catalogoFiltros';
 
 interface Selection { brand: string; model: string; power: number | null; catalogId?: string | null }
 
@@ -44,12 +45,8 @@ export function EquipmentModelCombobox({ type, value, onType, onSelect, placehol
   // "Ver todas as marcas" solta o filtro sem precisar apagar o campo Marca.
   const marca = verTodas ? '' : (brand ?? '').trim().toLowerCase();
 
-  // Com a marca preenchida, mostra só os equipamentos dela. Se a marca não
-  // tem nenhum modelo no catálogo, volta a listar tudo em vez de deixar o
-  // usuário diante de uma lista vazia sem explicação.
-  const daMarca = marca ? items.filter(i => i.brand.trim().toLowerCase() === marca) : items;
-  const base = marca && daMarca.length === 0 ? items : daMarca;
-  const filtradoPorMarca = marca && daMarca.length > 0;
+  // Marca escolhida → só os modelos dela (regra em catalogoFiltros, testada).
+  const { lista: base, filtradoPorMarca } = modelosDaMarca(items, marca);
 
   const matches = q
     ? base.filter(i => `${i.brand} ${i.model}`.toLowerCase().includes(q))
