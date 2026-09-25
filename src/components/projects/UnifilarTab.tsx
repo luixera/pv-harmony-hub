@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { acharNoCatalogo } from '@/utils/equipmentMatch';
 import { AlertTriangle, Archive, FlaskConical, LayoutTemplate, Lightbulb, Loader2, MapPin, ShieldCheck } from 'lucide-react';
 import { ProjectWithDetails } from '@/hooks/useProjects';
 import { buildTechnicalJsonFromProject } from '@/utils/cadEngine/buildTechnicalJson';
@@ -37,44 +38,6 @@ const curto = (t: string, max = 30) => (t.length > max ? `${t.slice(0, max - 1)}
 /** Fase do projeto no vocabulário do motor (o cadastro é texto livre). */
 const normTxt = (s?: string | null) => String(s ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
 
-/**
- * Acha o equipamento no catálogo pelo vínculo salvo no projeto e, **sem ele**,
- * por marca+modelo.
- *
- * O vínculo (`inverter_catalog_id`/`module_catalog_id`) só existe quando o
- * equipamento foi escolhido no combobox. Projeto que chegou com marca/modelo
- * digitados — ou que teve o equipamento TROCADO depois, na conferência — fica
- * sem vínculo, e o motor seguia dizendo "sem datasheet no catálogo" mesmo com o
- * datasheet lá, completo (relato de ago/2026). Casar pelo nome resolve os dois
- * casos e mantém a checagem viva: se o datasheet for preenchido amanhã, a aba
- * passa a enxergar sozinha.
- */
-function acharNoCatalogo<T extends { id: string; brand: string; model: string }>(
-  itens: T[], id?: string | null, marca?: string | null, modelo?: string | null,
-): T | null {
-  const mo = normTxt(modelo);
-  const ma = normTxt(marca);
-
-  if (id) {
-    const porId = itens.find(i => i.id === id);
-    // O vínculo só vale se ainda BATER com o que está escrito no projeto.
-    //
-    // Editar o equipamento à mão troca marca/modelo, mas não mexe no
-    // `inverter_catalog_id` — o vínculo fica apontando para o equipamento
-    // antigo. Confiar nele às cegas fazia o motor dimensionar com a ficha
-    // técnica do inversor ERRADO, sem nenhum aviso: no PRJ-49561 o texto dizia
-    // SUNGROW SG7.5RS-L e o vínculo trazia o GROWATT NEO 2250M-X2
-    // (relato do usuário, ago/2026).
-    if (porId && (!mo || normTxt(porId.model) === mo)) return porId;
-  }
-
-  if (!mo) return null;
-  // marca+modelo primeiro; só o modelo como último recurso (marca costuma vir
-  // escrita de formas diferentes: "Growatt" / "GROWATT NEW ENERGY")
-  return itens.find(i => normTxt(i.model) === mo && normTxt(i.brand) === ma)
-    ?? itens.find(i => normTxt(i.model) === mo)
-    ?? null;
-}
 
 function phaseTypeOf(raw: unknown): 'monofasico' | 'bifasico' | 'trifasico' {
   const s = String(raw ?? '').toLowerCase();

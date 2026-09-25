@@ -4,6 +4,7 @@ import { ProjectWithDetails } from '@/hooks/useProjects';
 import { PackageItem, REUSABLE_PHOTO_TYPES, PROJECT_DOCUMENT_TYPES } from '@/hooks/useInstallerPackage';
 import { sanitizeFileName } from '@/lib/utils';
 import { imageToPdfBlob } from '@/lib/equipmentDocs';
+import { chaveEquip, vinculoAindaVale } from '@/utils/equipmentMatch';
 import { buildProjectValues } from '@/utils/projectValues';
 import { generateResumoPdf } from '@/utils/resumoPdf';
 import { generateDocxFromTemplate } from '@/utils/docxGenerator';
@@ -122,11 +123,17 @@ async function resolveEquipmentDoc(
   const pick = (r: Row | null) => !r ? null
     : kind === 'inmetro' ? r.inmetro_url : kind === 'afci' ? r.afci_url : r.datasheet_url;
 
-  // 1) tenta o item vinculado do catálogo
+  // 1) tenta o item vinculado do catálogo — mas só se o vínculo AINDA for este
+  //    equipamento. Trocar o equipamento no modal muda marca/modelo e não mexe
+  //    no `*_catalog_id`: confiar nele às cegas pôs o INMETRO/datasheet do
+  //    equipamento ANTIGO dentro do pacote do instalador (relato do usuário,
+  //    set/2026 — o mesmo defeito que o motor teve em ago/2026).
   let path: string | null = null;
   if (catalogId) {
-    const { data } = await supabase.from('equipment_catalog' as never).select(COLS).eq('id', catalogId).maybeSingle();
-    path = pick(data as Row | null);
+    const { data } = await supabase.from('equipment_catalog' as never)
+      .select(`brand, model, ${COLS}`).eq('id', catalogId).maybeSingle();
+    const item = data as (Row & { brand: string | null; model: string | null }) | null;
+    if (vinculoAindaVale(item, model)) path = pick(item);
   }
   // 2) se o vínculo não tem ESTE documento, procura por marca+modelo — outro
   //    registro da mesma marca/modelo pode ter o arquivo. Isso conserta o caso
@@ -139,8 +146,7 @@ async function resolveEquipmentDoc(
   //    set/2026). O catálogo é pequeno, então filtramos aqui em vez de tentar
   //    normalizar no lado do banco.
   if (!path && brand && model) {
-    const chave = (t: string | null | undefined) =>
-      (t ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const chave = chaveEquip;
     const col = kind === 'inmetro' ? 'inmetro_url' : kind === 'afci' ? 'afci_url' : 'datasheet_url';
     const { data } = await supabase.from('equipment_catalog' as never)
       .select(`brand, model, ${COLS}`).eq('type', which).not(col, 'is', null);

@@ -343,6 +343,8 @@ function EquipmentBlock<T extends Record<string, string>>({
   const campoModelo = `${type}_model`;
   const campoMarca = `${type}_brand`;
   const campoPotencia = `${type}_power`;
+  /** vínculo com o item do catálogo — segue o equipamento, nunca fica para trás */
+  const campoVinculo = `${type}_catalog_id`;
 
   return (
     <div style={{ background: '#F8F8F8', borderRadius: 10, padding: '16px 20px', border: '1px solid #EFEFEF' }}>
@@ -377,7 +379,7 @@ function EquipmentBlock<T extends Record<string, string>>({
                   // trocou para outra marca do catálogo: o modelo (e a potência)
                   // eram do fabricante anterior — saem, para a lista de modelos
                   // já abrir limpa na marca nova
-                  onTrocarMarca={() => setForm(f => ({ ...f, [campoModelo]: '', [campoPotencia]: '' }))}
+                  onTrocarMarca={() => setForm(f => ({ ...f, [campoModelo]: '', [campoPotencia]: '', [campoVinculo]: '' }))}
                 />
               </div>
             ) : k === campoModelo ? (
@@ -386,11 +388,13 @@ function EquipmentBlock<T extends Record<string, string>>({
                   type={type}
                   brand={form[campoMarca]}
                   value={form[k]}
-                  onType={v => setForm(f => ({ ...f, [k]: v }))}
+                  // digitou o modelo à mão: o vínculo com o catálogo deixa de valer
+                  onType={v => setForm(f => ({ ...f, [k]: v, [campoVinculo]: '' }))}
                   onSelect={sel => setForm(f => ({
                     ...f,
                     [campoMarca]: sel.brand,
                     [campoModelo]: sel.model,
+                    [campoVinculo]: sel.catalogId ?? '',
                     ...(sel.power != null ? { [campoPotencia]: String(sel.power) } : {}),
                   }))}
                   placeholder={form[campoMarca]?.trim() ? `Modelos de ${form[campoMarca].trim()}…` : 'Buscar no catálogo ou digitar…'}
@@ -752,6 +756,12 @@ function TabGeneral({ project, isEditing, onSave, onCancel, onEdit }: {
     cep: gd?.cep || '',
     city: gd?.city || '',
     state: gd?.state || '',
+    // Vínculo com o catálogo: entra no form para ser atualizado JUNTO com o
+    // equipamento. Trocar o equipamento sem mexer aqui deixava o vínculo no
+    // antigo, e o pacote do instalador saía com o INMETRO/datasheet errado
+    // (relato do usuário, set/2026).
+    inverter_catalog_id: (eq as any)?.inverter_catalog_id || '',
+    module_catalog_id: (eq as any)?.module_catalog_id || '',
     inverter_brand: eq?.inverter_brand || '',
     inverter_model: eq?.inverter_model || '',
     inverter_power: eq?.inverter_power?.toString() || '',
@@ -790,6 +800,8 @@ function TabGeneral({ project, isEditing, onSave, onCancel, onEdit }: {
       cep: gd?.cep || '',
       city: gd?.city || '',
       state: gd?.state || '',
+      inverter_catalog_id: (eq as any)?.inverter_catalog_id || '',
+      module_catalog_id: (eq as any)?.module_catalog_id || '',
       inverter_brand: eq?.inverter_brand || '',
       inverter_model: eq?.inverter_model || '',
       inverter_power: eq?.inverter_power?.toString() || '',
@@ -1201,6 +1213,10 @@ function TabGeneral({ project, isEditing, onSave, onCancel, onEdit }: {
                 module_model: form.module_model,
                 module_power: parseFloat(form.module_power) || null,
                 module_quantity: parseInt(form.module_quantity, 10) || null,
+                // o vínculo vai junto: vazio quando o equipamento foi digitado
+                // à mão ou trocado por um que não está no catálogo
+                inverter_catalog_id: form.inverter_catalog_id || null,
+                module_catalog_id: form.module_catalog_id || null,
                 total_installed_power: totalPower,
               }
             )}
