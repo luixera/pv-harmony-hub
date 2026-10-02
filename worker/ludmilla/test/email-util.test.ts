@@ -58,3 +58,31 @@ test('recomendacaoDoVeredito só recomenda etapa para parecer', () => {
   assert.equal(recomendacaoDoVeredito('parecer', 'inconclusivo'), null);
   assert.equal(recomendacaoDoVeredito('carta_obras', 'favoravel'), null);
 });
+
+test('casaEndereco usa o ÚLTIMO número do endereço, não o primeiro', () => {
+  // AV 9 DE JULHO 1500: pega 1500, não 9
+  assert.ok(!casaEndereco('AV 9 DE JULHO 1500', 'Av 9 de Julho 3000'));
+  assert.ok(casaEndereco('AV 9 DE JULHO 1500', 'Avenida 9 de Julho, 1500 - Centro'));
+});
+
+test('casaEndereco compara palavras da rua por palavra inteira, não substring', () => {
+  // FLORES não é substring de FLORESTA (bem como não caso palavra inteira)
+  assert.ok(!casaEndereco('RUA DAS FLORES 120', 'Rua da Floresta 120'));
+});
+
+test('casaTitular rejeita nome com uma palavra só', () => {
+  assert.ok(!casaTitular('JOSE', 'Maria Jose Santos'));
+  // confirmação que continua funcionando com dois nomes
+  assert.ok(casaTitular('WERLHE DE ARAUJO LIMA', 'Sr. Werlhe de Araújo Lima'));
+});
+
+test('regraQueCasa encontra regra de nota com remetente qualquer', () => {
+  assert.equal(regraQueCasa(REGRAS, 'NOTA - 40008312722', 'relacionamento@edp.com.br')?.tipo_documento, 'nota');
+});
+
+test('casaProtocolo respeita piso de 8 dígitos', () => {
+  // 7 dígitos não casam
+  assert.ok(!casaProtocolo('1234567', '1234567'));
+  // 8 dígitos casam
+  assert.ok(casaProtocolo('12345678', '12345678'));
+});

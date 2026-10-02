@@ -48,11 +48,11 @@ export function regraQueCasa(regras: RegraEmail[], assunto: string, remetente: s
 const palavras = (s: string): string[] =>
   semAcento(s).toUpperCase().split(/[^A-Z0-9]+/).filter(p => p.length > 2);
 
-/** Primeiro + último nome — a mesma regra que o Claudinho usa para casar titular. */
+/** Compara primeiro e último nome, sem acento e sem caixa. Exige pelo menos duas palavras do sistema. */
 export function casaTitular(doSistema: string, doEmail: string): boolean {
   const a = palavras(doSistema);
   const b = palavras(doEmail);
-  if (a.length === 0 || b.length === 0) return false;
+  if (a.length < 2 || b.length === 0) return false;
   return b.includes(a[0]) && b.includes(a[a.length - 1]);
 }
 
@@ -64,10 +64,12 @@ export function casaEndereco(doSistema: string, doEmail: string): boolean {
   const a = normalizarEndereco(doSistema);
   const b = normalizarEndereco(doEmail);
   if (!a || !b) return false;
-  const numero = (a.match(/\b\d+\b/) ?? [])[0];
+  const numeros = a.match(/\b\d+\b/g) ?? [];
+  const numero = numeros.length > 0 ? numeros[numeros.length - 1] : undefined;
   const rua = a.replace(/\b\d+\b/g, '').split(' ').filter(p => p.length > 3);
   if (rua.length === 0) return false;
-  return rua.every(p => b.includes(p)) && (!numero || new RegExp(`\\b${numero}\\b`).test(b));
+  const ruaSet = new Set(b.split(' '));
+  return rua.every(p => ruaSet.has(p)) && (!numero || new RegExp(`\\b${numero}\\b`).test(b));
 }
 
 /** Etapa recomendada para o card. Null = só avisa que o documento chegou. */
