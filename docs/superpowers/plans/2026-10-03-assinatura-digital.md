@@ -198,7 +198,9 @@ CREATE TABLE IF NOT EXISTS public.assinaturas (
   hash_original           TEXT,
   hash_aprovado           TEXT,
   hash_assinado           TEXT,
-  codigo_verificacao      TEXT NOT NULL DEFAULT upper(substr(md5(gen_random_uuid()::text), 1, 5)),
+  -- preenchido por assinatura_codigo_novo() na hora de pedir (ver abaixo):
+  -- um DEFAULT aleatório com UNIQUE pode colidir e derrubar o INSERT
+  codigo_verificacao      TEXT NOT NULL,
   erro                    TEXT,
   tentativas              SMALLINT NOT NULL DEFAULT 0,
   claim_em                TIMESTAMPTZ,
@@ -251,6 +253,35 @@ CREATE POLICY certificado_admin_sobe ON storage.objects FOR INSERT
     AND (select public.assinatura_admin_ok())
   );
 -- Nenhuma policy de SELECT/UPDATE/DELETE: ninguém lê de volta pela API.
+
+-- ── Código de verificação: curto, único e sem risco de colisão no INSERT ───
+-- 6 caracteres de um alfabeto sem ambiguidade visual (sem O/0, I/1, S/5): o
+-- código é lido em voz alta e digitado por gente. Tenta até achar um livre, em
+-- vez de confiar num DEFAULT aleatório que o UNIQUE pode recusar.
+CREATE OR REPLACE FUNCTION public.assinatura_codigo_novo(_tenant UUID)
+RETURNS TEXT
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''
+AS $$
+DECLARE
+  _alfabeto CONSTANT TEXT := 'ABCDEFGHJKLMNPQRTUVWXY2346789';
+  _codigo TEXT; _i INT;
+BEGIN
+  FOR _tentativa IN 1..50 LOOP
+    _codigo := '';
+    FOR _i IN 1..6 LOOP
+      _codigo := _codigo || substr(_alfabeto, 1 + floor(random() * length(_alfabeto))::int, 1);
+    END LOOP;
+    IF NOT EXISTS (SELECT 1 FROM public.assinaturas
+                    WHERE tenant_id = _tenant AND codigo_verificacao = _codigo) THEN
+      RETURN _codigo;
+    END IF;
+  END LOOP;
+  -- 29^6 ≈ 594 milhões: 50 tentativas só esgotam se algo estiver muito errado
+  RAISE EXCEPTION 'Não consegui gerar um código de verificação livre.';
+END;
+$$;
+REVOKE ALL ON FUNCTION public.assinatura_codigo_novo(UUID) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.assinatura_codigo_novo(UUID) TO authenticated, service_role;
 
 -- ── Catálogo: salvar (só admin) ─────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION public.catalogo_assinavel_salvar(
@@ -422,8 +453,8 @@ end $$;
 
 -- Prova 2: linha de outro tenant é invisível
 reset role;
-insert into public.assinaturas (tenant_id, project_id, situacao)
-select t.id, p.id, 'pendente'
+insert into public.assinaturas (tenant_id, project_id, situacao, codigo_verificacao)
+select t.id, p.id, 'pendente', public.assinatura_codigo_novo(t.id)
   from public.tenants t
   join public.projects p on p.tenant_id = t.id
  where not t.is_library limit 1;
@@ -543,10 +574,11 @@ BEGIN
 
   INSERT INTO public.assinaturas
     (tenant_id, project_id, document_id, assinavel_id, certificado_id,
-     titular_nome, titular_cpf, serial, pedida_por, motivo, situacao)
+     titular_nome, titular_cpf, serial, pedida_por, motivo, situacao, codigo_verificacao)
   VALUES (_tenant, p_project_id, p_document_id, p_assinavel_id, _cert.id,
           _cert.titular_nome, _cert.titular_cpf, _cert.serial, _uid,
-          left(coalesce(p_motivo, ''), 500), 'preparando')
+          left(coalesce(p_motivo, ''), 500), 'preparando',
+          public.assinatura_codigo_novo(_tenant))
   RETURNING id INTO _id;
   RETURN _id;
 END;
@@ -1049,9 +1081,15 @@ test('estampar mantém as páginas e grava com xref clássica', async () => {
     codigo: 'AX7F2', cidade: 'UBERABA-MG', quando: new Date('2026-10-03T14:32:00-03:00'),
   });
   assert.equal((await PDFDocument.load(preparado)).getPageCount(), 3);
-  // xref clássica: o arquivo termina com a tabela, não com um objeto de stream
-  assert.ok(preparado.includes(Buffer.from('xref')), 'esperava tabela xref clássica');
   assert.ok(preparado.length > original.length, 'a estampa deveria acrescentar bytes');
+
+  // xref CLÁSSICA, e não stream. Atenção: procurar a string "xref" NÃO prova
+  // nada — todo PDF tem "startxref" no fim. O que discrimina é a palavra
+  // "xref" sozinha numa linha (a tabela) e a ausência de /Type /XRef.
+  assert.ok(/\r?\nxref\r?\n/.test(preparado.toString('latin1')), 'esperava a tabela xref em linha própria');
+  assert.ok(!preparado.includes(Buffer.from('/Type /XRef')), 'não deveria ter xref stream');
+  // o original (xref stream) é o contraste que torna o teste honesto
+  assert.ok(!/\r?\nxref\r?\n/.test(original.toString('latin1')), 'o original deveria ser xref stream');
 });
 
 test('assinar ANEXA: os bytes aprovados são prefixo exato do assinado', async () => {
@@ -2592,8 +2630,9 @@ create temp table cena as
     from public.tenants t join public.projects p on p.tenant_id = t.id and not p.is_deleted
    where t.is_library limit 1;
 
-insert into public.assinaturas (tenant_id, project_id, situacao, recusa, pedida_por)
-select tenant, projeto, 'aguardando_ze', 'A triagem ficou em dúvida.', admin_id from cena;
+insert into public.assinaturas (tenant_id, project_id, situacao, recusa, pedida_por, codigo_verificacao)
+select tenant, projeto, 'aguardando_ze', 'A triagem ficou em dúvida.', admin_id,
+       public.assinatura_codigo_novo(tenant) from cena;
 
 -- o robô abre a pendência
 set local role service_role;
