@@ -33,6 +33,13 @@ AS $$
   );
 $$;
 
+-- As policies abaixo são todas TO authenticated: anon nunca chega a avaliar a
+-- função (e não precisa de EXECUTE).
+REVOKE ALL ON FUNCTION public.assinatura_equipe_ok() FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.assinatura_equipe_ok() TO authenticated, service_role;
+REVOKE ALL ON FUNCTION public.assinatura_admin_ok() FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.assinatura_admin_ok() TO authenticated, service_role;
+
 -- ── Catálogo: o que pode ser assinado ───────────────────────────────────────
 CREATE TABLE IF NOT EXISTS public.documentos_assinaveis (
   id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -142,12 +149,17 @@ BEGIN
     $p$, t);
     EXECUTE format('DROP POLICY IF EXISTS equipe_le ON public.%I', t);
     EXECUTE format($p$
-      CREATE POLICY equipe_le ON public.%I FOR SELECT
+      CREATE POLICY equipe_le ON public.%I FOR SELECT TO authenticated
         USING ((select public.assinatura_equipe_ok()))
     $p$, t);
   END LOOP;
 END $$;
 -- escrita é só pelas RPCs (SECURITY DEFINER): nenhuma policy de INSERT/UPDATE.
+-- Defesa em profundidade: o Supabase concede INSERT/UPDATE/DELETE por padrão a
+-- anon/authenticated; tiramos, para que uma policy permissiva posta por engano
+-- no futuro não abra a escrita direta.
+REVOKE INSERT, UPDATE, DELETE ON public.documentos_assinaveis, public.certificados_digitais,
+  public.assinaturas FROM anon, authenticated;
 
 -- ── Bucket do certificado: SEM policy nenhuma ───────────────────────────────
 -- Nem o admin baixa o .pfx depois de subir. Só o service role alcança.
@@ -158,7 +170,7 @@ ON CONFLICT (id) DO NOTHING;
 
 -- Subir o .pfx: o admin precisa de UM insert na pasta do próprio tenant.
 DROP POLICY IF EXISTS certificado_admin_sobe ON storage.objects;
-CREATE POLICY certificado_admin_sobe ON storage.objects FOR INSERT
+CREATE POLICY certificado_admin_sobe ON storage.objects FOR INSERT TO authenticated
   WITH CHECK (
     bucket_id = 'certificados'
     AND (storage.foldername(name))[1] = public.get_user_tenant_id((select auth.uid()))::text
@@ -176,7 +188,7 @@ LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''
 AS $$
 DECLARE
   _alfabeto CONSTANT TEXT := 'ABCDEFGHJKLMNPQRTUVWXY2346789';
-  _codigo TEXT; _i INT;
+  _codigo TEXT;
 BEGIN
   FOR _tentativa IN 1..50 LOOP
     _codigo := '';
@@ -193,7 +205,10 @@ BEGIN
 END;
 $$;
 REVOKE ALL ON FUNCTION public.assinatura_codigo_novo(UUID) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.assinatura_codigo_novo(UUID) TO authenticated, service_role;
+-- só service_role: quem chama é assinatura_pedir (SECURITY DEFINER, roda como dono)
+-- e as provas SQL; o usuário comum não tem por que sondar códigos de um tenant.
+REVOKE ALL ON FUNCTION public.assinatura_codigo_novo(UUID) FROM authenticated;
+GRANT EXECUTE ON FUNCTION public.assinatura_codigo_novo(UUID) TO service_role;
 
 -- ── Catálogo: salvar (só admin) ─────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION public.catalogo_assinavel_salvar(
@@ -206,6 +221,12 @@ DECLARE _tenant UUID; _id UUID;
 BEGIN
   IF NOT public.assinatura_admin_ok() THEN
     RAISE EXCEPTION 'Só o admin mexe no catálogo de documentos assináveis.' USING ERRCODE = '42501';
+  END IF;
+  IF coalesce(trim(p_codigo), '') = '' THEN
+    RAISE EXCEPTION 'O código do tipo de documento não pode ficar vazio.';
+  END IF;
+  IF coalesce(trim(p_nome), '') = '' THEN
+    RAISE EXCEPTION 'O nome do tipo de documento não pode ficar vazio.';
   END IF;
   _tenant := public.get_user_tenant_id((select auth.uid()));
   INSERT INTO public.documentos_assinaveis (tenant_id, codigo, nome, origem, exige_triagem, ativo)
@@ -243,7 +264,7 @@ BEGIN
   UPDATE public.certificados_digitais SET ativo = FALSE, updated_at = now()
    WHERE tenant_id = _tenant AND ativo;
 
-  _segredo := vault.create_secret(p_senha, 'certificado:' || _tenant || ':' || _cpf || ':' || extract(epoch from now())::bigint,
+  _segredo := vault.create_secret(p_senha, 'certificado:' || _tenant || ':' || _cpf || ':' || gen_random_uuid(),
                                   'Senha do certificado A1 de ' || trim(p_titular_nome));
   INSERT INTO public.certificados_digitais
     (tenant_id, titular_nome, titular_cpf, arquivo_path, secret_id, situacao, ativo, created_by)
@@ -290,7 +311,7 @@ BEGIN
          serial = coalesce(p_serial, serial), validade_inicio = coalesce(p_inicio, validade_inicio),
          validade_fim = coalesce(p_fim, validade_fim), erro = p_erro, updated_at = now()
    WHERE id = p_id;
-  RETURN TRUE;
+  RETURN FOUND;
 END;
 $$;
 REVOKE ALL ON FUNCTION public.certificado_conferido(UUID, TEXT, TEXT, TEXT, DATE, DATE, TEXT) FROM PUBLIC, anon, authenticated;
