@@ -4,6 +4,11 @@
 > sistema, assinatura **PAdES** feita por um worker na VPS (abordagem **A**),
 > quem assina são **staff e admin** com registro, e o **Zé** avisa toda
 > assinatura e autoriza as exceções pelo WhatsApp.
+>
+> Revisada em 03/10/2026 depois de provar a cadeia de assinatura numa bancada
+> (ver §5): a estampa passou para o passo que a pessoa confere, a assinatura
+> virou *append* puro sobre os bytes aprovados, e as telas saíram de `/painel`
+> (master da plataforma) para uma rota própria `/assinaturas`.
 
 ## Por que
 
@@ -108,10 +113,11 @@ sendo o registro histórico.
 | `certificado_id`, `titular_nome`, `titular_cpf`, `serial` | **cópia** dos dados do certificado no momento da assinatura (histórico não quebra se o certificado for trocado) |
 | `pedida_por`, `pedida_em` | quem pediu |
 | `liberada_por`, `liberada_em` | preenchido quando foi exceção liberada pelo Zé |
-| `situacao` | `pendente` · `triagem` · `aguardando_ze` · `assinando` · `assinado` · `recusado` · `erro` |
+| `situacao` | `preparando` · `conferir` · `triagem` · `aguardando_ze` · `pendente` · `assinando` · `assinado` · `recusado` · `erro` |
 | `motivo` | o que a pessoa escreveu ao pedir |
 | `recusa` | por que foi barrado (triagem ou "não" do Zé) |
-| `hash_original`, `hash_assinado` | SHA-256 dos dois arquivos |
+| `documento_aprovado_path` | o PDF preparado (convertido + estampado) que a pessoa conferiu |
+| `hash_original`, `hash_aprovado`, `hash_assinado` | SHA-256 do arquivo de origem, dos bytes aprovados (é o que a assinatura cobre) e do resultado |
 | `documento_assinado_id` | o documento novo (`..._assinado.pdf`) |
 | `codigo_verificacao` | código curto estampado no PDF que permite achar a linha; único por tenant |
 | `erro`, `tentativas`, `created_at`, `updated_at` | operação |
@@ -151,19 +157,26 @@ silenciosamente inválida.
 1. **Pedir** — no modal do projeto, "Assinar documento": a pessoa escolhe um
    tipo do catálogo e o arquivo (upload novo, ou um documento já gerado que
    tenha `assinavel_id`), escreve o motivo e confirma. Staff e admin podem.
-2. **Converter, se preciso — passo visível.** Se o arquivo não é PDF (planilha
-   da CEMIG, `.docx` do memorial), o sistema gera o PDF e **mostra para a
-   pessoa conferir**. Só depois de "está certo" o pedido entra na fila. É assim
-   que a fidelidade exigida pelo usuário fica garantida: ninguém assina uma
-   conversão que não foi olhada. **Arquivo que já é PDF não passa por conversão
-   nenhuma** — é assinado no próprio arquivo, com atualização incremental, de
-   modo que todos os bytes originais permanecem.
+2. **Preparar — o passo que a pessoa confere.** O sistema produz o
+   **PDF para assinar**: converte quando o arquivo não é PDF (planilha da
+   CEMIG, `.docx` do memorial) e desenha a **estampa visível** da assinatura
+   (nome, CPF mascarado, data, código de verificação). Esse PDF é mostrado na
+   tela e **só entra na fila depois do "está certo"**. É assim que a fidelidade
+   exigida pelo usuário fica garantida: ninguém assina uma conversão — nem uma
+   estampa — que não foi olhada. O arquivo original não é tocado.
 3. **Triagem** (§6) quando `exige_triagem`.
-4. **Fila** — `assinatura_pedir(...)` grava `assinaturas` em `pendente`.
-5. **Assinar** — o worker (§5) pega, assina, sobe o PDF assinado como
-   **documento novo**, mantendo o original intacto.
+4. **Fila** — `assinatura_pedir(...)` grava `assinaturas` em `pendente`, com o
+   `hash_aprovado` dos bytes que a pessoa viu.
+5. **Assinar** — o worker (§5) **anexa** a assinatura aos bytes aprovados, sem
+   reescrever nada: o PDF aprovado é prefixo exato do arquivo assinado
+   (propriedade verificada em teste). Sobe como **documento novo**.
 6. **Registrar** — `assinaturas` fechada em `assinado`, comentário no card,
    linha em `project_history`, recado do Zé.
+
+> **Por que a estampa vem antes da assinatura.** A estampa muda o PDF; a
+> assinatura só vale se nada mudar depois dela. Fazendo a estampa no passo 2 e
+> a assinatura por *append* no passo 5, a conferência humana cobre tudo o que
+> será assinado, e da aprovação em diante nenhum byte é reescrito.
 
 ## 5. O worker — abordagem A
 
@@ -177,22 +190,33 @@ marca `assinando`) → trabalha → `assinatura_finalizar(...)`.
 
 Por assinatura:
 
-1. baixa o PDF do bucket `project-documents` e confere `hash_original`;
+1. baixa o PDF **aprovado** e confere `hash_aprovado` — se o arquivo mudou
+   depois do "está certo", recusa;
 2. baixa o `.pfx` do bucket `certificados` e lê a senha por
    `certificado_do_robo` — **em memória, nunca em disco**;
-3. valida o certificado: validade, CPF do titular, cadeia ICP-Brasil;
-4. estampa a assinatura visível na última página (nome, CPF mascarado
-   `***.***.123-45`, data/hora, código de verificação);
-5. assina em **PAdES** com `@signpdf/signpdf` + `node-forge`;
+3. valida o certificado: validade e CPF do titular;
+4. anexa a assinatura **PAdES** com `plainAddPlaceholder` +
+   `@signpdf/signer-p12` — *append* puro, sem reescrever o PDF;
+5. confere que os bytes aprovados são prefixo do assinado e que o resultado
+   abre com a mesma contagem de páginas;
 6. sobe `<<nome>>_assinado.pdf`, registra o documento novo com o mesmo
    `project_id` e o `assinavel_id` do pedido, e fecha a linha.
 
 Erro em qualquer passo: `situacao = 'erro'`, mensagem legível na tela, até 3
 tentativas; o original nunca é tocado.
 
-**Conversão** (`soffice --headless --convert-to pdf`) roda no mesmo worker, mas
-no passo 2 do fluxo — antes da fila, para a pessoa conferir. O worker nunca
-converte e assina no mesmo salto sem o "está certo".
+**Preparo** (conversão `soffice --headless --convert-to pdf` + estampa com
+`pdf-lib`, salvo com `useObjectStreams: false` para o PDF ficar com tabela xref
+clássica) roda no mesmo worker, no passo 2 do fluxo — antes da fila, para a
+pessoa conferir. O worker nunca prepara e assina no mesmo salto sem o "está
+certo".
+
+> **Armadilha confirmada em teste (03/10/2026):** `plainAddPlaceholder` não lê
+> PDF com *xref stream* — falha com "Expected xref at NaN". Por isso o preparo
+> grava com `useObjectStreams: false`. Com isso a cadeia foi provada
+> ponta a ponta: `.pfx` gerado no teste → estampa → assinatura → bytes
+> aprovados são prefixo exato do assinado, `/ByteRange` presente, páginas
+> preservadas.
 
 ## 6. A peneira do Claudinho
 
@@ -247,14 +271,18 @@ ninguém além do gestor.
 
 ## 8. Telas
 
-**`/painel` (console GD Manager)**
-- cadastro do certificado: titular, CPF, emissor, serial, validade com selo de
-  "vence em 23 dias", trocar e desativar;
+**Página `/assinaturas`** (rota nova, `admin` + `staff`, no molde de
+`/ludmilla` — **não** em `/painel`, que é exclusivo do master da plataforma e
+não serve ao admin do tenant):
+- cadastro do certificado, **só visível para admin**: titular, CPF, emissor,
+  serial, validade com selo de "vence em 23 dias", trocar e desativar;
 - **extrato de assinaturas** do tenant, no modelo do registro da Ludmilla: o
   que foi assinado, projeto, quem pediu, quem liberou, certificado, situação,
-  link para o assinado e para o original.
+  link para o assinado e para o original;
+- fila de "conferir": os PDFs preparados esperando o "está certo".
 
-**Modal do projeto — bloco "Assinaturas"**
+**Modal do projeto — aba "Assinaturas"** (no `TABS` de `ProjectModal`, com o
+mesmo recorte do Bidu)
 - botão "Assinar documento" (staff e admin), com o seletor do catálogo;
 - lista do que já foi assinado no projeto, com código de verificação;
 - pedido barrado aparece com o motivo, sem esconder a recusa.
@@ -270,8 +298,8 @@ ninguém além do gestor.
 - Isolamento de tenant RESTRICTIVE nas quatro tabelas novas; a RPC de pedido
   confere o tenant do projeto antes de qualquer coisa.
 - O original nunca é sobrescrito nem apagado; o assinado é documento novo.
-- `hash_original` conferido na hora de assinar: se o arquivo mudou entre o
-  pedido e a assinatura, recusa.
+- `hash_aprovado` conferido na hora de assinar: se o arquivo mudou entre o
+  "está certo" e a assinatura, recusa.
 - Liberado primeiro só para o tenant `is_library` (GD Manager), como Bidu,
   Ludmilla e Zé.
 
@@ -298,9 +326,10 @@ em documentos recebidos.
   vencido;
 - **triagem:** testes vitest da função que interpreta o veredito, incluindo
   resposta cortada e JSON inválido ⇒ `aguardando_ze`;
-- **worker:** testes `node:test` com um `.pfx` de teste gerado no próprio
-  teste — PDF assinado abre, a assinatura confere, o original continua
-  byte a byte igual, e a estampa cai na última página;
+- **worker:** testes `node:test` com um `.pfx` de teste gerado no próprio teste
+  (`node-forge`) — o PDF assinado abre com as mesmas páginas, **os bytes
+  aprovados são prefixo exato do assinado**, `/ByteRange` está presente, o
+  original continua intocado, e a estampa cai na última página;
 - **Zé:** teste do `modo: 'recado'` (texto sai sem chamar o modelo) e do
   `liberar_assinatura` ("pode" assina, "não" recusa, expirado recusa);
 - **regressão:** anexo comum continua sem botão de assinar, e o fluxo de
