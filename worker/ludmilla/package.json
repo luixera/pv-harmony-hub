@@ -15,9 +15,12 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",
+    "imapflow": "^2.2.2",
+    "mailparser": "^3.9.33",
     "playwright": "^1.47.0"
   },
   "devDependencies": {
+    "@types/mailparser": "^3.9.0",
     "@types/node": "^22.0.0",
     "typescript": "^5.5.0"
   }
