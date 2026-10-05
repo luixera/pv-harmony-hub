@@ -8,6 +8,13 @@
 -- apagado, de outro tenant ou sem certificado válido não entra.
 -- ============================================================================
 
+-- ── Um pedido em andamento por documento (a trava de verdade) ──────────────
+-- O EXISTS de assinatura_pedir dá a mensagem boa; este índice garante que dois
+-- cliques simultâneos não criem dois pedidos.
+CREATE UNIQUE INDEX IF NOT EXISTS assinatura_uma_por_documento
+  ON public.assinaturas (document_id)
+  WHERE situacao IN ('preparando', 'conferir', 'triagem', 'aguardando_ze', 'pendente', 'assinando');
+
 -- ── Pedir ───────────────────────────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION public.assinatura_pedir(
   p_project_id UUID, p_document_id UUID, p_assinavel_id UUID, p_motivo TEXT DEFAULT NULL)
@@ -17,6 +24,7 @@ AS $$
 DECLARE
   _uid UUID := (select auth.uid()); _tenant UUID; _id UUID;
   _cert public.certificados_digitais; _tipo public.documentos_assinaveis;
+  _restricao TEXT;
 BEGIN
   IF _uid IS NULL OR NOT public.assinatura_equipe_ok() THEN
     RAISE EXCEPTION 'Sem acesso à assinatura digital.' USING ERRCODE = '42501';
@@ -62,14 +70,24 @@ BEGIN
     RAISE EXCEPTION 'Já existe um pedido de assinatura em andamento para este documento.';
   END IF;
 
-  INSERT INTO public.assinaturas
-    (tenant_id, project_id, document_id, assinavel_id, certificado_id,
-     titular_nome, titular_cpf, serial, pedida_por, motivo, situacao, codigo_verificacao)
-  VALUES (_tenant, p_project_id, p_document_id, p_assinavel_id, _cert.id,
-          _cert.titular_nome, _cert.titular_cpf, _cert.serial, _uid,
-          left(coalesce(p_motivo, ''), 500), 'preparando',
-          public.assinatura_codigo_novo(_tenant))
-  RETURNING id INTO _id;
+  BEGIN
+    INSERT INTO public.assinaturas
+      (tenant_id, project_id, document_id, assinavel_id, certificado_id,
+       titular_nome, titular_cpf, serial, pedida_por, motivo, situacao, codigo_verificacao)
+    VALUES (_tenant, p_project_id, p_document_id, p_assinavel_id, _cert.id,
+            _cert.titular_nome, _cert.titular_cpf, _cert.serial, _uid,
+            left(coalesce(p_motivo, ''), 500), 'preparando',
+            public.assinatura_codigo_novo(_tenant))
+    RETURNING id INTO _id;
+  EXCEPTION WHEN unique_violation THEN
+    -- duplo clique: o índice parcial barrou o segundo. Outro unique que
+    -- estoure por outro motivo continua subindo como está.
+    GET STACKED DIAGNOSTICS _restricao = CONSTRAINT_NAME;
+    IF _restricao = 'assinatura_uma_por_documento' THEN
+      RAISE EXCEPTION 'Já existe um pedido de assinatura em andamento para este documento.';
+    END IF;
+    RAISE;
+  END;
   RETURN _id;
 END;
 $$;
@@ -81,7 +99,7 @@ CREATE OR REPLACE FUNCTION public.assinatura_aprovar(p_id UUID)
 RETURNS TEXT
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''
 AS $$
-DECLARE _uid UUID := (select auth.uid()); _a public.assinaturas; _proxima TEXT; _exige BOOLEAN;
+DECLARE _uid UUID := (select auth.uid()); _a public.assinaturas; _proxima TEXT; _exige BOOLEAN; _n INT;
 BEGIN
   IF _uid IS NULL OR NOT public.assinatura_equipe_ok() THEN
     RAISE EXCEPTION 'Sem acesso à assinatura digital.' USING ERRCODE = '42501';
@@ -96,9 +114,16 @@ BEGIN
   SELECT exige_triagem INTO _exige FROM public.documentos_assinaveis WHERE id = _a.assinavel_id;
   _proxima := CASE WHEN coalesce(_exige, TRUE) THEN 'triagem' ELSE 'pendente' END;
 
+  -- o UPDATE filtra pela situação: se outro clique (Recusar) chegou entre a
+  -- leitura e a gravação, não ressuscita o pedido.
   UPDATE public.assinaturas
-     SET situacao = _proxima, aprovada_por = _uid, aprovada_em = now(), claim_em = NULL, updated_at = now()
-   WHERE id = p_id;
+     SET situacao = _proxima, aprovada_por = _uid, aprovada_em = now(), claim_em = NULL,
+         tentativas = 0, updated_at = now()
+   WHERE id = p_id AND tenant_id = public.get_user_tenant_id(_uid) AND situacao = 'conferir';
+  GET DIAGNOSTICS _n = ROW_COUNT;
+  IF _n = 0 THEN
+    RAISE EXCEPTION 'Este pedido já não estava aguardando conferência.';
+  END IF;
   RETURN _proxima;
 END;
 $$;
@@ -119,7 +144,7 @@ BEGIN
      SET situacao = 'recusado', recusa = left(coalesce(p_motivo, 'Recusado na tela.'), 500),
          claim_em = NULL, updated_at = now()
    WHERE id = p_id AND tenant_id = public.get_user_tenant_id(_uid)
-     AND situacao IN ('conferir', 'triagem', 'aguardando_ze', 'pendente', 'erro');
+     AND situacao IN ('preparando', 'conferir', 'triagem', 'aguardando_ze', 'pendente', 'assinando', 'erro');
   GET DIAGNOSTICS _n = ROW_COUNT;
   RETURN _n > 0;
 END;
@@ -144,6 +169,18 @@ BEGIN
   IF (select auth.role()) IS DISTINCT FROM 'service_role' THEN
     RAISE EXCEPTION 'permission denied' USING ERRCODE = '42501';
   END IF;
+
+  -- `tentativas` limita o retry POR ETAPA (assinatura_passo zera ao mudar de
+  -- situação). Quem esgotou as 3 e já está com o claim vencido vai para 'erro',
+  -- onde a pessoa vê e pode cancelar — em vez de ficar inalcançável na fila e
+  -- bloquear o documento pela checagem de duplicidade.
+  UPDATE public.assinaturas a
+     SET situacao = 'erro',
+         erro = coalesce(a.erro, 'Esgotei as tentativas nesta etapa.'),
+         claim_em = NULL, updated_at = now()
+   WHERE a.situacao IN ('preparando', 'triagem', 'pendente')
+     AND a.tentativas >= 3
+     AND (a.claim_em IS NULL OR a.claim_em < now() - interval '10 minutes');
 
   SELECT a.id INTO _id FROM public.assinaturas a
    WHERE a.situacao IN ('preparando', 'triagem', 'pendente')
@@ -182,7 +219,7 @@ RETURNS BOOLEAN
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''
 AS $$
 DECLARE
-  _a public.assinaturas; _doc UUID; _codigo TEXT; _nome TEXT;
+  _a public.assinaturas; _doc UUID; _nome TEXT; _autor UUID; _n INT; _origens TEXT[];
 BEGIN
   IF (select auth.role()) IS DISTINCT FROM 'service_role' THEN
     RAISE EXCEPTION 'permission denied' USING ERRCODE = '42501';
@@ -190,20 +227,75 @@ BEGIN
   SELECT * INTO _a FROM public.assinaturas WHERE id = p_id;
   IF _a.id IS NULL THEN RETURN FALSE; END IF;
 
+  -- Guarda de transição: de onde cada situação pode ser alcançada. É o que
+  -- impede o robô de sobrescrever um 'recusado' com 'assinado' (o portão
+  -- humano) e de repetir um passo já dado.
+  _origens := CASE p_situacao
+    WHEN 'preparando'    THEN ARRAY['preparando']
+    WHEN 'conferir'      THEN ARRAY['preparando']
+    WHEN 'triagem'       THEN ARRAY['triagem']
+    WHEN 'pendente'      THEN ARRAY['triagem', 'pendente']
+    WHEN 'aguardando_ze' THEN ARRAY['triagem']
+    WHEN 'assinando'     THEN ARRAY['pendente']
+    WHEN 'assinado'      THEN ARRAY['pendente', 'assinando']
+    WHEN 'recusado'      THEN ARRAY['preparando', 'triagem', 'aguardando_ze', 'pendente', 'assinando']
+    WHEN 'erro'          THEN ARRAY['preparando', 'triagem', 'pendente', 'assinando']
+    ELSE NULL
+  END;
+  IF _origens IS NULL THEN
+    RAISE EXCEPTION 'Situação de assinatura desconhecida: %.', p_situacao;
+  END IF;
+
+  IF p_situacao = 'assinado'
+     AND (coalesce(p_campos->>'file_url', '') = '' OR coalesce(p_campos->>'file_name', '') = '') THEN
+    RAISE EXCEPTION 'Para marcar como assinado é preciso informar o arquivo (file_url e file_name).';
+  END IF;
+
+  -- Reserva a transição ANTES de qualquer efeito colateral: se a linha não está
+  -- numa origem válida (ou outra chamada já a moveu), devolve FALSE e não grava
+  -- documento, comentário nem histórico — a chamada repetida é inofensiva.
+  UPDATE public.assinaturas
+     SET situacao = p_situacao,
+         documento_aprovado_path = coalesce(p_campos->>'documento_aprovado_path', documento_aprovado_path),
+         hash_original = coalesce(p_campos->>'hash_original', hash_original),
+         hash_aprovado = coalesce(p_campos->>'hash_aprovado', hash_aprovado),
+         hash_assinado = coalesce(p_campos->>'hash_assinado', hash_assinado),
+         recusa = coalesce(p_campos->>'recusa', recusa),
+         erro = p_campos->>'erro',
+         -- o limite de tentativas vale por etapa: mudou de situação, zera
+         tentativas = CASE WHEN situacao <> p_situacao THEN 0 ELSE tentativas END,
+         claim_em = NULL, updated_at = now()
+   WHERE id = p_id AND situacao = ANY (_origens);
+  GET DIAGNOSTICS _n = ROW_COUNT;
+  IF _n = 0 THEN RETURN FALSE; END IF;
+
+  IF p_situacao IN ('assinado', 'recusado') THEN
+    -- quem pediu pode ter sido apagado (pedida_por é ON DELETE SET NULL) e
+    -- comments.user_id é NOT NULL: cai para um admin do tenant da linha.
+    _autor := coalesce(_a.pedida_por,
+                       (SELECT pf.id FROM public.profiles pf
+                         WHERE pf.tenant_id = _a.tenant_id AND pf.role = 'admin' LIMIT 1));
+    IF _autor IS NULL THEN
+      RAISE EXCEPTION 'Não há usuário para registrar esta assinatura no card.';
+    END IF;
+    SELECT da.nome INTO _nome FROM public.documentos_assinaveis da WHERE da.id = _a.assinavel_id;
+  END IF;
+
   IF p_situacao = 'assinado' THEN
-    -- o assinado é documento NOVO; o original fica onde está
+    -- o assinado é documento NOVO; o original fica onde está. Sem assinavel_id:
+    -- o assinado não é, ele mesmo, assinável (o vínculo com o tipo mora em
+    -- assinaturas.assinavel_id e o rastro em documento_assinado_id).
     INSERT INTO public.documents
       (project_id, document_type, file_name, file_url, file_type, assinavel_id)
     VALUES (_a.project_id, 'extra_attachment',
             left(p_campos->>'file_name', 200), p_campos->>'file_url',
-            'application/pdf', _a.assinavel_id)
+            'application/pdf', NULL)
     RETURNING id INTO _doc;
 
-    SELECT pr.code INTO _codigo FROM public.projects pr WHERE pr.id = _a.project_id;
-    SELECT da.nome INTO _nome FROM public.documentos_assinaveis da WHERE da.id = _a.assinavel_id;
+    UPDATE public.assinaturas SET documento_assinado_id = _doc WHERE id = p_id;
 
     INSERT INTO public.comments (project_id, user_id, message, type)
-    VALUES (_a.project_id, _a.pedida_por,
+    VALUES (_a.project_id, _autor,
             '✍️ ' || coalesce(_nome, 'Documento') || ' assinado digitalmente com o e-CPF de '
               || coalesce(_a.titular_nome, '—') || '. Código ' || _a.codigo_verificacao
               || E'\n📎 ' || left(coalesce(p_campos->>'file_name', ''), 200), 'comment');
@@ -212,29 +304,17 @@ BEGIN
     VALUES (_a.project_id, 'Documento assinado',
             coalesce(_nome, 'Documento') || ' assinado com o certificado de '
               || coalesce(_a.titular_nome, '—') || ' (código ' || _a.codigo_verificacao || ')',
-            _a.pedida_por,
-            coalesce((SELECT p.name FROM public.profiles p WHERE p.id = _a.pedida_por), 'equipe'));
+            _autor,
+            coalesce((SELECT p.name FROM public.profiles p WHERE p.id = _autor), 'equipe'));
   END IF;
 
   IF p_situacao = 'recusado' THEN
-    SELECT da.nome INTO _nome FROM public.documentos_assinaveis da WHERE da.id = _a.assinavel_id;
     INSERT INTO public.comments (project_id, user_id, message, type)
-    VALUES (_a.project_id, _a.pedida_por,
+    VALUES (_a.project_id, _autor,
             '🚫 Assinatura recusada — ' || coalesce(p_campos->>'recusa', 'sem cunho de projeto')
               || ' (' || coalesce(_nome, 'documento') || ').', 'comment');
   END IF;
 
-  UPDATE public.assinaturas
-     SET situacao = p_situacao,
-         documento_aprovado_path = coalesce(p_campos->>'documento_aprovado_path', documento_aprovado_path),
-         hash_original = coalesce(p_campos->>'hash_original', hash_original),
-         hash_aprovado = coalesce(p_campos->>'hash_aprovado', hash_aprovado),
-         hash_assinado = coalesce(p_campos->>'hash_assinado', hash_assinado),
-         documento_assinado_id = coalesce(_doc, documento_assinado_id),
-         recusa = coalesce(p_campos->>'recusa', recusa),
-         erro = p_campos->>'erro',
-         claim_em = NULL, updated_at = now()
-   WHERE id = p_id;
   RETURN TRUE;
 END;
 $$;
@@ -246,16 +326,37 @@ CREATE OR REPLACE FUNCTION public.assinatura_liberar(p_id UUID, p_autor UUID DEF
 RETURNS BOOLEAN
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''
 AS $$
-DECLARE _autor UUID := coalesce((select auth.uid()), p_autor); _n INT;
+DECLARE _uid UUID := (select auth.uid()); _autor UUID; _tenant UUID; _n INT;
 BEGIN
-  -- pela tela: só admin libera. Pelo Zé: chega como service_role com p_autor.
-  IF (select auth.uid()) IS NOT NULL AND NOT public.assinatura_admin_ok() THEN
-    RAISE EXCEPTION 'Só o admin libera assinatura fora do catálogo.' USING ERRCODE = '42501';
+  IF _uid IS NOT NULL THEN
+    -- pela tela: só admin libera, e só dentro do próprio tenant.
+    IF NOT public.assinatura_admin_ok() THEN
+      RAISE EXCEPTION 'Só o admin libera assinatura fora do catálogo.' USING ERRCODE = '42501';
+    END IF;
+    _autor := _uid;
+    _tenant := public.get_user_tenant_id(_uid);
+  ELSE
+    -- pelo Zé: chega como service_role com p_autor, que tem de ser admin do
+    -- tenant DA LINHA (o robô não pode liberar com a identidade de qualquer um).
+    IF (select auth.role()) IS DISTINCT FROM 'service_role' THEN
+      RAISE EXCEPTION 'permission denied' USING ERRCODE = '42501';
+    END IF;
+    IF p_autor IS NULL THEN
+      RAISE EXCEPTION 'Informe quem está liberando (p_autor).';
+    END IF;
+    SELECT a.tenant_id INTO _tenant FROM public.assinaturas a WHERE a.id = p_id;
+    IF _tenant IS NULL THEN RETURN FALSE; END IF;
+    IF NOT EXISTS (SELECT 1 FROM public.profiles pf
+                    WHERE pf.id = p_autor AND pf.role = 'admin' AND pf.tenant_id = _tenant) THEN
+      RAISE EXCEPTION 'Quem libera precisa ser admin do tenant deste pedido.' USING ERRCODE = '42501';
+    END IF;
+    _autor := p_autor;
   END IF;
+
   UPDATE public.assinaturas
      SET situacao = 'pendente', liberada_por = _autor, liberada_em = now(),
          claim_em = NULL, tentativas = 0, updated_at = now()
-   WHERE id = p_id AND situacao = 'aguardando_ze';
+   WHERE id = p_id AND tenant_id = _tenant AND situacao = 'aguardando_ze';
   GET DIAGNOSTICS _n = ROW_COUNT;
   RETURN _n > 0;
 END;
