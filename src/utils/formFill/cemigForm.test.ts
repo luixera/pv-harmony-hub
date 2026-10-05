@@ -32,6 +32,24 @@ const gerar = (r: Partial<RespostasCemig>) => gerarFormularioCemig(MODELO.buffer
   fastTrack: 'Não', gridZero: 'Não', tipoSolicitacao: 'Conexão de GD em Unidade Consumidora Existente SEM Alteração de Potência Disponibilizada', ...r,
 });
 
+describe('formulário da CEMIG — tensão', () => {
+  it('usa a tensão da rede do projeto quando ela está cadastrada', () => {
+    const v = valoresFormularioCemig({ ...PROJETO, tensao_rede: '220/380' }, {
+      fastTrack: 'Não', gridZero: 'Não', tipoSolicitacao: 'x',
+    });
+    expect(v.cemig_tensao).toBe('220/380');
+    expect(v.cemig_tensao_inversor).toBe('380');
+  });
+
+  it('sem tensão cadastrada, mantém a rede 127/220 da CEMIG', () => {
+    const v = valoresFormularioCemig(PROJETO, {
+      fastTrack: 'Não', gridZero: 'Não', tipoSolicitacao: 'x',
+    });
+    expect(v.cemig_tensao).toBe('127/220');
+    expect(v.cemig_tensao_inversor).toBe('220');
+  });
+});
+
 describe('formulário da CEMIG — caixas 8.5.x', () => {
   it('FAST TRACK = Sim marca a 8.5.3 (C211) mantendo a fórmula da CEMIG', () => {
     const g = gerar({ fastTrack: 'Sim' });

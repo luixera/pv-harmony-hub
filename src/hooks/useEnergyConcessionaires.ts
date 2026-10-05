@@ -7,6 +7,8 @@ export interface EnergyConcessionaire {
   id: string;
   name: string;
   is_active: boolean;
+  /** Tensão de rede PADRÃO da concessionária ("127/220"), sugerida ao projeto. */
+  grid_voltage?: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;

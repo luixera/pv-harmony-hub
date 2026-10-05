@@ -69,6 +69,7 @@ export function useValoresDoProjeto(project: ProjectWithDetails | null | undefin
         inverterPowerKw: e?.inverter_power,
         inverterCount: e?.inverter_quantity,
         phaseType: g?.phase_type,
+        gridVoltage: (g as any)?.grid_voltage,
       }, ruleMap),
       ...buildProjectValues(project, { generalData: revisao?.general_data, equipment: revisao?.equipment }),
       ...inmetroValues(e),

@@ -21,6 +21,8 @@ export interface RevisionGeneralData {
   utility_company: string | null;
   circuit_breaker_current: string | null;
   phase_type: string | null;
+  /** Tensão da rede da UC ("127/220", "220/380") — ver project_general_data. */
+  grid_voltage?: string | null;
   coordinates: string | null;
   is_rural: boolean;
 }

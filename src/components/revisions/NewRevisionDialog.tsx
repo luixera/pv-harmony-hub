@@ -62,6 +62,7 @@ export function NewRevisionDialog({
     coordinates: gd?.coordinates ?? project.generalData?.coordinates ?? '',
     utility_company: gd?.utility_company ?? project.generalData?.utility_company ?? '',
     phase_type: gd?.phase_type ?? project.generalData?.phase_type ?? '',
+    grid_voltage: gd?.grid_voltage ?? (project.generalData as any)?.grid_voltage ?? '',
     is_rural: gd?.is_rural ?? project.generalData?.is_rural ?? false,
     cep: gd?.cep ?? '',
   };
@@ -88,6 +89,7 @@ export function NewRevisionDialog({
         utility_company: holderData.utility_company || null,
         circuit_breaker_current: holderData.circuit_breaker_current || null,
         phase_type: holderData.phase_type || null,
+        grid_voltage: holderData.grid_voltage || null,
         coordinates: holderData.coordinates || null,
         is_rural: holderData.is_rural,
       },

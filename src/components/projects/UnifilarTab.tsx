@@ -23,7 +23,7 @@ import {
   MicroPlan, ProjectArrangementOption, inverterSpecsFromTechSpecs, isMicroinverter, resolveInverterPhase,
   microSpecsFromTechSpecs, moduleSpecsFromTechSpecs, ruleValue, suggestBreakerPlan,
   suggestElectricalSizing, suggestMicroinverterPlan, suggestProjectArrangement,
-  stringTableRows,
+  stringTableRows, tensaoTrifasicaDaRede,
 } from '@/utils/engineering/rulesEngine';
 import { useEquipmentCatalog, useSaveEquipment } from '@/hooks/useEquipmentCatalog';
 import { EquipmentDatasheetsPanel } from './EquipmentDatasheetsPanel';
@@ -355,6 +355,9 @@ export function UnifilarTab({ project: projetoRecebido }: { project: ProjectWith
    * diagrama saiu com 11,4A, disjuntor de 16A e cabo de 2,5mm2 — um terco do
    * necessario, e nada na tela denunciava que a fase era um palpite.
    */
+  /** Tensão da rede da UC ("127/220", "220/380") — manda na tensão trifásica. */
+  const gridVoltage = (project.generalData as any)?.grid_voltage as string | null | undefined;
+
   const faseInversor = useMemo(() => {
     if (!suggestOpen || ruleMap.size === 0) return null;
     const powerKw = Number(project.equipment?.inverter_power ?? 0) || undefined;
@@ -362,8 +365,27 @@ export function UnifilarTab({ project: projetoRecebido }: { project: ProjectWith
       specs: inverterSpecsFromTechSpecs(inverterCatalog?.tech_specs ?? null, powerKw),
       powerKw,
       supplyPhaseType: phaseTypeOf(project.generalData?.phase_type),
+      gridVoltage,
     }, ruleMap);
-  }, [suggestOpen, ruleMap, inverterCatalog, project.equipment, project.generalData]);
+  }, [suggestOpen, ruleMap, inverterCatalog, project.equipment, project.generalData, gridVoltage]);
+
+  /**
+   * As opções da trava saem da TENSÃO DA REDE do projeto: em rede 127/220 o
+   * trifásico é 220V, e em 220/380 é 380V. Sem rede informada a tela oferece
+   * as duas, porque chutar aqui é exatamente o erro que a trava existe para
+   * impedir (relato do usuário, 05/10/2026: faltava "Trifásico 220V" e não
+   * havia como corrigir a dedução de 380V em projeto da CEMIG).
+   */
+  const opcoesDeFase = useMemo<[string, number, number][]>(() => {
+    const triDaRede = tensaoTrifasicaDaRede(gridVoltage);
+    const base: [string, number, number][] = [
+      ['Monofásico 220V', 1, 220],
+      ['Bifásico 220V', 2, 220],
+    ];
+    return triDaRede
+      ? [...base, [`Trifásico ${triDaRede}V`, 3, triDaRede]]
+      : [...base, ['Trifásico 220V', 3, 220], ['Trifásico 380V', 3, 380]];
+  }, [gridVoltage]);
 
   /** Fase deduzida = o motor esta chutando. A tela nao deixa gerar assim. */
   const faseChutada = faseInversor?.source === 'potencia';
@@ -393,10 +415,11 @@ export function UnifilarTab({ project: projetoRecebido }: { project: ProjectWith
       unitCount: projectInverters,
       // o micro entrega na tensão DELE; a fase da UC só limita a dedução
       supplyPhaseType: phaseTypeOf(project.generalData?.phase_type),
+      gridVoltage,
       includeGeneral: ruleValue(ruleMap, 'protections.include_general_ac_breaker', 1) !== 0,
       forceMaxPerBranch: microPerBranch ?? undefined,
     }, ruleMap);
-  }, [isMicro, suggestOpen, ruleMap, project.equipment, project.generalData, inverterCatalog, projectInverters, microPerBranch]);
+  }, [isMicro, suggestOpen, ruleMap, project.equipment, project.generalData, inverterCatalog, projectInverters, microPerBranch, gridVoltage]);
 
   const engineResult = useMemo(() => {
     if (isMicro) return null;   // o caminho de microinversor tem painel próprio
@@ -428,8 +451,9 @@ export function UnifilarTab({ project: projetoRecebido }: { project: ProjectWith
       // padrão de entrada da UC só limita a dedução
       inverterSpecs: inverterSpecsFromTechSpecs(inverterCatalog?.tech_specs ?? null, powerKw),
       supplyPhaseType: phaseTypeOf(project.generalData?.phase_type),
+      gridVoltage,
     }, ruleMap);
-  }, [suggestOpen, ruleMap, project.equipment, project.generalData, inverterCatalog]);
+  }, [suggestOpen, ruleMap, project.equipment, project.generalData, inverterCatalog, gridVoltage]);
 
   // ── Validador elétrico local (checklist do engenheiro, sem IA) ───────────
   const [validationOpen, setValidationOpen] = useState(false);
@@ -501,7 +525,7 @@ export function UnifilarTab({ project: projetoRecebido }: { project: ProjectWith
       micro.powerKw ? `${micro.powerKw * 1000}W` : '',
       micro.maxAcCurrentA ? `${micro.maxAcCurrentA}A` : '',
     ].filter(Boolean).join(' · ');
-    const dcSizing = suggestElectricalSizing({ supplyPhaseType: phaseTypeOf(project.generalData?.phase_type) }, ruleMap);
+    const dcSizing = suggestElectricalSizing({ supplyPhaseType: phaseTypeOf(project.generalData?.phase_type), gridVoltage }, ruleMap);
     const locationMap = (await fetchLocationMap(project.generalData?.coordinates)).map;
     const common = {
       ...sheetOptions(),
@@ -588,9 +612,10 @@ export function UnifilarTab({ project: projetoRecebido }: { project: ProjectWith
       })),
       inverterSpecs: invSpecs,
       supplyPhaseType,
+      gridVoltage,
       includeGeneral,
     }, ruleMap);
-    const dcSizing = suggestElectricalSizing({ supplyPhaseType }, ruleMap);
+    const dcSizing = suggestElectricalSizing({ supplyPhaseType, gridVoltage }, ruleMap);
     // planta de localização (recorte de satélite) — some silenciosamente se o
     // projeto não tiver coordenadas ou faltar a chave do Maps
     const locationMap = (await fetchLocationMap(project.generalData?.coordinates)).map;
@@ -954,11 +979,7 @@ export function UnifilarTab({ project: projetoRecebido }: { project: ProjectWith
                   O disjuntor e a bitola vêm daí — se estiver errado, a corrente erra junto.
                 </p>
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
-                  {([
-                    ['Monofásico 220V', 1, 220],
-                    ['Bifásico 220V', 2, 220],
-                    ['Trifásico 380V', 3, 380],
-                  ] as [string, number, number][]).map(([rotulo, fases, tensao]) => (
+                  {opcoesDeFase.map(([rotulo, fases, tensao]) => (
                     <button
                       key={rotulo}
                       onClick={() => confirmarFase(fases, tensao)}
@@ -976,6 +997,9 @@ export function UnifilarTab({ project: projetoRecebido }: { project: ProjectWith
                 <p style={{ fontSize: 10.5, margin: '7px 0 0', opacity: 0.85 }}>
                   A escolha é gravada no Catálogo de Equipamentos. Se o datasheet estiver
                   anexado, o botão “Ler datasheet” do bloco acima preenche isso e mais.
+                  {tensaoTrifasicaDaRede(gridVoltage)
+                    ? ` O trifásico aparece em ${tensaoTrifasicaDaRede(gridVoltage)}V porque a rede da UC está cadastrada como ${gridVoltage}.`
+                    : ' Informe a “Tensão da rede” na aba Geral para a tela saber se o trifásico aqui é 220V ou 380V.'}
                 </p>
               </div>
             )}

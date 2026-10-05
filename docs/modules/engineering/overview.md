@@ -156,13 +156,38 @@ Ordem de decisão:
 
 1. **`tech_specs.ac_phases`** (e `ac_voltage_v`) do catálogo — manda sempre.
 2. Sem isso, deduz pela potência: até `protections.single_phase_max_kw`
-   (padrão 6 kW) é monofásico 220 V; acima, trifásico 380 V. A dedução **avisa**
-   e nunca passa do que o padrão de entrada comporta.
+   (padrão 6 kW) é monofásico 220 V; acima, trifásico — na **tensão da rede da
+   UC**. A dedução **avisa** e nunca passa do que o padrão de entrada comporta.
 3. Se o **datasheet** disser trifásico numa UC monofásica, o motor mantém o
    datasheet e levanta um alerta de incompatibilidade — é problema de projeto,
    não de arredondamento.
 
 O mesmo vale no caminho de microinversor: o micro entrega na tensão dele.
+
+### Tensão da rede da UC (out/2026)
+
+A tensão **trifásica** não é mais uma constante. Ela vem de
+`project_general_data.grid_voltage`, o par fase-neutro/fase-fase da conta de
+luz (`127/220`, `220/380`), e o motor usa o **último número** — a tensão entre
+fases. Em rede 127/220 o inversor trifásico entrega em **220 V**: calcular em
+380 V afunda a corrente em **1,73×** e subdimensiona disjuntor e bitola.
+`tensaoTrifasicaDaRede()` é o ponto único dessa leitura.
+
+Hierarquia da tensão: **datasheet do catálogo → tensão da rede do projeto →
+regra `voltage_drop.ac_voltage_tri_v`** (380 V, o comportamento antigo, que
+vale quando o projeto não informa a rede). Datasheet e rede discordando, o
+motor fica com o datasheet e levanta `inverter_voltage_vs_grid` — inversor de
+380 V não liga em rede 127/220.
+
+Mono e bifásico seguem na regra `ac_voltage_mono_v` (220 V): nos dois pares
+usados no Brasil o inversor monofásico fica em 220 V de qualquer jeito (entre
+fases na 127/220, fase-neutro na 220/380).
+
+A concessionária guarda o **padrão sugerido** em
+`energy_concessionaires.grid_voltage` (CEMIG = 127/220); a UC pode fugir dele
+(rural, indústria), por isso quem manda é o cadastro do projeto. A trava de
+confirmação de fase da aba Unifilar monta os botões a partir dessa tensão —
+sem rede informada ela oferece **Trifásico 220V e 380V**, em vez de só 380.
 
 **Bug que originou a regra**: um SUNGROW SG3.0RS-L (3 kW monofásico 220 V) num
 padrão de entrada trifásico teve a corrente calculada como 3000/(380·√3) =

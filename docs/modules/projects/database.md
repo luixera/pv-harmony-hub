@@ -10,7 +10,7 @@
 - **`project_general_data`** (26 col.) — titular (`holder_name`,
   `holder_cpf_cnpj`, `holder_email`, `holder_phone`), endereço quebrado
   (`address, address_number, address_complement, neighborhood, cep, city,
-  state`), `uc_number`, `utility_company`, `phase_type`,
+  state`), `uc_number`, `utility_company`, `phase_type`, `grid_voltage`,
   `circuit_breaker_current`, `coordinates`, `is_rural`, `has_beneficiaries`,
   flags do Claudinho.
   ⚠️ `utility_company` é texto livre gravado como `'A definir'` na criação

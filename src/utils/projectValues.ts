@@ -56,6 +56,7 @@ export const TEMPLATE_VARIABLES: TemplateVariable[] = [
   { key: 'disjuntor',         desc: 'Corrente do disjuntor',             category: 'Instalação',   example: '63A' },
   { key: 'fase',              desc: 'Tipo de fase',                      category: 'Instalação',   example: 'Bifásico' },
   { key: 'tipo_fase',         desc: 'Tipo de fase — alias de {fase}',    category: 'Instalação',   example: 'Bifásico' },
+  { key: 'tensao_rede',       desc: 'Tensão da rede da UC',              category: 'Instalação',   example: '127/220' },
   // Equipamentos
   { key: 'marca_inversor',    desc: 'Marca do inversor',                 category: 'Equipamentos', example: 'GROWATT' },
   { key: 'modelo_inversor',   desc: 'Modelo do inversor',                category: 'Equipamentos', example: 'MIN 5000TL-X' },
@@ -415,6 +416,7 @@ export function buildProjectValues(
     disjuntor:         g.circuit_breaker_current ?? '',
     fase:              g.phase_type ?? '',
     tipo_fase:         g.phase_type ?? '',
+    tensao_rede:       (g as any).grid_voltage ?? '',
     rural:             g.is_rural ? 'Sim' : 'Não',
     coordenadas:       g.coordinates ?? '',
     ...coordinateValues(g.coordinates),
