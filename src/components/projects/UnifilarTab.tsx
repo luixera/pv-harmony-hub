@@ -20,7 +20,7 @@ import { useDiagramTemplates } from '@/hooks/useDiagramTemplates';
 import { resolveEntryRule, useEntryRules } from '@/hooks/useEntryRules';
 import { useEngineeringRuleMap } from '@/hooks/useEngineeringRules';
 import {
-  MicroPlan, ProjectArrangementOption, inverterSpecsFromTechSpecs, isMicroinverter, resolveInverterPhase,
+  MicroPlan, capacidadeDeStringsConhecida, ProjectArrangementOption, inverterSpecsFromTechSpecs, isMicroinverter, resolveInverterPhase,
   microSpecsFromTechSpecs, moduleSpecsFromTechSpecs, ruleValue, suggestBreakerPlan,
   suggestElectricalSizing, suggestMicroinverterPlan, suggestProjectArrangement,
   stringTableRows, tensaoTrifasicaDaRede,
@@ -333,13 +333,34 @@ export function UnifilarTab({ project: projetoRecebido }: { project: ProjectWith
   // automática passava a valer, e o próprio botão de desfazer sumia da tela
   // (só aparecia quando NÃO era detectado). Um clique errado ficava preso, no
   // projeto e no catálogo (relato do usuário, ago/2026).
+  /**
+   * Entradas de string informadas na trava (MPPTs × strings por MPPT).
+   *
+   * Vale IMEDIATAMENTE neste projeto, mesmo que o inversor não esteja
+   * vinculado ao Catálogo — sem isso a trava seria um beco sem saída para
+   * equipamento solto. Havendo vínculo, também grava no catálogo.
+   */
+  const [entradasInformadas, setEntradasInformadas] =
+    useState<{ mppts: number; perMppt: number } | null>(null);
+
+  /** O que o motor enxerga do inversor: catálogo + o que foi informado aqui. */
+  const techSpecsEfetivas = useMemo(() => {
+    const base = inverterCatalog?.tech_specs ?? null;
+    if (!entradasInformadas) return base;
+    return {
+      ...(base ?? {}),
+      mppt_count: entradasInformadas.mppts,
+      strings_per_mppt: entradasInformadas.perMppt,
+    };
+  }, [inverterCatalog, entradasInformadas]);
+
   const [microOverride, setMicroOverride] = useState<boolean | null>(null);
   const autoMicro = useMemo(() => isMicroinverter(
-    inverterCatalog?.tech_specs ?? null,
+    techSpecsEfetivas,
     [inverterCatalog?.brand, inverterCatalog?.model, project.equipment?.inverter_brand, project.equipment?.inverter_model]
       .filter(Boolean).join(' '),
     Number(project.equipment?.inverter_power ?? 0) || undefined,
-  ), [inverterCatalog, project.equipment]);
+  ), [techSpecsEfetivas, inverterCatalog, project.equipment]);
   const isMicro = microOverride ?? autoMicro;
 
   // Teto de micros por ramal escolhido na mão. Nulo = o padrão do motor (o
@@ -362,12 +383,12 @@ export function UnifilarTab({ project: projetoRecebido }: { project: ProjectWith
     if (!suggestOpen || ruleMap.size === 0) return null;
     const powerKw = Number(project.equipment?.inverter_power ?? 0) || undefined;
     return resolveInverterPhase({
-      specs: inverterSpecsFromTechSpecs(inverterCatalog?.tech_specs ?? null, powerKw),
+      specs: inverterSpecsFromTechSpecs(techSpecsEfetivas, powerKw),
       powerKw,
       supplyPhaseType: phaseTypeOf(project.generalData?.phase_type),
       gridVoltage,
     }, ruleMap);
-  }, [suggestOpen, ruleMap, inverterCatalog, project.equipment, project.generalData, gridVoltage]);
+  }, [suggestOpen, ruleMap, techSpecsEfetivas, project.equipment, project.generalData, gridVoltage]);
 
   /**
    * As opções da trava saem da TENSÃO DA REDE do projeto: em rede 127/220 o
@@ -390,6 +411,52 @@ export function UnifilarTab({ project: projetoRecebido }: { project: ProjectWith
   /** Fase deduzida = o motor esta chutando. A tela nao deixa gerar assim. */
   const faseChutada = faseInversor?.source === 'potencia';
 
+  /**
+   * O nº de ENTRADAS de string (MPPTs × strings por MPPT) veio do datasheet?
+   * Sem isso o motor completa com as regras (2 × 2 = 4 entradas) e pode
+   * oferecer um arranjo que não cabe no inversor — foi o que o usuário viu no
+   * SOFAR 10KTLM-G3 (PRJ-84285): "4 string(s) × 8 módulos" num inversor sem 4
+   * entradas. Trava igual à da fase, pelo mesmo motivo: é hardware, não
+   * preferência de projeto.
+   */
+  const entradasChutadas = useMemo(() => {
+    if (!suggestOpen || isMicro) return false;
+    const powerKw = Number(project.equipment?.inverter_power ?? 0) || undefined;
+    return !capacidadeDeStringsConhecida(
+      inverterSpecsFromTechSpecs(techSpecsEfetivas, powerKw));
+  }, [suggestOpen, isMicro, techSpecsEfetivas, project.equipment]);
+
+  /** Qualquer palpite de hardware pendente trava o "Usar esta". */
+  const travado = faseChutada || entradasChutadas;
+
+  /** Topologia escolhida na trava (MPPTs × strings por MPPT) antes de gravar. */
+  const [mpptsConfirmar, setMpptsConfirmar] = useState(2);
+  const [stringsPorMpptConfirmar, setStringsPorMpptConfirmar] = useState(1);
+
+  /**
+   * Aplica a topologia informada. Vale já neste projeto; havendo inversor
+   * vinculado ao Catálogo, grava lá também — e o próximo projeto nasce certo.
+   */
+  const confirmarEntradas = async () => {
+    setEntradasInformadas({ mppts: mpptsConfirmar, perMppt: stringsPorMpptConfirmar });
+    if (!inverterCatalog) return;
+    await saveEquipment.mutateAsync({
+      id: inverterCatalog.id,
+      type: 'inverter',
+      brand: inverterCatalog.brand,
+      model: inverterCatalog.model,
+      power: inverterCatalog.power,
+      datasheet_url: inverterCatalog.datasheet_url,
+      inmetro_url: inverterCatalog.inmetro_url,
+      afci_url: inverterCatalog.afci_url,
+      tech_specs: {
+        ...(inverterCatalog.tech_specs ?? {}),
+        mppt_count: mpptsConfirmar,
+        strings_per_mppt: stringsPorMpptConfirmar,
+      },
+    } as never);
+  };
+
   /** Confirma a fase GRAVANDO no catalogo: o proximo projeto ja nasce certo. */
   const confirmarFase = async (fases: number, tensao: number) => {
     if (!inverterCatalog) return;
@@ -411,7 +478,7 @@ export function UnifilarTab({ project: projetoRecebido }: { project: ProjectWith
     const e = project.equipment;
     return suggestMicroinverterPlan({
       totalModules: Math.max(0, Number(e?.module_quantity ?? 0) || 0),
-      micro: microSpecsFromTechSpecs(inverterCatalog?.tech_specs ?? null, Number(e?.inverter_power ?? 0) || undefined),
+      micro: microSpecsFromTechSpecs(techSpecsEfetivas, Number(e?.inverter_power ?? 0) || undefined),
       unitCount: projectInverters,
       // o micro entrega na tensão DELE; a fase da UC só limita a dedução
       supplyPhaseType: phaseTypeOf(project.generalData?.phase_type),
@@ -419,7 +486,7 @@ export function UnifilarTab({ project: projetoRecebido }: { project: ProjectWith
       includeGeneral: ruleValue(ruleMap, 'protections.include_general_ac_breaker', 1) !== 0,
       forceMaxPerBranch: microPerBranch ?? undefined,
     }, ruleMap);
-  }, [isMicro, suggestOpen, ruleMap, project.equipment, project.generalData, inverterCatalog, projectInverters, microPerBranch, gridVoltage]);
+  }, [isMicro, suggestOpen, ruleMap, project.equipment, project.generalData, techSpecsEfetivas, projectInverters, microPerBranch, gridVoltage]);
 
   const engineResult = useMemo(() => {
     if (isMicro) return null;   // o caminho de microinversor tem painel próprio
@@ -427,7 +494,7 @@ export function UnifilarTab({ project: projetoRecebido }: { project: ProjectWith
     const e = project.equipment;
     const totalModules = Math.max(0, Number(e?.module_quantity ?? 0) || 0);
     const powerKw = Number(e?.inverter_power ?? 0) || undefined;
-    const invSpecs = inverterSpecsFromTechSpecs(inverterCatalog?.tech_specs ?? null, powerKw);
+    const invSpecs = inverterSpecsFromTechSpecs(techSpecsEfetivas, powerKw);
     return suggestProjectArrangement({
       totalModules,
       // Voc/Vmp/Isc/Imp do datasheet do módulo — sem eles a janela de string
@@ -439,7 +506,7 @@ export function UnifilarTab({ project: projetoRecebido }: { project: ProjectWith
       // sem ele, o motor usa as regras-fallback e avisa)
       inverters: Array.from({ length: projectInverters }, () => ({ ...invSpecs, powerKw })),
     }, ruleMap);
-  }, [isMicro, suggestOpen, ruleMap, project.equipment, projectInverters, inverterCatalog, moduleCatalog]);
+  }, [isMicro, suggestOpen, ruleMap, project.equipment, projectInverters, techSpecsEfetivas, inverterCatalog, moduleCatalog]);
 
   // Dimensionamento elétrico simplificado (Fase 2): bitolas, queda, disjuntor
   const sizing = useMemo(() => {
@@ -449,11 +516,11 @@ export function UnifilarTab({ project: projetoRecebido }: { project: ProjectWith
       inverterPowerKw: powerKw,
       // datasheet do inversor manda na fase/tensão da saída CA; a fase do
       // padrão de entrada da UC só limita a dedução
-      inverterSpecs: inverterSpecsFromTechSpecs(inverterCatalog?.tech_specs ?? null, powerKw),
+      inverterSpecs: inverterSpecsFromTechSpecs(techSpecsEfetivas, powerKw),
       supplyPhaseType: phaseTypeOf(project.generalData?.phase_type),
       gridVoltage,
     }, ruleMap);
-  }, [suggestOpen, ruleMap, project.equipment, project.generalData, inverterCatalog, gridVoltage]);
+  }, [suggestOpen, ruleMap, project.equipment, project.generalData, techSpecsEfetivas, gridVoltage]);
 
   // ── Validador elétrico local (checklist do engenheiro, sem IA) ───────────
   const [validationOpen, setValidationOpen] = useState(false);
@@ -515,7 +582,7 @@ export function UnifilarTab({ project: projetoRecebido }: { project: ProjectWith
    *  'esquematico' (cada micro com os seus módulos, encadeados no barramento
    *  CA, como na prancha de referência). O plano elétrico é o mesmo. */
   const applyMicroPlan = async (plan: MicroPlan, style: 'compacto' | 'esquematico') => {
-    const micro = microSpecsFromTechSpecs(inverterCatalog?.tech_specs ?? null, Number(project.equipment?.inverter_power ?? 0) || undefined);
+    const micro = microSpecsFromTechSpecs(techSpecsEfetivas, Number(project.equipment?.inverter_power ?? 0) || undefined);
     const microModel = [inverterCatalog?.brand, inverterCatalog?.model].filter(Boolean).join(' ')
       || [project.equipment?.inverter_brand, project.equipment?.inverter_model].filter(Boolean).join(' ')
       || 'Microinversor';
@@ -603,7 +670,7 @@ export function UnifilarTab({ project: projetoRecebido }: { project: ProjectWith
     // saída do inversor (ver `resolveInverterPhase`).
     const supplyPhaseType = phaseTypeOf(project.generalData?.phase_type);
     const invSpecs = inverterSpecsFromTechSpecs(
-      inverterCatalog?.tech_specs ?? null,
+      techSpecsEfetivas,
       Number(project.equipment?.inverter_power ?? 0) || undefined,
     );
     const plan = suggestBreakerPlan({
@@ -1003,6 +1070,65 @@ export function UnifilarTab({ project: projetoRecebido }: { project: ProjectWith
                 </p>
               </div>
             )}
+            {/* TRAVA DE SEGURANÇA — o nº de entradas de string é palpite.
+                MPPTs e strings por MPPT são hardware: com o catálogo vazio o
+                motor completa com 2 × 2 = 4 entradas e oferece arranjo que
+                pode não caber no inversor (PRJ-84285, 05/10/2026). Confirmar
+                grava no Catálogo e resolve para os próximos projetos. */}
+            {entradasChutadas && (
+              <div style={{
+                borderRadius: 8, padding: '10px 12px',
+                background: '#FDECEC', border: '1px solid #F5B5B5', color: '#8A2B2B',
+              }}>
+                <p style={{ fontSize: 12, fontWeight: 700, margin: 0 }}>
+                  Confirme as entradas de string do inversor antes de gerar
+                </p>
+                <p style={{ fontSize: 11.5, margin: '4px 0 0', lineHeight: 1.5 }}>
+                  O catálogo não diz quantos MPPTs e quantas strings por MPPT o{' '}
+                  <strong>{project.equipment?.inverter_brand} {project.equipment?.inverter_model}</strong>{' '}
+                  tem, então as sugestões acima supõem o padrão das Regras de Engenharia.
+                  Se o inversor tiver menos entradas, o arranjo não cabe nele.
+                </p>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginTop: 8 }}>
+                  <label style={{ fontSize: 11.5, fontWeight: 600 }}>
+                    MPPTs{' '}
+                    <select
+                      value={mpptsConfirmar}
+                      onChange={e => setMpptsConfirmar(Number(e.target.value))}
+                      style={{ padding: '4px 6px', borderRadius: 6, border: '1px solid #C24141', fontSize: 11.5 }}
+                    >
+                      {[1, 2, 3, 4, 5, 6].map(n => <option key={n} value={n}>{n}</option>)}
+                    </select>
+                  </label>
+                  <label style={{ fontSize: 11.5, fontWeight: 600 }}>
+                    Strings por MPPT{' '}
+                    <select
+                      value={stringsPorMpptConfirmar}
+                      onChange={e => setStringsPorMpptConfirmar(Number(e.target.value))}
+                      style={{ padding: '4px 6px', borderRadius: 6, border: '1px solid #C24141', fontSize: 11.5 }}
+                    >
+                      {[1, 2, 3, 4].map(n => <option key={n} value={n}>{n}</option>)}
+                    </select>
+                  </label>
+                  <button
+                    onClick={confirmarEntradas}
+                    disabled={saveEquipment.isPending}
+                    style={{
+                      padding: '5px 12px', borderRadius: 7, fontSize: 11.5, fontWeight: 700,
+                      border: '1px solid #C24141', background: '#fff', color: '#8A2B2B',
+                      cursor: saveEquipment.isPending ? 'wait' : 'pointer',
+                    }}
+                  >
+                    Confirmar {mpptsConfirmar * stringsPorMpptConfirmar} entrada{mpptsConfirmar * stringsPorMpptConfirmar > 1 ? 's' : ''}
+                  </button>
+                </div>
+                <p style={{ fontSize: 10.5, margin: '7px 0 0', opacity: 0.85 }}>
+                  {inverterCatalog
+                    ? 'A escolha é gravada no Catálogo de Equipamentos — o próximo projeto com este inversor já nasce certo. Se o datasheet estiver anexado, o botão “Ler datasheet” do bloco acima preenche isso e mais.'
+                    : 'Este inversor não está vinculado ao Catálogo, então a escolha vale só neste projeto. Vincule-o na aba Geral para que ela fique gravada.'}
+                </p>
+              </div>
+            )}
             {engineResult.options.map(opt => (
               <div key={opt.id} style={{
                 display: 'flex', alignItems: 'center', gap: 10, background: '#fff',
@@ -1017,10 +1143,11 @@ export function UnifilarTab({ project: projetoRecebido }: { project: ProjectWith
                   ))}
                 </div>
                 <button
-                  onClick={() => { if (!faseChutada) applySuggestion(opt); }}
-                  disabled={faseChutada}
-                  title={faseChutada ? 'Confirme a fase de saída do inversor antes de gerar' : undefined}
-                  style={{ padding: '6px 14px', borderRadius: 7, border: 'none', background: faseChutada ? '#CBD5C0' : '#2D7A3A', color: faseChutada ? '#6B7280' : '#fff', fontSize: 12, fontWeight: 700, cursor: faseChutada ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap' }}
+                  onClick={() => { if (!travado) applySuggestion(opt); }}
+                  disabled={travado}
+                  title={faseChutada ? 'Confirme a fase de saída do inversor antes de gerar'
+                    : entradasChutadas ? 'Confirme as entradas de string do inversor antes de gerar' : undefined}
+                  style={{ padding: '6px 14px', borderRadius: 7, border: 'none', background: travado ? '#CBD5C0' : '#2D7A3A', color: travado ? '#6B7280' : '#fff', fontSize: 12, fontWeight: 700, cursor: travado ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap' }}
                 >
                   Usar esta
                 </button>

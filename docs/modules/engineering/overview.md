@@ -183,6 +183,29 @@ Mono e bifásico seguem na regra `ac_voltage_mono_v` (220 V): nos dois pares
 usados no Brasil o inversor monofásico fica em 220 V de qualquer jeito (entre
 fases na 127/220, fase-neutro na 220/380).
 
+### Entradas de string: a segunda trava (out/2026)
+
+MPPTs e strings por MPPT são **hardware**. Sem os dois no catálogo
+(`tech_specs.mppt_count`, `tech_specs.strings_per_mppt`) o motor completa com
+`strings.default_mppt_count` × `strings.default_strings_per_mppt` — 2 × 2 = **4
+entradas** — e pode oferecer um arranjo que não cabe fisicamente no inversor.
+
+Foi o caso do SOFAR 10KTLM-G3 (PRJ-84285): o catálogo só tinha fase e tensão, e
+a tela sugeriu "4 string(s) × 8 módulos" num inversor sem 4 entradas. O aviso
+existia, mas era `info` azul e não impedia nada — o mesmo erro de classificação
+do PRJ-66266.
+
+Agora `capacidadeDeStringsConhecida()` responde se o dado veio do catálogo;
+quando não veio, `suggestStringArrangements` levanta
+`string_capacity_estimated` (**warning**, dizendo quantas entradas está
+supondo) e a aba Unifilar **trava o "Usar esta"**, pedindo MPPTs × strings por
+MPPT. O valor informado vale **na hora** neste projeto (as sugestões se
+recalculam) e é gravado no Catálogo quando o inversor está vinculado — sem
+vínculo, vale só no projeto, para a trava não virar beco sem saída.
+
+**Regra que as duas travas repetem: suposição sobre o equipamento que vira
+número em desenho oficial nunca é `info`, e não passa sem confirmação.**
+
 A concessionária guarda o **padrão sugerido** em
 `energy_concessionaires.grid_voltage` (CEMIG = 127/220); a UC pode fugir dele
 (rural, indústria), por isso quem manda é o cadastro do projeto. A trava de

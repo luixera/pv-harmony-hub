@@ -144,8 +144,28 @@ interface StringWindow {
   mppts: number;
   perMppt: number;
   approximate: boolean; // true = calculado por fallback (sem datasheet)
+  /** true = o nº de ENTRADAS de string (MPPTs × strings/MPPT) é palpite das
+   *  regras, não veio do datasheet. É hardware: errar aqui gera arranjo que
+   *  não cabe fisicamente no inversor. */
+  capacityGuessed: boolean;
   /** Motivo do teto de módulos por string, quando um limite das regras mandou. */
   capReason: string | null;
+}
+
+/**
+ * O inversor tem quantas ENTRADAS de string? Só sabe quem leu o datasheet.
+ *
+ * MPPTs e strings por MPPT são HARDWARE: sem os dois no catálogo, o motor
+ * completa com `strings.default_mppt_count` × `strings.default_strings_per_mppt`
+ * (2 × 2 = 4 entradas por padrão) e pode propor um arranjo que não cabe no
+ * equipamento. Foi o caso do SOFAR 10KTLM-G3 (PRJ-84285, 05/10/2026): a tela
+ * ofereceu "4 string(s) × 8 módulos" num inversor que não tem 4 entradas.
+ *
+ * Quem chama usa isto para TRAVAR a geração até alguém confirmar, como já se
+ * faz com a fase de saída (`resolveInverterPhase`).
+ */
+export function capacidadeDeStringsConhecida(inv: InverterSpecs): boolean {
+  return inv.mpptCount !== undefined && inv.stringsPerMppt !== undefined;
 }
 
 /** Janela válida de módulos por string + capacidade de strings do inversor. */
@@ -189,10 +209,10 @@ function stringWindow(inv: InverterSpecs, mod: ModuleSpecs, rules: RuleMap): Str
     capReason = `limite de ${smallMax} módulos por string para inversores de até ${smallKw} kW`;
   }
 
-  const approximate = !hasVoltageData
-    || inv.mpptCount === undefined || inv.stringsPerMppt === undefined
+  const capacityGuessed = !capacidadeDeStringsConhecida(inv);
+  const approximate = !hasVoltageData || capacityGuessed
     || inv.mpptVminV === undefined || inv.mpptVmaxV === undefined || inv.maxDcVoltageV === undefined;
-  return { minN: Math.max(1, minN), maxN: Math.max(1, maxN), mppts, perMppt, approximate, capReason };
+  return { minN: Math.max(1, minN), maxN: Math.max(1, maxN), mppts, perMppt, approximate, capacityGuessed, capReason };
 }
 
 /** Distribui `count` strings entre `mppts` MPPTs, o mais equilibrado possível. */
@@ -222,6 +242,19 @@ export function suggestStringArrangements(
   const tolerance = ruleValue(rules, 'strings.balance_tolerance_modules', 1);
   const maxStrings = w.mppts * w.perMppt;
   const wanted = Math.max(2, ruleValue(rules, 'suggestions.num_suggestions', 2));
+
+  // O nº de entradas de string é HARDWARE: chutar gera arranjo que não existe
+  // no equipamento. Por isso este alerta é WARNING e a tela trava o "Usar esta"
+  // até alguém confirmar — mesmo tratamento da fase de saída (PRJ-66266).
+  if (w.capacityGuessed && ruleValue(rules, 'alerts.warn_on_incomplete_datasheet', 1) === 1) {
+    alerts.push({
+      severity: 'warning',
+      code: 'string_capacity_estimated',
+      message: `O nº de entradas de string deste inversor NÃO veio do datasheet — as opções abaixo supõem ${w.mppts} MPPT${w.mppts > 1 ? 's' : ''} × ${w.perMppt} string${w.perMppt > 1 ? 's' : ''} (${maxStrings} entradas), valor-padrão das Regras de Engenharia. Se o inversor tiver menos entradas, o arranjo não cabe nele.`,
+      suggestion: 'Confirme quantos MPPTs e quantas strings por MPPT o inversor tem — ou leia o datasheet anexado para preencher o Catálogo.',
+      source: ruleSource(rules, 'strings.default_strings_per_mppt'),
+    });
+  }
 
   if (w.approximate && ruleValue(rules, 'alerts.warn_on_incomplete_datasheet', 1) === 1) {
     alerts.push({

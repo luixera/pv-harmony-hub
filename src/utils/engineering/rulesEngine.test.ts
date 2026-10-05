@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
-  buildRuleMap, resolveInverterPhase, tensaoTrifasicaDaRede,
+  buildRuleMap, capacidadeDeStringsConhecida, resolveInverterPhase,
+  suggestStringArrangements, tensaoTrifasicaDaRede,
   type EngineeringRule,
 } from './rulesEngine';
 
@@ -95,5 +96,64 @@ describe('resolveInverterPhase — tensão trifásica vem da rede do projeto', (
     expect(r.voltageV).toBe(220);
     expect(r.source).toBe('potencia');
     expect(r.alerts.some(a => a.code === 'inverter_phase_estimated')).toBe(true);
+  });
+});
+
+/**
+ * ENTRADAS DE STRING — o catálogo do SOFAR 10KTLM-G3 só tinha fase e tensão, e
+ * o motor completou com as regras (2 MPPTs × 2 strings = 4 entradas),
+ * sugerindo "4 string(s) × 8 módulos" num inversor que não tem 4 entradas
+ * (relato do usuário com print, 05/10/2026 — PRJ-84285). Um palpite sobre o
+ * HARDWARE não pode sair como opção pronta para virar desenho.
+ */
+const REGRAS_STRING = buildRuleMap([
+  regra('strings', 'group_enabled', 1),
+  regra('strings', 'default_mppt_count', 2),
+  regra('strings', 'default_strings_per_mppt', 2),
+  regra('strings', 'min_modules_per_string', 6),
+  regra('strings', 'max_modules_per_string', 24),
+  regra('strings', 'balance_tolerance_modules', 1),
+  regra('alerts', 'warn_on_incomplete_datasheet', 1),
+  regra('suggestions', 'num_suggestions', 2),
+]);
+
+const MODULO = { powerW: 620, vmpV: 41.6, vocV: 49.6, impA: 14.9, iscA: 15.8 };
+
+describe('capacidadeDeStringsConhecida', () => {
+  it('é falsa quando o catálogo não traz MPPTs nem strings por MPPT', () => {
+    expect(capacidadeDeStringsConhecida({ powerKw: 10 })).toBe(false);
+  });
+
+  it('é falsa quando traz só um dos dois', () => {
+    expect(capacidadeDeStringsConhecida({ mpptCount: 2 })).toBe(false);
+    expect(capacidadeDeStringsConhecida({ stringsPerMppt: 1 })).toBe(false);
+  });
+
+  it('é verdadeira com os dois preenchidos', () => {
+    expect(capacidadeDeStringsConhecida({ mpptCount: 2, stringsPerMppt: 1 })).toBe(true);
+  });
+});
+
+describe('suggestStringArrangements — nº de entradas chutado', () => {
+  it('avisa em WARNING que as entradas de string são suposição', () => {
+    const r = suggestStringArrangements(24, { powerKw: 10 }, MODULO, REGRAS_STRING);
+    const a = r.alerts.find(x => x.code === 'string_capacity_estimated');
+    expect(a).toBeDefined();
+    expect(a!.severity).toBe('warning');
+    expect(a!.message).toContain('2 MPPT');
+  });
+
+  it('com MPPTs e strings do datasheet, não levanta esse alerta', () => {
+    const r = suggestStringArrangements(
+      24, { powerKw: 10, mpptCount: 2, stringsPerMppt: 1, mpptVminV: 180, mpptVmaxV: 850, maxDcVoltageV: 1100 },
+      MODULO, REGRAS_STRING);
+    expect(r.alerts.some(x => x.code === 'string_capacity_estimated')).toBe(false);
+  });
+
+  it('nenhuma sugestão passa das entradas que o inversor tem', () => {
+    const r = suggestStringArrangements(
+      24, { powerKw: 10, mpptCount: 2, stringsPerMppt: 1, mpptVminV: 180, mpptVmaxV: 850, maxDcVoltageV: 1100 },
+      MODULO, REGRAS_STRING);
+    for (const arr of r.arrangements) expect(arr.stringSizes.length).toBeLessThanOrEqual(2);
   });
 });
