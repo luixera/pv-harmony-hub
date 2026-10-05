@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { simpleParser } from 'mailparser';
-import { extrairMensagem } from '../src/email/caixa.js';
+import { extrairMensagem, uidsDaBusca } from '../src/email/caixa.js';
 
 const EML = [
   'From: "Relacionamento EDP" <relacionamento.edp@edp.com.br>',
@@ -38,11 +38,37 @@ test('extrairMensagem lê assunto, remetente, texto e anexos', async () => {
   assert.equal(m.anexos.length, 1);
   assert.equal(m.anexos[0].nome, 'parecer.pdf');
   assert.equal(m.anexos[0].mime, 'application/pdf');
-  assert.ok(m.anexos[0].bytes.length > 0);
+  // Decodificou o base64 de verdade: 'JVBERi0xLjQK' é "%PDF-1.4\n".
+  assert.ok(m.anexos[0].bytes.toString('latin1').startsWith('%PDF'));
+  assert.equal(m.anexos[0].bytes.toString('latin1'), '%PDF-1.4\n');
+  // Date: 09:12 em -0300 = 12:12 em UTC.
+  assert.equal(m.recebidoEm?.toISOString(), '2026-09-10T12:12:00.000Z');
 });
 
 test('mensagem sem Message-ID cai para o uid, para não repetir', async () => {
   const semId = EML.replace('Message-ID: <abc-123@edp.com.br>\r\n', '');
   const m = extrairMensagem(await simpleParser(semId), 42);
   assert.equal(m.messageId, 'imap-uid-42');
+});
+
+test('anexo de conteúdo vazio (PDF de 0 byte) NÃO entra em anexos', async () => {
+  const comVazio = EML.replace('--X--', [
+    '--X',
+    'Content-Type: application/pdf; name="vazio.pdf"',
+    'Content-Transfer-Encoding: base64',
+    'Content-Disposition: attachment; filename="vazio.pdf"',
+    '',
+    '',
+    '--X--',
+  ].join('\r\n'));
+  const m = extrairMensagem(await simpleParser(comVazio), 7);
+  assert.deepEqual(m.anexos.map(a => a.nome), ['parecer.pdf']);
+});
+
+test('uidsDaBusca devolve a lista (vazia inclusive) e lança quando a busca falhou', () => {
+  assert.deepEqual(uidsDaBusca([3, 9], '45006443920'), [3, 9]);
+  assert.deepEqual(uidsDaBusca([], '45006443920'), []);
+  // O servidor respondeu NO/BAD: a biblioteca devolve false, sem lançar.
+  assert.throws(() => uidsDaBusca(false, '45006443920'), /45006443920/);
+  assert.throws(() => uidsDaBusca(undefined, '45006443920'), /45006443920/);
 });
