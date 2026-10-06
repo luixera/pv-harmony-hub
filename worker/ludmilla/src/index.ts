@@ -6,6 +6,7 @@ import {
   lerCaptcha, pedirCaptcha, pegarRun, protocolosDeInteresse, pulsar, sessaoViva, subirDocumento, subirPrint, subirTexto, temCriacaoPendente, Run,
 } from './fila.js';
 import { executarCriacao } from './criacao/index.js';
+import { executarVarreduraEmail } from './email/index.js';
 import { avisar, carregarEnvDaEstacao, dirPerfilChrome, modoAtual, pedirLoginNoTerminal } from './local.js';
 
 /**
@@ -290,6 +291,13 @@ async function principal() {
       // Poll dinâmico: 5 s quando há criação pendente; normal quando quieto
       const criacao = await temCriacaoPendente().catch(() => false);
       await dormir(criacao ? 5_000 : POLL_SEGUNDOS * 1_000);
+      continue;
+    }
+    if (run.tipo === 'varredura_email') {
+      // acompanhamento por e-mail: lê a caixa por IMAP, não abre navegador —
+      // fica fora do laço do Playwright. O caminho do portal segue intocado.
+      await executarVarreduraEmail(run);
+      await dormir(5_000);
       continue;
     }
     if (run.tipo === 'criar_projeto') {

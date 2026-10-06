@@ -14,7 +14,7 @@ export interface Run {
   id: string;
   tenant_id: string;
   account_id: string;
-  tipo: 'reconhecimento' | 'teste_login' | 'descoberta' | 'varredura' | 'criar_projeto';
+  tipo: 'reconhecimento' | 'teste_login' | 'descoberta' | 'varredura' | 'criar_projeto' | 'varredura_email';
   situacao: string;
   dados?: Record<string, unknown>;
 }
@@ -307,4 +307,89 @@ export async function protocolosDeInteresse(accountId: string): Promise<string[]
   const { data, error } = await supabase().rpc(nomeRpc('ludmilla_protocolos_de_interesse'), { p_account_id: accountId });
   if (error) return [];
   return ((data ?? []) as { protocolo: string }[]).map(x => x.protocolo);
+}
+
+// ── Acompanhamento por e-mail ────────────────────────────────────────────────
+//
+// ATENÇÃO: estas RPCs são chamadas pelo nome SIMPLES, nunca por `nomeRpc()`.
+// Elas não têm variante `_local` porque o acompanhamento por e-mail é só da VPS
+// (foi o pedido: "assim não preciso deixar o computador ligado"). Passar por
+// `nomeRpc` faria a estação local procurar `…_local` e quebrar. A guarda que
+// recusa o run na estação está em `email/index.ts`.
+
+import type { RegraEmail } from './email/util.js';
+
+export interface ProtocoloDeProjeto {
+  protocolo: string; project_id: string; company_id: string;
+  codigo: string; titular: string | null; endereco: string | null;
+}
+
+export async function credencialDaCaixa(accountId: string): Promise<{ email: string; senha: string }> {
+  const { data, error } = await supabase().rpc('ludmilla_email_credencial' as never, { p_account_id: accountId } as never);
+  if (error) throw new Error(`Não consegui ler o acesso à caixa: ${error.message}`);
+  const linha = ((data ?? []) as { email: string; senha: string }[])[0];
+  if (!linha?.email || !linha?.senha) {
+    throw new Error('O acesso à caixa de e-mail não está configurado para este tenant (agent_config → email_agent).');
+  }
+  return linha;
+}
+
+export async function protocolosDoEmail(accountId: string): Promise<ProtocoloDeProjeto[]> {
+  const { data, error } = await supabase().rpc('ludmilla_email_protocolos' as never, { p_account_id: accountId } as never);
+  if (error) throw new Error(`Não consegui listar os protocolos: ${error.message}`);
+  return (data ?? []) as ProtocoloDeProjeto[];
+}
+
+export async function regrasDoEmail(accountId: string): Promise<RegraEmail[]> {
+  const { data, error } = await supabase().rpc('ludmilla_email_regras' as never, { p_account_id: accountId } as never);
+  if (error) throw new Error(`Não consegui listar as regras de e-mail: ${error.message}`);
+  return (data ?? []) as RegraEmail[];
+}
+
+/**
+ * A mensagem ainda não foi lida em nenhum run? Falha de banco LANÇA em vez de
+ * virar `false`: tratar erro como "já conheço esta mensagem" faria a robô pular
+ * a caixa inteira em silêncio. Quem chama conta como falha daquele protocolo.
+ */
+export async function mensagemEhNova(accountId: string, messageId: string): Promise<boolean> {
+  const { data, error } = await supabase().rpc('ludmilla_email_mensagem_nova' as never,
+    { p_account_id: accountId, p_message_id: messageId } as never);
+  if (error) throw new Error(`Não consegui conferir se a mensagem já foi lida: ${error.message}`);
+  return data === true;
+}
+
+/**
+ * Abre a linha do anexo e devolve o que `subirDocumento` precisa. Vazio quando o
+ * anexo já existia (`ON CONFLICT DO NOTHING`) ou o projeto não é da conta — quem
+ * chama registra o aviso, porque vazio pode esconder uma linha `pendente` órfã.
+ */
+export async function anexoDeEmail(
+  accountId: string, protocolo: string, projectId: string, messageId: string, nomeArquivo: string, conferidoPor: string,
+): Promise<AnexoPendente | null> {
+  const { data, error } = await supabase().rpc('ludmilla_email_anexo_novo' as never, {
+    p_account_id: accountId, p_protocolo: protocolo, p_project_id: projectId,
+    p_message_id: messageId, p_nome_arquivo: nomeArquivo, p_conferido_por: conferidoPor,
+  } as never);
+  if (error) throw new Error(`Não consegui abrir o anexo: ${error.message}`);
+  const l = ((data ?? []) as { anexo_id: string; company_id: string; codigo: string }[])[0];
+  if (!l) return null;
+  return {
+    id: l.anexo_id, project_id: projectId, company_id: l.company_id, protocolo,
+    id_arquivo: `${messageId}#${nomeArquivo}`, nome_arquivo: nomeArquivo, codigo: l.codigo,
+  };
+}
+
+export async function registrarEmailLido(p: {
+  runId: string; accountId: string; messageId: string; protocolo: string;
+  projectId: string | null; assunto: string; remetente: string; recebidoEm: string | null;
+  tipoDocumento: string | null; veredito: string | null; resumo: string | null;
+  anexos: number; motivo: string | null; recomendacao: string | null;
+}): Promise<void> {
+  const { error } = await supabase().rpc('ludmilla_email_registrar' as never, {
+    p_run_id: p.runId, p_account_id: p.accountId, p_message_id: p.messageId, p_protocolo: p.protocolo,
+    p_project_id: p.projectId, p_assunto: p.assunto, p_remetente: p.remetente, p_recebido_em: p.recebidoEm,
+    p_tipo_documento: p.tipoDocumento, p_veredito: p.veredito, p_resumo: p.resumo,
+    p_anexos: p.anexos, p_motivo: p.motivo, p_recomendacao: p.recomendacao,
+  } as never);
+  if (error) throw new Error(`Não consegui registrar o e-mail lido: ${error.message}`);
 }
