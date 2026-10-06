@@ -110,6 +110,9 @@ BEGIN
            CASE WHEN r.situacao = 'erro' THEN r.erro
                 WHEN r.tipo = 'varredura' THEN r.protocolos_lidos || ' protocolos lidos · ' || r.mudancas || ' recomendação(ões)'
                 WHEN r.tipo = 'varredura_email' THEN r.protocolos_lidos || ' projetos conferidos · ' || r.mudancas || ' documento(s) anexado(s)'
+                  -- protocolo cuja busca o servidor recusou: sai da frase quando
+                  -- é zero (nullif), e some de vez em run antigo sem o campo
+                  || coalesce(' · ' || nullif(r.resultado ->> 'falhas', '0') || ' com falha', '')
                 ELSE 'Situação: ' || r.situacao END AS detalhe,
            CASE WHEN r.situacao = 'erro' THEN 'erro' WHEN r.situacao = 'ok' THEN 'ok' ELSE 'aviso' END AS situacao,
            NULL::uuid AS project_id, NULL::text AS projeto, NULL::text AS protocolo
