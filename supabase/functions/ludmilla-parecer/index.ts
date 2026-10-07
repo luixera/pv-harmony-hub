@@ -9,6 +9,8 @@
 // verify_jwt está DESLIGADO no config.toml de propósito: o gateway só entende
 // JWT e a chave nova (sb_secret_...) não é um. A conferência é toda desta
 // função (chamadorEhServico) e vale com qualquer flag de deploy.
+// O portão é NEGA-POR-OMISSÃO e por igualdade de string, SEM rede (ver
+// chamadorEhServico): sem segredo configurado, nega 100% das chamadas.
 //
 // "inconclusivo" é caminho NORMAL, não erro: o worker anexa o documento de
 // qualquer jeito e só deixa de recomendar etapa. Por isso PDF ilegível, falha
@@ -37,6 +39,22 @@ const MODELO_IA = 'claude-sonnet-5'
 /** Rótulo no extrato de IA do console. */
 const TIPO_NO_EXTRATO = 'ludmilla_parecer'
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+/** Os três únicos vereditos do contrato (já normalizados: minúscula, sem acento). */
+const VEREDITOS = ['favoravel', 'pendencia', 'inconclusivo']
+/**
+ * Teto próprio da chamada à IA. Sem ele quem corta é o relógio da plataforma,
+ * que MATA o isolate — e aí `desfazerReserva` não roda e a reserva fica no
+ * extrato cobrada pela estimativa, por uma chamada que não produziu nada (falha
+ * de IA não cobra, regra da casa). 110 s é o mesmo teto do `ze-brain`
+ * (TETO_MS), e deixa folga para desfazer a reserva depois de abortar.
+ */
+const TETO_MS = 110_000
+/**
+ * Menor `pdf_base64` plausível, em caracteres. O menor PDF válido que existe
+ * passa de 280 bytes (≈ 380 em base64); 256 caracteres são ≈ 192 bytes, ou
+ * seja, abaixo de qualquer PDF real e acima de lixo tipo "abc".
+ */
+const MIN_PDF_B64 = 256
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...cors, 'Content-Type': 'application/json' } })
@@ -51,47 +69,97 @@ const falhaDaIA = (error: string) => json({
   ok: false, error, veredito: 'inconclusivo', resumo: '', pendencias: [], titular: null, endereco: null,
 })
 
+/** minúsculas, sem acento, sem espaço nas pontas: 'Favorável ' → 'favoravel'. */
+const normalizar = (valor: unknown): string =>
+  String(valor ?? '').normalize('NFD').replace(/\p{M}/gu, '').trim().toLowerCase()
+
+/**
+ * Frases de formato do PRÓPRIO prompt. A IA às vezes copia a linha de formato em
+ * vez de preencher ("titular":"nome do titular ou null"). Isso passaria como
+ * titular LIDO, o worker compararia com o cadastro, veria divergência e
+ * BLOQUEARIA o anexo — o único bloqueio do fluxo, disparado por engano.
+ * Ao mexer no prompt, reveja esta lista.
+ */
+const ECO_DO_PROMPT = [
+  /\bou null\b/,                      // "nome do titular ou null", "logradouro e número ou null"
+  /^nome do titular\b/,
+  /^logradouro e numero\b/,           // já normalizado (sem acento)
+  /^uma frase em portugues\b/,
+  /favoravel\|pendencia\|inconclusivo/,
+  /^\.{2,}$/,                         // o "..." do exemplo de pendências
+]
+
 /**
  * A IA às vezes devolve a PALAVRA "null" (o prompt diz "ou null") em vez do
  * valor JSON null. Se isso passasse, o worker compararia o titular "null" com o
  * cadastro e bloquearia o anexo à toa — ou pior, trataria como dado lido.
+ * Só string conta; número, booleano e objeto viram null (não são dado lido).
  */
 const textoOuNulo = (valor: unknown, limite: number): string | null => {
-  if (valor == null || typeof valor === 'object') return null
-  const t = String(valor).trim()
-  if (!t || /^(null|none|n\/a|undefined|nao informado|não informado|desconhecido)$/i.test(t)) return null
+  if (typeof valor !== 'string') return null
+  const t = valor.trim()
+  if (t.length < 3) return null
+  const n = normalizar(t)
+  if (/^(null|none|n\/a|undefined|nao informado|desconhecido)$/.test(n)) return null
+  if (ECO_DO_PROMPT.some((re) => re.test(n))) return null
   return t.slice(0, limite)
 }
 
 /**
- * O chamador é a service role?
+ * O último objeto JSON BALANCEADO do texto.
+ * `match(/\{[\s\S]*\}/)` era guloso: num prefixo com chave ("Formato {ver
+ * abaixo}: {...}") capturava os dois blocos juntos, o JSON.parse falhava e um
+ * parecer que a IA leu certo voltava 'inconclusivo'. Anda de trás para a frente
+ * a partir do último `}` até fechar o nível — não é um parser, é um recorte.
+ */
+const ultimoObjetoJson = (texto: string): string | null => {
+  const fim = texto.lastIndexOf('}')
+  if (fim < 0) return null
+  let nivel = 0
+  for (let i = fim; i >= 0; i--) {
+    if (texto[i] === '}') nivel++
+    else if (texto[i] === '{' && --nivel === 0) return texto.slice(i, fim + 1)
+  }
+  return null
+}
+
+/**
+ * O chamador é o robô? Igualdade de string, NEGA POR OMISSÃO, SEM REDE.
  *
  * Mesmo princípio do sync-library (compara com SUPABASE_SERVICE_ROLE_KEY) e do
- * ze-webhook (segredo ausente nega, nunca "passa por vazio"), com um acréscimo
- * que a realidade pediu: neste projeto a variável SUPABASE_SERVICE_ROLE_KEY da
- * função guarda a chave NOVA (`sb_secret_...`), e não o JWT legado de service
- * role — que é o que o worker pode estar usando. Só comparar com a variável
- * trancaria o worker para fora sem aviso.
+ * ze-webhook (segredo ausente nega, nunca "passa por vazio").
  *
- * O JWT legado NÃO é aceito pelo conteúdo (decodificar `role` sem conferir a
- * assinatura qualquer um forja, e o deploy desta casa costuma ser
- * --no-verify-jwt). Quem confirma é o próprio Auth: pedir um usuário
- * inexistente na rota de ADMIN dá 404 só para a service role (anon e usuário
- * comum levam 403, sem credencial 401), e não devolve dado nenhum. A listagem de
- * usuários não serve de sonda: dá 500 neste projeto mesmo para a service role.
+ * NÃO sonda mais o Auth. A versão anterior aceitava o token quando a rota de
+ * admin do GoTrue devolvia 404 — que é também a resposta de "esta rota não
+ * existe". Era fail-open por desenho: se o GoTrue renomear
+ * `/auth/v1/admin/users/{id}`, ou se SUPABASE_URL passar a apontar para um proxy
+ * que só serve /rest e /functions, a sonda devolve 404 para QUALQUER token não
+ * vazio — e aí a chave publicável (que está no bundle do front, pública) entra,
+ * e volta o laço queimando crédito da Anthropic, sem nada no código notar. A
+ * sonda também custava 1–2 chamadas ao Auth por invocação: com tráfego forjado a
+ * 50 req/s o Auth limita por taxa (429) e a sonda do worker LEGÍTIMO é negada
+ * junto, parando a leitura de pareceres enquanto durar.
+ *
+ * Por que DUAS variáveis: no ambiente das functions, SUPABASE_SERVICE_ROLE_KEY
+ * guarda a chave NOVA (`sb_secret_...`), enquanto o worker pode estar mandando o
+ * JWT legado de service role. Comparar só com ela trancou o worker para fora na
+ * primeira versão. LUDMILLA_WORKER_KEY existe para esse caso — é configurada à
+ * mão com o valor que o worker usa. Sem nenhuma das duas definidas, a função
+ * nega 100% das chamadas: barulhento no primeiro run, nunca aberto no silêncio.
+ *
+ * Comparação: string inteira, sem startsWith, sem prefixo, sem normalizar, e
+ * sem ler `role` de dentro do JWT (sem conferir assinatura, qualquer um forja).
+ * `undefined`/`''` é "não configurado" e nunca casa com nada.
  */
-async function chamadorEhServico(token: string, chaveServico: string | undefined): Promise<boolean> {
+function chamadorEhServico(token: string, aceitos: string[]): boolean {
   if (!token) return false
-  if (chaveServico && token === chaveServico) return true
-  try {
-    const r = await fetch(`${Deno.env.get('SUPABASE_URL')}/auth/v1/admin/users/00000000-0000-0000-0000-000000000000`, {
-      headers: { apikey: token, Authorization: `Bearer ${token}` },
-    })
-    await r.body?.cancel()
-    return r.status === 404
-  } catch {
-    return false
-  }
+  return aceitos.some((aceito) => aceito === token)
+}
+
+/** Os segredos aceitos, já sem os não configurados (undefined/vazio). */
+function segredosAceitos(): string[] {
+  return [Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'), Deno.env.get('LUDMILLA_WORKER_KEY')]
+    .filter((v): v is string => typeof v === 'string' && v.length > 0)
 }
 
 Deno.serve(async (req) => {
@@ -103,8 +171,10 @@ Deno.serve(async (req) => {
   // faz); o JWT legado, no Authorization. Vale qualquer um dos dois.
   const doBearer = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '').trim()
   const doApikey = (req.headers.get('apikey') ?? '').trim()
-  const ehServico = (await chamadorEhServico(doBearer, chaveServico))
-    || (doApikey !== doBearer && await chamadorEhServico(doApikey, chaveServico))
+  const aceitos = segredosAceitos()
+  const ehServico = chamadorEhServico(doBearer, aceitos) || chamadorEhServico(doApikey, aceitos)
+  // A negação é SEMPRE esta, igual para token ausente, vazio, errado ou segredo
+  // não configurado: quem sonda não aprende qual condição falhou.
   if (!ehServico) {
     return json({ ok: false, error: 'Não autorizado: esta função só aceita chamadas do robô (service role).' }, 401)
   }
@@ -113,11 +183,21 @@ Deno.serve(async (req) => {
   const apiKey = Deno.env.get('ANTHROPIC_API_KEY')
   if (!apiKey) return json({ ok: false, error: 'ANTHROPIC_API_KEY não configurada' }, 500)
 
-  let body: { pdf_base64?: string; nome_arquivo?: string; protocolo?: string; tenant_id?: string } | null
+  let body: { pdf_base64?: unknown; nome_arquivo?: string; protocolo?: string; tenant_id?: string } | null
   try { body = await req.json() } catch { return json({ ok: false, error: 'corpo inválido' }, 400) }
-  if (!body?.pdf_base64) return json({ ok: false, error: 'pdf_base64 é obrigatório' }, 400)
+  // Tipo E tamanho, ANTES da reserva no extrato. Um `pdf_base64` numérico ia
+  // para a API como `data: 12345`, tomava 400 e a mensagem "IA respondeu 400"
+  // fazia quem lê o log concluir "a IA está fora" — e sobrava uma linha de
+  // reserva à toa. Agora nem reserva.
+  const pdfBase64 = body?.pdf_base64
+  if (typeof pdfBase64 !== 'string' || pdfBase64.trim().length < MIN_PDF_B64) {
+    return json({
+      ok: false,
+      error: 'pdf_base64 é obrigatório e precisa ser uma string com o PDF em base64',
+    }, 400)
+  }
 
-  const tenantId = body.tenant_id ? String(body.tenant_id) : null
+  const tenantId = body?.tenant_id ? String(body.tenant_id) : null
   if (tenantId && !UUID.test(tenantId)) return json({ ok: false, error: 'tenant_id inválido' }, 400)
 
   // ── Extrato de IA: reserva a linha ANTES de gastar (e confere a cota) ─────
@@ -150,7 +230,7 @@ Deno.serve(async (req) => {
 
   const prompt = [
     'Você está lendo um PARECER DE ACESSO da distribuidora EDP para um projeto de geração distribuída.',
-    `Protocolo/nota esperado: ${body.protocolo ?? '(não informado)'}.`,
+    `Protocolo/nota esperado: ${body?.protocolo ?? '(não informado)'}.`,
     '',
     'Responda SOMENTE com um JSON, sem texto em volta, neste formato:',
     '{"veredito":"favoravel|pendencia|inconclusivo","resumo":"uma frase em português",',
@@ -161,10 +241,15 @@ Deno.serve(async (req) => {
     '- "inconclusivo": não dá para afirmar pelo documento.',
   ].join('\n')
 
+  // Prazo PRÓPRIO da chamada (ver TETO_MS): abortar aqui cai no mesmo catch que
+  // desfaz a reserva, enquanto o relógio da plataforma mataria o isolate antes.
+  const prazo = new AbortController()
+  const alarme = setTimeout(() => prazo.abort(), TETO_MS)
   let resposta: Response
   try {
     resposta = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
+      signal: prazo.signal,
       headers: { 'content-type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
       body: JSON.stringify({
         model: MODELO_IA,
@@ -172,17 +257,23 @@ Deno.serve(async (req) => {
         messages: [{
           role: 'user',
           content: [
-            { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: body.pdf_base64 } },
+            { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: pdfBase64 } },
             { type: 'text', text: prompt },
           ],
         }],
       }),
     })
   } catch (e) {
-    // rede caiu: não derruba o worker com 500
+    // rede caiu (ou o prazo estourou): não derruba o worker com 500
+    const estourou = e instanceof Error && e.name === 'AbortError'
     console.error('Falha ao chamar a IA:', e instanceof Error ? e.name : 'erro')
     await desfazerReserva()
-    return falhaDaIA('falha ao chamar a IA')
+    return falhaDaIA(estourou ? 'tempo esgotado ao chamar a IA' : 'falha ao chamar a IA')
+  } finally {
+    // A resposta é inteira (não é stream): quando os cabeçalhos chegam, a IA já
+    // terminou de gerar. Daqui para frente só falta ler o corpo, que é rápido —
+    // e um abort ali cairia no caminho do "200 ilegível", que cobra de propósito.
+    clearTimeout(alarme)
   }
 
   if (!resposta.ok) {
@@ -219,12 +310,17 @@ Deno.serve(async (req) => {
 
   const texto = (data.content ?? []).filter((c) => c.type === 'text')
     .map((c) => c.text ?? '').join('')
-  const bruto = texto.match(/\{[\s\S]*\}/)?.[0]
+  const bruto = ultimoObjetoJson(texto)
   if (!bruto) return inconclusivo('não consegui ler o parecer')
 
   try {
     const r = JSON.parse(bruto)
-    const veredito = ['favoravel', 'pendencia', 'inconclusivo'].includes(r.veredito) ? r.veredito : 'inconclusivo'
+    // Normaliza ANTES da lista branca: "favorável" (com acento, saída plausível
+    // em português) e "Favoravel " cairiam em 'inconclusivo', o worker não
+    // recomendaria etapa e o valor da entrega sumia no silêncio. O valor
+    // DEVOLVIDO segue sendo o canônico sem acento.
+    const pedido = normalizar(r.veredito)
+    const veredito = VEREDITOS.includes(pedido) ? pedido : 'inconclusivo'
     return json({
       ok: true, veredito,
       resumo: String(r.resumo ?? '').slice(0, 500),
