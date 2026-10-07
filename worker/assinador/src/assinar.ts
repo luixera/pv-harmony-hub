@@ -105,6 +105,9 @@ export async function assinar(
     contactInfo: 'GD Manager',
     name: info.nome,
     location: info.cidade || 'Brasil',
+    // O padrão do signpdf (8192 bytes) pode estourar com um e-CPF ICP-Brasil que
+    // traz a cadeia completa de ACs; o placeholder maior só aumenta o /Contents.
+    signatureLength: 16384,
   });
   const assinado = Buffer.from(await signpdf.sign(comPlaceholder, new P12Signer(pfx, { passphrase: senha })));
 

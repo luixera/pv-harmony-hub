@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { spawn, type ChildProcess } from 'node:child_process';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -68,6 +68,7 @@ interface ResultadoSoffice {
 function rodarSoffice(binario: string, args: string[]): Promise<ResultadoSoffice> {
   return new Promise((resolvePromessa, rejeitar) => {
     const filho = spawn(binario, args, { detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
+    conversaoEmCurso = filho;
     let stdout = '';
     let stderr = '';
     let encerrado = false;
@@ -76,6 +77,7 @@ function rodarSoffice(binario: string, args: string[]): Promise<ResultadoSoffice
       if (encerrado) return;
       encerrado = true;
       clearTimeout(relogio);
+      if (conversaoEmCurso === filho) conversaoEmCurso = null;
       resolvePromessa(r);
     };
 
@@ -83,13 +85,7 @@ function rodarSoffice(binario: string, args: string[]): Promise<ResultadoSoffice
     filho.stderr?.on('data', d => { if (stderr.length < LIMITE_SAIDA) stderr += d.toString(); });
 
     const relogio = setTimeout(() => {
-      try {
-        if (filho.pid === undefined) throw new Error('sem pid');
-        process.kill(-filho.pid, 'SIGKILL');
-      } catch {
-        // Sem grupo (ex.: Windows) ou o grupo já morreu: derruba só o processo.
-        try { filho.kill('SIGKILL'); } catch { /* já morreu */ }
-      }
+      matarGrupo(filho);
       encerrar({ codigo: null, estouroDeTempo: true, stdout, stderr });
     }, LIMITE_MS);
 
@@ -97,10 +93,36 @@ function rodarSoffice(binario: string, args: string[]): Promise<ResultadoSoffice
       if (encerrado) return;
       encerrado = true;
       clearTimeout(relogio);
+      if (conversaoEmCurso === filho) conversaoEmCurso = null;
       rejeitar(err);
     });
     filho.on('close', codigo => encerrar({ codigo, estouroDeTempo: false, stdout, stderr }));
   });
+}
+
+/** A conversão em andamento (no máximo uma: o laço é serial). */
+let conversaoEmCurso: ChildProcess | null = null;
+
+function matarGrupo(filho: ChildProcess): void {
+  try {
+    if (filho.pid === undefined) throw new Error('sem pid');
+    process.kill(-filho.pid, 'SIGKILL');
+  } catch {
+    // Sem grupo (ex.: Windows) ou o grupo já morreu: derruba só o processo.
+    try { filho.kill('SIGKILL'); } catch { /* já morreu */ }
+  }
+}
+
+/**
+ * Para o worker (SIGTERM/SIGINT): como o soffice roda em grupo próprio, ele
+ * SOBREVIVE à morte do worker. Quem encerra o worker chama isto antes. O kill
+ * faz o `close` disparar, a conversão rejeita e o `finally` apaga a pasta
+ * temporária. Devolve `true` se havia conversão para cancelar.
+ */
+export function encerrarConversaoEmCurso(): boolean {
+  if (!conversaoEmCurso) return false;
+  matarGrupo(conversaoEmCurso);
+  return true;
 }
 
 function mensagemArquivoRuim(nomeOriginal: string): string {
