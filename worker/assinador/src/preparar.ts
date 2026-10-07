@@ -103,6 +103,9 @@ function rodarSoffice(binario: string, args: string[]): Promise<ResultadoSoffice
 /** A conversão em andamento (no máximo uma: o laço é serial). */
 let conversaoEmCurso: ChildProcess | null = null;
 
+/** Ligado por `encerrarConversaoEmCurso`: o worker está parando, não inicie conversão. */
+let workerEncerrando = false;
+
 function matarGrupo(filho: ChildProcess): void {
   try {
     if (filho.pid === undefined) throw new Error('sem pid');
@@ -120,6 +123,9 @@ function matarGrupo(filho: ChildProcess): void {
  * temporária. Devolve `true` se havia conversão para cancelar.
  */
 export function encerrarConversaoEmCurso(): boolean {
+  // Depois disto nenhuma conversão NOVA começa: cobre a janela entre o
+  // mkdtemp/writeFile e o spawn, quando ainda não há processo para matar.
+  workerEncerrando = true;
   if (!conversaoEmCurso) return false;
   matarGrupo(conversaoEmCurso);
   return true;
@@ -165,6 +171,8 @@ export async function converterParaPdf(bytes: Buffer, nomeOriginal: string): Pro
   try {
     const entrada = join(pasta, `entrada${extensao}`);
     await writeFile(entrada, bytes);
+    // Sem await daqui até o spawn: se o SIGTERM veio durante a escrita, não inicia.
+    if (workerEncerrando) throw new Error('O assinador está encerrando — a conversão não foi iniciada.');
 
     let resultado: ResultadoSoffice;
     try {

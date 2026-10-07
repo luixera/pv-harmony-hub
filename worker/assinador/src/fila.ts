@@ -28,6 +28,8 @@ export interface Trabalho {
   file_type: string | null;
   cidade: string;
   tentativas: number;
+  /** Primeiro segmento do caminho no bucket: a policy de leitura casa com companies.id, não com o tenant. */
+  company_id: string;
 }
 
 let cliente: SupabaseClient | null = null;
@@ -51,9 +53,31 @@ export function nomeAssinado(nome: string): string {
   return `${base}.pdf`;
 }
 
+/**
+ * `file_name` é nome de EXIBIÇÃO (com acento, espaço, `#`...). A chave do objeto
+ * no Storage não aceita isso: só `[A-Za-z0-9._-]`. Use só no segmento do path;
+ * o nome legível continua indo para o banco.
+ */
+export function nomeSeguroParaStorage(nome: string): string {
+  const seguro = nome.normalize('NFD').replace(/\p{M}/gu, '').replace(/[^A-Za-z0-9._-]/g, '_');
+  return seguro || 'documento';
+}
+
+/**
+ * A RPC recusou a transição (`false`): a linha foi movida por outra pessoa ou a
+ * transição é inválida. É DIFERENTE de erro de rede — só com esta classe o
+ * commit sabidamente NÃO aconteceu, e só então é seguro apagar o que foi subido.
+ */
+export class PassoRecusado extends Error {
+  constructor(mensagem: string) {
+    super(mensagem);
+    this.name = 'PassoRecusado';
+  }
+}
+
 /** Onde o PDF preparado fica à espera do "está certo". */
 export const caminhoAprovado = (t: Trabalho): string =>
-  `${t.tenant_id}/${t.project_id}/assinatura/${t.id}_para_assinar.pdf`;
+  `${t.company_id}/${t.project_id}/assinatura/${t.id}_para_assinar.pdf`;
 
 export async function pegarTrabalho(): Promise<Trabalho | null> {
   const { data, error } = await supabase().rpc('assinatura_claim');
@@ -74,7 +98,7 @@ export async function passo(id: string, situacao: string, campos: Record<string,
   });
   if (error) throw new Error(`Não consegui gravar o passo ${situacao}: ${error.message}`);
   if (data !== true) {
-    throw new Error(
+    throw new PassoRecusado(
       `O banco recusou o passo ${situacao}: a assinatura já foi movida por outra pessoa ou a transição não é válida.`,
     );
   }
@@ -122,6 +146,11 @@ export async function subir(bucket: string, path: string, bytes: Buffer, mime: s
     .upload(path, bytes, { contentType: mime, upsert: true });
   if (error) throw new Error(`Não consegui subir ${path}: ${error.message}`);
   return path;
+}
+
+export async function apagar(bucket: string, path: string): Promise<void> {
+  const { error } = await supabase().storage.from(bucket).remove([path]);
+  if (error) throw new Error(`Não consegui apagar ${path}: ${error.message}`);
 }
 
 /** Pede ao Claudinho a peneira de conteúdo (edge function). */
