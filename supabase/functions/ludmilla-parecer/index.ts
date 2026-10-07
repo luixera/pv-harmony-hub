@@ -156,9 +156,18 @@ function chamadorEhServico(token: string, aceitos: string[]): boolean {
   return aceitos.some((aceito) => aceito === token)
 }
 
-/** Os segredos aceitos, já sem os não configurados (undefined/vazio). */
+/**
+ * Os segredos aceitos, já sem os não configurados (undefined/vazio).
+ *
+ * O `trim()` não é enfeite: o token do chamador é trimado na leitura do
+ * cabeçalho, e um segredo gravado com `\n` no fim (um `echo` no workflow de
+ * deploy basta) nunca casaria — toda leitura de parecer tomaria 401 PARA SEMPRE,
+ * com a mesma frase de "segredo não configurado", que é justamente a que o
+ * portão se esforça para não distinguir. Falha fechada, mas indiagnosticável.
+ */
 function segredosAceitos(): string[] {
   return [Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'), Deno.env.get('LUDMILLA_WORKER_KEY')]
+    .map((v) => (typeof v === 'string' ? v.trim() : v))
     .filter((v): v is string => typeof v === 'string' && v.length > 0)
 }
 
@@ -189,8 +198,16 @@ Deno.serve(async (req) => {
   // para a API como `data: 12345`, tomava 400 e a mensagem "IA respondeu 400"
   // fazia quem lê o log concluir "a IA está fora" — e sobrava uma linha de
   // reserva à toa. Agora nem reserva.
-  const pdfBase64 = body?.pdf_base64
-  if (typeof pdfBase64 !== 'string' || pdfBase64.trim().length < MIN_PDF_B64) {
+  // Limpa o VALOR, não só a conferência: `base64 parecer.pdf` quebra a linha a
+  // cada 76 colunas E deixa `\n` no fim. Validar o limpo e mandar o cru fazia a
+  // Anthropic recusar o base64 e o log dizer "IA respondeu 400" — exatamente o
+  // diagnóstico mentiroso que esta checagem existe para matar. `trim()` não
+  // bastava: tirava as pontas e deixava as quebras do meio. O alfabeto do base64
+  // não tem espaço em branco, então remover tudo nunca estraga dado bom.
+  const pdfBase64 = typeof body?.pdf_base64 === 'string'
+    ? body.pdf_base64.replace(/\s+/g, '')
+    : body?.pdf_base64
+  if (typeof pdfBase64 !== 'string' || pdfBase64.length < MIN_PDF_B64) {
     return json({
       ok: false,
       error: 'pdf_base64 é obrigatório e precisa ser uma string com o PDF em base64',
@@ -323,7 +340,10 @@ Deno.serve(async (req) => {
     const veredito = VEREDITOS.includes(pedido) ? pedido : 'inconclusivo'
     return json({
       ok: true, veredito,
-      resumo: String(r.resumo ?? '').slice(0, 500),
+      // Pelo mesmo filtro do titular: o resumo também vem, às vezes, como eco da
+      // linha de formato ("uma frase em português"), e esse texto vai PARA A TELA
+      // do cartão. Dizer que não houve resumo é mais honesto que mostrar o eco.
+      resumo: textoOuNulo(r.resumo, 500) ?? 'a IA não resumiu o parecer',
       pendencias: Array.isArray(r.pendencias) ? r.pendencias.map(String).slice(0, 10) : [],
       titular: textoOuNulo(r.titular, 150),
       endereco: textoOuNulo(r.endereco, 200),
