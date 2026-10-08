@@ -1,7 +1,8 @@
 # Assinatura digital dentro do GD Manager
 
 > Decidido com o usuário em 02/10/2026. Certificado **A1** (`.pfx`) guardado no
-> sistema, assinatura **PAdES** feita por um worker na VPS (abordagem **A**),
+> sistema, assinatura CMS embutida no PDF (`adbe.pkcs7.detached` — ver §5)
+> feita por um worker na VPS (abordagem **A**),
 > quem assina são **staff e admin** com registro, e o **Zé** avisa toda
 > assinatura e autoriza as exceções pelo WhatsApp.
 >
@@ -195,8 +196,15 @@ Por assinatura:
 2. baixa o `.pfx` do bucket `certificados` e lê a senha por
    `certificado_do_robo` — **em memória, nunca em disco**;
 3. valida o certificado: validade e CPF do titular;
-4. anexa a assinatura **PAdES** com `plainAddPlaceholder` +
-   `@signpdf/signer-p12` — *append* puro, sem reescrever o PDF;
+4. anexa a assinatura com `plainAddPlaceholder` + `@signpdf/signer-p12` —
+   *append* puro, sem reescrever o PDF;
+
+   > **Precisão do termo (corrigido em 07/10/2026).** O que sai é
+   > `adbe.pkcs7.detached`: assinatura CMS embutida no PDF, **sem carimbo de
+   > tempo e sem política AD-RB**. Isso **não** é PAdES-Baseline. O passo 6 do
+   > aceite (validar em `validar.iti.gov.br`) é o que diz se o ITI aceita essa
+   > forma; se não aceitar, o caminho é carimbo do tempo de uma ACT, que esta
+   > spec já põe fora de escopo. A doc do módulo usa o termo exato, não "PAdES".
 5. confere que os bytes aprovados são prefixo do assinado e que o resultado
    abre com a mesma contagem de páginas;
 6. sobe `<<nome>>_assinado.pdf`, registra o documento novo com o mesmo
