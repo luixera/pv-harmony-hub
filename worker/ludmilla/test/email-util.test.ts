@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  casaEndereco, casaProtocolo, casaTitular, chaveProtocolo, protocoloDoAssunto,
-  recomendacaoDoVeredito, regraQueCasa, type RegraEmail,
+  casaEndereco, casaProtocolo, casaTitular, chaveProtocolo, comparavelTitular, ehImagem, ehPdf,
+  pdfDoParecer, protocoloDoAssunto, recomendacaoDoVeredito, regraQueCasa, type RegraEmail,
 } from '../src/email/util.js';
 
 const REGRAS: RegraEmail[] = [
@@ -85,4 +85,59 @@ test('casaProtocolo respeita piso de 8 dígitos', () => {
   assert.ok(!casaProtocolo('1234567', '1234567'));
   // 8 dígitos casam
   assert.ok(casaProtocolo('12345678', '12345678'));
+});
+
+test('comparavelTitular separa "falta de dado" de "é outra pessoa"', () => {
+  // `casaTitular` devolve false nos dois casos; isto desempata
+  assert.ok(!comparavelTitular('Ivanildo'));
+  assert.ok(!comparavelTitular('A B'), 'palavras de até 2 letras não contam');
+  assert.ok(!comparavelTitular(''));
+  assert.ok(!comparavelTitular(null));
+  assert.ok(comparavelTitular('WERLHE LIMA'));
+  assert.ok(comparavelTitular('PADARIA IRMAOS'));
+});
+
+test('ehImagem pega mime e extensão, e deixa passar todo o resto', () => {
+  // assinatura HTML de e-mail: image001.png…image004.png viravam documento do
+  // projeto e comentário no card do cliente
+  assert.ok(ehImagem({ nome: 'image001.png', mime: 'image/png' }));
+  assert.ok(ehImagem({ nome: 'logo', mime: 'image/gif' }), 'pelo mime, mesmo sem extensão');
+  assert.ok(ehImagem({ nome: 'FOTO.JPEG', mime: 'application/octet-stream' }), 'pela extensão, mesmo com mime genérico');
+  assert.ok(ehImagem({ nome: 'desenho.svg', mime: 'application/octet-stream' }));
+  assert.ok(ehImagem({ nome: 'scan.tiff', mime: 'application/octet-stream' }));
+  // por EXCLUSÃO: tudo o que não é imagem continua subindo
+  assert.ok(!ehImagem({ nome: 'parecer.pdf', mime: 'application/pdf' }));
+  assert.ok(!ehImagem({ nome: 'planilha.xlsx', mime: 'application/vnd.ms-excel' }));
+  assert.ok(!ehImagem({ nome: 'projeto.dwg', mime: 'application/octet-stream' }));
+  assert.ok(!ehImagem({ nome: 'pacote.zip', mime: 'application/zip' }));
+  assert.ok(!ehImagem({ nome: 'assinatura.p7s', mime: 'application/pkcs7-signature' }));
+  // "pngfile.pdf" não é imagem: a extensão é a do FIM do nome
+  assert.ok(!ehImagem({ nome: 'pngfile.pdf', mime: 'application/pdf' }));
+});
+
+test('ehPdf aceita pelo mime ou pela extensão', () => {
+  assert.ok(ehPdf({ nome: 'x', mime: 'application/pdf' }));
+  assert.ok(ehPdf({ nome: 'parecer.PDF', mime: 'application/octet-stream' }));
+  assert.ok(!ehPdf({ nome: 'nota.xml', mime: 'text/xml' }));
+});
+
+test('pdfDoParecer escolhe o PDF MAIOR, não o primeiro da lista', () => {
+  const anexos = [
+    { nome: 'anexo-tecnico.pdf', mime: 'application/pdf', bytes: Buffer.alloc(20_000) },
+    { nome: 'parecer.pdf', mime: 'application/pdf', bytes: Buffer.alloc(900_000) },
+    { nome: 'image001.png', mime: 'image/png', bytes: Buffer.alloc(4_000_000) },
+  ];
+  assert.equal(pdfDoParecer(anexos)?.nome, 'parecer.pdf', 'a imagem gigante não entra');
+  // a ordem não muda a escolha
+  assert.equal(pdfDoParecer([...anexos].reverse())?.nome, 'parecer.pdf');
+});
+
+test('pdfDoParecer devolve null quando não há PDF, e desempata pelo primeiro', () => {
+  assert.equal(pdfDoParecer([]), null);
+  assert.equal(pdfDoParecer([{ nome: 'a.xlsx', mime: 'application/vnd.ms-excel', bytes: Buffer.alloc(9) }]), null);
+  const empate = [
+    { nome: 'primeiro.pdf', mime: 'application/pdf', bytes: Buffer.alloc(1000) },
+    { nome: 'segundo.pdf', mime: 'application/pdf', bytes: Buffer.alloc(1000) },
+  ];
+  assert.equal(pdfDoParecer(empate)?.nome, 'primeiro.pdf', 'a escolha tem de ser a mesma em todo run');
 });

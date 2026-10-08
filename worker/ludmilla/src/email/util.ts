@@ -56,6 +56,19 @@ export function casaTitular(doSistema: string, doEmail: string): boolean {
   return b.includes(a[0]) && b.includes(a[a.length - 1]);
 }
 
+/**
+ * Dá para comparar este nome com outro?
+ *
+ * `casaTitular` devolve `false` tanto para "é outra pessoa" quanto para "não
+ * tenho nome suficiente para comparar", e quem chamava lia os dois como
+ * divergência: projeto cujo titular é "Ivanildo" (ou razão social de uma
+ * palavra) + PDF dizendo "IVANILDO PEREIRA DOS SANTOS" bloqueava o anexo e
+ * logava alarme de pessoa errada. Nome que falta é FALTA DE DADO, nunca
+ * divergência — e isso vale para os dois lados da comparação.
+ */
+export const comparavelTitular = (s: string | null | undefined): boolean =>
+  palavras(s ?? '').length >= 2;
+
 export const normalizarEndereco = (s: string): string =>
   semAcento(s).toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim();
 
@@ -70,6 +83,50 @@ export function casaEndereco(doSistema: string, doEmail: string): boolean {
   if (rua.length === 0) return false;
   const ruaSet = new Set(b.split(' '));
   return rua.every(p => ruaSet.has(p)) && (!numero || new RegExp(`\\b${numero}\\b`).test(b));
+}
+
+// ── Que anexo é documento, e qual deles é o parecer ─────────────────────────
+
+/** O mínimo que se sabe de um anexo antes de olhar o conteúdo. */
+export interface AnexoBruto { nome: string; mime: string }
+
+const EXTENSOES_DE_IMAGEM = /\.(png|jpe?g|gif|bmp|webp|svg|tiff?)$/i;
+
+/**
+ * Imagem NÃO é documento da concessionária.
+ *
+ * Um "ENVIO DE PARECER" com assinatura HTML traz `image001.png`…`image004.png`,
+ * e cada uma virava linha em `portal_anexos`, arquivo no storage, registro em
+ * `documents` e **comentário no card do cliente**: o logo da EDP entrando como
+ * documento do projeto, quatro vezes.
+ *
+ * A regra é por EXCLUSÃO e não por lista branca de propósito: nenhuma
+ * concessionária entrega parecer como PNG, mas pode entregar formato que a
+ * gente não previu (xlsx, docx, dwg, zip, p7s) — e perder isso seria pior.
+ */
+export const ehImagem = (a: AnexoBruto): boolean =>
+  /^image\//i.test((a.mime ?? '').trim()) || EXTENSOES_DE_IMAGEM.test((a.nome ?? '').trim());
+
+/** Pode ser o parecer: o mime diz pdf, ou o nome termina em .pdf. */
+export const ehPdf = (a: AnexoBruto): boolean =>
+  /pdf$/i.test((a.mime ?? '').trim()) || /\.pdf$/i.test((a.nome ?? '').trim());
+
+/**
+ * O PDF que a IA vai ler é o MAIOR do e-mail: o parecer tem várias páginas, e
+ * anexo técnico de uma página é menor.
+ *
+ * Antes era "o primeiro da lista", e o titular dele decidia o destino de TODOS
+ * os anexos — e-mail com parecer + anexo técnico na ordem "errada" dava veredito
+ * do documento errado e bloqueio por titular pelo documento errado. Continua
+ * sendo UM só: ler todos multiplicaria o gasto de IA sem ganho claro.
+ */
+export function pdfDoParecer<T extends AnexoBruto & { bytes: { length: number } }>(anexos: T[]): T | null {
+  let escolhido: T | null = null;
+  for (const a of anexos) {
+    // empate fica com o primeiro: a escolha tem de ser a mesma em todo run
+    if (ehPdf(a) && (!escolhido || a.bytes.length > escolhido.bytes.length)) escolhido = a;
+  }
+  return escolhido;
 }
 
 /** Etapa recomendada para o card. Null = só avisa que o documento chegou. */

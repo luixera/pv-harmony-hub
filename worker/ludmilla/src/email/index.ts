@@ -1,14 +1,15 @@
 // worker/ludmilla/src/email/index.ts
-import { classificarErro } from '../erros.js';
+import { classificarErroEmail } from '../erros.js';
 import {
-  anexoDeEmail, anexoEnviado, anexoErro, credencialDaCaixa, finalizarRun, mensagemEhNova,
+  anexoDeEmail, anexoEnviado, anexoErro, credencialDaCaixa, finalizarRun, mensagemPendente,
   protocolosDoEmail, registrarEmailLido, regrasDoEmail, subirDocumento,
   type ProtocoloDeProjeto, type Run,
 } from '../fila.js';
 import { modoAtual } from '../local.js';
-import { abrirCaixa, type Caixa, type MensagemLida } from './caixa.js';
+import { abrirCaixa, type Caixa, type EnvelopeLido, type MensagemLida } from './caixa.js';
 import {
-  casaEndereco, casaTitular, protocoloDoAssunto, recomendacaoDoVeredito, regraQueCasa,
+  casaEndereco, casaTitular, comparavelTitular, ehImagem, pdfDoParecer,
+  protocoloDoAssunto, recomendacaoDoVeredito, regraQueCasa,
   type RegraEmail, type Veredito,
 } from './util.js';
 
@@ -21,6 +22,11 @@ import {
  * Ela NUNCA move card e NUNCA escreve na caixa de e-mail (nem marca como lido,
  * nem move, nem responde): a caixa é compartilhada com o agente de e-mails, e
  * quem decide a etapa é a pessoa. Isso é regra, não detalhe.
+ *
+ * NADA de dado de cliente vai para o log. Nome, endereço, assunto e nome de
+ * arquivo ficam no banco (`portal_email_mensagens.motivo`, `portal_updates.raw`),
+ * que é de onde a tela lê. O log vai para o journald da VPS, que não é lugar
+ * para isso — só código do projeto, protocolo e o que foi conferido.
  */
 
 const log = (msg: string, extra: Record<string, unknown> = {}) =>
@@ -41,38 +47,38 @@ export interface Conferencia {
  * Protocolo é a trava obrigatória (a RPC já descartou protocolo repetido, e o
  * número tem 8+ dígitos): se ele casa, o documento é daquele projeto.
  *
- * Titular e endereço são REFORÇO, e os dois lados não pesam igual:
+ * Titular e endereço são REFORÇO, e conferem **só contra o que a IA extraiu do
+ * PDF** — nunca contra o corpo do e-mail. Num corpo longo as palavras se
+ * espalham e casam por acidente: "JOSÉ … SANTOS" casa com um corpo que diga
+ * "Av. São José" e "Santos/SP", e saía o selo mais forte sem nada conferido de
+ * verdade. Sem PDF lido, o selo é `protocolo`, que é o mínimo da spec.
+ *
+ * Os dois lados não pesam igual:
  *  - titular do PDF de OUTRA pessoa é alarme → bloqueia (o único bloqueio);
  *  - endereço divergente NÃO bloqueia, só deixa a ressalva registrada. Quase
  *    sempre é cadastro nosso desatualizado ou formato diferente ("RUA X 120
  *    APTO 45" × "Rua X, 120"), e bloquear faria o parecer certo não chegar ao
  *    card — o oposto do que se quer.
  *
- * Nome que não aparece no corpo do e-mail é falta de dado, não divergência: por
- * isso só o titular vindo do PDF (dado extraído, estruturado) pode bloquear.
+ * Nome que não dá para comparar (menos de duas palavras úteis, de qualquer um
+ * dos dois lados) é FALTA DE DADO, nunca divergência: projeto cujo titular é
+ * "Ivanildo" não pode bloquear um PDF que diz "IVANILDO PEREIRA DOS SANTOS".
  */
 export function conferir(
   p: ProtocoloDeProjeto,
-  texto: string,
   doPdf: { titular: string | null; endereco: string | null },
 ): Conferencia {
-  const titularEmail = doPdf.titular ?? texto;
-  const enderecoEmail = doPdf.endereco ?? texto;
-
-  if (p.titular && titularEmail) {
-    if (casaTitular(p.titular, titularEmail)) return { ok: true, por: 'titular', motivo: null };
-    if (doPdf.titular) {
-      return {
-        ok: false, por: 'titular',
-        motivo: `o parecer é de "${doPdf.titular}" e o projeto é de "${p.titular}"`,
-      };
-    }
-  }
-  if (p.endereco && enderecoEmail && casaEndereco(p.endereco, enderecoEmail)) {
-    return { ok: true, por: 'endereco', motivo: null };
+  const doSistema = p.titular;
+  const doParecer = doPdf.titular;
+  if (doSistema && doParecer && comparavelTitular(doSistema) && comparavelTitular(doParecer)) {
+    if (casaTitular(doSistema, doParecer)) return { ok: true, por: 'titular', motivo: null };
+    return {
+      ok: false, por: 'titular',
+      motivo: `o parecer é de "${doParecer}" e o projeto é de "${doSistema}"`,
+    };
   }
   if (p.endereco && doPdf.endereco) {
-    // chegou aqui com os dois lados preenchidos = não casaram acima
+    if (casaEndereco(p.endereco, doPdf.endereco)) return { ok: true, por: 'endereco', motivo: null };
     return {
       ok: true, por: 'protocolo',
       motivo: `o endereço do parecer ("${doPdf.endereco}") não confere com o do cadastro ("${p.endereco}") — anexei pelo protocolo, confira o cadastro`,
@@ -81,7 +87,7 @@ export function conferir(
   return { ok: true, por: 'protocolo', motivo: null };
 }
 
-interface ParecerLido {
+export interface ParecerLido {
   /** false = a IA NÃO respondeu (sem crédito, erro da Anthropic, rede caída). */
   ok: boolean;
   veredito: Veredito | null;
@@ -107,8 +113,9 @@ const VEREDITOS: readonly string[] = ['favoravel', 'pendencia', 'inconclusivo'];
  *
  * A função devolve HTTP 200 nos DOIS casos de "inconclusivo", e só o campo `ok`
  * distingue: `ok:false` é a IA que não respondeu (sem crédito, erro da
- * Anthropic) — isso é FALHA e não pode virar silêncio; `ok:true` com veredito
- * inconclusivo é a IA que leu e não concluiu (PDF ilegível), caminho normal.
+ * Anthropic) — isso é FALHA passageira, a mensagem fica pendente e um run
+ * futuro tenta de novo; `ok:true` com veredito inconclusivo é a IA que leu e
+ * não concluiu (PDF ilegível), caminho normal e definitivo.
  */
 async function lerParecer(pdf: Buffer, protocolo: string, tenantId: string): Promise<ParecerLido> {
   const base = process.env.SUPABASE_URL;
@@ -148,14 +155,40 @@ async function lerParecer(pdf: Buffer, protocolo: string, tenantId: string): Pro
   };
 }
 
-interface Tratamento {
+export interface Tratamento {
   situacao: 'tratado' | 'ignorado' | 'bloqueado';
-  /** arquivos que chegaram ao card de verdade */
+  /** arquivos que chegaram ao card de verdade NESTE run */
   anexados: number;
+  /** imagens puladas (assinatura de e-mail) */
+  imagensIgnoradas: number;
+  /**
+   * false = falha passageira; a mensagem fica pendente e um run futuro tenta de
+   * novo. O que conta como concluído está logo abaixo, no corpo da função.
+   */
+  concluida: boolean;
 }
 
-async function tratarMensagem(
+/**
+ * As dependências de fora (banco, storage, IA) entram por parâmetro porque é
+ * aqui que moram as três decisões caras — ler ou não o PDF, anexar ou não,
+ * recomendar ou não — e elas precisam de teste sem banco e sem rede.
+ */
+export interface DepsTratamento {
+  anexoDeEmail: typeof anexoDeEmail;
+  subirDocumento: typeof subirDocumento;
+  anexoEnviado: typeof anexoEnviado;
+  anexoErro: typeof anexoErro;
+  registrarEmailLido: typeof registrarEmailLido;
+  lerParecer: (pdf: Buffer, protocolo: string, tenantId: string) => Promise<ParecerLido>;
+}
+
+export const DEPS_REAIS: DepsTratamento = {
+  anexoDeEmail, subirDocumento, anexoEnviado, anexoErro, registrarEmailLido, lerParecer,
+};
+
+export async function tratarMensagem(
   run: Run, p: ProtocoloDeProjeto, m: MensagemLida, regras: RegraEmail[],
+  deps: DepsTratamento = DEPS_REAIS,
 ): Promise<Tratamento> {
   const regra = regraQueCasa(regras, m.assunto, m.remetente);
   const comum = {
@@ -163,57 +196,77 @@ async function tratarMensagem(
     assunto: m.assunto, remetente: m.remetente, recebidoEm: m.recebidoEm?.toISOString() ?? null,
   };
   if (!regra) {
-    await registrarEmailLido({
+    // Nenhuma regra casou é CONFIGURAÇÃO, não falha passageira: fica concluída,
+    // porque insistir faria a robô rebaixar o mesmo e-mail duas vezes por dia
+    // para sempre. A linha aparece na tela com o motivo, e a recuperação é a
+    // ação "reler" — que é só limpar `concluida` no banco.
+    await deps.registrarEmailLido({
       ...comum, projectId: null, tipoDocumento: null, veredito: null, resumo: null,
       anexos: 0, motivo: 'nenhuma regra casa com este assunto/remetente', recomendacao: null,
+      concluida: true, arquivoLido: null,
     });
-    return { situacao: 'ignorado', anexados: 0 };
+    return { situacao: 'ignorado', anexados: 0, imagensIgnoradas: 0, concluida: true };
   }
 
-  // O parecer é lido ANTES de anexar: o titular que ele traz entra na conferência.
-  const pdfs = m.anexos.filter(a => /pdf$/i.test(a.mime) || /\.pdf$/i.test(a.nome));
-  const parecer = regra.ler_pdf && pdfs.length > 0
-    ? await lerParecer(pdfs[0].bytes, p.protocolo, run.tenant_id)
+  // Imagem não é documento: a assinatura HTML da EDP traz image001.png…004.png,
+  // e cada uma virava documento do projeto e comentário no card do cliente.
+  const paraAnexar = m.anexos.filter(a => !ehImagem(a));
+  const imagensIgnoradas = m.anexos.length - paraAnexar.length;
+
+  // O parecer é lido ANTES de anexar: o titular que ele traz entra na
+  // conferência. O PDF escolhido é o MAIOR, não o primeiro da lista.
+  const pdf = pdfDoParecer(m.anexos);
+  const parecer = regra.ler_pdf && pdf
+    ? await deps.lerParecer(pdf.bytes, p.protocolo, run.tenant_id)
     : SEM_LEITURA;
+  // só é "lido" o que a IA de fato leu — leitura que falhou não vira registro
+  const arquivoLido = pdf && parecer.ok && parecer.veredito !== null ? pdf.nome : null;
   if (!parecer.ok) log('não consegui ler o parecer', { nivel: 'falha', projeto: p.codigo, protocolo: p.protocolo, erro: parecer.erro });
 
   // tudo o que a pessoa precisa saber sobre esta mensagem, em uma frase
   const ressalvas: string[] = [];
-  if (regra.ler_pdf && pdfs.length === 0) ressalvas.push('a regra pede a leitura do parecer, mas o e-mail não trouxe PDF');
+  if (regra.ler_pdf && !pdf) ressalvas.push('a regra pede a leitura do parecer, mas o e-mail não trouxe PDF');
   if (parecer.erro) ressalvas.push(`não consegui ler o parecer: ${parecer.erro}`);
+  if (imagensIgnoradas > 0) ressalvas.push(`${imagensIgnoradas} imagem(ns) do e-mail não foram anexadas (assinatura)`);
 
-  const c = conferir(p, m.texto, { titular: parecer.titular, endereco: parecer.endereco });
+  const c = conferir(p, { titular: parecer.titular, endereco: parecer.endereco });
   if (c.motivo) ressalvas.push(c.motivo);
 
   if (!c.ok) {
-    await registrarEmailLido({
+    // Bloqueio por titular é DECISÃO, não falha passageira: tentar de novo daria
+    // o mesmo resultado duas vezes por dia. Fica concluída, com o motivo na tela.
+    await deps.registrarEmailLido({
       ...comum, projectId: p.project_id, tipoDocumento: regra.tipo_documento,
       veredito: parecer.veredito, resumo: parecer.resumo || null, anexos: 0,
       motivo: ['não anexei', ...ressalvas].join(' · '), recomendacao: null,
+      concluida: true, arquivoLido,
     });
-    log('anexo bloqueado pela conferência', { nivel: 'aviso', projeto: p.codigo, protocolo: p.protocolo, motivo: c.motivo });
-    return { situacao: 'bloqueado', anexados: 0 };
+    log('anexo bloqueado: o titular do parecer não é o do projeto',
+      { nivel: 'aviso', projeto: p.codigo, protocolo: p.protocolo, por: c.por });
+    return { situacao: 'bloqueado', anexados: 0, imagensIgnoradas, concluida: true };
   }
 
   let anexados = 0;
+  let anexoFalhou = false;
   if (regra.anexar) {
-    for (const a of m.anexos) {
-      const pendente = await anexoDeEmail(run.account_id, p.protocolo, p.project_id, m.messageId, a.nome, c.por);
+    for (const a of paraAnexar) {
+      const pendente = await deps.anexoDeEmail(run.account_id, p.protocolo, p.project_id, m.messageId, a.nome, c.por);
       if (!pendente) {
-        // Vazio = o anexo já tinha linha (ON CONFLICT DO NOTHING). Pode ser
-        // repetição comum (image001.png de assinatura) OU uma linha `pendente`
-        // órfã de um run que morreu antes de subir o arquivo — e nesse caso o
-        // PDF nunca sobe. Por isso aviso, não silêncio.
-        log('anexo já tinha linha no banco; não subi de novo', { nivel: 'aviso', projeto: p.codigo, protocolo: p.protocolo, arquivo: a.nome });
+        // Vazio = a linha já está `enviado` ou `bloqueado`; nada a refazer. (A
+        // RPC devolve a linha de novo quando ela ficou `pendente` ou `erro`,
+        // justamente para a retentativa servir para algo.) Aviso, não silêncio.
+        log('anexo já estava resolvido no card; não subi de novo',
+          { nivel: 'aviso', projeto: p.codigo, protocolo: p.protocolo, mime: a.mime });
         continue;
       }
       try {
-        const caminho = await subirDocumento(pendente, a.bytes, a.mime);
-        await anexoEnviado(pendente.id, caminho, a.mime);
+        const caminho = await deps.subirDocumento(pendente, a.bytes, a.mime);
+        await deps.anexoEnviado(pendente.id, caminho, a.mime);
         anexados++;
       } catch (e) {
-        await anexoErro(pendente.id, (e as Error).message);
-        log('anexo falhou', { nivel: 'falha', projeto: p.codigo, arquivo: a.nome, erro: (e as Error).message });
+        anexoFalhou = true;
+        await deps.anexoErro(pendente.id, (e as Error).message);
+        log('anexo falhou ao subir', { nivel: 'falha', projeto: p.codigo, protocolo: p.protocolo, mime: a.mime, erro: (e as Error).message });
       }
     }
   }
@@ -222,16 +275,37 @@ async function tratarMensagem(
   // de todo jeito e a pessoa decide. Recomendar sem ter lido seria chute.
   const recomendacao = parecer.ok ? recomendacaoDoVeredito(regra.tipo_documento, parecer.veredito) : null;
 
-  await registrarEmailLido({
+  // Concluída só quando não há mais nada a tentar: a regra casou, a leitura que
+  // a regra pedia aconteceu (ou não havia PDF para ler) e todo anexo que devia
+  // subir subiu. IA que falhou ou anexo que deu erro deixam a mensagem PENDENTE
+  // — é o que faz a recomendação de etapa, que é a entrega da funcionalidade,
+  // acontecer no run seguinte em vez de desaparecer em silêncio.
+  const concluida = parecer.ok && !anexoFalhou;
+
+  await deps.registrarEmailLido({
     ...comum, projectId: p.project_id, tipoDocumento: regra.tipo_documento,
     veredito: parecer.veredito, resumo: parecer.resumo || null, anexos: anexados,
     motivo: ressalvas.length > 0 ? ressalvas.join(' · ') : null, recomendacao,
+    concluida, arquivoLido,
   });
   log('e-mail tratado', {
-    projeto: p.codigo, tipo: regra.tipo_documento, veredito: parecer.veredito,
-    conferido_por: c.por, anexados, recomendacao,
+    projeto: p.codigo, protocolo: p.protocolo, tipo: regra.tipo_documento,
+    veredito: parecer.veredito, conferido_por: c.por, anexados,
+    imagens_ignoradas: imagensIgnoradas, recomendacao, concluida,
   });
-  return { situacao: 'tratado', anexados };
+  return { situacao: 'tratado', anexados, imagensIgnoradas, concluida };
+}
+
+/** As contas do run, para o `resultado` e para o log do fim. */
+interface Conta {
+  lidos: number; tratados: number; anexados: number; ignorados: number; bloqueados: number;
+  pulados: number; descartados: number; imagens: number; a_tentar_de_novo: number;
+  /** protocolos cuja busca na caixa deu certo */
+  limpos: number;
+  /** a CAIXA falhou (busca recusada, conexão caída) */
+  falhasBusca: number;
+  /** o TRATAMENTO falhou (banco, storage, leitura do parecer) */
+  falhasTratamento: number;
 }
 
 export async function executarVarreduraEmail(run: Run): Promise<void> {
@@ -257,51 +331,134 @@ export async function executarVarreduraEmail(run: Run): Promise<void> {
     }
     caixa = await abrirCaixa(creds);
 
-    let lidos = 0, tratados = 0, anexados = 0, ignorados = 0, bloqueados = 0, falhas = 0, limpos = 0;
+    const n: Conta = {
+      lidos: 0, tratados: 0, anexados: 0, ignorados: 0, bloqueados: 0,
+      pulados: 0, descartados: 0, imagens: 0, a_tentar_de_novo: 0,
+      limpos: 0, falhasBusca: 0, falhasTratamento: 0,
+    };
+
     for (const p of protocolos) {
+      // ── 1. a busca na caixa ────────────────────────────────────────────────
+      // `procurar` LANÇA quando a busca falha (resposta NO/BAD do servidor).
+      // Um protocolo ruim não pode derrubar o run dos outros 79.
+      let uids: number[];
       try {
-        const uids = await caixa.procurar(p.protocolo);
-        if (uids.length > 0) log('protocolo achado na caixa', { projeto: p.codigo, protocolo: p.protocolo, mensagens: uids.length });
-        for await (const m of caixa.baixar(uids)) {
-          // A busca do IMAP é por texto (assunto OU corpo). Exigir o protocolo
-          // no ASSUNTO é o que separa "o e-mail é deste projeto" de "o número
-          // apareceu em algum lugar do corpo".
-          if (!protocoloDoAssunto(m.assunto, [p.protocolo])) {
-            log('mensagem descartada: o protocolo não está no assunto', { nivel: 'aviso', projeto: p.codigo, protocolo: p.protocolo, mensagem: m.messageId });
-            continue;
-          }
-          if (!(await mensagemEhNova(run.account_id, m.messageId))) continue;
-          lidos++;
-          const r = await tratarMensagem(run, p, m, regras);
-          anexados += r.anexados;
-          if (r.situacao === 'tratado') tratados++;
-          else if (r.situacao === 'ignorado') ignorados++;
-          else bloqueados++;
-        }
-        limpos++;
+        uids = await caixa.procurar(p.protocolo);
       } catch (e) {
-        // `procurar` LANÇA quando a busca falha (resposta NO/BAD do servidor).
-        // Um protocolo ruim não pode derrubar o run dos outros 79.
-        falhas++;
-        log('protocolo falhou na caixa', { nivel: 'falha', projeto: p.codigo, protocolo: p.protocolo, erro: (e as Error).message });
+        n.falhasBusca++;
+        log('a busca na caixa de e-mail falhou para este protocolo',
+          { nivel: 'falha', projeto: p.codigo, protocolo: p.protocolo, erro: (e as Error).message });
+        continue;
+      }
+      n.limpos++;
+      if (uids.length === 0) continue;
+      log('protocolo achado na caixa', { projeto: p.codigo, protocolo: p.protocolo, mensagens: uids.length });
+
+      // ── 2. a triagem: só o ENVELOPE, sem baixar corpo nem anexo ────────────
+      let envelopes: EnvelopeLido[];
+      try {
+        envelopes = [];
+        for await (const env of caixa.envelopes(uids)) envelopes.push(env);
+      } catch (e) {
+        n.falhasBusca++;
+        log('não consegui ler os envelopes deste protocolo na caixa',
+          { nivel: 'falha', projeto: p.codigo, protocolo: p.protocolo, erro: (e as Error).message });
+        continue;
+      }
+
+      const aprovados = new Map<number, EnvelopeLido>();
+      for (const env of envelopes) {
+        // A busca do IMAP é por texto (assunto OU corpo). Exigir o protocolo
+        // no ASSUNTO é o que separa "o e-mail é deste projeto" de "o número
+        // apareceu em algum lugar do corpo".
+        if (!protocoloDoAssunto(env.assunto, [p.protocolo])) {
+          n.descartados++;
+          log('mensagem descartada: o protocolo não está no assunto',
+            { nivel: 'aviso', projeto: p.codigo, protocolo: p.protocolo, mensagem: env.messageId });
+          continue;
+        }
+        let pendente: boolean;
+        try {
+          pendente = await mensagemPendente(run.account_id, env.messageId, p.protocolo);
+        } catch (e) {
+          n.falhasTratamento++;
+          log('não consegui conferir se esta mensagem já foi tratada',
+            { nivel: 'falha', projeto: p.codigo, protocolo: p.protocolo, mensagem: env.messageId, erro: (e as Error).message });
+          continue;
+        }
+        if (!pendente) {
+          // Pulo SILENCIOSO foi o que escondeu o defeito que esta correção
+          // conserta: a mensagem era queimada mesmo sem nada de útil sair dela,
+          // e nem o log dizia. Sem o assunto — ele é dado do cliente.
+          n.pulados++;
+          log('mensagem já concluída neste protocolo; pulei sem baixar',
+            { nivel: 'aviso', projeto: p.codigo, protocolo: p.protocolo, mensagem: env.messageId });
+          continue;
+        }
+        aprovados.set(env.uid, env);
+      }
+      if (aprovados.size === 0) continue;
+
+      // ── 3. só agora o corpo com os anexos desce ────────────────────────────
+      try {
+        for await (const baixada of caixa.baixar([...aprovados.keys()])) {
+          const env = aprovados.get(baixada.uid);
+          // o id que vale é o do envelope: foi com ele que a pendência respondeu
+          const m = env ? { ...baixada, messageId: env.messageId } : baixada;
+          try {
+            n.lidos++;
+            const r = await tratarMensagem(run, p, m, regras);
+            n.anexados += r.anexados;
+            n.imagens += r.imagensIgnoradas;
+            if (!r.concluida) n.a_tentar_de_novo++;
+            if (r.situacao === 'tratado') n.tratados++;
+            else if (r.situacao === 'ignorado') n.ignorados++;
+            else n.bloqueados++;
+          } catch (e) {
+            // Banco, storage ou leitura do parecer estourando NÃO é falha da
+            // caixa, e o log não pode dizer que é. A mensagem fica sem linha no
+            // banco, então o próximo run a trata de novo.
+            n.falhasTratamento++;
+            log('o tratamento desta mensagem falhou (banco, arquivo ou leitura do parecer)',
+              { nivel: 'falha', projeto: p.codigo, protocolo: p.protocolo, mensagem: m.messageId, erro: (e as Error).message });
+          }
+        }
+      } catch (e) {
+        n.falhasBusca++;
+        log('não consegui baixar as mensagens deste protocolo da caixa',
+          { nivel: 'falha', projeto: p.codigo, protocolo: p.protocolo, erro: (e as Error).message });
       }
     }
+
     // Fechar como "ok" sem ter conseguido procurar NADA seria mentira (conexão
     // caída no meio, busca recusada pelo servidor): falha alto, com o número.
-    if (limpos === 0 && falhas > 0) {
-      throw new Error(`Nenhum dos ${falhas} protocolos pôde ser procurado na caixa de e-mail.`);
+    if (n.limpos === 0 && n.falhasBusca > 0) {
+      throw new Error(`Nenhum dos ${n.falhasBusca} protocolos pôde ser procurado na caixa de e-mail.`);
     }
 
+    // `falhas` é o TOTAL: é o campo que o histórico mostra e é o que decide se
+    // `ultima_varredura_em` sobe. A separação fica nos dois campos seguintes,
+    // porque "a caixa falhou" e "o banco falhou" se consertam em lugares
+    // diferentes.
+    const falhas = n.falhasBusca + n.falhasTratamento;
     await finalizarRun(run.id, {
       situacao: 'ok', situacaoConta: 'ok',
       // `protocolos` = projetos conferidos · `mudancas` = documentos que
       // chegaram ao card (é o que o registro da tela mostra)
-      protocolos: protocolos.length, mudancas: anexados,
-      resultado: { protocolos: protocolos.length, lidos, tratados, anexados, ignorados, bloqueados, falhas },
+      protocolos: protocolos.length, mudancas: n.anexados,
+      resultado: {
+        protocolos: protocolos.length, lidos: n.lidos, tratados: n.tratados,
+        anexados: n.anexados, ignorados: n.ignorados, bloqueados: n.bloqueados,
+        pulados: n.pulados, descartados: n.descartados,
+        // se um dia uma imagem legítima for descartada, é por aqui que aparece
+        imagens_ignoradas: n.imagens,
+        a_tentar_de_novo: n.a_tentar_de_novo,
+        falhas, falhas_busca: n.falhasBusca, falhas_tratamento: n.falhasTratamento,
+      },
     });
-    log('varredura por e-mail ok', { run: run.id, protocolos: protocolos.length, lidos, tratados, anexados, ignorados, bloqueados, falhas });
+    log('varredura por e-mail ok', { run: run.id, protocolos: protocolos.length, ...n, falhas });
   } catch (e) {
-    const erro = classificarErro(e);
+    const erro = classificarErroEmail(e);
     await finalizarRun(run.id, {
       situacao: 'erro', erro: erro.mensagem,
       situacaoConta: erro.situacaoConta === 'ok' ? undefined : erro.situacaoConta,

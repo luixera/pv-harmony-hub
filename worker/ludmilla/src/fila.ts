@@ -347,21 +347,36 @@ export async function regrasDoEmail(accountId: string): Promise<RegraEmail[]> {
 }
 
 /**
- * A mensagem ainda não foi lida em nenhum run? Falha de banco LANÇA em vez de
- * virar `false`: tratar erro como "já conheço esta mensagem" faria a robô pular
- * a caixa inteira em silêncio. Quem chama conta como falha daquele protocolo.
+ * Preciso TRATAR esta mensagem neste protocolo?
+ *
+ * A pergunta mudou de "é nova?" para "está pendente?" de propósito: a antiga
+ * (`ludmilla_email_mensagem_nova`, que não existe mais no banco) respondia
+ * "já vi" e queimava a mensagem para sempre — IA que falhou por motivo
+ * passageiro, regra mal configurada ou anexo que não subiu faziam o documento
+ * desaparecer em silêncio. Agora o banco responde TRUE quando não há linha, ou
+ * quando a linha existe e não foi concluída (com tentativa sobrando no teto).
+ *
+ * O protocolo entra na chave: assunto que cita dois protocolos precisa chegar
+ * aos DOIS projetos, e com a chave antiga o segundo ouvia "já tratei".
+ *
+ * Falha de banco LANÇA em vez de virar `false`: tratar erro como "já conheço
+ * esta mensagem" faria a robô pular a caixa inteira em silêncio.
  */
-export async function mensagemEhNova(accountId: string, messageId: string): Promise<boolean> {
-  const { data, error } = await supabase().rpc('ludmilla_email_mensagem_nova' as never,
-    { p_account_id: accountId, p_message_id: messageId } as never);
-  if (error) throw new Error(`Não consegui conferir se a mensagem já foi lida: ${error.message}`);
+export async function mensagemPendente(accountId: string, messageId: string, protocolo: string): Promise<boolean> {
+  const { data, error } = await supabase().rpc('ludmilla_email_mensagem_pendente' as never,
+    { p_account_id: accountId, p_message_id: messageId, p_protocolo: protocolo } as never);
+  if (error) throw new Error(`Não consegui conferir se a mensagem já foi tratada: ${error.message}`);
   return data === true;
 }
 
 /**
- * Abre a linha do anexo e devolve o que `subirDocumento` precisa. Vazio quando o
- * anexo já existia (`ON CONFLICT DO NOTHING`) ou o projeto não é da conta — quem
- * chama registra o aviso, porque vazio pode esconder uma linha `pendente` órfã.
+ * Abre a linha do anexo e devolve o que `subirDocumento` precisa.
+ *
+ * A RPC devolve a linha DE NOVO quando ela tinha ficado `pendente` (run que
+ * morreu antes de subir o arquivo) ou `erro` (storage recusou) — sem isso a
+ * retentativa da mensagem não serviria para nada, porque o arquivo nunca
+ * subiria. Vazio significa `enviado`/`bloqueado` (nada a refazer) ou projeto
+ * que não é da conta.
  */
 export async function anexoDeEmail(
   accountId: string, protocolo: string, projectId: string, messageId: string, nomeArquivo: string, conferidoPor: string,
@@ -379,17 +394,28 @@ export async function anexoDeEmail(
   };
 }
 
-export async function registrarEmailLido(p: {
+export interface EmailLido {
   runId: string; accountId: string; messageId: string; protocolo: string;
   projectId: string | null; assunto: string; remetente: string; recebidoEm: string | null;
   tipoDocumento: string | null; veredito: string | null; resumo: string | null;
   anexos: number; motivo: string | null; recomendacao: string | null;
-}): Promise<void> {
+  /**
+   * `false` = houve falha passageira (a IA não respondeu, um anexo não subiu) e
+   * um run futuro TEM de tentar de novo. `true` = não há mais nada a fazer com
+   * esta mensagem. A RPC conta a tentativa sozinha, com teto de 5.
+   */
+  concluida: boolean;
+  /** Qual anexo a IA leu (o PDF maior). Null quando não houve leitura. */
+  arquivoLido: string | null;
+}
+
+export async function registrarEmailLido(p: EmailLido): Promise<void> {
   const { error } = await supabase().rpc('ludmilla_email_registrar' as never, {
     p_run_id: p.runId, p_account_id: p.accountId, p_message_id: p.messageId, p_protocolo: p.protocolo,
     p_project_id: p.projectId, p_assunto: p.assunto, p_remetente: p.remetente, p_recebido_em: p.recebidoEm,
     p_tipo_documento: p.tipoDocumento, p_veredito: p.veredito, p_resumo: p.resumo,
     p_anexos: p.anexos, p_motivo: p.motivo, p_recomendacao: p.recomendacao,
+    p_concluida: p.concluida, p_arquivo_lido: p.arquivoLido,
   } as never);
   if (error) throw new Error(`Não consegui registrar o e-mail lido: ${error.message}`);
 }

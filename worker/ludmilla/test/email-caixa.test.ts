@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { simpleParser } from 'mailparser';
-import { extrairMensagem, uidsDaBusca } from '../src/email/caixa.js';
+import { extrairEnvelope, extrairMensagem, idDaMensagem, uidsDaBusca } from '../src/email/caixa.js';
 
 const EML = [
   'From: "Relacionamento EDP" <relacionamento.edp@edp.com.br>',
@@ -63,6 +63,53 @@ test('anexo de conteúdo vazio (PDF de 0 byte) NÃO entra em anexos', async () =
   ].join('\r\n'));
   const m = extrairMensagem(await simpleParser(comVazio), 7);
   assert.deepEqual(m.anexos.map(a => a.nome), ['parecer.pdf']);
+});
+
+// ── A triagem pelo ENVELOPE (pular sem baixar, spec §5.4) ───────────────────
+
+test('extrairEnvelope lê assunto, id e data sem precisar do corpo', () => {
+  const e = extrairEnvelope(7, {
+    messageId: '<abc-123@edp.com.br>',
+    subject: 'ENVIO DE PARECER - NOTA 45006443920',
+    date: new Date('2026-09-10T12:12:00Z'),
+  });
+  assert.equal(e.uid, 7);
+  assert.equal(e.messageId, '<abc-123@edp.com.br>');
+  assert.equal(e.assunto, 'ENVIO DE PARECER - NOTA 45006443920');
+  assert.equal(e.recebidoEm?.toISOString(), '2026-09-10T12:12:00.000Z');
+});
+
+test('extrairEnvelope aceita a data como string (uns servidores mandam assim)', () => {
+  const e = extrairEnvelope(7, { messageId: '<x@y>', subject: 'a', date: 'Wed, 10 Sep 2026 09:12:00 -0300' });
+  assert.equal(e.recebidoEm?.toISOString(), '2026-09-10T12:12:00.000Z');
+});
+
+test('extrairEnvelope nunca devolve Invalid Date, e aguenta envelope vazio', () => {
+  assert.equal(extrairEnvelope(9, { date: 'nada a ver' }).recebidoEm, null);
+  const vazio = extrairEnvelope(9, undefined);
+  assert.equal(vazio.messageId, 'imap-uid-9');
+  assert.equal(vazio.assunto, '');
+  assert.equal(vazio.recebidoEm, null);
+});
+
+test('o id do envelope e o do corpo são o MESMO: é a chave de "já tratei"', async () => {
+  // Calcular o id de dois jeitos faria a mensagem ser tratada duas vezes (ou
+  // nunca): a pendência é consultada com o do envelope e registrada no corpo.
+  const doEnvelope = extrairEnvelope(7, { messageId: '<abc-123@edp.com.br>', subject: 'x' });
+  const doCorpo = extrairMensagem(await simpleParser(EML), 7, '<abc-123@edp.com.br>');
+  assert.equal(doCorpo.messageId, doEnvelope.messageId);
+  assert.equal(doCorpo.uid, 7);
+
+  // sem Message-ID nos dois lados, os dois caem no mesmo uid
+  const semId = EML.replace('Message-ID: <abc-123@edp.com.br>\r\n', '');
+  assert.equal(extrairEnvelope(42, {}).messageId, extrairMensagem(await simpleParser(semId), 42).messageId);
+});
+
+test('idDaMensagem usa o cabeçalho e só cai no uid quando não há', () => {
+  assert.equal(idDaMensagem('  <abc@edp.com.br> ', 7), '<abc@edp.com.br>');
+  assert.equal(idDaMensagem('', 7), 'imap-uid-7');
+  assert.equal(idDaMensagem(null, 7), 'imap-uid-7');
+  assert.equal(idDaMensagem(undefined, 7), 'imap-uid-7');
 });
 
 test('uidsDaBusca devolve a lista (vazia inclusive) e lança quando a busca falhou', () => {

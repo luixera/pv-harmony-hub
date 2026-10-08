@@ -9,6 +9,8 @@ import { chaveProtocolo } from './util.js';
  */
 
 export interface MensagemLida {
+  /** o uid do IMAP, para casar a mensagem baixada com o envelope já triado */
+  uid: number;
   messageId: string;
   assunto: string;
   remetente: string;
@@ -17,8 +19,64 @@ export interface MensagemLida {
   anexos: { nome: string; mime: string; bytes: Buffer }[];
 }
 
-/** Puro: o que interessa de um e-mail já parseado. Testado com .eml de mentira. */
-export function extrairMensagem(p: ParsedMail, uid: number): MensagemLida {
+/**
+ * O id que vale para o "já tratei esta mensagem". Vem do cabeçalho `Message-ID`;
+ * sem ele, cai no uid da caixa.
+ *
+ * Existe como função sozinha porque o MESMO id tem de sair do envelope e do
+ * corpo: é com o do envelope que a pendência é consultada, e é com o do
+ * tratamento que ela é registrada. Dois jeitos de calcular = mensagem tratada
+ * duas vezes, ou nunca.
+ */
+export const idDaMensagem = (bruto: string | null | undefined, uid: number): string =>
+  (bruto ?? '').trim() || `imap-uid-${uid}`;
+
+/**
+ * O pedaço do envelope do IMAP que a triagem usa (o imapflow devolve mais).
+ *
+ * `date` vem como Date OU como string, dependendo do servidor — por isso
+ * `extrairEnvelope` normaliza em vez de confiar.
+ */
+export interface EnvelopeBruto {
+  messageId?: string | null;
+  subject?: string | null;
+  date?: Date | string | null;
+}
+
+/** Assunto, id e data — sem corpo e sem anexos. É o que decide se vale baixar. */
+export interface EnvelopeLido {
+  uid: number;
+  messageId: string;
+  assunto: string;
+  recebidoEm: Date | null;
+}
+
+/** Data que não dá para interpretar vira null, nunca `Invalid Date`. */
+const dataDoEnvelope = (d: Date | string | null | undefined): Date | null => {
+  if (d instanceof Date) return Number.isNaN(d.getTime()) ? null : d;
+  if (typeof d !== 'string' || d.trim() === '') return null;
+  const q = new Date(d);
+  return Number.isNaN(q.getTime()) ? null : q;
+};
+
+/** Puro: a triagem olha só isto. Testado sem IMAP. */
+export function extrairEnvelope(uid: number, env: EnvelopeBruto | null | undefined): EnvelopeLido {
+  return {
+    uid,
+    messageId: idDaMensagem(env?.messageId, uid),
+    assunto: (env?.subject ?? '').trim(),
+    recebidoEm: dataDoEnvelope(env?.date),
+  };
+}
+
+/**
+ * Puro: o que interessa de um e-mail já parseado. Testado com .eml de mentira.
+ *
+ * `messageIdDoEnvelope` vem da triagem e VENCE o do cabeçalho parseado: foi com
+ * ele que a pendência respondeu "preciso tratar", e é com ele que o tratamento
+ * tem de registrar.
+ */
+export function extrairMensagem(p: ParsedMail, uid: number, messageIdDoEnvelope?: string | null): MensagemLida {
   const anexos = (p.attachments ?? [])
     // Buffer vazio é truthy: checa o tamanho para não anexar um PDF de 0 byte.
     .filter(a => (a.content?.length ?? 0) > 0 && (a.filename ?? '').trim() !== '')
@@ -28,7 +86,8 @@ export function extrairMensagem(p: ParsedMail, uid: number): MensagemLida {
       bytes: Buffer.from(a.content as Buffer),
     }));
   return {
-    messageId: (p.messageId ?? '').trim() || `imap-uid-${uid}`,
+    uid,
+    messageId: idDaMensagem(messageIdDoEnvelope ?? p.messageId, uid),
     assunto: (p.subject ?? '').trim(),
     remetente: p.from?.text ?? '',
     recebidoEm: p.date ?? null,
@@ -50,6 +109,14 @@ export function uidsDaBusca(resultado: number[] | false | undefined, protocolo: 
 export interface Caixa {
   /** uids das mensagens cujo assunto OU corpo tem o número do protocolo. */
   procurar(protocolo: string): Promise<number[]>;
+  /**
+   * Só o envelope (assunto, id, data): é com isto que se decide o que vale
+   * baixar. Spec §5.4, literal: "Mensagem já registrada em
+   * `portal_email_mensagens` → **pula sem baixar**". Sem este passo, 20
+   * pareceres de 1–2 MB desciam duas vezes por dia, para sempre.
+   */
+  envelopes(uids: number[]): AsyncGenerator<EnvelopeLido>;
+  /** O corpo com os anexos. Chame só para os uids que passaram da triagem. */
   baixar(uids: number[]): AsyncGenerator<MensagemLida>;
   fechar(): Promise<void>;
 }
@@ -94,13 +161,21 @@ export async function abrirCaixa(c: { email: string; senha: string }): Promise<C
       // Sem try/catch: busca que falhou NÃO pode virar "não achei" (quem chama decide o que fazer).
       return uidsDaBusca(await client.search({ or: [{ subject: n }, { body: n }] }, { uid: true }), protocolo);
     },
+    async *envelopes(uids: number[]): AsyncGenerator<EnvelopeLido> {
+      verificarConexao();
+      if (uids.length === 0) return;
+      // Sem `source`: o corpo e os anexos NÃO descem aqui. É todo o ponto.
+      for await (const msg of client.fetch(uids, { uid: true, envelope: true }, { uid: true })) {
+        yield extrairEnvelope(msg.uid, msg.envelope);
+      }
+    },
     async *baixar(uids: number[]): AsyncGenerator<MensagemLida> {
       verificarConexao();
       if (uids.length === 0) return;
       for await (const msg of client.fetch(uids, { uid: true, envelope: true, source: true }, { uid: true })) {
         let p: ParsedMail;
         try { p = await simpleParser(msg.source as Buffer); } catch { continue; }
-        yield extrairMensagem(p, msg.uid);
+        yield extrairMensagem(p, msg.uid, msg.envelope?.messageId);
       }
     },
     async fechar(): Promise<void> {
