@@ -86,8 +86,11 @@ test('converterParaPdf: duas conversões simultâneas devolvem PDF válido', { s
 
 test('converterParaPdf recusa .docx corrompido com orientação em português', { skip: pularSemSoffice }, async () => {
   exigirSofficeNoCi();
+  // Zip real e truncado: o LibreOffice recusa de fato. Texto puro com extensão
+  // .docx NÃO serve — ele cai no filtro de texto e converte com sucesso.
+  const truncado = lerDocx().subarray(0, 2000);
   await assert.rejects(
-    () => converterParaPdf(Buffer.from('isto nao e um docx'), 'quebrado.docx'),
+    () => converterParaPdf(truncado, 'quebrado.docx'),
     (err: Error) => /corrompido/.test(err.message) && /quebrado\.docx/.test(err.message),
   );
 });
