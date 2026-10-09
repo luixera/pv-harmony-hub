@@ -20,3 +20,8 @@ verify_jwt = false
 # flag de deploy.
 [functions.ludmilla-parecer]
 verify_jwt = false
+
+# Triagem de assinatura — quem chama é o assinador na VPS, com service role.
+# A função confere o portador por conta própria (só o robô passa).
+[functions.assinatura-triagem]
+verify_jwt = false
