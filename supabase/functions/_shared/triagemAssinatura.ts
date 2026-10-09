@@ -23,17 +23,19 @@ export function lerVeredito(texto: string): Triagem {
   const inicio = bruto.indexOf('{');
   const fim = bruto.lastIndexOf('}');
   if (inicio < 0 || fim <= inicio) {
-    return { veredito: 'duvida', motivo: `Não achei JSON na resposta: ${bruto.slice(0, 200)}` };
+    // Frase FIXA, sem eco da resposta: o worker loga o `motivo` e o manda ao
+    // WhatsApp do gestor — prosa do modelo citando o documento vazaria o conteúdo.
+    return { veredito: 'duvida', motivo: 'A triagem não devolveu um veredito legível.' };
   }
   let obj: { veredito?: unknown; motivo?: unknown };
   try {
     obj = JSON.parse(bruto.slice(inicio, fim + 1));
   } catch {
-    return { veredito: 'duvida', motivo: 'A resposta da triagem veio cortada ou inválida.' };
+    return { veredito: 'duvida', motivo: 'A triagem não devolveu um veredito legível.' };
   }
   const v = String(obj.veredito ?? '').trim().toLowerCase() as Veredito;
   if (!VALIDOS.includes(v)) {
-    return { veredito: 'duvida', motivo: `Veredito desconhecido: "${String(obj.veredito ?? '')}".` };
+    return { veredito: 'duvida', motivo: 'A triagem não devolveu um veredito legível.' };
   }
   return { veredito: v, motivo: String(obj.motivo ?? '').slice(0, 500) };
 }

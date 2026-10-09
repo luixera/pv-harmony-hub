@@ -159,6 +159,7 @@ jobs:
           # o próprio segredo tiver espaço nas pontas, quem limpa é a função:
           # ela compara a string inteira e faz trim nos dois lados.
           printf 'LUDMILLA_WORKER_KEY=%s\n' "$CHAVE_DO_WORKER" > "$ARQ"
+          printf 'ASSINADOR_WORKER_KEY=%s\n' "$CHAVE_DO_WORKER" >> "$ARQ"
           supabase secrets set --env-file "$ARQ" \
             --project-ref yqsqrdndvsnhbsoaoilf
 
