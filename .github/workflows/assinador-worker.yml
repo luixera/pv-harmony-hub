@@ -76,7 +76,7 @@ jobs:
           # (--delete não apaga o que está excluído).
           rsync -avz --delete -e "$SSH" \
             --exclude='node_modules' --exclude='dist-test' --exclude='test' --exclude='src' \
-            --exclude='_*' --exclude='*.pfx' --exclude='*.pdf' \
+            --exclude='_*' --exclude='*.pfx' --exclude='*.p12' --exclude='*.pdf' \
             worker/assinador/ ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/opt/gdm-assinador/
 
       - name: Instalar / reiniciar
@@ -85,7 +85,15 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
-          ssh -i ~/.ssh/deploy_key -p ${{ secrets.VPS_SSH_PORT }} -o StrictHostKeyChecking=no \
-            ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} \
-            "SIMULAR='$SIMULAR' SUPABASE_URL='$SUPABASE_URL' SUPABASE_SERVICE_ROLE_KEY='$SUPABASE_SERVICE_ROLE_KEY' bash -s" \
-            < worker/assinador/deploy/instalar.sh
+          # As variáveis vão pelo STDIN (um `export` por variável, antes do
+          # instalar.sh) e não na linha de comando do ssh: na linha de comando a
+          # service role ficaria legível em /proc/<pid>/cmdline na VPS durante o
+          # deploy, e o usuário do assinador (que roda o LibreOffice sobre arquivo
+          # de cliente) é dos mais expostos da máquina. %q escapa qualquer valor.
+          {
+            printf 'export SIMULAR=%q\n' "$SIMULAR"
+            printf 'export SUPABASE_URL=%q\n' "$SUPABASE_URL"
+            printf 'export SUPABASE_SERVICE_ROLE_KEY=%q\n' "$SUPABASE_SERVICE_ROLE_KEY"
+            cat worker/assinador/deploy/instalar.sh
+          } | ssh -i ~/.ssh/deploy_key -p ${{ secrets.VPS_SSH_PORT }} -o StrictHostKeyChecking=no \
+            ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} bash -s

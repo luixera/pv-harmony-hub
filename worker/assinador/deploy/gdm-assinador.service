@@ -30,7 +30,13 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=full
 ProtectHome=read-only
-ReadWritePaths=/opt/gdm-assinador /home/gdmassinador
+ReadWritePaths=/home/gdmassinador
+# O código é só leitura em execução: um worker comprometido não reescreve o
+# próprio código. ProtectSystem=full NÃO cobre /opt, então o que protege de
+# verdade é o instalador deixar /opt/gdm-assinador com dono root (o usuário do
+# serviço não consegue gravar) + este ReadOnlyPaths. Se um dia o worker
+# precisar gravar algo em /opt/gdm-assinador, o lugar é /home/gdmassinador.
+ReadOnlyPaths=/opt/gdm-assinador
 
 [Install]
 WantedBy=multi-user.target
