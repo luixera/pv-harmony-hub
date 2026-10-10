@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { simpleParser } from 'mailparser';
-import { extrairEnvelope, extrairMensagem, idDaMensagem, uidsDaBusca } from '../src/email/caixa.js';
+import { extrairEnvelope, extrairMensagem, idDaMensagem, mensagemDoFonte, uidsDaBusca } from '../src/email/caixa.js';
 
 const EML = [
   'From: "Relacionamento EDP" <relacionamento.edp@edp.com.br>',
@@ -118,4 +118,38 @@ test('uidsDaBusca devolve a lista (vazia inclusive) e lança quando a busca falh
   // O servidor respondeu NO/BAD: a biblioteca devolve false, sem lançar.
   assert.throws(() => uidsDaBusca(false, '45006443920'), /45006443920/);
   assert.throws(() => uidsDaBusca(undefined, '45006443920'), /45006443920/);
+});
+
+// ── Corpo que o parser não interpreta: visível, nunca silencioso (D3) ───────
+
+/** Roda com o console capturado, para PROVAR o que vai (e o que não vai) no log. */
+async function comLogs<T>(f: () => Promise<T>): Promise<{ r: T; logs: string }> {
+  const original = console.log;
+  const linhas: string[] = [];
+  console.log = (linha?: unknown) => { linhas.push(String(linha)); };
+  try {
+    const r = await f();
+    return { r, logs: linhas.join('\n') };
+  } finally {
+    console.log = original;
+  }
+}
+
+test('mensagemDoFonte devolve a mensagem quando o corpo dá para interpretar', async () => {
+  const { r, logs } = await comLogs(() => mensagemDoFonte(Buffer.from(EML, 'utf8'), 7, '<abc-123@edp.com.br>'));
+  assert.equal(r?.messageId, '<abc-123@edp.com.br>');
+  assert.equal(r?.anexos.length, 1);
+  assert.equal(logs, '', 'o caminho normal não loga nada');
+});
+
+test('corpo que o parser recusa devolve null, LOGA e não leva dado de cliente', async () => {
+  // Era `catch { continue; }`: a mensagem sumia sem linha no banco, sem log e
+  // sem contador — e o corpo de 1–2 MB descia de novo duas vezes por dia.
+  const { r, logs } = await comLogs(() => mensagemDoFonte(undefined as unknown as Buffer, 42));
+  assert.equal(r, null);
+  assert.match(logs, /não consegui interpretar o corpo/);
+  assert.match(logs, /"uid":42/, 'o uid fica: é o que permite achar a mensagem na caixa');
+  assert.match(logs, /"nivel":"falha"/);
+  assert.doesNotMatch(logs, /WERLHE/i, 'nada do e-mail vai para o journald');
+  assert.doesNotMatch(logs, /\.pdf/i);
 });

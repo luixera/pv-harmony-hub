@@ -13,11 +13,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  conferir, tratarMensagem, type DepsTratamento, type ParecerLido,
+  conferir, tratarMensagem, triar, type DepsTratamento, type ParecerLido,
 } from '../src/email/index.js';
-import type { MensagemLida } from '../src/email/caixa.js';
-import type { RegraEmail } from '../src/email/util.js';
-import type { AnexoPendente, EmailLido, Run } from '../src/fila.js';
+import type { EnvelopeLido, MensagemLida } from '../src/email/caixa.js';
+import { idArquivoDeEmail, type RegraEmail } from '../src/email/util.js';
+import type { AnexoPendente, EmailLido, Run, TentativaEmail } from '../src/fila.js';
 
 const PROJETO = {
   protocolo: '045006443920',
@@ -156,10 +156,15 @@ const PARECER_OK: ParecerLido = {
 interface Diario {
   registros: EmailLido[];
   anexosPedidos: string[];
+  chavesPedidas: string[];
   subidos: string[];
   enviados: string[];
   marcadosComErro: string[];
+  motivosGravados: string[];
   pdfsLidos: number[];
+  tentativas: TentativaEmail[];
+  /** a ORDEM em que as dependências foram chamadas (o D4 é sobre ordem) */
+  ordem: string[];
 }
 
 function dubles(o: {
@@ -168,28 +173,53 @@ function dubles(o: {
   jaResolvidos?: string[];
   /** nomes de arquivo que o storage recusa */
   storageRecusa?: string[];
+  /** a mensagem com que o storage recusa (crua, como vem de terceiro) */
+  erroDoStorage?: string;
+  /** o banco recusa abrir a linha do anexo (falha permanente) */
+  anexoEstoura?: boolean;
+  /** a leitura do parecer estoura (não é `ok:false`, é exceção) */
+  parecerEstoura?: boolean;
 } = {}): { deps: DepsTratamento; d: Diario } {
-  const d: Diario = { registros: [], anexosPedidos: [], subidos: [], enviados: [], marcadosComErro: [], pdfsLidos: [] };
+  const d: Diario = {
+    registros: [], anexosPedidos: [], chavesPedidas: [], subidos: [], enviados: [],
+    marcadosComErro: [], motivosGravados: [], pdfsLidos: [], tentativas: [], ordem: [],
+  };
   const deps: DepsTratamento = {
+    async abrirTentativa(p): Promise<number> {
+      d.ordem.push('abrirTentativa');
+      d.tentativas.push(p);
+      return d.tentativas.length;
+    },
     async anexoDeEmail(_conta, protocolo, projectId, messageId, nomeArquivo): Promise<AnexoPendente | null> {
+      d.ordem.push('anexoDeEmail');
       d.anexosPedidos.push(nomeArquivo);
+      d.chavesPedidas.push(idArquivoDeEmail(messageId, protocolo, nomeArquivo));
+      if (o.anexoEstoura) throw new Error('Não consegui abrir o anexo: permission denied');
       if ((o.jaResolvidos ?? []).includes(nomeArquivo)) return null;
       return {
         id: `anexo-${nomeArquivo}`, project_id: projectId, company_id: PROJETO.company_id,
-        protocolo, id_arquivo: `${messageId}#${nomeArquivo}`, nome_arquivo: nomeArquivo, codigo: PROJETO.codigo,
+        protocolo, id_arquivo: idArquivoDeEmail(messageId, protocolo, nomeArquivo),
+        nome_arquivo: nomeArquivo, codigo: PROJETO.codigo,
       };
     },
     async subirDocumento(a): Promise<string> {
+      d.ordem.push('subirDocumento');
       if ((o.storageRecusa ?? []).includes(a.nome_arquivo)) {
-        throw new Error('Não consegui guardar o anexo no projeto: bucket indisponível');
+        throw new Error(o.erroDoStorage ?? 'Não consegui guardar o anexo no projeto: bucket indisponível');
       }
       d.subidos.push(a.nome_arquivo);
       return `caminho/${a.nome_arquivo}`;
     },
-    async anexoEnviado(id): Promise<void> { d.enviados.push(id); },
-    async anexoErro(id): Promise<void> { d.marcadosComErro.push(id); },
-    async registrarEmailLido(p): Promise<void> { d.registros.push(p); },
+    async anexoEnviado(id): Promise<void> { d.ordem.push('anexoEnviado'); d.enviados.push(id); },
+    async anexoErro(id, motivo): Promise<void> {
+      d.ordem.push('anexoErro');
+      d.marcadosComErro.push(id);
+      d.motivosGravados.push(motivo);
+    },
+    async registrarEmailLido(p): Promise<void> { d.ordem.push('registrarEmailLido'); d.registros.push(p); },
     async lerParecer(pdf): Promise<ParecerLido> {
+      d.ordem.push('lerParecer');
+      if (o.parecerEstoura) throw new Error('a leitura do parecer caiu');
       d.pdfsLidos.push(pdf.length);
       return o.parecer ?? PARECER_OK;
     },
@@ -382,4 +412,140 @@ test('o log do anexo que falhou também não leva nome de arquivo', async () => 
   assert.doesNotMatch(logs, /WERLHE/i);
   assert.doesNotMatch(logs, /\.pdf/i);
   assert.match(logs, /application\/pdf/, 'o mime fica: ajuda a diagnosticar e não é dado de cliente');
+});
+
+// ── D1: a chave do anexo carrega o protocolo ────────────────────────────────
+
+test('a chave do anexo pedida ao banco inclui o protocolo do projeto', async () => {
+  // Sem o protocolo na chave, o mesmo anexo servindo dois projetos colidia na
+  // UNIQUE: num ramo o documento não chegava ao card, no outro ia para o card
+  // de OUTRO cliente.
+  const { deps, d } = dubles();
+  await comLogs(() => tratarMensagem(RUN, PROJETO, mensagem(), REGRAS, deps));
+  assert.deepEqual(d.chavesPedidas, ['<abc-123@edp.com.br>#045006443920#parecer.pdf']);
+});
+
+test('o mesmo e-mail em outro protocolo pede OUTRA chave', async () => {
+  const outroProjeto = { ...PROJETO, protocolo: '045006443921', project_id: 'aaaa1111-1111-4111-8111-111111111111', codigo: 'GD-2026-002' };
+  const { deps, d } = dubles();
+  const m = mensagem({ assunto: 'ENVIO DE PARECER - NOTAS 45006443920 e 45006443921' });
+  await comLogs(() => tratarMensagem(RUN, PROJETO, m, REGRAS, deps));
+  await comLogs(() => tratarMensagem(RUN, outroProjeto, m, REGRAS, deps));
+  assert.equal(d.chavesPedidas.length, 2);
+  assert.notEqual(d.chavesPedidas[0], d.chavesPedidas[1], 'duas chaves, uma por projeto');
+  assert.match(d.chavesPedidas[1], /#045006443921#/);
+});
+
+// ── D2: a mensagem crua do storage não vai para o log ──────────────────────
+
+test('erro do storage COM nome de arquivo do titular não aparece no log', async () => {
+  // O dublê lança o que o storage lança de verdade — com o caminho, e o caminho
+  // com o nome do titular dentro. O teste antigo passava por construção, porque
+  // a mensagem escolhida por ele não tinha nome de arquivo nenhum.
+  const nome = 'PARECER_WERLHE_DE_ARAUJO_LIMA.pdf';
+  const cru = `Não consegui guardar o anexo no projeto: Invalid key: 22222222-2222-4222-8222-222222222222/11111111-1111-4111-8111-111111111111/other_photos/1760000000000_${nome}`;
+  const { deps, d } = dubles({ storageRecusa: [nome], erroDoStorage: cru });
+  const { logs } = await comLogs(() =>
+    tratarMensagem(RUN, PROJETO, mensagem({ anexos: [anexo(nome, 'application/pdf')] }), REGRAS, deps));
+
+  assert.match(logs, /anexo falhou ao subir/, 'a falha TEM de aparecer no log');
+  assert.doesNotMatch(logs, /WERLHE/i, 'o nome do titular não vai para o journald');
+  assert.doesNotMatch(logs, /\.pdf/i, 'nem o nome do arquivo');
+  assert.doesNotMatch(logs, /Invalid key/i, 'nem a mensagem crua de terceiro');
+  assert.doesNotMatch(logs, /other_photos/, 'nem o caminho no bucket');
+  assert.match(logs, /recusou o nome do arquivo/, 'a razão curta diz o bastante para diagnosticar');
+  // …e o texto COMPLETO continua indo para o banco, que é de onde a tela lê
+  assert.equal(d.motivosGravados.length, 1);
+  assert.ok(d.motivosGravados[0].includes(nome), 'o detalhe fica no banco, não no log');
+});
+
+// ── D4: a tentativa é contada antes de gastar a IA ─────────────────────────
+
+test('a tentativa é aberta ANTES da leitura do parecer', async () => {
+  const { deps, d } = dubles();
+  await comLogs(() => tratarMensagem(RUN, PROJETO, mensagem(), REGRAS, deps));
+  assert.equal(d.ordem[0], 'abrirTentativa', 'nada é gasto antes de a tentativa contar');
+  assert.ok(d.ordem.indexOf('abrirTentativa') < d.ordem.indexOf('lerParecer'));
+  assert.equal(d.tentativas.length, 1);
+  assert.equal(d.tentativas[0].messageId, '<abc-123@edp.com.br>');
+  assert.equal(d.tentativas[0].protocolo, PROJETO.protocolo);
+  assert.equal(d.tentativas[0].projectId, PROJETO.project_id);
+});
+
+test('tratamento que MORRE no meio já deixou a tentativa contada', async () => {
+  // Era o vazamento de dinheiro: estourando antes de `registrarEmailLido`, não
+  // havia linha, `tentativas` nunca incrementava, e todo run futuro baixava o
+  // corpo e chamava a IA de novo — para sempre, sem nada avisar.
+  const { deps, d } = dubles({ anexoEstoura: true });
+  await assert.rejects(
+    () => comLogs(() => tratarMensagem(RUN, PROJETO, mensagem(), REGRAS, deps)),
+    /Não consegui abrir o anexo/,
+  );
+  assert.equal(d.tentativas.length, 1, 'a tentativa foi contada mesmo sem registro no fim');
+  assert.deepEqual(d.registros, [], 'o tratamento morreu antes do registro');
+});
+
+test('IA que ESTOURA (não só responde ok:false) também já contou a tentativa', async () => {
+  const { deps, d } = dubles({ parecerEstoura: true });
+  await assert.rejects(
+    () => comLogs(() => tratarMensagem(RUN, PROJETO, mensagem(), REGRAS, deps)),
+    /a leitura do parecer caiu/,
+  );
+  assert.equal(d.tentativas.length, 1);
+});
+
+test('mensagem sem regra também conta a tentativa (e conclui)', async () => {
+  const { deps, d } = dubles();
+  const outro = mensagem({ assunto: 'RA HugMe - EDP São Paulo te mandou mensagem' });
+  const { r } = await comLogs(() => tratarMensagem(RUN, PROJETO, outro, REGRAS, deps));
+  assert.equal(r.concluida, true);
+  assert.equal(d.tentativas.length, 1);
+  assert.deepEqual(d.pdfsLidos, [], 'nada de IA numa mensagem que nenhuma regra quer');
+});
+
+// ── D7: a triagem, sem IMAP e sem banco ───────────────────────────────────
+
+const envelope = (over: Partial<EnvelopeLido> = {}): EnvelopeLido => ({
+  uid: 1,
+  messageId: '<um@edp.com.br>',
+  assunto: 'ENVIO DE PARECER - NOTA 45006443920',
+  recebidoEm: new Date('2026-09-10T12:12:00Z'),
+  ...over,
+});
+
+const ALVO = { codigo: PROJETO.codigo, protocolo: PROJETO.protocolo };
+
+test('triagem: aprova o que tem o protocolo no assunto e está pendente', async () => {
+  const { r } = await comLogs(() => triar([envelope()], ALVO, async () => true));
+  assert.deepEqual([...r.aprovados.keys()], [1]);
+  assert.equal(r.descartados, 0);
+  assert.equal(r.pulados, 0);
+  assert.equal(r.falhasTratamento, 0);
+});
+
+test('triagem: protocolo só no CORPO é descartado (a busca do IMAP acha no corpo)', async () => {
+  const { r, logs } = await comLogs(() => triar(
+    [envelope({ uid: 2, assunto: 'Comunicado geral da EDP' })], ALVO, async () => true));
+  assert.equal(r.aprovados.size, 0);
+  assert.equal(r.descartados, 1);
+  assert.match(logs, /não está no assunto/);
+  assert.doesNotMatch(logs, /Comunicado geral/, 'o assunto é dado do cliente');
+});
+
+test('triagem: mensagem já concluída é pulada, com aviso no log', async () => {
+  const { r, logs } = await comLogs(() => triar([envelope({ uid: 3 })], ALVO, async () => false));
+  assert.equal(r.aprovados.size, 0);
+  assert.equal(r.pulados, 1);
+  assert.match(logs, /pulei sem baixar/);
+});
+
+test('triagem: consulta de pendência que falha é FALHA DE TRATAMENTO, e não derruba os outros', async () => {
+  const envelopes = [envelope({ uid: 4, messageId: '<a@edp>' }), envelope({ uid: 5, messageId: '<b@edp>' })];
+  const { r, logs } = await comLogs(() => triar(envelopes, ALVO, async id => {
+    if (id === '<a@edp>') throw new Error('canceling statement due to statement timeout');
+    return true;
+  }));
+  assert.equal(r.falhasTratamento, 1);
+  assert.deepEqual([...r.aprovados.keys()], [5], 'o outro envelope segue o caminho normal');
+  assert.match(logs, /não consegui conferir se esta mensagem já foi tratada/);
 });

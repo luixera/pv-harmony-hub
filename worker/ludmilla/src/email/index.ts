@@ -1,8 +1,8 @@
 // worker/ludmilla/src/email/index.ts
-import { classificarErroEmail } from '../erros.js';
+import { classificarErroEmail, razaoDeFalhaDeArquivo } from '../erros.js';
 import {
-  anexoDeEmail, anexoEnviado, anexoErro, credencialDaCaixa, finalizarRun, mensagemPendente,
-  protocolosDoEmail, registrarEmailLido, regrasDoEmail, subirDocumento,
+  abrirTentativaEmail, anexoDeEmail, anexoEnviado, anexoErro, credencialDaCaixa, finalizarRun,
+  mensagemPendente, protocolosDoEmail, registrarEmailLido, regrasDoEmail, subirDocumento,
   type ProtocoloDeProjeto, type Run,
 } from '../fila.js';
 import { modoAtual } from '../local.js';
@@ -174,6 +174,7 @@ export interface Tratamento {
  * recomendar ou não — e elas precisam de teste sem banco e sem rede.
  */
 export interface DepsTratamento {
+  abrirTentativa: typeof abrirTentativaEmail;
   anexoDeEmail: typeof anexoDeEmail;
   subirDocumento: typeof subirDocumento;
   anexoEnviado: typeof anexoEnviado;
@@ -183,6 +184,7 @@ export interface DepsTratamento {
 }
 
 export const DEPS_REAIS: DepsTratamento = {
+  abrirTentativa: abrirTentativaEmail,
   anexoDeEmail, subirDocumento, anexoEnviado, anexoErro, registrarEmailLido, lerParecer,
 };
 
@@ -195,6 +197,16 @@ export async function tratarMensagem(
     runId: run.id, accountId: run.account_id, messageId: m.messageId, protocolo: p.protocolo,
     assunto: m.assunto, remetente: m.remetente, recebidoEm: m.recebidoEm?.toISOString() ?? null,
   };
+
+  // A TENTATIVA É CONTADA AQUI, antes de qualquer gasto: de IA, de storage ou de
+  // banco. Se o tratamento morrer no meio (anexo com erro permanente, projeto
+  // apagado entre a listagem e o registro), a linha já existe com
+  // `concluida = false` e `tentativas` incrementado — então o run seguinte tenta
+  // de novo, e o teto de 5 é real em vez de depender de o tratamento chegar
+  // vivo até o fim. Sem isto, todo run baixava o corpo e chamava a IA outra vez,
+  // pagando o parecer indefinidamente, em silêncio.
+  const tentativa = await deps.abrirTentativa({ ...comum, projectId: p.project_id });
+
   if (!regra) {
     // Nenhuma regra casou é CONFIGURAÇÃO, não falha passageira: fica concluída,
     // porque insistir faria a robô rebaixar o mesmo e-mail duas vezes por dia
@@ -265,8 +277,14 @@ export async function tratarMensagem(
         anexados++;
       } catch (e) {
         anexoFalhou = true;
+        // O texto COMPLETO vai para o banco (é o que a tela mostra); no log vai
+        // só a razão curta. A mensagem crua do storage traz o caminho, e o
+        // caminho traz o nome do arquivo — que às vezes traz o titular.
         await deps.anexoErro(pendente.id, (e as Error).message);
-        log('anexo falhou ao subir', { nivel: 'falha', projeto: p.codigo, protocolo: p.protocolo, mime: a.mime, erro: (e as Error).message });
+        log('anexo falhou ao subir', {
+          nivel: 'falha', projeto: p.codigo, protocolo: p.protocolo, mime: a.mime,
+          razao: razaoDeFalhaDeArquivo(e),
+        });
       }
     }
   }
@@ -291,15 +309,81 @@ export async function tratarMensagem(
   log('e-mail tratado', {
     projeto: p.codigo, protocolo: p.protocolo, tipo: regra.tipo_documento,
     veredito: parecer.veredito, conferido_por: c.por, anexados,
-    imagens_ignoradas: imagensIgnoradas, recomendacao, concluida,
+    imagens_ignoradas: imagensIgnoradas, recomendacao, concluida, tentativa,
   });
   return { situacao: 'tratado', anexados, imagensIgnoradas, concluida };
+}
+
+/** O que a triagem decidiu, com as contagens que entram no `resultado`. */
+export interface Triagem {
+  /** uid → envelope das mensagens que valem baixar */
+  aprovados: Map<number, EnvelopeLido>;
+  /** o protocolo não está no ASSUNTO (a busca do IMAP acha no corpo também) */
+  descartados: number;
+  /** já concluída neste protocolo: pula sem baixar */
+  pulados: number;
+  /** a consulta de pendência falhou (banco) — não é falha da caixa */
+  falhasTratamento: number;
+}
+
+/**
+ * A triagem: descartar por assunto → consultar pendência → aprovar o uid.
+ *
+ * É a parte do laço onde um erro SILENCIA DOCUMENTO (uid que não entra em
+ * `aprovados` nunca é baixado, e nada mais olha para ele neste run), e vivia
+ * entrelaçada com o IMAP e com o banco — inalcançável por teste. Agora recebe
+ * os envelopes já lidos e a consulta de pendência por parâmetro: as três
+ * contagens são verificáveis sem rede.
+ *
+ * `consultarPendencia` LANÇANDO não derruba a triagem dos outros envelopes: só
+ * aquele uid fica de fora, contado em `falhasTratamento`. Nenhum log leva
+ * assunto — ele é dado do cliente.
+ */
+export async function triar(
+  envelopes: EnvelopeLido[],
+  p: { codigo: string; protocolo: string },
+  consultarPendencia: (messageId: string) => Promise<boolean>,
+): Promise<Triagem> {
+  const t: Triagem = { aprovados: new Map(), descartados: 0, pulados: 0, falhasTratamento: 0 };
+  for (const env of envelopes) {
+    // A busca do IMAP é por texto (assunto OU corpo). Exigir o protocolo no
+    // ASSUNTO é o que separa "o e-mail é deste projeto" de "o número apareceu
+    // em algum lugar do corpo".
+    if (!protocoloDoAssunto(env.assunto, [p.protocolo])) {
+      t.descartados++;
+      log('mensagem descartada: o protocolo não está no assunto',
+        { nivel: 'aviso', projeto: p.codigo, protocolo: p.protocolo, mensagem: env.messageId });
+      continue;
+    }
+    let pendente: boolean;
+    try {
+      pendente = await consultarPendencia(env.messageId);
+    } catch (e) {
+      t.falhasTratamento++;
+      log('não consegui conferir se esta mensagem já foi tratada',
+        { nivel: 'falha', projeto: p.codigo, protocolo: p.protocolo, mensagem: env.messageId, erro: (e as Error).message });
+      continue;
+    }
+    if (!pendente) {
+      // Pulo SILENCIOSO foi o que escondeu o defeito que a correção C1
+      // conserta: a mensagem era queimada mesmo sem nada de útil sair dela, e
+      // nem o log dizia. Sem o assunto — ele é dado do cliente.
+      t.pulados++;
+      log('mensagem já concluída neste protocolo; pulei sem baixar',
+        { nivel: 'aviso', projeto: p.codigo, protocolo: p.protocolo, mensagem: env.messageId });
+      continue;
+    }
+    t.aprovados.set(env.uid, env);
+  }
+  return t;
 }
 
 /** As contas do run, para o `resultado` e para o log do fim. */
 interface Conta {
   lidos: number; tratados: number; anexados: number; ignorados: number; bloqueados: number;
   pulados: number; descartados: number; imagens: number; a_tentar_de_novo: number;
+  /** mensagens cujo CORPO o parser não conseguiu interpretar (descarte visível) */
+  naoLidas: number;
   /** protocolos cuja busca na caixa deu certo */
   limpos: number;
   /** a CAIXA falhou (busca recusada, conexão caída) */
@@ -333,7 +417,7 @@ export async function executarVarreduraEmail(run: Run): Promise<void> {
 
     const n: Conta = {
       lidos: 0, tratados: 0, anexados: 0, ignorados: 0, bloqueados: 0,
-      pulados: 0, descartados: 0, imagens: 0, a_tentar_de_novo: 0,
+      pulados: 0, descartados: 0, imagens: 0, a_tentar_de_novo: 0, naoLidas: 0,
       limpos: 0, falhasBusca: 0, falhasTratamento: 0,
     };
 
@@ -366,37 +450,11 @@ export async function executarVarreduraEmail(run: Run): Promise<void> {
         continue;
       }
 
-      const aprovados = new Map<number, EnvelopeLido>();
-      for (const env of envelopes) {
-        // A busca do IMAP é por texto (assunto OU corpo). Exigir o protocolo
-        // no ASSUNTO é o que separa "o e-mail é deste projeto" de "o número
-        // apareceu em algum lugar do corpo".
-        if (!protocoloDoAssunto(env.assunto, [p.protocolo])) {
-          n.descartados++;
-          log('mensagem descartada: o protocolo não está no assunto',
-            { nivel: 'aviso', projeto: p.codigo, protocolo: p.protocolo, mensagem: env.messageId });
-          continue;
-        }
-        let pendente: boolean;
-        try {
-          pendente = await mensagemPendente(run.account_id, env.messageId, p.protocolo);
-        } catch (e) {
-          n.falhasTratamento++;
-          log('não consegui conferir se esta mensagem já foi tratada',
-            { nivel: 'falha', projeto: p.codigo, protocolo: p.protocolo, mensagem: env.messageId, erro: (e as Error).message });
-          continue;
-        }
-        if (!pendente) {
-          // Pulo SILENCIOSO foi o que escondeu o defeito que esta correção
-          // conserta: a mensagem era queimada mesmo sem nada de útil sair dela,
-          // e nem o log dizia. Sem o assunto — ele é dado do cliente.
-          n.pulados++;
-          log('mensagem já concluída neste protocolo; pulei sem baixar',
-            { nivel: 'aviso', projeto: p.codigo, protocolo: p.protocolo, mensagem: env.messageId });
-          continue;
-        }
-        aprovados.set(env.uid, env);
-      }
+      const t = await triar(envelopes, p, id => mensagemPendente(run.account_id, id, p.protocolo));
+      n.descartados += t.descartados;
+      n.pulados += t.pulados;
+      n.falhasTratamento += t.falhasTratamento;
+      const aprovados = t.aprovados;
       if (aprovados.size === 0) continue;
 
       // ── 3. só agora o corpo com os anexos desce ────────────────────────────
@@ -430,6 +488,14 @@ export async function executarVarreduraEmail(run: Run): Promise<void> {
       }
     }
 
+    // Mensagem que o parser não interpretou não gera linha no banco (não há
+    // `Message-ID` confiável para registrar), então a contagem é a única
+    // visibilidade que existe. Não entra em `falhas` de propósito: a caixa foi
+    // lida por inteiro, e um corpo quebrado é condição permanente — somá-la a
+    // `falhas` travaria `ultima_varredura_em` para sempre.
+    n.naoLidas = caixa.naoLidas();
+    if (n.naoLidas > 0) log('mensagens que não consegui interpretar neste run', { run: run.id, nao_lidas: n.naoLidas });
+
     // Fechar como "ok" sem ter conseguido procurar NADA seria mentira (conexão
     // caída no meio, busca recusada pelo servidor): falha alto, com o número.
     if (n.limpos === 0 && n.falhasBusca > 0) {
@@ -452,7 +518,7 @@ export async function executarVarreduraEmail(run: Run): Promise<void> {
         pulados: n.pulados, descartados: n.descartados,
         // se um dia uma imagem legítima for descartada, é por aqui que aparece
         imagens_ignoradas: n.imagens,
-        a_tentar_de_novo: n.a_tentar_de_novo,
+        a_tentar_de_novo: n.a_tentar_de_novo, nao_lidas: n.naoLidas,
         falhas, falhas_busca: n.falhasBusca, falhas_tratamento: n.falhasTratamento,
       },
     });

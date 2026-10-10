@@ -6,7 +6,13 @@ import { chaveProtocolo } from './util.js';
 /**
  * A caixa de e-mail, só de leitura. A mesma caixa do Claudinho: nunca marcar
  * como lido, mover ou apagar — a Ludmilla só olha.
+ *
+ * NADA de dado de cliente vai para o log aqui: só o uid da caixa e a classe do
+ * erro. Assunto, remetente e nome de arquivo ficam no banco.
  */
+
+const log = (msg: string, extra: Record<string, unknown> = {}) =>
+  console.log(JSON.stringify({ t: new Date().toISOString(), msg, ...extra }));
 
 export interface MensagemLida {
   /** o uid do IMAP, para casar a mensagem baixada com o envelope já triado */
@@ -97,6 +103,35 @@ export function extrairMensagem(p: ParsedMail, uid: number, messageIdDoEnvelope?
 }
 
 /**
+ * Interpreta o corpo cru da mensagem; devolve `null` quando o parser não dá
+ * conta, e nesse caso LOGA e CONTA.
+ *
+ * O descarte era silencioso (`try { … } catch { continue; }`): sem linha no
+ * banco, `tentativas` não incrementa, e no run seguinte a consulta de pendência
+ * responde TRUE de novo — o corpo de 1–2 MB desce outra vez, duas vezes por
+ * dia, para sempre, e nada em lugar nenhum diz que existe uma mensagem que a
+ * robô não consegue ler. É o mesmo defeito que a correção C1 consertou no outro
+ * arquivo.
+ *
+ * Não há linha para gravar no banco (o parser falhou: não existe `Message-ID`
+ * confiável, nem assunto, nem protocolo), então a visibilidade é o log e a
+ * contagem `nao_lidas` no `resultado` do run. Do erro vai só o `name`: a
+ * mensagem do mailparser pode citar trecho do e-mail.
+ */
+export async function mensagemDoFonte(
+  fonte: Buffer, uid: number, messageIdDoEnvelope?: string | null,
+): Promise<MensagemLida | null> {
+  try {
+    return extrairMensagem(await simpleParser(fonte), uid, messageIdDoEnvelope);
+  } catch (e) {
+    log('não consegui interpretar o corpo desta mensagem; ela não foi tratada', {
+      nivel: 'falha', uid, classe: (e instanceof Error ? e.name : typeof e) || 'erro',
+    });
+    return null;
+  }
+}
+
+/**
  * Puro: interpreta a resposta do SEARCH. A biblioteca devolve `false` (e não lança)
  * quando o servidor responde NO/BAD; tratar isso como "nada encontrado" deixaria a
  * robô cega em silêncio. Lista vazia é resposta válida; qualquer outra coisa é falha.
@@ -118,6 +153,11 @@ export interface Caixa {
   envelopes(uids: number[]): AsyncGenerator<EnvelopeLido>;
   /** O corpo com os anexos. Chame só para os uids que passaram da triagem. */
   baixar(uids: number[]): AsyncGenerator<MensagemLida>;
+  /**
+   * Quantas mensagens o parser não conseguiu interpretar nesta conexão. Entra no
+   * `resultado` do run: descarte invisível é documento perdido em silêncio.
+   */
+  naoLidas(): number;
   fechar(): Promise<void>;
 }
 
@@ -141,6 +181,9 @@ export async function abrirCaixa(c: { email: string; senha: string }): Promise<C
   const verificarConexao = (): void => {
     if (erroDaConexao) throw new Error(`A conexão com a caixa de e-mail caiu: ${erroDaConexao.message}`, { cause: erroDaConexao });
   };
+
+  // mensagens que o parser não conseguiu interpretar nesta conexão (D3)
+  let naoLidas = 0;
 
   let lock: MailboxLockObject;
   try {
@@ -173,11 +216,12 @@ export async function abrirCaixa(c: { email: string; senha: string }): Promise<C
       verificarConexao();
       if (uids.length === 0) return;
       for await (const msg of client.fetch(uids, { uid: true, envelope: true, source: true }, { uid: true })) {
-        let p: ParsedMail;
-        try { p = await simpleParser(msg.source as Buffer); } catch { continue; }
-        yield extrairMensagem(p, msg.uid, msg.envelope?.messageId);
+        const m = await mensagemDoFonte(msg.source as Buffer, msg.uid, msg.envelope?.messageId);
+        if (!m) { naoLidas++; continue; }
+        yield m;
       }
     },
+    naoLidas: () => naoLidas,
     async fechar(): Promise<void> {
       lock.release();
       await client.logout().catch(() => undefined);

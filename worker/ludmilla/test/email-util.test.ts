@@ -2,7 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   casaEndereco, casaProtocolo, casaTitular, chaveProtocolo, comparavelTitular, ehImagem, ehPdf,
-  pdfDoParecer, protocoloDoAssunto, recomendacaoDoVeredito, regraQueCasa, type RegraEmail,
+  idArquivoDeEmail, pdfDoParecer, protocoloDoAssunto, recomendacaoDoVeredito, regraQueCasa,
+  type RegraEmail,
 } from '../src/email/util.js';
 
 const REGRAS: RegraEmail[] = [
@@ -140,4 +141,28 @@ test('pdfDoParecer devolve null quando não há PDF, e desempata pelo primeiro',
     { nome: 'segundo.pdf', mime: 'application/pdf', bytes: Buffer.alloc(1000) },
   ];
   assert.equal(pdfDoParecer(empate)?.nome, 'primeiro.pdf', 'a escolha tem de ser a mesma em todo run');
+});
+
+// ── A chave do anexo (D1): o protocolo é parte dela ─────────────────────────
+// O formato é contrato com o banco (`ludmilla_email_id_arquivo`). Se uma ponta
+// mudar sozinha, a robô re-anexa o que já anexou — por isso o formato está
+// escrito aqui, literal, e não só derivado.
+
+test('idArquivoDeEmail é mensagem#protocolo#arquivo, com o protocolo no meio', () => {
+  assert.equal(
+    idArquivoDeEmail('<abc-123@edp.com.br>', '045006443920', 'parecer.pdf'),
+    '<abc-123@edp.com.br>#045006443920#parecer.pdf',
+  );
+});
+
+test('o MESMO anexo em dois protocolos dá duas chaves diferentes', () => {
+  // Era aqui que o documento ia para o card do cliente errado: um e-mail que
+  // cita dois protocolos serve dois projetos, e a chave antiga
+  // (mensagem#arquivo) era a mesma para os dois.
+  const a = idArquivoDeEmail('<um@edp>', '045006443920', 'PARECER.pdf');
+  const b = idArquivoDeEmail('<um@edp>', '045006443921', 'PARECER.pdf');
+  assert.notEqual(a, b);
+  // e o mesmo protocolo com a mesma mensagem continua dando a MESMA chave:
+  // é o que faz a retentativa retomar a linha em vez de criar outra
+  assert.equal(a, idArquivoDeEmail('<um@edp>', '045006443920', 'PARECER.pdf'));
 });

@@ -317,7 +317,7 @@ export async function protocolosDeInteresse(accountId: string): Promise<string[]
 // `nomeRpc` faria a estação local procurar `…_local` e quebrar. A guarda que
 // recusa o run na estação está em `email/index.ts`.
 
-import type { RegraEmail } from './email/util.js';
+import { idArquivoDeEmail, type RegraEmail } from './email/util.js';
 
 export interface ProtocoloDeProjeto {
   protocolo: string; project_id: string; company_id: string;
@@ -377,6 +377,12 @@ export async function mensagemPendente(accountId: string, messageId: string, pro
  * retentativa da mensagem não serviria para nada, porque o arquivo nunca
  * subiria. Vazio significa `enviado`/`bloqueado` (nada a refazer) ou projeto
  * que não é da conta.
+ *
+ * O PROTOCOLO entra na chave do arquivo (`idArquivoDeEmail`): sem ele, um
+ * e-mail que serve dois projetos colidia na UNIQUE e o documento ia para o card
+ * do cliente errado. E a RPC devolve o `projeto_id` da linha justamente para
+ * esta conferência: se não for o projeto que pedimos, isto estoura aqui, antes
+ * de qualquer arquivo subir.
  */
 export async function anexoDeEmail(
   accountId: string, protocolo: string, projectId: string, messageId: string, nomeArquivo: string, conferidoPor: string,
@@ -386,12 +392,45 @@ export async function anexoDeEmail(
     p_message_id: messageId, p_nome_arquivo: nomeArquivo, p_conferido_por: conferidoPor,
   } as never);
   if (error) throw new Error(`Não consegui abrir o anexo: ${error.message}`);
-  const l = ((data ?? []) as { anexo_id: string; company_id: string; codigo: string }[])[0];
+  const l = ((data ?? []) as { anexo_id: string; projeto_id: string; company_id: string; codigo: string }[])[0];
   if (!l) return null;
+  if (l.projeto_id !== projectId) {
+    // Nunca deve acontecer (a RPC já recusa), e é exatamente por isso que está
+    // escrito: a alternativa é gravar documento no card de outro cliente.
+    throw new Error(`a linha do anexo devolvida pelo banco é do projeto ${l.projeto_id}, e eu pedi ${projectId}`);
+  }
   return {
-    id: l.anexo_id, project_id: projectId, company_id: l.company_id, protocolo,
-    id_arquivo: `${messageId}#${nomeArquivo}`, nome_arquivo: nomeArquivo, codigo: l.codigo,
+    id: l.anexo_id, project_id: l.projeto_id, company_id: l.company_id, protocolo,
+    id_arquivo: idArquivoDeEmail(messageId, protocolo, nomeArquivo), nome_arquivo: nomeArquivo, codigo: l.codigo,
   };
+}
+
+export interface TentativaEmail {
+  runId: string; accountId: string; messageId: string; protocolo: string;
+  projectId: string | null; assunto: string; remetente: string; recebidoEm: string | null;
+}
+
+/**
+ * Conta a tentativa ASSIM QUE a mensagem é aceita para tratamento — antes de
+ * gastar a IA.
+ *
+ * Sem isto o teto de 5 tentativas só valia se o tratamento chegasse vivo até
+ * `registrarEmailLido`: estourando antes (anexo com erro permanente, projeto
+ * apagado entre a listagem e o registro), não existia linha, `tentativas` nunca
+ * incrementava, e todo run seguinte baixava o corpo e **chamava a IA de novo** —
+ * pagando o parecer indefinidamente, sem nada avisar.
+ *
+ * A linha nasce `concluida = false` (é o que faz o run seguinte tentar de novo,
+ * correção C1) e os dados do tratamento são completados depois, por
+ * `registrarEmailLido`. Devolve o número da tentativa.
+ */
+export async function abrirTentativaEmail(p: TentativaEmail): Promise<number> {
+  const { data, error } = await supabase().rpc('ludmilla_email_tentativa' as never, {
+    p_run_id: p.runId, p_account_id: p.accountId, p_message_id: p.messageId, p_protocolo: p.protocolo,
+    p_project_id: p.projectId, p_assunto: p.assunto, p_remetente: p.remetente, p_recebido_em: p.recebidoEm,
+  } as never);
+  if (error) throw new Error(`Não consegui contar a tentativa desta mensagem: ${error.message}`);
+  return Number(data ?? 0);
 }
 
 export interface EmailLido {
@@ -402,7 +441,9 @@ export interface EmailLido {
   /**
    * `false` = houve falha passageira (a IA não respondeu, um anexo não subiu) e
    * um run futuro TEM de tentar de novo. `true` = não há mais nada a fazer com
-   * esta mensagem. A RPC conta a tentativa sozinha, com teto de 5.
+   * esta mensagem. Quem CONTA a tentativa é `abrirTentativaEmail`, no começo do
+   * tratamento (teto de 5); aqui a contagem não é mexida, senão a mesma
+   * tentativa contaria duas vezes e o teto cairia para 2 e meia.
    */
   concluida: boolean;
   /** Qual anexo a IA leu (o PDF maior). Null quando não houve leitura. */

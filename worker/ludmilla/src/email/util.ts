@@ -129,6 +129,25 @@ export function pdfDoParecer<T extends AnexoBruto & { bytes: { length: number } 
   return escolhido;
 }
 
+/**
+ * A chave do ANEXO na fila (`portal_anexos.id_arquivo`) — a mesma expressão que
+ * a RPC `ludmilla_email_id_arquivo` monta no banco.
+ *
+ * Ela TEM de carregar o protocolo. Um e-mail que cita dois protocolos no
+ * assunto serve dois projetos, e com a chave antiga (`mensagem#arquivo`) o
+ * segundo colidia com o primeiro na UNIQUE `(account_id, id_arquivo)`:
+ *  · se a primeira subida tinha dado certo, a RPC devolvia vazio e o worker
+ *    logava "já estava resolvido no card" — resolvido no card do OUTRO cliente,
+ *    e nenhum run futuro tentava;
+ *  · se a primeira tinha falhado, a linha devolvida era a do projeto A, o
+ *    arquivo subia no caminho de B e o comentário aparecia no card de A.
+ *
+ * Mudar uma ponta sem a outra faz a robô anexar de novo o que já anexou: as
+ * duas pontas vêm desta expressão, e o teste de formato existe para travá-la.
+ */
+export const idArquivoDeEmail = (messageId: string, protocolo: string, nomeArquivo: string): string =>
+  `${messageId}#${protocolo}#${nomeArquivo}`;
+
 /** Etapa recomendada para o card. Null = só avisa que o documento chegou. */
 export function recomendacaoDoVeredito(tipo: string, v: Veredito | null): string | null {
   if (tipo !== 'parecer') return null;

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { classificarErro, classificarErroEmail, ErroLudmilla } from '../src/erros.js';
+import { classificarErro, classificarErroEmail, ErroLudmilla, razaoDeFalhaDeArquivo } from '../src/erros.js';
 
 test('CAPTCHA exigido derruba a conta para erro e explica a contingência', () => {
   const r = classificarErro(new ErroLudmilla('captcha_exigido', 'O portal pediu CAPTCHA no login.'));
@@ -96,4 +96,57 @@ test('o caminho do portal continua intacto: as mesmas frases de antes', () => {
   // `classificarErroEmail` é ACRÉSCIMO; a função do portal não foi alterada
   assert.match(classificarErro(new Error('x')).mensagem, /A visita falhou por um motivo inesperado/);
   assert.match(classificarErro(new ErroLudmilla('pagina_mudou', 'y')).mensagem, /Veja o print/);
+});
+
+// ── Os sinais casavam frase de ERRO DE BANCO e mandavam consertar o certo ───
+
+test('falha da RPC que LISTA as regras NÃO vira "cadastre uma regra"', () => {
+  // `Não consegui listar as regras de e-mail: …` casava com /regras? de e-mail/
+  // e saía "Esta concessionária não tem nenhuma regra cadastrada. Cadastre ao
+  // menos uma" — para quem já tem três cadastradas.
+  const r = classificarErroEmail(new Error('Não consegui listar as regras de e-mail: canceling statement due to statement timeout'));
+  assert.notEqual(r.classe, 'sem_regras');
+  assert.equal(r.classe, 'falhou_email');
+  assert.doesNotMatch(r.mensagem, /Cadastre ao menos uma/i);
+});
+
+test('statement timeout do Postgres NÃO vira "não consegui falar com a caixa"', () => {
+  // /timeout|socket/ apontava o dedo para o Gmail quando o problema era o banco.
+  const r = classificarErroEmail(new Error('Não consegui listar os protocolos: canceling statement due to statement timeout'));
+  assert.notEqual(r.classe, 'caixa_indisponivel');
+  assert.equal(r.classe, 'falhou_email');
+  assert.doesNotMatch(r.mensagem, /falar com a caixa de e-mail/i);
+});
+
+test('a frase própria do run continua saindo como "sem regras"', () => {
+  const r = classificarErroEmail(new Error('Esta concessionária não tem regras de e-mail cadastradas na tela da Ludmilla.'));
+  assert.equal(r.classe, 'sem_regras');
+});
+
+test('a busca recusada pelo servidor de e-mail continua sendo caixa indisponível', () => {
+  const r = classificarErroEmail(new Error('A busca na caixa de e-mail falhou (protocolo 045006443920): o servidor não devolveu a lista de mensagens.'));
+  assert.equal(r.classe, 'caixa_indisponivel');
+  assert.equal(r.situacaoConta, 'ok');
+});
+
+// ── A razão curta que vai para o log do anexo que falhou (D2) ───────────────
+
+test('razaoDeFalhaDeArquivo não devolve nada do texto cru do storage', () => {
+  const cru = new Error('Não consegui guardar o anexo no projeto: Invalid key: 2222/1111/other_photos/1760000000000_PARECER_WERLHE_DE_ARAUJO_LIMA.pdf');
+  const razao = razaoDeFalhaDeArquivo(cru);
+  assert.match(razao, /recusou o nome do arquivo/);
+  assert.doesNotMatch(razao, /WERLHE/i);
+  assert.doesNotMatch(razao, /\.pdf/i);
+  assert.doesNotMatch(razao, /other_photos/);
+});
+
+test('razaoDeFalhaDeArquivo classifica os motivos que o storage dá', () => {
+  assert.match(razaoDeFalhaDeArquivo(new Error('The resource already exists')), /já existe arquivo/);
+  assert.match(razaoDeFalhaDeArquivo(new Error('Payload too large')), /limite do storage/);
+  assert.match(razaoDeFalhaDeArquivo(new Error('Bucket not found')), /bucket/);
+  assert.match(razaoDeFalhaDeArquivo(new Error('new row violates row-level security policy')), /permissão/);
+  assert.match(razaoDeFalhaDeArquivo(new Error('fetch failed')), /rede/);
+  // o desconhecido não inventa classe, e aponta onde está o texto completo
+  assert.match(razaoDeFalhaDeArquivo(new Error('algo que ninguém previu')), /motivo inesperado/);
+  assert.doesNotMatch(razaoDeFalhaDeArquivo(new Error('algo que ninguém previu')), /ninguém previu/);
 });
