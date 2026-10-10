@@ -11,3 +11,5 @@ um arquivo `NNNN-titulo.md`. Formato: Contexto · Decisão · Consequências.
 | [0004](0004-templates-docx.md) | Templates de documento apenas em `.docx` | Aceito |
 | [0005](0005-master-sem-bypass.md) | Master sem bypass de RLS no painel comum | Aceito |
 | [0006](0006-cad-engine-alpha.md) | CAD Engine: fatia vertical dentro do app, antes do motor completo | Aceito |
+| [0007](0007-engineering-rules-engine.md) | Engineering Rules Engine (regras de engenharia centralizadas) | Aceito |
+| [0008](0008-rede-publica-sem-tenant.md) | Base pública de rede elétrica sem `tenant_id` | Aceito |
