@@ -342,11 +342,14 @@ como cinza" (é o que "sem dado" deve parecer).
 
 RLS nas sete tabelas (seis de rede + `vps_armazenamento`):
 
-- Leitura por helper `security definer` em schema privado, lendo papel de
-  **`app_metadata`** — nunca `user_metadata` (ADR 0003) —, com
-  `set search_path = ''` e envolvido em `(select …)` na política, para a função
-  rodar uma vez e não por linha. `revoke execute` de `public`, `anon`,
-  `authenticated`, `service_role`.
+- Leitura restrita a master pela função que já existe,
+  **`public.is_master(auth.uid())`** (`STABLE SECURITY DEFINER`, lê
+  `profiles.is_master`, protegida pelo trigger `fn_protect_master_flag`),
+  envolvida em `(select …)` na política para rodar uma vez e não por linha.
+  É o padrão das RPCs `console_*` e `master_*` do projeto.
+  `app_metadata` (ADR 0003) é a confiança de **papel e tenant dentro do
+  tenant** — admin/staff/company —, não o gate de master; quando a leitura for
+  aberta a papéis do tenant, é dali que o papel vem, nunca de `user_metadata`.
 - **Escrita: nenhuma política para `authenticated`.** Só service role grava, do
   servidor. Não há caminho pela API para alterar a base de rede.
 - As três RPCs (`rede_no_mapa`, `grid_capacity_recalcular`,

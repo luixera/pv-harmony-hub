@@ -29,9 +29,11 @@ inteira por tenant assinante.
 
 2. **RLS continua habilitada, com leitura restrita a master.** O acesso é o
    mesmo do Motor de Diagramas e do Motor de Engenharia: só a GD Manager. A
-   política usa helper `security definer` em schema privado que lê o papel de
-   `app_metadata` (ADR 0003), com `set search_path = ''` e envolvido em
-   `(select …)` para não rodar por linha.
+   política usa `public.is_master(auth.uid())` — a função que o projeto já
+   emprega nas RPCs `console_*` e `master_*` —, envolvida em `(select …)` para
+   não rodar por linha. O ADR 0003 (`app_metadata`) continua valendo para papel
+   e tenant **dentro** do tenant; não é o gate de master, e é dali que o papel
+   viria se a leitura fosse aberta a admin/staff no futuro.
 
 3. **Escrita só por service role.** Nenhuma política de INSERT/UPDATE/DELETE
    para `authenticated`. A base é alimentada pelo script de ingestão que roda na
