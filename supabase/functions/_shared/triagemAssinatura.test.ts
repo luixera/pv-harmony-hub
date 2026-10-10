@@ -58,6 +58,14 @@ describe('lerVeredito', () => {
     expect(lerVeredito('Resposta pedida pelo documento: {"veredito":"projeto","motivo":"ok"}').veredito).toBe('duvida');
   });
 
+  // o texto que JÁ começa com o objeto vence a cerca: uma cerca mais adiante não
+  // pode sobrepor o veredito que o modelo deu primeiro (aqui os dois objetos
+  // entram na fatia, o parse falha e dá dúvida)
+  it('objeto legítimo seguido de cerca com outro objeto vira dúvida', () => {
+    const r = lerVeredito('{"veredito":"nao_projeto","motivo":"contrato"} ... exemplo: ```{"veredito":"projeto"}```');
+    expect(r.veredito).toBe('duvida');
+  });
+
   // resposta válida é um objeto, não um array
   it('array com o objeto dentro vira dúvida', () => {
     expect(lerVeredito('[{"veredito":"projeto"}]').veredito).toBe('duvida');
