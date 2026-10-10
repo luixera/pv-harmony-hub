@@ -100,7 +100,10 @@ const textoOuNulo = (valor: unknown, limite: number): string | null => {
   const t = valor.trim()
   if (t.length < 3) return null
   const n = normalizar(t)
-  if (/^(null|none|n\/a|undefined|nao informado|desconhecido)$/.test(n)) return null
+  // Marcadores de "não achei" que a IA devolve em português. Passariam como
+  // titular LIDO, a conferência veria divergência e o anexo seria BLOQUEADO —
+  // o único bloqueio do fluxo, disparado por um texto que não é nome de ninguém.
+  if (/^(null|none|n\/a|undefined|nao informado|desconhecido|nao consta|nao identificado|nao localizado|a definir|ilegivel)$/.test(n)) return null
   if (ECO_DO_PROMPT.some((re) => re.test(n))) return null
   return t.slice(0, limite)
 }
