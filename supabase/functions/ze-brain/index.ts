@@ -8,6 +8,9 @@
  * Ainda NÃO escreve nada no sistema: criar tarefa, anotar no card e mover
  * etapa são a Entrega 3. Rotinas (cron) são a Entrega 5.
  *
+ * Também aceita `{ modo: 'recado', tenant_id, texto }`: texto pronto do
+ * assinador (sem IA), só com a chave do robô.
+ *
  * Deployada com --no-verify-jwt: quem chama é o ze-webhook (service role) ou
  * a tela; a checagem é feita aqui.
  *
@@ -285,18 +288,65 @@ async function trabalhar(cfg: Config): Promise<Record<string, unknown>> {
   }
 }
 
+/**
+ * Os segredos que identificam o robô, já sem os não configurados. Mesmo padrão
+ * da `assinatura-triagem`: no ambiente das edge functions, a
+ * SUPABASE_SERVICE_ROLE_KEY pode guardar a chave NOVA (`sb_secret_...`) enquanto
+ * o worker manda o JWT legado de service role — ASSINADOR_WORKER_KEY carrega o
+ * valor que o worker realmente usa. Comparação por string inteira, sem rede,
+ * nega-por-omissão: sem nenhum segredo configurado, nega tudo.
+ */
+function segredosAceitos(): string[] {
+  return [Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'), Deno.env.get('ASSINADOR_WORKER_KEY')]
+    .map((v) => (typeof v === 'string' ? v.trim() : v))
+    .filter((v): v is string => typeof v === 'string' && v.length > 0)
+}
+
+function chamadorEhRobo(req: Request): boolean {
+  const aceitos = segredosAceitos()
+  // JWT legado vem no Authorization; a chave nova (sb_secret_...), no apikey.
+  const doBearer = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '').trim()
+  const doApikey = (req.headers.get('apikey') ?? '').trim()
+  return [doBearer, doApikey].some((t) => t.length > 0 && aceitos.some((a) => a === t))
+}
+
 Deno.serve(async (req) => {
   if (req.method !== 'POST') return json({ error: 'método' }, 405)
 
-  let corpo: { modo?: string; tenant_id?: string; aguardar?: boolean }
+  let corpo: { modo?: string; tenant_id?: string; aguardar?: boolean; texto?: string }
   try { corpo = await req.json() } catch { return json({ error: 'json inválido' }, 400) }
-  if (corpo.modo !== 'mensagem') return json({ error: 'modo não suportado nesta entrega' }, 400)
+  if (corpo.modo !== 'mensagem' && corpo.modo !== 'recado') {
+    return json({ error: 'modo não suportado' }, 400)
+  }
+
+  // RECADO é o Zé falando em nome do sistema, não uma mensagem de usuário: só o
+  // robô (service role) pode. A conferência vem ANTES de qualquer consulta, para
+  // que quem não é o robô nem descubra se o tenant tem Zé.
+  if (corpo.modo === 'recado' && !chamadorEhRobo(req)) {
+    return json({ error: 'recado é só do robô' }, 403)
+  }
+
   if (!corpo.tenant_id) return json({ error: 'tenant_id obrigatório' }, 400)
 
   const { data: cfgRaw } = await admin.from('ze_config').select('*').eq('tenant_id', corpo.tenant_id).maybeSingle()
   const cfg = cfgRaw as Config | null
   if (!cfg) return json({ error: 'tenant sem Zé' }, 404)
   if (!cfg.enabled || cfg.situacao !== 'conectado') return json({ ok: true, pulou: 'Zé desligado ou desconectado' })
+
+  // RECADO: texto pronto, direto para o chat "Você". Sem modelo, sem cota, sem
+  // trava — é o assinador contando o que fez. Sai pelo mesmo `responder`, então
+  // o destino continua sendo só o número do dono (regra dura 1).
+  if (corpo.modo === 'recado') {
+    const texto = String(corpo.texto ?? '').trim()
+    if (!texto) return json({ error: 'texto obrigatório' }, 400)
+    try {
+      await responder(cfg, texto.slice(0, 1200))
+      return json({ ok: true, recado: true })
+    } catch (e) {
+      console.error('[ze-brain] recado', e)
+      return json({ ok: false, error: e instanceof Error ? e.message : 'falhou' }, 502)
+    }
+  }
 
   // A trava é tomada ANTES de responder, senão duas mensagens seguidas abrem
   // dois cérebros (o segundo veria a trava livre porque o primeiro ainda nem
