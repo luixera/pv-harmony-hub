@@ -4,6 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 import { AlertTriangle, ShieldAlert, FileText, Users, Package } from 'lucide-react';
 import { GOLD, card, grid, Kpi, Loading, SectionTitle, ChartBox, tt, dayShort } from './ConsoleSections';
+import { VpsStorageCard } from './VpsStorageCard';
 
 /**
  * Monitoramento do sistema: erros, segurança, auditoria, cadastros e deploys
@@ -80,6 +81,10 @@ export function MonitoringSection() {
   return (
     <div style={{ maxWidth: 1080, margin: '0 auto' }}>
       <SectionTitle>Monitoramento</SectionTitle>
+
+      <div style={{ marginBottom: 14 }}>
+        <VpsStorageCard />
+      </div>
 
       {s && (
         <>
