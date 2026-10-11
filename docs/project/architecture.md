@@ -125,5 +125,37 @@ nova continua pedindo o pedaço antigo e recebe **404** — a funcionalidade mor
 sem erro visível. Foi o que derrubou o "Baixar PDF" do diagrama em jul/2026.
 Ver [modules/diagrams](../modules/diagrams/overview.md).
 
+## Armazenamento da VPS no painel
+
+A mesma VPS que serve o estático pelo Nginx hospeda o worker da Ludmilla e vai
+hospedar a importação da BDGD (gigabytes baixados e descompactados). Ficar sem
+disco no meio é falha silenciosa, então o espaço livre é medido e mostrado.
+
+A SPA é estática e não vê o disco. Quem vê é o **worker da Ludmilla**, que já
+roda lá: `reportarDisco()` (`worker/ludmilla/src/fila.ts`) mede com `statfs`
+— a aritmética fica em `medidaDe()` (`src/disco.ts`), separada e testada — e
+grava por RPC. O batimento é de **15 minutos**, mais uma medição ao subir, e
+vive fora do `if` de modo em `index.ts`, porque o batimento que já existia
+(`pulsar`, da estação local) só roda no modo `local` e o ramo da VPS não tinha
+nenhum.
+
+- **`vps_armazenamento`** — host, partição, total/usado/livre em bytes,
+  `origem` (`worker` no batimento, `ingestao` durante uma importação), `etapa`,
+  `medido_em`. RLS: leitura só master por `public.is_master(auth.uid())`;
+  **nenhuma política de escrita para `authenticated`** — só o service role
+  grava, pela RPC. Retenção de 90 dias por `pg_cron` (job
+  `vps_armazenamento_retencao`, às 4h17 para não disputar o `:00`).
+- **`vps_armazenamento_registrar(...)`** — escrita; recusa quem não é service
+  role e tem `EXECUTE` revogado de `anon` e `authenticated`.
+- **`console_vps_armazenamento(p_dias)`** — leitura: última medição + série
+  diária, no padrão das outras `console_*`.
+- **`VpsStorageCard`** (`src/pages/painel/VpsStorageCard.tsx`) — card no topo da
+  aba **Monitoramento** do `/painel`: GB livres, barra de ocupação com as marcas
+  de **80%** (atenção) e **90%** (crítico), e a série de 30 dias. Os limiares
+  são constantes nomeadas no componente, não configuração em tabela — dívida
+  registrada: na terceira configuração de plataforma, vale criar a tabela.
+
+Spec: [capacidade de rede, §5](../superpowers/specs/2026-10-10-capacidade-rede-design.md).
+
 Ver também: [tech-stack.md](tech-stack.md) · [security.md](security.md) ·
 [integrations.md](integrations.md).
