@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { PassoRecusado, nomeAssinado, nomeSeguroParaStorage, sha256 } from '../src/fila.js';
+import {
+  PassoRecusado, entregarRecados, nomeAssinado, nomeSeguroParaStorage, recadoFoiEntregue, sha256,
+} from '../src/fila.js';
 
 test('sha256 é estável e tem 64 hex', () => {
   const h = sha256(Buffer.from('memorial'));
@@ -35,4 +37,63 @@ test('PassoRecusado é um Error distinguível (só ele autoriza apagar o assinad
   assert.ok(e instanceof PassoRecusado);
   assert.equal(e.name, 'PassoRecusado');
   assert.ok(!(new Error('rede') instanceof PassoRecusado));
+});
+
+// ── Recados do Zé ───────────────────────────────────────────────────────────
+test('recadoFoiEntregue: só { ok, recado } conta; "pulou" e erro HTTP não', () => {
+  assert.equal(recadoFoiEntregue({ data: { ok: true, recado: true }, error: null }), true);
+  // Zé desligado/desconectado: 200 com pulou — nada foi enviado
+  assert.equal(recadoFoiEntregue({ data: { ok: true, pulou: 'Zé desligado ou desconectado' }, error: null }), false);
+  // erro HTTP (403 do portador, 502 do envio): o invoke devolve `error`, não lança
+  assert.equal(recadoFoiEntregue({ data: null, error: new Error('403') }), false);
+  assert.equal(recadoFoiEntregue({ data: { ok: false, error: 'falhou' }, error: null }), false);
+  assert.equal(recadoFoiEntregue({ data: null, error: null }), false);
+  assert.equal(recadoFoiEntregue({ data: 'texto', error: null }), false);
+  assert.equal(recadoFoiEntregue({ data: { ok: true, recado: true, pulou: 'x' }, error: null }), false);
+});
+
+test('entregarRecados: envia e DEPOIS marca, cada um com o seu resultado', async () => {
+  const ordem: string[] = [];
+  const r = await entregarRecados(
+    async (tenant, texto) => { ordem.push(`envia ${tenant} ${texto}`); return texto !== 'falha'; },
+    async () => [
+      { id: 'r1', tenant_id: 't1', texto: 'Libero?' },
+      { id: 'r2', tenant_id: 't1', texto: 'falha' },
+    ],
+    async (id, ok) => { ordem.push(`marca ${id} ${ok}`); },
+  );
+  assert.deepEqual(ordem, ['envia t1 Libero?', 'marca r1 true', 'envia t1 falha', 'marca r2 false']);
+  assert.deepEqual(r, { enviados: 1, falhas: 1 });
+});
+
+test('entregarRecados: falha ao marcar um recado não impede os seguintes', async () => {
+  const marcados: string[] = [];
+  const r = await entregarRecados(
+    async () => true,
+    async () => [
+      { id: 'r1', tenant_id: 't', texto: 'a' },
+      { id: 'r2', tenant_id: 't', texto: 'b' },
+    ],
+    async (id) => { marcados.push(id); if (id === 'r1') throw new Error('rede'); },
+  );
+  assert.deepEqual(marcados, ['r1', 'r2']);
+  assert.deepEqual(r, { enviados: 2, falhas: 0 });
+});
+
+test('entregarRecados: fila vazia não envia nem marca nada', async () => {
+  let chamadas = 0;
+  const r = await entregarRecados(
+    async () => { chamadas++; return true; },
+    async () => [],
+    async () => { chamadas++; },
+  );
+  assert.equal(chamadas, 0);
+  assert.deepEqual(r, { enviados: 0, falhas: 0 });
+});
+
+test('entregarRecados: erro ao consultar a fila sobe (quem chama só loga)', async () => {
+  await assert.rejects(
+    entregarRecados(async () => true, async () => { throw new Error('sem fila'); }, async () => undefined),
+    /sem fila/,
+  );
 });

@@ -164,11 +164,75 @@ export async function triar(pdf: Buffer, tenantId: string): Promise<{ veredito: 
   return { veredito: r.veredito, motivo: r.motivo ?? '' };
 }
 
-/** Recado do Zé (texto pronto, sem IA). Falha aqui nunca derruba a assinatura. */
-export async function recadoDoZe(tenantId: string, texto: string): Promise<void> {
-  await supabase().functions
-    .invoke('ze-brain', { body: { modo: 'recado', tenant_id: tenantId, texto } })
-    .then(() => undefined, () => undefined);
+/**
+ * O recado FOI MESMO entregue? `functions.invoke` não lança em erro HTTP (devolve
+ * `error`), e o ze-brain responde 200 `{ ok: true, pulou: ... }` quando o Zé está
+ * desligado ou desconectado — nada foi enviado. Só `{ ok: true, recado: true }`
+ * conta como entregue.
+ */
+export function recadoFoiEntregue(resp: { data?: unknown; error?: unknown }): boolean {
+  if (resp.error) return false;
+  const d = resp.data as { ok?: unknown; recado?: unknown; pulou?: unknown } | null | undefined;
+  return d?.ok === true && d?.recado === true && d?.pulou === undefined;
+}
+
+/**
+ * Recado do Zé (texto pronto, sem IA). Devolve se foi entregue; nunca lança —
+ * falha aqui não pode derrubar a assinatura. Quem precisa de garantia usa a
+ * outbox (`entregarRecados`), que reenvia.
+ */
+export async function recadoDoZe(tenantId: string, texto: string): Promise<boolean> {
+  try {
+    const resp = await supabase().functions
+      .invoke('ze-brain', { body: { modo: 'recado', tenant_id: tenantId, texto } });
+    return recadoFoiEntregue(resp);
+  } catch {
+    return false;
+  }
+}
+
+export interface RecadoPendente { id: string; tenant_id: string; texto: string }
+
+/** Pega até 10 recados da outbox (a RPC já descarta os velhos e marca o claim). */
+export async function recadosPendentes(): Promise<RecadoPendente[]> {
+  const { data, error } = await supabase().rpc('ze_recados_pendentes');
+  if (error) throw new Error(`Não consegui consultar os recados: ${error.message}`);
+  return (data ?? []) as RecadoPendente[];
+}
+
+/** Fecha o recado: entregue (`ok`) ou não (a RPC anota e conta a tentativa). */
+export async function recadoEntregue(id: string, ok: boolean): Promise<void> {
+  const { error } = await supabase().rpc('ze_recado_entregue', { _id: id, _ok: ok });
+  if (error) throw new Error(`Não consegui fechar o recado: ${error.message}`);
+}
+
+export interface PassadaDeRecados { enviados: number; falhas: number }
+
+/**
+ * Uma passada de entrega: pega os pendentes, manda cada um e DEPOIS marca.
+ * Enviar-e-depois-marcar é entrega "ao menos uma vez": se a marcação falhar, o
+ * recado volta (no máximo 3 vezes) — melhor repetir um aviso do que perder o
+ * "Libero?" ou o vencimento do certificado. As dependências são injetáveis só
+ * para o teste.
+ */
+export async function entregarRecados(
+  enviar: (tenantId: string, texto: string) => Promise<boolean> = recadoDoZe,
+  buscar: () => Promise<RecadoPendente[]> = recadosPendentes,
+  fechar: (id: string, ok: boolean) => Promise<void> = recadoEntregue,
+): Promise<PassadaDeRecados> {
+  let enviados = 0;
+  let falhas = 0;
+  for (const r of await buscar()) {
+    const ok = await enviar(r.tenant_id, r.texto);
+    if (ok) enviados++; else falhas++;
+    try {
+      await fechar(r.id, ok);
+    } catch {
+      // Não marcou: o recado volta depois do prazo da RPC. Um recado com
+      // problema não impede os seguintes.
+    }
+  }
+  return { enviados, falhas };
 }
 
 /** Abre a pendência no WhatsApp do gestor ("libero?"). */

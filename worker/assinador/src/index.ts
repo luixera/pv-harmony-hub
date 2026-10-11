@@ -4,8 +4,8 @@ import { cpfMascarado, lerCertificado, type DadosCertificado } from './certifica
 import { converterParaPdf, encerrarConversaoEmCurso, precisaConverter, temSoffice } from './preparar.js';
 import {
   PassoRecusado, Trabalho, apagar, baixar, caminhoAprovado, certificadoConferido, certificadosParaConferir,
-  dadosDoCertificado, nomeAssinado, nomeSeguroParaStorage, passo, pedirAoZe, pegarTrabalho, recadoDoZe,
-  sha256, subir, triar,
+  dadosDoCertificado, entregarRecados, nomeAssinado, nomeSeguroParaStorage, passo, pedirAoZe, pegarTrabalho,
+  recadoDoZe, sha256, subir, triar,
 } from './fila.js';
 
 /**
@@ -102,6 +102,20 @@ async function conferirCertificados(): Promise<void> {
     }
   } catch (e) {
     log('conferência de certificados tropeçou — segue para a fila', { erro: (e as Error).message });
+  }
+}
+
+/**
+ * Entrega os recados do Zé que o banco enfileirou (o "Libero?", o "não", a
+ * expiração, o vencimento do certificado). Uma passada por ciclo; falha aqui só
+ * é logada — nunca impede o laço de chegar à fila de assinatura.
+ */
+async function entregarRecadosDoZe(): Promise<void> {
+  try {
+    const { enviados, falhas } = await entregarRecados();
+    if (enviados > 0 || falhas > 0) log('recados do Zé', { enviados, falhas });
+  } catch (e) {
+    log('entrega de recados tropeçou — segue para a fila', { erro: (e as Error).message });
   }
 }
 
@@ -263,6 +277,8 @@ async function principal() {
   while (!encerrando) {
     try {
       await conferirCertificados();
+      if (encerrando) break;
+      await entregarRecadosDoZe();
       if (encerrando) break;
       const t = await pegarTrabalho();
       if (!t) { await dormir(POLL_SEGUNDOS * 1_000); continue; }
