@@ -211,10 +211,14 @@ export function usePedirAssinatura() {
         } as never);
         if (error) {
           // A RPC recusou: tenta não deixar arquivo órfão no bucket. A policy de
-          // DELETE do bucket é só do admin, e `remove` NÃO rejeita quando não
-          // apaga — por isso o retorno é lido e o órfão fica registrado.
-          const { error: errRm } = await supabase.storage.from('project-documents').remove([path]);
-          if (errRm) console.warn('[assinatura] arquivo órfão não removido:', path, errRm.message);
+          // DELETE do bucket é só do admin, e para quem não é `remove` NÃO dá
+          // erro: devolve `data: []` (nada apagado). Por isso o aviso também
+          // dispara com a lista vazia — é justamente o caso em que o órfão fica.
+          const { data: apagados, error: errRm } = await supabase.storage
+            .from('project-documents').remove([path]);
+          if (errRm || !apagados || apagados.length === 0) {
+            console.warn('[assinatura] arquivo órfão não removido:', path, errRm?.message ?? 'sem permissão para apagar');
+          }
           throw error;
         }
         documentId = data as unknown as string;

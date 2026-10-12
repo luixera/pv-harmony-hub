@@ -29,6 +29,38 @@ GRANT INSERT (id, project_id, document_type, file_name, file_url, file_type, cre
   ON public.documents TO anon;
 
 /**
+ * O arquivo está MESMO na pasta deste projeto? Devolve NULL se sim, ou a
+ * mensagem de recusa. O worker (service role) baixa o `file_url` pelo `fetch`,
+ * que normaliza `..`, `%2e%2e`, `..\` e remove tab/newline antes de enviar —
+ * então denylist não serve: depois do prefixo `<empresa>/<projeto>/` só passa
+ * ALLOWLIST (`[A-Za-z0-9._-]` em segmentos separados por `/`), e nenhum
+ * segmento pode ser `.` ou `..`. É exatamente o que `sanitizeFileName` e as
+ * pastas do app produzem. Prefixo LITERAL (left/length), não LIKE.
+ */
+CREATE OR REPLACE FUNCTION public.assinatura_caminho_erro(p_path TEXT, p_company UUID, p_project UUID)
+RETURNS TEXT
+LANGUAGE plpgsql IMMUTABLE SET search_path = ''
+AS $$
+DECLARE _prefixo TEXT; _resto TEXT;
+BEGIN
+  IF p_path IS NULL OR p_company IS NULL OR p_project IS NULL THEN
+    RETURN 'O arquivo precisa estar na pasta deste projeto (empresa/projeto/…).';
+  END IF;
+  _prefixo := p_company::text || '/' || p_project::text || '/';
+  IF left(p_path, length(_prefixo)) <> _prefixo THEN
+    RETURN 'O arquivo precisa estar na pasta deste projeto (empresa/projeto/…).';
+  END IF;
+  _resto := substr(p_path, length(_prefixo) + 1);
+  IF _resto !~ '^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$' OR _resto ~ '(^|/)\.{1,2}(/|$)' THEN
+    RETURN 'Caminho de arquivo inválido.';
+  END IF;
+  RETURN NULL;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.assinatura_caminho_erro(TEXT, UUID, UUID) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.assinatura_caminho_erro(TEXT, UUID, UUID) TO authenticated, service_role;
+
+/**
  * Registra um documento que entrou PELO FLUXO DE ASSINATURA. O arquivo já está
  * no bucket `project-documents` (subido pela sessão da pessoa); aqui a linha
  * nasce com a marca do tipo do catálogo.
@@ -39,7 +71,7 @@ RETURNS UUID
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''
 AS $$
 DECLARE _uid UUID := (select auth.uid()); _tenant UUID; _doc UUID; _origem TEXT;
-        _empresa UUID; _prefixo TEXT;
+        _empresa UUID; _erro TEXT;
 BEGIN
   IF _uid IS NULL OR NOT public.assinatura_equipe_ok() THEN
     RAISE EXCEPTION 'Sem acesso à assinatura digital.' USING ERRCODE = '42501';
@@ -64,17 +96,9 @@ BEGIN
   END IF;
 
   -- O worker (service role, que ignora RLS) baixa e prepara EXATAMENTE este
-  -- caminho: ele tem de estar na pasta deste projeto, na convenção
-  -- `<empresa>/<projeto>/...`. Senão um arquivo de outra empresa ou outro
-  -- tenant entraria no fluxo de assinatura com a marca. Prefixo LITERAL
-  -- (left/length), não LIKE.
-  _prefixo := _empresa::text || '/' || p_project_id::text || '/';
-  IF left(p_path, length(_prefixo)) <> _prefixo THEN
-    RAISE EXCEPTION 'O arquivo precisa estar na pasta deste projeto (empresa/projeto/…).';
-  END IF;
-  IF p_path ~ '(^|/)\.\.(/|$)' THEN
-    RAISE EXCEPTION 'Caminho de arquivo inválido.';
-  END IF;
+  -- caminho: ele tem de estar na pasta deste projeto (ver a função acima).
+  _erro := public.assinatura_caminho_erro(p_path, _empresa, p_project_id);
+  IF _erro IS NOT NULL THEN RAISE EXCEPTION '%', _erro; END IF;
 
   INSERT INTO public.documents
     (project_id, document_type, file_name, file_url, file_type, uploaded_by, assinavel_id)
@@ -95,7 +119,8 @@ CREATE OR REPLACE FUNCTION public.documento_marcar_assinavel(p_document_id UUID,
 RETURNS BOOLEAN
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''
 AS $$
-DECLARE _uid UUID := (select auth.uid()); _tenant UUID; _origem TEXT; _n INT;
+DECLARE _uid UUID := (select auth.uid()); _tenant UUID; _origem TEXT;
+        _proj UUID; _empresa UUID; _url TEXT; _erro TEXT;
 BEGIN
   IF _uid IS NULL OR NOT public.assinatura_equipe_ok() THEN
     RAISE EXCEPTION 'Sem acesso à assinatura digital.' USING ERRCODE = '42501';
@@ -108,13 +133,21 @@ BEGIN
     RAISE EXCEPTION 'Este tipo só aceita arquivo enviado pelo fluxo de assinatura.';
   END IF;
 
-  UPDATE public.documents d
-     SET assinavel_id = p_assinavel_id
-   WHERE d.id = p_document_id
-     AND EXISTS (SELECT 1 FROM public.projects pr
-                  WHERE pr.id = d.project_id AND pr.tenant_id = _tenant AND NOT pr.is_deleted);
-  GET DIAGNOSTICS _n = ROW_COUNT;
-  RETURN _n > 0;
+  -- o documento, o projeto dele e a empresa do projeto: tudo do banco
+  SELECT d.project_id, d.file_url, pr.company_id INTO _proj, _url, _empresa
+    FROM public.documents d JOIN public.projects pr ON pr.id = d.project_id
+   WHERE d.id = p_document_id AND pr.tenant_id = _tenant AND NOT pr.is_deleted;
+  IF NOT FOUND THEN RETURN FALSE; END IF;
+
+  -- O INSERT comum aceita `file_url` arbitrário (é o upload de anexo). Sem esta
+  -- conferência, bastava inserir um documento apontando para a pasta de OUTRA
+  -- empresa e marcá-lo aqui: o worker baixaria o arquivo para assinar. A mesma
+  -- invariante do `documento_para_assinar` vale para quem marca.
+  _erro := public.assinatura_caminho_erro(_url, _empresa, _proj);
+  IF _erro IS NOT NULL THEN RAISE EXCEPTION '%', _erro; END IF;
+
+  UPDATE public.documents SET assinavel_id = p_assinavel_id WHERE id = p_document_id;
+  RETURN TRUE;
 END;
 $$;
 REVOKE ALL ON FUNCTION public.documento_marcar_assinavel(UUID, UUID) FROM PUBLIC, anon;
