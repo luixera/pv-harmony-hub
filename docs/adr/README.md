@@ -11,3 +11,5 @@ um arquivo `NNNN-titulo.md`. Formato: Contexto · Decisão · Consequências.
 | [0004](0004-templates-docx.md) | Templates de documento apenas em `.docx` | Aceito |
 | [0005](0005-master-sem-bypass.md) | Master sem bypass de RLS no painel comum | Aceito |
 | [0006](0006-cad-engine-alpha.md) | CAD Engine: fatia vertical dentro do app, antes do motor completo | Aceito |
+| [0007](0007-engineering-rules-engine.md) | Motor de Engenharia: regras como dados, nunca no código | Aceito |
+| [0008](0008-assinatura-append-sobre-bytes-aprovados.md) | Assinatura digital: a estampa vem antes, a assinatura é *append* sobre os bytes aprovados | Aceito |

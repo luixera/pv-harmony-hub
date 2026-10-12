@@ -74,6 +74,54 @@ projetista `assigned_only` consegue dar `UPDATE` em projeto não atribuído
 (política `Admin/Staff can update projects`) e ler no storage documentos de
 projeto não atribuído.
 
+## Certificado digital
+Módulo [Assinatura digital](../modules/signatures/overview.md): o **certificado
+A1 (`.pfx`) do engenheiro** fica guardado no sistema e é usado por um robô na
+VPS. É o segredo mais sensível da plataforma — ele assina em nome de uma pessoa
+física. Regras (detalhe em [business-rules](../modules/signatures/business-rules.md)):
+
+- **Bucket `certificados` sem policy de leitura.** Privado, com uma única policy,
+  de `INSERT` (admin, na pasta do próprio tenant). Sem `SELECT`/`UPDATE`/`DELETE`:
+  **nem o admin baixa o `.pfx` depois de subir**. Só o `service_role` alcança.
+- **Senha no Vault** (`vault.create_secret`), no padrão das credenciais da
+  Ludmilla. Nenhuma função a devolve a `authenticated`; a única que a lê,
+  `certificado_do_robo`, é `service_role`. No robô, `.pfx` e senha vivem **só em
+  memória**. No front, a mutação do cadastro tem `gcTime: 0` e é limpa ao fim,
+  porque o React Query guardaria a senha por ~5 min. O assistente (Claude)
+  nunca digita nem manipula a senha.
+- **Leitura só por `service_role`**, e a service role **só existe no segredo do
+  GitHub e em `/etc/gdm-assinador/env` (600, root)** na VPS. No deploy ela vai
+  pelo **stdin** do `ssh`, não na linha de comando (que ficaria legível em
+  `/proc/<pid>/cmdline`). O usuário do serviço (`gdmassinador`) é o mais exposto
+  da máquina — roda LibreOffice sobre arquivo enviado por cliente —, por isso a
+  unit é endurecida (`NoNewPrivileges`, `PrivateTmp`, `ProtectSystem=full`,
+  código `root:root` e `ReadOnlyPaths`). Isso **diverge do padrão da Ludmilla**,
+  cujo deploy ainda passa a chave na linha de comando.
+- **Privilégio por coluna em `documents.assinavel_id`.** A coluna que autoriza
+  assinar está fora de todo `GRANT`, e **ninguém tem `UPDATE`** em `documents`.
+  Só as funções `documento_para_assinar` e `documento_marcar_assinavel` a
+  gravam. Sem isso a tela poderia marcar qualquer anexo como assinável e
+  anular a tranca. Coluna nova em `documents` precisa entrar nos `GRANT INSERT`.
+- **Validação de caminho.** O robô baixa `file_url` com a service role, que
+  ignora RLS. O caminho tem de começar por `<company_id do projeto>/<project_id>/`
+  e o resto só pode ter `[A-Za-z0-9._-]` em segmentos, sem `.`/`..` — **allowlist**,
+  porque o `fetch` normaliza `..`, `%2e%2e` e `..\` e remove tab/quebra de
+  linha, e uma lista de proibidos tem furo. Vale nas duas portas, pois o
+  `INSERT` comum aceita `file_url` arbitrário.
+- **Registro de quem pediu e quem liberou.** `assinaturas.pedida_por`,
+  `aprovada_por`, `liberada_por`, o certificado e os hashes (original, aprovado,
+  assinado) ficam gravados; comentário no card e `project_history` a cada
+  assinatura; recado do Zé a cada uso do certificado. O staff assina com o e-CPF
+  do engenheiro por **decisão consciente**: o controle é rastrear, não impedir.
+- **O Zé não libera sozinho.** A liberação de exceção exige, **no banco**, que o
+  "Libero?" tenha chegado ao gestor e que ele tenha falado depois. O texto de
+  terceiros (nome de arquivo, motivo da triagem) é sanitizado antes de ir ao
+  prompt.
+- **Não usar `node-forge` para verificar assinatura nem cadeia** (advisory na
+  verificação RSA PKCS#1 v1.5). Só para ler o `.pfx`; para verificar, `node:crypto`.
+- A função `assinatura-triagem` e o modo `recado` da `ze-brain` só aceitam o
+  robô, conferido por `ASSINADOR_WORKER_KEY` (ou a service role). Falha fechada.
+
 ## Monitoramento
 - Tabela `system_events` (kind: `error`, `security`, `audit`, `signup`,
   `deploy`) alimenta a aba **Monitoramento** do console (master-only). Captura

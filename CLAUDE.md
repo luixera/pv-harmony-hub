@@ -65,6 +65,7 @@ Detalhes: [docs/project/tech-stack.md](docs/project/tech-stack.md).
 | Ludmilla (acompanhamento das concessionárias) | 🟡 CPFL por portal pronta (VPS); EDP por e-mail revisada, 1º run pendente; Elektro pela estação local — aguarda aceite; só GD Manager | [modules/integrations/ludmilla](docs/modules/integrations/ludmilla.md) |
 | Zé (assistente no WhatsApp) | 🟡 Conecta, espelha, responde e escreve com confirmação (entregas 1-3); rotinas/aprendizado pendentes; só GD Manager | [modules/ze](docs/modules/ze/overview.md) |
 | Usuários | ✅ | [modules/users](docs/modules/users/overview.md) |
+| Assinatura digital | 🟡 Fase 1 — só GD Manager | [modules/signatures](docs/modules/signatures/overview.md) |
 | Permissões (RLS) | ✅ | [modules/permissions](docs/modules/permissions/overview.md) |
 | Geração compartilhada | 🟡 Parcial | [modules/shared-generation](docs/modules/shared-generation/overview.md) |
 | Diagramas (unifilar) | 🟡 Alpha — só master/GD Manager | [modules/diagrams](docs/modules/diagrams/overview.md) |

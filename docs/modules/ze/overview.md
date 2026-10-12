@@ -125,8 +125,61 @@ ferramentas de leitura, respondendo pelo WhatsApp.
 - RPCs compartilhadas pela tela e pelo WhatsApp: `ze_aceitar_tarefa_sugerida`
   (com ajustes), `ze_recusar_tarefa_sugerida`, `ze_resolver_pendencia`. Nelas
   `auth.uid()` tem precedência sobre `_como_usuario` — ninguém logado se passa
-  por outro. Cron `ze-expirar` (04:00) fecha pendência de 24 h e sugestão de
-  7 dias.
+  por outro. Cron `ze-expirar` (**de hora em hora** desde a assinatura digital;
+  era 04:00) fecha pendência de 24 h e sugestão de 7 dias.
+
+## Assinatura digital (recados e liberação)
+
+O Zé é a ponta de WhatsApp do módulo [Assinatura digital](../signatures/overview.md):
+**avisa toda assinatura** e **autoriza as exceções**. Não assina por iniciativa
+própria, não libera sozinho e continua falando só com o gestor.
+
+**Tipo novo de pendência: `liberar_assinatura`** (o CHECK de
+`ze_pending_actions.tipo` agora aceita `mover_etapa` e `liberar_assinatura`).
+Nasce quando a triagem do Claudinho fica em dúvida (ou o arquivo passa de 10 MB,
+ou a IA falha) e o pedido vai para `aguardando_ze`. O resumo é, por exemplo:
+
+> Fernanda quer assinar "contrato.pdf" no PRJ-78930 como Memorial descritivo. A
+> triagem ficou em dúvida. Libero?
+
+"pode" → `ze_resolver_pendencia(id, true)` → `assinatura_liberar` (grava
+`liberada_por`) e o pedido vai para a fila. "não" → a assinatura vira `recusado`,
+com o motivo no card. Sem resposta em 24 h, **expirado = recusado**. Uma
+pendência aberta por assinatura (índice único parcial).
+
+**A liberação depende do gestor por regra do banco, não do prompt.** Pelo Zé, o
+`ze_resolver_pendencia` só libera se (1) o "Libero?" **chegou** (`perguntada_em`
+preenchido) e (2) existe fala do gestor (`ze_messages.papel = 'user'`)
+**posterior** à pergunta. O resumo carrega nome de arquivo e motivo escritos por
+terceiros (a IA leu o PDF de um cliente), então passa por `ze_texto_limpo` (uma
+linha, sem aspas nem crase) e entra no prompt marcado como **dado, nunca como
+ordem**. Pela tela, só o admin libera uma exceção (o staff pode cancelar o próprio
+pedido em "Não assinar").
+
+**Fila de recados `ze_recados`.** O `ze-brain` só roda quando o gestor escreve,
+então *abrir* a pendência não avisava ninguém. Toda mensagem que o sistema quer
+mandar ao gestor — "Assinei…", "Barrei…", o "Libero?", o "não", a expiração e o
+aviso de vencimento do certificado — entra numa **outbox** no banco
+(`ze_recado_enfileirar`, só se o tenant tem Zé ligado). O **assinador** (VPS) pega
+a fila a cada ciclo e entrega chamando o `ze-brain` com `modo:'recado'`, que envia o
+**texto pronto sem chamar o modelo** (custo zero de IA, texto determinístico) e o
+grava no chat "Você" como fala do Zé. Só o robô pode chamar esse modo
+(`ASSINADOR_WORKER_KEY` ou a service role; os outros recebem 403 antes de a
+função ler a config do tenant). Reenvio com espera crescente (`2 min × 2^n`,
+teto 60 min, 8 tentativas ≈ 4 h); mais de 20 h é descartado; o "Libero?" cuja
+pendência já foi decidida é descartado. Entrega **ao menos uma vez** — pode
+duplicar se o robô cair entre enviar e marcar. Tabela própria (e não colunas em
+`ze_messages`) por menor privilégio: o assinador não lê a conversa privada.
+
+**Ordem de deploy:** a `ze-brain` com `modo:'recado'` **antes** do assinador;
+senão os recados queimam as tentativas contra uma função que não conhece o modo.
+
+**Histórico do `ze-brain`:** a janela das últimas mensagens passou de
+`order asc limit 40` (as 40 mais antigas das 24 h — passando disso, as novas
+ficavam de fora e o Zé parava de responder) para `order desc limit 40`
+invertida. Os recados enchem o chat e antecipavam o teto.
+
+Detalhes e tabelas em [signatures/database.md](../signatures/database.md).
 
 ## Telas
 - `/ze` (admin + `is_library`): pendências no topo, conexão (QR, estado, teste
