@@ -284,3 +284,65 @@ export function useRecusarAssinatura() {
     onError: (e: Error) => toast.error(e.message || 'Não consegui cancelar'),
   });
 }
+
+/**
+ * Cadastra o certificado A1. A senha vai do campo direto para a RPC, que a
+ * grava no Vault — não fica em estado global, não vai para log nenhum, e
+ * nenhuma RPC a devolve para o navegador.
+ *
+ * O caminho do .pfx começa pelo id do TENANT (e não da empresa, como em
+ * `project-documents`): é o que a policy de INSERT do bucket `certificados`
+ * exige. O bucket não tem SELECT/UPDATE/DELETE de propósito — nem o admin
+ * baixa o arquivo depois de subir.
+ */
+export function useCadastrarCertificado() {
+  const qc = useQueryClient();
+  const { data: tenant } = useTenant();
+  return useMutation({
+    // O react-query guarda as `variables` de cada mutação (aqui, a senha) no
+    // MutationCache até o gcTime (5 min por padrão). Com 0, a mutação sai do
+    // cache assim que ninguém mais a observa (a tela chama `reset()` ao fim).
+    gcTime: 0,
+    mutationFn: async (p: { file: File; senha: string; titularNome: string; titularCpf: string }) => {
+      if (!tenant?.id) throw new Error('Sem tenant.');
+      if (!/\.(pfx|p12)$/i.test(p.file.name)) throw new Error('O certificado A1 é um arquivo .pfx ou .p12.');
+      if (p.file.size > 5 * 1024 * 1024) throw new Error('Arquivo grande demais para ser um certificado.');
+      if (!p.senha) throw new Error('Sem a senha do certificado não dá para usá-lo.');
+
+      const path = `${tenant.id}/${Date.now()}_certificado.pfx`;
+      const { error: errUp } = await supabase.storage
+        .from('certificados')
+        .upload(path, p.file, { contentType: 'application/x-pkcs12' });
+      if (errUp) throw errUp;
+
+      const { data, error } = await supabase.rpc('certificado_cadastrar' as never, {
+        p_path: path, p_senha: p.senha,
+        p_titular_nome: p.titularNome, p_titular_cpf: p.titularCpf,
+      } as never);
+      if (error) throw error;
+      return data as unknown as string;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['certificado-ativo'] });
+      toast.success('Certificado guardado. Estou conferindo o arquivo…');
+    },
+    onError: (e: Error) => toast.error(e.message || 'Não consegui cadastrar o certificado'),
+  });
+}
+
+/** O "pode" do gestor pela tela (o mesmo que ele responde no WhatsApp). */
+export function useLiberarAssinatura() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { data, error } = await supabase.rpc('assinatura_liberar' as never, { p_id: id, p_autor: null } as never);
+      if (error) throw error;
+      return data as unknown as boolean;
+    },
+    onSuccess: ok => {
+      qc.invalidateQueries({ queryKey: ['registro-assinaturas'] });
+      toast[ok ? 'success' : 'error'](ok ? 'Liberado — vou assinar.' : 'O pedido já não estava esperando.');
+    },
+    onError: (e: Error) => toast.error(e.message || 'Não consegui liberar'),
+  });
+}

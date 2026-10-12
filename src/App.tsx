@@ -40,6 +40,7 @@ import Reports from "./pages/admin/Reports";
 import Tasks from "./pages/Tasks";
 import EmailUpdates from "./pages/EmailUpdates";
 import Ludmilla from "./pages/Ludmilla";
+import Assinaturas from "./pages/Assinaturas";
 import Ze from "./pages/Ze";
 import Landing from "./pages/Landing";
 import Signup from "./pages/Signup";
@@ -103,6 +104,7 @@ function AppRoutes() {
       <Route path="/reports" element={<ProtectedRoute allowedRoles={['admin']}><Reports /></ProtectedRoute>} />
       <Route path="/tasks" element={<ProtectedRoute allowedRoles={['admin', 'staff']}><Tasks /></ProtectedRoute>} />
       <Route path="/ludmilla" element={<ProtectedRoute allowedRoles={['admin', 'staff']}><Ludmilla /></ProtectedRoute>} />
+      <Route path="/assinaturas" element={<ProtectedRoute allowedRoles={['admin', 'staff']}><Assinaturas /></ProtectedRoute>} />
       <Route path="/ze" element={<ProtectedRoute allowedRoles={['admin']}><Ze /></ProtectedRoute>} />
       <Route path="/email-updates" element={<ProtectedRoute allowedRoles={['admin', 'staff']}><EmailUpdates /></ProtectedRoute>} />
       <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
