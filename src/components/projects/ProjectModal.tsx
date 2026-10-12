@@ -39,7 +39,7 @@ import {
   Check, ChevronRight, Upload, Download, Send, Paperclip, FileText,
   Image, Loader2, AlertTriangle, Save, Lock, DollarSign, Clock, MapPin, Hash,
   CheckSquare, Plus, Circle, CheckCircle2, Calendar, User as UserIcon, RotateCcw, FlaskConical, Mail,
-  Search, HardHat,
+  Search, HardHat, FileSignature,
 } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -55,6 +55,8 @@ import { useVistoriaStatus, useSolicitarVistoria } from '@/hooks/useVistoria';
 import { BiduPanel } from '@/components/projects/BiduPanel';
 import { useBiduDisponivel } from '@/hooks/useBidu';
 import { CriarNaCpflPanel } from '@/components/projects/CriarNaCpflPanel';
+import { TabAssinaturas } from './TabAssinaturas';
+import { useAssinaturaDisponivel } from '@/hooks/useAssinaturas';
 
 type ProjectStatus = Database['public']['Enums']['project_status'];
 type DocumentType = Database['public']['Enums']['document_type'];
@@ -2146,6 +2148,9 @@ export function ProjectModal({ projectId, onClose, initialTab = 'geral', viewAsC
   const rotuloEtapa = useStatusLabel();
   // Engenheiro Bidu: só no tenant biblioteca (GD Manager), como o motor de diagramas.
   const temBidu = useBiduDisponivel();
+  // Assinatura digital: mesmo recorte do Bidu (admin/staff do tenant biblioteca),
+  // e fechada de vez na visão da empresa (viewAsCompany).
+  const temAssinatura = useAssinaturaDisponivel() && !viewAsCompany;
   const canEdit = isAdmin || isStaff;
 
   // Pedido de vistoria: só faz sentido consultar na visão do cliente.
@@ -2261,6 +2266,7 @@ export function ProjectModal({ projectId, onClose, initialTab = 'geral', viewAsC
     // e admin da GD Manager (o master, que é admin da GD Manager, já cai aqui).
     ...(hasDiagramEngineAccess ? [{ id: 'unifilar', label: 'Unifilar', icon: <FlaskConical size={13} style={{ marginRight: 5 }} /> }] : []),
     ...(temBidu ? [{ id: 'bidu', label: 'Bidu', icon: <HardHat size={13} style={{ marginRight: 5 }} /> }] : []),
+    ...(temAssinatura ? [{ id: 'assinaturas', label: isMobile ? 'Assin.' : 'Assinaturas', icon: <FileSignature size={13} style={{ marginRight: 5 }} /> }] : []),
   ];
 
   const statusCfg: Record<string, { color: string; bg: string }> = {
@@ -2592,6 +2598,9 @@ export function ProjectModal({ projectId, onClose, initialTab = 'geral', viewAsC
                   <div style={{ padding: '18px 22px' }}>
                     <BiduPanel projectId={project.id} project={project} />
                   </div>
+                )}
+                {activeTab === 'assinaturas' && temAssinatura && (
+                  <TabAssinaturas projectId={project.id} companyId={project.company_id} />
                 )}
                 {activeTab === 'historico' && (
                   <TabHistory projectId={project.id} />
