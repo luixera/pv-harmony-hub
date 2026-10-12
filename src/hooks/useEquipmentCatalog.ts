@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { buildEquipmentDocName, buildEquipmentDocPath, ensurePdf, DocKind } from '@/lib/equipmentDocs';
+import { buildEquipmentDocName, buildEquipmentDocPath, ehDocumentoCompartilhavel, ensurePdf, DocKind } from '@/lib/equipmentDocs';
 
 export type EquipmentType = 'inverter' | 'module';
 
@@ -80,7 +80,19 @@ async function uploadDoc(
   return path;
 }
 
-/** Renomeia o arquivo existente para o padrão atual (TIPO MARCA MODELO) se marca/modelo mudaram. */
+/**
+ * Renomeia o arquivo existente para o padrão atual (TIPO MARCA MODELO) se
+ * marca/modelo mudaram.
+ *
+ * NUNCA mexe em documento COMPARTILHÁVEL (AFCI). O certificado é herdado por
+ * todos os inversores do fabricante, e `move` tira o arquivo do lugar: cada
+ * edição de um modelo levava o AFCI embora e quebrava o link de todos os
+ * irmãos. Em 12/10/2026, 29 dos 44 certificados do catálogo apontavam para
+ * arquivo inexistente por causa disso — enquanto datasheet e INMETRO, que são
+ * do modelo e nunca compartilhados, estavam 100% íntegros. Na tela o link
+ * aparecia normal (a coluna tinha texto) e só o pacote do instalador reclamava
+ * "Faltando".
+ */
 async function renameDocIfNeeded(
   currentPath: string,
   equipmentKey: string,
@@ -88,6 +100,7 @@ async function renameDocIfNeeded(
   brand: string,
   model: string,
 ): Promise<string> {
+  if (ehDocumentoCompartilhavel(kind)) return currentPath;
   const desired = buildEquipmentDocPath(equipmentKey, kind, brand, model);
   if (currentPath === desired) return currentPath;
   const { error } = await supabase.storage.from(BUCKET).move(currentPath, desired);
@@ -175,8 +188,9 @@ export function useSaveEquipment() {
       };
 
       // Certificado novo anexado → passa a valer para os outros inversores da
-      // mesma marca que ainda não tinham. Não sobrescreve quem já tem, para
-      // não apagar um documento anexado de propósito.
+      // mesma marca que ainda não tinham. Não sobrescreve quem já tem: existem
+      // certificados por MODELO (a FOXESS e a DEYE têm dois cada), e apagar o
+      // documento certo de um modelo para pôr o de outro é pior que não ter.
       if (input.type === 'inverter' && input.afciFile && afci_url) {
         await supabase.from('equipment_catalog' as never)
           .update({ afci_url } as never)
