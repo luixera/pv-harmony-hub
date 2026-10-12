@@ -90,20 +90,50 @@ const ECO_DO_PROMPT = [
 ]
 
 /**
+ * Marcadores de "não achei" que a IA devolve em vez de um valor. Já normalizados
+ * (minúsculas, sem acento).
+ */
+const MARCADORES_DE_AUSENCIA = [
+  'null', 'none', 'n/a', 'undefined', 'nao informado', 'desconhecido',
+  'nao consta', 'nao identificado', 'nao localizado', 'a definir', 'ilegivel',
+]
+const alternativas = MARCADORES_DE_AUSENCIA.map((m) => m.replace('/', '\\/')).join('|')
+/** O texto INTEIRO é um marcador. */
+const SO_O_MARCADOR = new RegExp(`^(${alternativas})$`)
+/**
+ * O marcador aparece na frase, como palavra inteira: "Não consta.", "Não
+ * identificado no documento", "Titular não identificado", "(não consta)".
+ * Palavra inteira (nada de letra ou dígito colado) para "Nonato" não casar "none".
+ *
+ * Errar para o lado de casar demais é seguro: titular tratado como "não achei"
+ * só faz a conferência cair para o protocolo. O que bloqueia o anexo é o oposto —
+ * um texto que não é nome de ninguém passando como titular LIDO.
+ */
+const COM_O_MARCADOR = new RegExp(`(^|[^a-z0-9])(${alternativas})([^a-z0-9]|$)`)
+
+/**
  * A IA às vezes devolve a PALAVRA "null" (o prompt diz "ou null") em vez do
  * valor JSON null. Se isso passasse, o worker compararia o titular "null" com o
  * cadastro e bloquearia o anexo à toa — ou pior, trataria como dado lido.
  * Só string conta; número, booleano e objeto viram null (não são dado lido).
+ *
+ * `marcadorEmFrase` escolhe como o "não achei" é reconhecido:
+ *  · true  (titular, endereço) — o marcador em QUALQUER ponto da frase, como
+ *    palavra inteira. Antes era igualdade exata, e "Não consta." (com ponto) ou
+ *    "Não identificado no documento" passavam: duas palavras são "comparáveis" e
+ *    o parecer certo era BLOQUEADO por divergir de um "titular" que ninguém escreveu;
+ *  · false (resumo) — igualdade exata, como sempre. O resumo vai para a tela, e
+ *    "Não consta restrição; conexão aprovada." é um resumo legítimo que
+ *    casar por frase jogaria fora.
  */
-const textoOuNulo = (valor: unknown, limite: number): string | null => {
+const textoOuNulo = (valor: unknown, limite: number, marcadorEmFrase = false): string | null => {
   if (typeof valor !== 'string') return null
   const t = valor.trim()
   if (t.length < 3) return null
   const n = normalizar(t)
-  // Marcadores de "não achei" que a IA devolve em português. Passariam como
-  // titular LIDO, a conferência veria divergência e o anexo seria BLOQUEADO —
-  // o único bloqueio do fluxo, disparado por um texto que não é nome de ninguém.
-  if (/^(null|none|n\/a|undefined|nao informado|desconhecido|nao consta|nao identificado|nao localizado|a definir|ilegivel)$/.test(n)) return null
+  // Passariam como titular LIDO, a conferência veria divergência e o anexo seria
+  // BLOQUEADO — o único bloqueio do fluxo, disparado por um texto que não é nome.
+  if ((marcadorEmFrase ? COM_O_MARCADOR : SO_O_MARCADOR).test(n)) return null
   if (ECO_DO_PROMPT.some((re) => re.test(n))) return null
   return t.slice(0, limite)
 }
@@ -348,8 +378,8 @@ Deno.serve(async (req) => {
       // do cartão. Dizer que não houve resumo é mais honesto que mostrar o eco.
       resumo: textoOuNulo(r.resumo, 500) ?? 'a IA não resumiu o parecer',
       pendencias: Array.isArray(r.pendencias) ? r.pendencias.map(String).slice(0, 10) : [],
-      titular: textoOuNulo(r.titular, 150),
-      endereco: textoOuNulo(r.endereco, 200),
+      titular: textoOuNulo(r.titular, 150, true),
+      endereco: textoOuNulo(r.endereco, 200, true),
     })
   } catch {
     // não loga o erro: a mensagem do JSON.parse cita trecho do texto lido
