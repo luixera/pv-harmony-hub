@@ -140,7 +140,7 @@ export function useAssinaturasDoProjeto(projectId: string | undefined) {
     // o worker trabalha em segundo plano: a tela acompanha
     refetchInterval: q =>
       ((q.state.data as Assinatura[] | undefined) ?? []).some(a =>
-        ['preparando', 'triagem', 'pendente', 'assinando'].includes(a.situacao))
+        ['preparando', 'triagem', 'aguardando_ze', 'pendente', 'assinando'].includes(a.situacao))
         ? 4_000 : false,
   });
 }
@@ -210,16 +210,21 @@ export function usePedirAssinatura() {
           p_path: path, p_name: nome, p_type: p.file.type || 'application/octet-stream',
         } as never);
         if (error) {
-          // a RPC recusou: não deixa arquivo órfão no bucket (melhor esforço)
-          await supabase.storage.from('project-documents').remove([path]).catch(() => undefined);
+          // A RPC recusou: tenta não deixar arquivo órfão no bucket. A policy de
+          // DELETE do bucket é só do admin, e `remove` NÃO rejeita quando não
+          // apaga — por isso o retorno é lido e o órfão fica registrado.
+          const { error: errRm } = await supabase.storage.from('project-documents').remove([path]);
+          if (errRm) console.warn('[assinatura] arquivo órfão não removido:', path, errRm.message);
           throw error;
         }
         documentId = data as unknown as string;
       } else if (documentId) {
-        const { error } = await supabase.rpc('documento_marcar_assinavel' as never, {
+        const { data: marcou, error } = await supabase.rpc('documento_marcar_assinavel' as never, {
           p_document_id: documentId, p_assinavel_id: p.assinavelId,
         } as never);
         if (error) throw error;
+        // `false` = a RPC não achou o documento neste projeto/tenant
+        if (marcou !== true) throw new Error('Documento não encontrado neste projeto.');
       } else {
         throw new Error('Escolha um arquivo ou um documento do projeto.');
       }
@@ -244,7 +249,7 @@ export function usePedirAssinatura() {
 export function useAprovarAssinatura() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id }: { id: string; projectId?: string }) => {
+    mutationFn: async ({ id }: { id: string; projectId: string }) => {
       const { data, error } = await supabase.rpc('assinatura_aprovar' as never, { p_id: id } as never);
       if (error) throw error;
       return data as unknown as string;
@@ -263,7 +268,7 @@ export function useAprovarAssinatura() {
 export function useRecusarAssinatura() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, motivo }: { id: string; motivo?: string; projectId?: string }) => {
+    mutationFn: async ({ id, motivo }: { id: string; motivo?: string; projectId: string }) => {
       const { error } = await supabase.rpc('assinatura_recusar' as never, { p_id: id, p_motivo: motivo ?? null } as never);
       if (error) throw error;
     },

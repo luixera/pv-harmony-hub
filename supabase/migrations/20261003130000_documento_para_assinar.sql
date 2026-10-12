@@ -14,10 +14,15 @@
 -- NewProject (com uploaded_by), useUploadDocument e PublicProjectForm (anon,
 -- sem uploaded_by). Funções que gravam em `documents` são todas SECURITY
 -- DEFINER (dono postgres) e não sofrem este REVOKE.
+--
+-- NINGUÉM recebe UPDATE nesta tabela. Se houvesse UPDATE em `file_url`, bastava
+-- trocar o caminho de um documento JÁ marcado para um arquivo que nunca passou
+-- pela porta da assinatura (o contrato social, por exemplo): a marca seguiria
+-- valendo e `assinatura_pedir` só confere `assinavel_id`. Renomear anexo, se um
+-- dia precisar, vai por RPC. (O REVOKE em nível de tabela leva junto qualquer
+-- grant de coluna anterior.)
 REVOKE INSERT, UPDATE ON public.documents FROM authenticated, anon;
 GRANT INSERT (id, project_id, document_type, file_name, file_url, file_type, uploaded_by, created_at)
-  ON public.documents TO authenticated;
-GRANT UPDATE (document_type, file_name, file_url, file_type)
   ON public.documents TO authenticated;
 -- o formulário público (anon) insere anexo do projeto; segue sem assinavel_id
 GRANT INSERT (id, project_id, document_type, file_name, file_url, file_type, created_at)
@@ -34,14 +39,17 @@ RETURNS UUID
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''
 AS $$
 DECLARE _uid UUID := (select auth.uid()); _tenant UUID; _doc UUID; _origem TEXT;
+        _empresa UUID; _prefixo TEXT;
 BEGIN
   IF _uid IS NULL OR NOT public.assinatura_equipe_ok() THEN
     RAISE EXCEPTION 'Sem acesso à assinatura digital.' USING ERRCODE = '42501';
   END IF;
   _tenant := public.get_user_tenant_id(_uid);
 
-  IF NOT EXISTS (SELECT 1 FROM public.projects pr
-                  WHERE pr.id = p_project_id AND pr.tenant_id = _tenant AND NOT pr.is_deleted) THEN
+  -- a empresa vem do PRÓPRIO projeto, nunca de parâmetro
+  SELECT pr.company_id INTO _empresa FROM public.projects pr
+   WHERE pr.id = p_project_id AND pr.tenant_id = _tenant AND NOT pr.is_deleted;
+  IF _empresa IS NULL THEN
     RAISE EXCEPTION 'Projeto não encontrado.';
   END IF;
 
@@ -53,6 +61,19 @@ BEGIN
   END IF;
   IF coalesce(trim(p_path), '') = '' OR coalesce(trim(p_name), '') = '' THEN
     RAISE EXCEPTION 'Arquivo sem caminho ou sem nome.';
+  END IF;
+
+  -- O worker (service role, que ignora RLS) baixa e prepara EXATAMENTE este
+  -- caminho: ele tem de estar na pasta deste projeto, na convenção
+  -- `<empresa>/<projeto>/...`. Senão um arquivo de outra empresa ou outro
+  -- tenant entraria no fluxo de assinatura com a marca. Prefixo LITERAL
+  -- (left/length), não LIKE.
+  _prefixo := _empresa::text || '/' || p_project_id::text || '/';
+  IF left(p_path, length(_prefixo)) <> _prefixo THEN
+    RAISE EXCEPTION 'O arquivo precisa estar na pasta deste projeto (empresa/projeto/…).';
+  END IF;
+  IF p_path ~ '(^|/)\.\.(/|$)' THEN
+    RAISE EXCEPTION 'Caminho de arquivo inválido.';
   END IF;
 
   INSERT INTO public.documents
