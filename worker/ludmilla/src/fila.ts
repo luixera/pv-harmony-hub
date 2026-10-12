@@ -370,38 +370,69 @@ export async function mensagemPendente(accountId: string, messageId: string, pro
 }
 
 /**
+ * O que o banco respondeu ao pedido de abrir um anexo. As três respostas são
+ * diferentes de propósito: eram duas (vazio e linha), e o vazio misturava
+ * "já resolvido no card" com "o projeto não existe" — o log dizia a primeira
+ * para as duas.
+ */
+export type AberturaDeAnexo =
+  /** a linha está (ou voltou a ficar) `pendente`: é para subir o arquivo */
+  | { situacao: 'aberto'; anexo: AnexoPendente }
+  /** a linha já está `enviado` ou `bloqueado` NESTE projeto: nada a refazer */
+  | { situacao: 'ja_resolvido' }
+  /** o projeto não existe (apagado entre a listagem e o registro) ou não é da conta */
+  | { situacao: 'projeto_inexistente' };
+
+/**
  * Abre a linha do anexo e devolve o que `subirDocumento` precisa.
  *
  * A RPC devolve a linha DE NOVO quando ela tinha ficado `pendente` (run que
  * morreu antes de subir o arquivo) ou `erro` (storage recusou) — sem isso a
  * retentativa da mensagem não serviria para nada, porque o arquivo nunca
- * subiria. Vazio significa `enviado`/`bloqueado` (nada a refazer) ou projeto
- * que não é da conta.
+ * subiria. `enviado`/`bloqueado` voltam como `ja_resolvido`.
  *
  * O PROTOCOLO entra na chave do arquivo (`idArquivoDeEmail`): sem ele, um
  * e-mail que serve dois projetos colidia na UNIQUE e o documento ia para o card
  * do cliente errado. E a RPC devolve o `projeto_id` da linha justamente para
  * esta conferência: se não for o projeto que pedimos, isto estoura aqui, antes
  * de qualquer arquivo subir.
+ *
+ * `ocorrencia` desambigua arquivos de MESMO nome na mesma mensagem (1 = o
+ * primeiro): sem ela o segundo colidia com o primeiro e sumia como "resolvido".
  */
 export async function anexoDeEmail(
   accountId: string, protocolo: string, projectId: string, messageId: string, nomeArquivo: string, conferidoPor: string,
-): Promise<AnexoPendente | null> {
+  ocorrencia = 1,
+): Promise<AberturaDeAnexo> {
   const { data, error } = await supabase().rpc('ludmilla_email_anexo_novo' as never, {
     p_account_id: accountId, p_protocolo: protocolo, p_project_id: projectId,
     p_message_id: messageId, p_nome_arquivo: nomeArquivo, p_conferido_por: conferidoPor,
+    p_ocorrencia: ocorrencia,
   } as never);
   if (error) throw new Error(`Não consegui abrir o anexo: ${error.message}`);
-  const l = ((data ?? []) as { anexo_id: string; projeto_id: string; company_id: string; codigo: string }[])[0];
-  if (!l) return null;
+  const l = ((data ?? []) as {
+    abertura: string; anexo_id: string | null; projeto_id: string | null; company_id: string | null; codigo: string | null;
+  }[])[0];
+  // A RPC responde SEMPRE uma linha. Vazio é função antiga no banco (de antes do
+  // `abertura`): melhor estourar do que tratar o desconhecido como "resolvido".
+  if (!l) throw new Error('o banco não respondeu ao pedido de abrir o anexo (a função ludmilla_email_anexo_novo está desatualizada?)');
+  if (l.abertura === 'projeto_inexistente') return { situacao: 'projeto_inexistente' };
   if (l.projeto_id !== projectId) {
     // Nunca deve acontecer (a RPC já recusa), e é exatamente por isso que está
     // escrito: a alternativa é gravar documento no card de outro cliente.
     throw new Error(`a linha do anexo devolvida pelo banco é do projeto ${l.projeto_id}, e eu pedi ${projectId}`);
   }
+  if (l.abertura === 'ja_resolvido') return { situacao: 'ja_resolvido' };
+  if (l.abertura !== 'aberto' || !l.anexo_id || !l.company_id) {
+    throw new Error(`resposta inesperada do banco ao abrir o anexo: ${l.abertura}`);
+  }
   return {
-    id: l.anexo_id, project_id: l.projeto_id, company_id: l.company_id, protocolo,
-    id_arquivo: idArquivoDeEmail(messageId, protocolo, nomeArquivo), nome_arquivo: nomeArquivo, codigo: l.codigo,
+    situacao: 'aberto',
+    anexo: {
+      id: l.anexo_id, project_id: l.projeto_id, company_id: l.company_id, protocolo,
+      id_arquivo: idArquivoDeEmail(messageId, protocolo, nomeArquivo, ocorrencia),
+      nome_arquivo: nomeArquivo, codigo: l.codigo ?? '',
+    },
   };
 }
 

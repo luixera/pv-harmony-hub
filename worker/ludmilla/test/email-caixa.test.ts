@@ -1,6 +1,7 @@
 // worker/ludmilla/test/email-caixa.test.ts
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { Readable } from 'node:stream';
 import { simpleParser } from 'mailparser';
 import { extrairEnvelope, extrairMensagem, idDaMensagem, mensagemDoFonte, uidsDaBusca } from '../src/email/caixa.js';
 
@@ -145,11 +146,71 @@ test('mensagemDoFonte devolve a mensagem quando o corpo dá para interpretar', a
 test('corpo que o parser recusa devolve null, LOGA e não leva dado de cliente', async () => {
   // Era `catch { continue; }`: a mensagem sumia sem linha no banco, sem log e
   // sem contador — e o corpo de 1–2 MB descia de novo duas vezes por dia.
-  const { r, logs } = await comLogs(() => mensagemDoFonte(undefined as unknown as Buffer, 42));
+  //
+  // E7: a versão anterior alimentava isto com `undefined` — uma entrada que NÃO
+  // carrega nome de pessoa nem de arquivo, então "o log não leva dado de cliente"
+  // passava por construção, sem provar nada. Aqui a entrada é um e-mail de
+  // verdade (com o titular e o arquivo), e o parser falha DEPOIS de ler esse
+  // conteúdo, com uma mensagem que o cita — que é como o mailparser falha ("erro
+  // perto de <trecho>"). Se o código passar a logar `e.message`, este teste cai.
+  const titular = 'WERLHE DE ARAUJO LIMA';
+  const arquivo = 'PARECER_WERLHE_DE_ARAUJO_LIMA.pdf';
+  const quebrado = (): Buffer => new Readable({
+    read() {
+      this.push(Buffer.from(EML.replace('parecer.pdf', arquivo), 'utf8'));
+      this.destroy(new Error(`cabeçalho inválido perto de "To: ${titular}" (filename="${arquivo}")`));
+    },
+  }) as unknown as Buffer;
+
+  // Controle: o erro do parser, de fato, carrega o nome e o arquivo. Sem isto a
+  // asserção sobre o log poderia estar passando por construção outra vez.
+  await assert.rejects(() => simpleParser(quebrado()), (e: Error) => /WERLHE/.test(e.message) && /\.pdf/.test(e.message));
+
+  const { r, logs } = await comLogs(() => mensagemDoFonte(quebrado(), 42));
   assert.equal(r, null);
   assert.match(logs, /não consegui interpretar o corpo/);
   assert.match(logs, /"uid":42/, 'o uid fica: é o que permite achar a mensagem na caixa');
   assert.match(logs, /"nivel":"falha"/);
-  assert.doesNotMatch(logs, /WERLHE/i, 'nada do e-mail vai para o journald');
-  assert.doesNotMatch(logs, /\.pdf/i);
+  assert.doesNotMatch(logs, /WERLHE|ARAUJO|LIMA/i, 'nome do titular não vai para o journald');
+  assert.doesNotMatch(logs, /\.pdf|PARECER_/i, 'nome de arquivo também não');
+  assert.doesNotMatch(logs, /cabeçalho inválido/, 'nem a mensagem crua do parser');
+});
+
+// ── E6: anexo SEM nome de arquivo também deixa rastro ───────────────────────
+
+/** Acrescenta ao EML partes extras (cada uma já com seu `--X`). */
+const comPartes = (...partes: string[][]): string =>
+  EML.replace('--X--', [...partes.flatMap(p => ['--X', ...p, '']), '--X--'].join('\r\n'));
+
+const SEM_NOME = ['Content-Type: application/octet-stream', 'Content-Transfer-Encoding: base64', 'Content-Disposition: attachment', '', 'JVBERi0xLjQK'];
+const IMAGEM_SEM_NOME = ['Content-Type: image/png', 'Content-Transfer-Encoding: base64', 'Content-Disposition: inline', 'Content-ID: <logo@x>', '', 'iVBORw0KGgo='];
+
+test('anexo sem nome de arquivo não entra em anexos, mas É CONTADO', async () => {
+  // O filtro de `filename` vazio descartava sem log e sem contador: numa regra
+  // sem leitura de PDF nem a ressalva "não trouxe PDF" aparecia, e o documento
+  // simplesmente não existia para ninguém.
+  const m = extrairMensagem(await simpleParser(comPartes(SEM_NOME, SEM_NOME)), 7);
+  assert.deepEqual(m.anexos.map(a => a.nome), ['parecer.pdf']);
+  assert.equal(m.anexosSemNome, 2);
+});
+
+test('imagem sem nome (logo inline da assinatura) não conta como documento perdido', async () => {
+  // Imagem não é documento de qualquer jeito; contar o logo de assinatura
+  // encheria o motivo de alarme falso em todo e-mail com assinatura HTML.
+  const m = extrairMensagem(await simpleParser(comPartes(IMAGEM_SEM_NOME)), 7);
+  assert.equal(m.anexosSemNome, 0);
+});
+
+test('mensagem sem anexo sem nome tem contador zero', async () => {
+  assert.equal(extrairMensagem(await simpleParser(EML), 7).anexosSemNome, 0);
+});
+
+test('mensagemDoFonte LOGA o anexo sem nome, com o uid e sem dado de cliente', async () => {
+  const { r, logs } = await comLogs(() => mensagemDoFonte(Buffer.from(comPartes(SEM_NOME), 'utf8'), 7));
+  assert.equal(r?.anexosSemNome, 1);
+  assert.match(logs, /sem nome de arquivo/);
+  assert.match(logs, /"uid":7/);
+  assert.match(logs, /"quantidade":1/);
+  assert.doesNotMatch(logs, /WERLHE/i, 'o corpo do e-mail cita o titular; o log não');
+  assert.doesNotMatch(logs, /parecer\.pdf/i, 'nem o nome do outro anexo');
 });

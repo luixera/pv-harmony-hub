@@ -1,8 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  casaEndereco, casaProtocolo, casaTitular, chaveProtocolo, comparavelTitular, ehImagem, ehPdf,
-  idArquivoDeEmail, pdfDoParecer, protocoloDoAssunto, recomendacaoDoVeredito, regraQueCasa,
+  casaEndereco, casaProtocolo, casaTitular, chaveProtocolo, comparavelTitular, destinoNoBucket, ehImagem,
+  ehPdf, idArquivoDeEmail, LIMITE_BUCKET_BYTES, nomeCitaProtocolo, ocorrenciasPorNome, pdfDoParecer,
+  protocoloDoAssunto, protocolosNoAssunto, recomendacaoDoVeredito, regraQueCasa, separarPorProtocolo,
   type RegraEmail,
 } from '../src/email/util.js';
 
@@ -165,4 +166,143 @@ test('o MESMO anexo em dois protocolos dá duas chaves diferentes', () => {
   // e o mesmo protocolo com a mesma mensagem continua dando a MESMA chave:
   // é o que faz a retentativa retomar a linha em vez de criar outra
   assert.equal(a, idArquivoDeEmail('<um@edp>', '045006443920', 'PARECER.pdf'));
+});
+
+// ── E1: quantos dos NOSSOS protocolos o assunto cita ────────────────────────
+
+const NOSSOS = ['045006443920', '045006443921', '040008312722'];
+
+test('protocolosNoAssunto devolve só os NOSSOS protocolos que o assunto cita', () => {
+  assert.deepEqual(
+    protocolosNoAssunto('ENVIO DE PARECER - NOTAS 45006443920 e 45006443921', NOSSOS),
+    ['045006443920', '045006443921'],
+  );
+  assert.deepEqual(protocolosNoAssunto('ENVIO DE PARECER - NOTA 45006443920', NOSSOS), ['045006443920']);
+  assert.deepEqual(protocolosNoAssunto('Comunicado geral da EDP', NOSSOS), []);
+});
+
+test('protocolosNoAssunto ignora número que não é nosso, e o curto demais', () => {
+  // o número da rua, o CEP e o protocolo de atendimento da EDP não contam
+  assert.deepEqual(protocolosNoAssunto('NOTA 45006443920 - atendimento 0460917635 - CEP 1310000', NOSSOS), ['045006443920']);
+  assert.deepEqual(protocolosNoAssunto('PEDIDO 1234567', ['1234567']), [], 'menos de 8 dígitos nunca casa');
+});
+
+test('protocolosNoAssunto não conta duas vezes o protocolo repetido no assunto nem na lista', () => {
+  assert.deepEqual(protocolosNoAssunto('NOTA 45006443920 / NOTA 45006443920', NOSSOS), ['045006443920']);
+  // 045006443920 e 45006443920 são o MESMO protocolo (zero à esquerda)
+  assert.deepEqual(protocolosNoAssunto('NOTA 45006443920', ['045006443920', '45006443920']), ['045006443920']);
+});
+
+// ── E1: de qual protocolo é o ARQUIVO ───────────────────────────────────────
+
+test('nomeCitaProtocolo compara por dígitos, sem o zero à esquerda do sistema', () => {
+  assert.ok(nomeCitaProtocolo('PARECER_45006441002.pdf', '045006441002'), 'o nome que a EDP usa');
+  assert.ok(nomeCitaProtocolo('parecer 45006441002 (1).pdf', '045006441002'));
+  assert.ok(nomeCitaProtocolo('045006441002.pdf', '45006441002'));
+  assert.ok(nomeCitaProtocolo('0045006441002_final.PDF', '045006441002'), 'zeros a mais também saem');
+});
+
+test('nomeCitaProtocolo NÃO casa por número parecido, curto ou ausente', () => {
+  assert.ok(!nomeCitaProtocolo('PARECER_45006441003.pdf', '045006441002'), 'um dígito diferente é outro protocolo');
+  assert.ok(!nomeCitaProtocolo('PARECER_450064410021.pdf', '045006441002'), 'número mais longo não casa por prefixo');
+  assert.ok(!nomeCitaProtocolo('PARECER_1234567.pdf', '1234567'), 'menos de 8 dígitos nunca casa');
+  assert.ok(!nomeCitaProtocolo('parecer.pdf', '045006441002'));
+  assert.ok(!nomeCitaProtocolo('', '045006441002'));
+});
+
+const NOME_A = 'PARECER_45006443920.pdf';
+const NOME_B = 'PARECER_45006443921.pdf';
+const comTamanho = (nome: string, n = 1000) => ({ nome, mime: 'application/pdf', bytes: { length: n } });
+
+test('separarPorProtocolo: cada protocolo fica só com o arquivo que traz o seu número', () => {
+  const anexos = [comTamanho(NOME_A, 900_000), comTamanho(NOME_B, 400_000)];
+  const citados = ['045006443920', '045006443921'];
+  assert.deepEqual(separarPorProtocolo(anexos, '045006443920', citados).meus.map(a => a.nome), [NOME_A]);
+  assert.deepEqual(separarPorProtocolo(anexos, '045006443921', citados).meus.map(a => a.nome), [NOME_B]);
+  assert.deepEqual(separarPorProtocolo(anexos, '045006443920', citados).outros.map(a => a.nome), [NOME_B]);
+});
+
+test('separarPorProtocolo: arquivo sem número no nome não é de ninguém', () => {
+  const anexos = [comTamanho('carta.pdf'), comTamanho(NOME_A)];
+  const r = separarPorProtocolo(anexos, '045006443920', ['045006443920', '045006443921']);
+  assert.deepEqual(r.meus.map(a => a.nome), [NOME_A]);
+  assert.deepEqual(r.outros.map(a => a.nome), ['carta.pdf']);
+});
+
+test('separarPorProtocolo: arquivo que cita OS DOIS protocolos é ambíguo e não é de nenhum', () => {
+  // Anexar nos dois cards seria entregar a um cliente o documento que fala do outro.
+  const juntos = comTamanho('PARECER_45006443920_45006443921.pdf');
+  const citados = ['045006443920', '045006443921'];
+  assert.deepEqual(separarPorProtocolo([juntos], '045006443920', citados).meus, []);
+  assert.deepEqual(separarPorProtocolo([juntos], '045006443921', citados).meus, []);
+});
+
+// ── E2: o que o bucket project-documents de fato aceita ─────────────────────
+// Lista e limite lidos de storage.buckets em 12/10/2026:
+//   allowed_mime_types = pdf, xls, xlsx, docx, jpeg, png, webp · file_size_limit = 10485760
+
+test('o limite do bucket é o do banco: 10485760 bytes (10 MiB)', () => {
+  assert.equal(LIMITE_BUCKET_BYTES, 10_485_760);
+});
+
+test('destinoNoBucket aceita os quatro tipos de documento e devolve o mime que o bucket conhece', () => {
+  const xlsx = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+  const docx = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+  assert.deepEqual(destinoNoBucket(comTamanho('a.pdf')), { aceito: true, mime: 'application/pdf' });
+  assert.deepEqual(destinoNoBucket({ nome: 'a.xls', mime: 'application/vnd.ms-excel', bytes: { length: 9 } }),
+    { aceito: true, mime: 'application/vnd.ms-excel' });
+  assert.deepEqual(destinoNoBucket({ nome: 'a.xlsx', mime: xlsx, bytes: { length: 9 } }), { aceito: true, mime: xlsx });
+  assert.deepEqual(destinoNoBucket({ nome: 'a.docx', mime: docx, bytes: { length: 9 } }), { aceito: true, mime: docx });
+});
+
+test('destinoNoBucket: mime genérico com extensão conhecida sobe com o mime da extensão', () => {
+  // Cliente de e-mail que declara octet-stream para um PDF: o storage recusaria
+  // o mime e a mensagem ficaria em retentativa para sempre.
+  assert.deepEqual(destinoNoBucket({ nome: 'PARECER.PDF', mime: 'application/octet-stream', bytes: { length: 9 } }),
+    { aceito: true, mime: 'application/pdf' });
+  assert.deepEqual(
+    destinoNoBucket({ nome: 'x.xlsx', mime: 'application/octet-stream', bytes: { length: 9 } }),
+    { aceito: true, mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' },
+  );
+});
+
+test('destinoNoBucket recusa o que o bucket não aceita: p7s, dwg, zip, doc antigo', () => {
+  for (const [nome, mime] of [
+    ['parecer.p7s', 'application/pkcs7-signature'],
+    ['projeto.dwg', 'application/octet-stream'],
+    ['pacote.zip', 'application/zip'],
+    ['carta.doc', 'application/msword'],
+    ['texto.txt', 'text/plain'],
+    ['semextensao', 'application/octet-stream'],
+  ]) {
+    assert.deepEqual(destinoNoBucket({ nome, mime, bytes: { length: 9 } }), { aceito: false, motivo: 'tipo' }, nome);
+  }
+});
+
+test('destinoNoBucket recusa o que passa de 10 MiB, e aceita o que cabe exatamente', () => {
+  assert.deepEqual(destinoNoBucket(comTamanho('grande.pdf', LIMITE_BUCKET_BYTES + 1)), { aceito: false, motivo: 'tamanho' });
+  assert.equal(destinoNoBucket(comTamanho('justo.pdf', LIMITE_BUCKET_BYTES)).aceito, true);
+});
+
+test('destinoNoBucket diz "tipo" antes de "tamanho": o p7s gigante é um tipo errado', () => {
+  assert.deepEqual(
+    destinoNoBucket({ nome: 'a.p7s', mime: 'application/pkcs7-signature', bytes: { length: LIMITE_BUCKET_BYTES * 2 } }),
+    { aceito: false, motivo: 'tipo' });
+});
+
+// ── E5: dois anexos de MESMO nome na mesma mensagem ─────────────────────────
+
+test('ocorrenciasPorNome numera os anexos de mesmo nome, na ordem da mensagem', () => {
+  const nomes = ['parecer.pdf', 'carta.pdf', 'parecer.pdf', 'parecer.pdf', 'Parecer.pdf'].map(nome => ({ nome }));
+  assert.deepEqual(ocorrenciasPorNome(nomes), [1, 1, 2, 3, 1], 'caixa diferente é nome diferente');
+  assert.deepEqual(ocorrenciasPorNome([]), []);
+});
+
+test('idArquivoDeEmail: o primeiro arquivo do nome mantém a chave de sempre, os repetidos ganham o índice', () => {
+  const id = (n?: number) => idArquivoDeEmail('<um@edp>', '045006443920', 'parecer.pdf', n);
+  assert.equal(id(), '<um@edp>#045006443920#parecer.pdf', 'sem índice = o formato que já existe no banco');
+  assert.equal(id(1), '<um@edp>#045006443920#parecer.pdf', 'o primeiro NÃO muda de chave');
+  assert.equal(id(2), '<um@edp>#045006443920#parecer.pdf#2');
+  assert.equal(id(3), '<um@edp>#045006443920#parecer.pdf#3');
+  assert.notEqual(id(2), id(1), 'foi aqui que o segundo sumia como "já resolvido"');
 });

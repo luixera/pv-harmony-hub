@@ -17,7 +17,7 @@ import {
 } from '../src/email/index.js';
 import type { EnvelopeLido, MensagemLida } from '../src/email/caixa.js';
 import { idArquivoDeEmail, type RegraEmail } from '../src/email/util.js';
-import type { AnexoPendente, EmailLido, Run, TentativaEmail } from '../src/fila.js';
+import type { AberturaDeAnexo, EmailLido, Run, TentativaEmail } from '../src/fila.js';
 
 const PROJETO = {
   protocolo: '045006443920',
@@ -132,6 +132,8 @@ const RUN: Run = {
 const REGRAS: RegraEmail[] = [
   { id: '1', remetente: 'relacionamento.edp', assunto: 'ENVIO DE PARECER', tipo_documento: 'parecer', anexar: true, ler_pdf: true },
   { id: '2', remetente: null, assunto: 'CARTA DE OBRAS', tipo_documento: 'carta_obras', anexar: true, ler_pdf: false },
+  // regra que só avisa: não anexa nem lê (E1 não pode bloquear o que não depende de arquivo)
+  { id: '3', remetente: null, assunto: 'AVISO DA EDP', tipo_documento: 'aviso', anexar: false, ler_pdf: false },
 ];
 
 const anexo = (nome: string, mime: string, tamanho = 1000) =>
@@ -145,6 +147,7 @@ const mensagem = (over: Partial<MensagemLida> = {}): MensagemLida => ({
   recebidoEm: new Date('2026-09-10T12:12:00Z'),
   texto: 'Segue o parecer em anexo.',
   anexos: [anexo('parecer.pdf', 'application/pdf')],
+  anexosSemNome: 0,
   ...over,
 });
 
@@ -157,7 +160,11 @@ interface Diario {
   registros: EmailLido[];
   anexosPedidos: string[];
   chavesPedidas: string[];
+  /** a ocorrência (1, 2, …) que o worker mandou para cada anexo pedido */
+  ocorrenciasPedidas: number[];
   subidos: string[];
+  /** o mime com que cada arquivo foi para o storage */
+  mimesSubidos: string[];
   enviados: string[];
   marcadosComErro: string[];
   motivosGravados: string[];
@@ -169,8 +176,12 @@ interface Diario {
 
 function dubles(o: {
   parecer?: ParecerLido;
+  /** o parecer depende de QUAL PDF foi lido (identificado pelo tamanho): E1 */
+  parecerDoPdf?: (tamanho: number) => ParecerLido;
   /** nomes de arquivo cuja linha o banco NÃO devolve (já `enviado`) */
   jaResolvidos?: string[];
+  /** o banco diz que o projeto não existe (apagado entre a listagem e o registro) */
+  projetoInexistente?: boolean;
   /** nomes de arquivo que o storage recusa */
   storageRecusa?: string[];
   /** a mensagem com que o storage recusa (crua, como vem de terceiro) */
@@ -181,8 +192,8 @@ function dubles(o: {
   parecerEstoura?: boolean;
 } = {}): { deps: DepsTratamento; d: Diario } {
   const d: Diario = {
-    registros: [], anexosPedidos: [], chavesPedidas: [], subidos: [], enviados: [],
-    marcadosComErro: [], motivosGravados: [], pdfsLidos: [], tentativas: [], ordem: [],
+    registros: [], anexosPedidos: [], chavesPedidas: [], ocorrenciasPedidas: [], subidos: [], mimesSubidos: [],
+    enviados: [], marcadosComErro: [], motivosGravados: [], pdfsLidos: [], tentativas: [], ordem: [],
   };
   const deps: DepsTratamento = {
     async abrirTentativa(p): Promise<number> {
@@ -190,24 +201,30 @@ function dubles(o: {
       d.tentativas.push(p);
       return d.tentativas.length;
     },
-    async anexoDeEmail(_conta, protocolo, projectId, messageId, nomeArquivo): Promise<AnexoPendente | null> {
+    async anexoDeEmail(_conta, protocolo, projectId, messageId, nomeArquivo, _conferidoPor, ocorrencia = 1): Promise<AberturaDeAnexo> {
       d.ordem.push('anexoDeEmail');
       d.anexosPedidos.push(nomeArquivo);
-      d.chavesPedidas.push(idArquivoDeEmail(messageId, protocolo, nomeArquivo));
+      d.ocorrenciasPedidas.push(ocorrencia);
+      d.chavesPedidas.push(idArquivoDeEmail(messageId, protocolo, nomeArquivo, ocorrencia));
       if (o.anexoEstoura) throw new Error('Não consegui abrir o anexo: permission denied');
-      if ((o.jaResolvidos ?? []).includes(nomeArquivo)) return null;
+      if (o.projetoInexistente) return { situacao: 'projeto_inexistente' };
+      if ((o.jaResolvidos ?? []).includes(nomeArquivo)) return { situacao: 'ja_resolvido' };
       return {
-        id: `anexo-${nomeArquivo}`, project_id: projectId, company_id: PROJETO.company_id,
-        protocolo, id_arquivo: idArquivoDeEmail(messageId, protocolo, nomeArquivo),
-        nome_arquivo: nomeArquivo, codigo: PROJETO.codigo,
+        situacao: 'aberto',
+        anexo: {
+          id: `anexo-${nomeArquivo}${ocorrencia > 1 ? `-${ocorrencia}` : ''}`, project_id: projectId, company_id: PROJETO.company_id,
+          protocolo, id_arquivo: idArquivoDeEmail(messageId, protocolo, nomeArquivo, ocorrencia),
+          nome_arquivo: nomeArquivo, codigo: PROJETO.codigo,
+        },
       };
     },
-    async subirDocumento(a): Promise<string> {
+    async subirDocumento(a, _bytes, mime): Promise<string> {
       d.ordem.push('subirDocumento');
       if ((o.storageRecusa ?? []).includes(a.nome_arquivo)) {
         throw new Error(o.erroDoStorage ?? 'Não consegui guardar o anexo no projeto: bucket indisponível');
       }
       d.subidos.push(a.nome_arquivo);
+      d.mimesSubidos.push(mime);
       return `caminho/${a.nome_arquivo}`;
     },
     async anexoEnviado(id): Promise<void> { d.ordem.push('anexoEnviado'); d.enviados.push(id); },
@@ -221,7 +238,7 @@ function dubles(o: {
       d.ordem.push('lerParecer');
       if (o.parecerEstoura) throw new Error('a leitura do parecer caiu');
       d.pdfsLidos.push(pdf.length);
-      return o.parecer ?? PARECER_OK;
+      return o.parecerDoPdf?.(pdf.length) ?? o.parecer ?? PARECER_OK;
     },
   };
   return { deps, d };
@@ -501,6 +518,338 @@ test('mensagem sem regra também conta a tentativa (e conclui)', async () => {
   assert.equal(r.concluida, true);
   assert.equal(d.tentativas.length, 1);
   assert.deepEqual(d.pdfsLidos, [], 'nada de IA numa mensagem que nenhuma regra quer');
+});
+
+// ── E1: e-mail que cita DOIS protocolos ─────────────────────────────────────
+// O defeito: o laço trata um protocolo por vez, e para CADA um anexava todos os
+// arquivos da mensagem e lia o MAIOR PDF. O documento de um cliente ia para o
+// card do outro (de outra integradora, até), com o comentário "titular
+// conferido"; e o outro projeto era bloqueado por divergir do PDF errado.
+
+const PROJETO_B = {
+  ...PROJETO, protocolo: '045006443921', project_id: 'aaaa1111-1111-4111-8111-111111111111',
+  codigo: 'GD-2026-002', titular: 'MIGUEL ARCANJO CORCINI', endereco: 'AVENIDA BRASIL 4000',
+};
+const DOIS = [PROJETO.protocolo, PROJETO_B.protocolo];
+const ASSUNTO_DOIS = 'ENVIO DE PARECER - NOTAS 45006443920 e 45006443921';
+const PDF_A = 'PARECER_45006443920.pdf';
+const PDF_B = 'PARECER_45006443921.pdf';
+const TAM_A = 900_000; // o MAIOR: é o que o código antigo lia, para os dois projetos
+const TAM_B = 400_000;
+const PARECER_DE_B: ParecerLido = { ...PARECER_OK, titular: 'MIGUEL ARCANJO CORCINI', endereco: 'AVENIDA BRASIL 4000' };
+/** O parecer de cada PDF diz o titular do seu próprio projeto. */
+const parecerDoPdf = (tamanho: number): ParecerLido => (tamanho === TAM_A ? PARECER_OK : PARECER_DE_B);
+
+const doisProtocolos = (over: Partial<MensagemLida> = {}): MensagemLida => mensagem({
+  assunto: ASSUNTO_DOIS,
+  anexos: [anexo(PDF_A, 'application/pdf', TAM_A), anexo(PDF_B, 'application/pdf', TAM_B)],
+  ...over,
+});
+
+test('E1: dois protocolos — cada projeto recebe SÓ o arquivo do seu protocolo', async () => {
+  const a = dubles({ parecerDoPdf });
+  const ra = await comLogs(() => tratarMensagem(RUN, PROJETO, doisProtocolos(), REGRAS, a.deps, DOIS));
+  const b = dubles({ parecerDoPdf });
+  const rb = await comLogs(() => tratarMensagem(RUN, PROJETO_B, doisProtocolos(), REGRAS, b.deps, DOIS));
+
+  assert.deepEqual(a.d.subidos, [PDF_A], 'o card de A não recebe o parecer de B');
+  assert.deepEqual(b.d.subidos, [PDF_B], 'o card de B não recebe o parecer de A');
+  assert.deepEqual(a.d.anexosPedidos, [PDF_A]);
+  assert.deepEqual(b.d.anexosPedidos, [PDF_B]);
+  assert.equal(ra.r.anexados, 1);
+  assert.equal(rb.r.anexados, 1);
+  assert.equal(ra.r.situacao, 'tratado');
+  assert.equal(rb.r.situacao, 'tratado');
+});
+
+test('E1: a IA lê o PDF DO PROTOCOLO, não o maior — e o titular confere contra ele', async () => {
+  // Antes: B lia o PDF de A (o maior), o titular divergia, bloqueava e gravava
+  // concluida = true. B ficava sem documento, e "Ler de novo" dava o mesmo.
+  const b = dubles({ parecerDoPdf });
+  const { r } = await comLogs(() => tratarMensagem(RUN, PROJETO_B, doisProtocolos(), REGRAS, b.deps, DOIS));
+  assert.deepEqual(b.d.pdfsLidos, [TAM_B], 'lê o de B (o menor), não o maior');
+  assert.equal(r.situacao, 'tratado', 'o titular do PDF de B é o de B: nada a bloquear');
+  assert.equal(b.d.registros[0].arquivoLido, PDF_B);
+  assert.equal(b.d.registros[0].anexos, 1);
+  assert.equal(b.d.registros[0].recomendacao, 'approved');
+
+  const a = dubles({ parecerDoPdf });
+  await comLogs(() => tratarMensagem(RUN, PROJETO, doisProtocolos(), REGRAS, a.deps, DOIS));
+  assert.deepEqual(a.d.pdfsLidos, [TAM_A]);
+  assert.equal(a.d.registros[0].arquivoLido, PDF_A);
+});
+
+test('E1: dois protocolos e o nome do arquivo casa com B enquanto se trata A — A não leva o de B', async () => {
+  const soDeB = doisProtocolos({ anexos: [anexo(PDF_B, 'application/pdf', TAM_B)] });
+  const a = dubles({ parecerDoPdf });
+  const { r } = await comLogs(() => tratarMensagem(RUN, PROJETO, soDeB, REGRAS, a.deps, DOIS));
+  assert.equal(r.situacao, 'sem_dono', 'nada neste e-mail é de A');
+  assert.deepEqual(a.d.subidos, []);
+  assert.deepEqual(a.d.anexosPedidos, [], 'nem a linha do anexo é aberta no banco');
+  assert.deepEqual(a.d.pdfsLidos, [], 'e a IA não é paga para ler o PDF de outro cliente');
+
+  const b = dubles({ parecerDoPdf });
+  const rb = await comLogs(() => tratarMensagem(RUN, PROJETO_B, soDeB, REGRAS, b.deps, DOIS));
+  assert.equal(rb.r.situacao, 'tratado');
+  assert.deepEqual(b.d.subidos, [PDF_B]);
+});
+
+test('E1: nenhum arquivo casa pelo nome → não anexa nada, conclui e grava o motivo', async () => {
+  const semNumero = doisProtocolos({
+    anexos: [anexo('parecer_a.pdf', 'application/pdf', TAM_A), anexo('parecer_b.pdf', 'application/pdf', TAM_B)],
+  });
+  const { deps, d } = dubles({ parecerDoPdf });
+  const { r } = await comLogs(() => tratarMensagem(RUN, PROJETO, semNumero, REGRAS, deps, DOIS));
+
+  assert.equal(r.situacao, 'sem_dono');
+  assert.equal(r.anexados, 0);
+  assert.equal(r.concluida, true, 'não é falha passageira: insistir não resolve');
+  assert.deepEqual(d.anexosPedidos, []);
+  assert.deepEqual(d.subidos, []);
+  assert.deepEqual(d.pdfsLidos, [], 'sem dono, a IA não lê: seria pagar para ler o PDF talvez errado');
+  assert.equal(d.ordem.includes('lerParecer'), false);
+  assert.equal(d.registros.length, 1);
+  const reg = d.registros[0];
+  assert.equal(reg.concluida, true);
+  assert.equal(reg.anexos, 0);
+  assert.equal(reg.recomendacao, null, 'recomendar etapa lendo o PDF errado seria pior que não recomendar');
+  assert.equal(reg.arquivoLido, null);
+  assert.equal(reg.projectId, PROJETO.project_id, 'a linha tem projeto, senão não aparece no grupo de atenção');
+  assert.match(String(reg.motivo), /não anexei/);
+  assert.match(String(reg.motivo), /cita 2 protocolos/);
+  assert.match(String(reg.motivo), /qual documento é de qual/);
+  assert.match(String(reg.motivo), /confira à mão/);
+});
+
+test('E1: arquivo que traz os DOIS números no nome é ambíguo — não vai para nenhum card', async () => {
+  const junto = doisProtocolos({ anexos: [anexo('PARECER_45006443920_45006443921.pdf', 'application/pdf', TAM_A)] });
+  const a = dubles({ parecerDoPdf });
+  const b = dubles({ parecerDoPdf });
+  const ra = await comLogs(() => tratarMensagem(RUN, PROJETO, junto, REGRAS, a.deps, DOIS));
+  const rb = await comLogs(() => tratarMensagem(RUN, PROJETO_B, junto, REGRAS, b.deps, DOIS));
+  assert.equal(ra.r.situacao, 'sem_dono');
+  assert.equal(rb.r.situacao, 'sem_dono');
+  assert.deepEqual([...a.d.subidos, ...b.d.subidos], []);
+});
+
+test('E1: dois protocolos, um arquivo sem número no nome — fica de fora, e o motivo diz', async () => {
+  const comCarta = doisProtocolos({
+    anexos: [anexo(PDF_A, 'application/pdf', TAM_A), anexo('carta.pdf', 'application/pdf', 5_000)],
+  });
+  const { deps, d } = dubles({ parecerDoPdf });
+  const { r } = await comLogs(() => tratarMensagem(RUN, PROJETO, comCarta, REGRAS, deps, DOIS));
+  assert.equal(r.situacao, 'tratado');
+  assert.deepEqual(d.subidos, [PDF_A]);
+  assert.match(String(d.registros[0].motivo), /cita 2 protocolos/);
+  assert.match(String(d.registros[0].motivo), /1 de 2 arquivo/, 'quem lê sabe que sobrou arquivo sem dono');
+});
+
+test('E1: um arquivo xlsx com o número no nome também é do projeto; o PDF lido é só do projeto', async () => {
+  const mista = doisProtocolos({
+    anexos: [
+      anexo(PDF_B, 'application/pdf', TAM_B),
+      anexo('MEMORIAL_45006443920.xlsx', 'application/vnd.ms-excel', 50_000),
+      anexo(PDF_A, 'application/pdf', 100_000),
+    ],
+  });
+  const { deps, d } = dubles({ parecerDoPdf: () => PARECER_OK });
+  await comLogs(() => tratarMensagem(RUN, PROJETO, mista, REGRAS, deps, DOIS));
+  assert.deepEqual(d.subidos, ['MEMORIAL_45006443920.xlsx', PDF_A]);
+  assert.deepEqual(d.pdfsLidos, [100_000], 'o PDF de A, ainda que o de B seja maior');
+});
+
+test('E1: com UM protocolo no assunto nada muda — anexa tudo e lê o maior, mesmo com outros na lista da conta', async () => {
+  // O caso normal. A lista da conta tem 2 protocolos, mas o assunto cita 1.
+  const um = mensagem({
+    anexos: [anexo('anexo-tecnico.pdf', 'application/pdf', 20_000), anexo('parecer-de-acesso.pdf', 'application/pdf', 900_000),
+      anexo('planilha.xls', 'application/vnd.ms-excel', 3_000)],
+  });
+  const { deps, d } = dubles();
+  const { r } = await comLogs(() => tratarMensagem(RUN, PROJETO, um, REGRAS, deps, DOIS));
+  assert.equal(r.situacao, 'tratado');
+  assert.deepEqual(d.subidos, ['anexo-tecnico.pdf', 'parecer-de-acesso.pdf', 'planilha.xls']);
+  assert.deepEqual(d.pdfsLidos, [900_000]);
+  assert.equal(d.registros[0].arquivoLido, 'parecer-de-acesso.pdf');
+  assert.equal(d.registros[0].motivo, null, 'nada a ressalvar no caso normal');
+});
+
+test('E1: sem a lista da conta (chamada antiga) o comportamento é o de um protocolo', async () => {
+  const { deps, d } = dubles();
+  const { r } = await comLogs(() => tratarMensagem(RUN, PROJETO, doisProtocolos(), REGRAS, deps));
+  assert.equal(r.situacao, 'tratado');
+  assert.deepEqual(d.subidos, [PDF_A, PDF_B], 'sem saber de outros protocolos, não há como separar');
+});
+
+test('E1: regra que não anexa nem lê não depende de arquivo — não bloqueia', async () => {
+  const aviso = doisProtocolos({ assunto: 'AVISO DA EDP - NOTAS 45006443920 e 45006443921' });
+  const { deps, d } = dubles();
+  const { r } = await comLogs(() => tratarMensagem(RUN, PROJETO, aviso, REGRAS, deps, DOIS));
+  assert.equal(r.situacao, 'tratado');
+  assert.equal(r.concluida, true);
+  assert.deepEqual(d.subidos, []);
+});
+
+test('E1: dois protocolos e e-mail SEM anexo → o caminho de sempre ("não trouxe PDF"), não "sem dono"', async () => {
+  const { deps, d } = dubles();
+  const { r } = await comLogs(() => tratarMensagem(RUN, PROJETO, doisProtocolos({ anexos: [] }), REGRAS, deps, DOIS));
+  assert.equal(r.situacao, 'tratado');
+  assert.equal(r.concluida, true);
+  assert.match(String(d.registros[0].motivo), /não trouxe PDF/);
+});
+
+test('E1: dois protocolos e IA fora do ar — ainda assim cada card só leva o seu arquivo', async () => {
+  const falha: ParecerLido = { ok: false, veredito: null, resumo: '', titular: null, endereco: null, erro: 'sem crédito' };
+  const a = dubles({ parecer: falha });
+  const b = dubles({ parecer: falha });
+  const ra = await comLogs(() => tratarMensagem(RUN, PROJETO, doisProtocolos(), REGRAS, a.deps, DOIS));
+  await comLogs(() => tratarMensagem(RUN, PROJETO_B, doisProtocolos(), REGRAS, b.deps, DOIS));
+  // sem IA não há conferência de titular: o nome do arquivo é a ÚNICA barreira
+  assert.deepEqual(a.d.subidos, [PDF_A]);
+  assert.deepEqual(b.d.subidos, [PDF_B]);
+  assert.equal(ra.r.concluida, false, 'IA fora do ar continua sendo falha passageira');
+});
+
+test('E1: o log do caso "sem dono" não leva nome de pessoa, de arquivo nem assunto', async () => {
+  const m = doisProtocolos({
+    assunto: 'ENVIO DE PARECER - NOTAS 45006443920 e 45006443921 - WERLHE DE ARAUJO LIMA',
+    anexos: [anexo('PARECER_WERLHE_DE_ARAUJO_LIMA.pdf', 'application/pdf', TAM_A),
+      anexo('PARECER_MIGUEL_ARCANJO_CORCINI.pdf', 'application/pdf', TAM_B)],
+  });
+  const { deps } = dubles();
+  const { logs } = await comLogs(() => tratarMensagem(RUN, PROJETO, m, REGRAS, deps, DOIS));
+  assert.ok(logs.length > 0, 'o descarte TEM de deixar rastro');
+  assert.doesNotMatch(logs, /WERLHE|ARAUJO|MIGUEL|CORCINI/i);
+  assert.doesNotMatch(logs, /\.pdf|PARECER_/i);
+  assert.doesNotMatch(logs, /ENVIO DE PARECER/i);
+  assert.match(logs, /GD-2026-001/);
+  assert.match(logs, /045006443920/);
+});
+
+// ── E2: o que o bucket aceita ────────────────────────────────────────────────
+// Antes, TODO anexo não-imagem era enviado, e o storage recusava o que o bucket
+// não aceita: o .p7s (assinatura digital, comum em parecer) virava `anexoFalhou`,
+// a mensagem ficava pendente, e a cada run a IA relia o MESMO PDF já lido — até
+// 5 leituras pagas — e depois a mensagem era abandonada no teto.
+
+test('E2: parecer.pdf + parecer.p7s — o p7s é IGNORADO, não falhado, e a mensagem conclui', async () => {
+  const comAssinatura = mensagem({
+    anexos: [anexo('parecer.pdf', 'application/pdf'), anexo('parecer.p7s', 'application/pkcs7-signature', 3_000)],
+  });
+  const { deps, d } = dubles({ storageRecusa: ['parecer.p7s'] });
+  const { r } = await comLogs(() => tratarMensagem(RUN, PROJETO, comAssinatura, REGRAS, deps));
+  assert.equal(r.concluida, true, 'sem isto a IA relia o PDF a cada run');
+  assert.equal(r.anexados, 1);
+  assert.equal(r.recusados, 1);
+  assert.deepEqual(d.anexosPedidos, ['parecer.pdf'], 'a linha do p7s nem é aberta');
+  assert.deepEqual(d.marcadosComErro, [], 'ignorado não é falha');
+  assert.equal(d.registros[0].concluida, true);
+  assert.deepEqual(d.pdfsLidos, [1000], 'uma leitura só');
+  assert.match(String(d.registros[0].motivo), /1 arquivo\(s\)/);
+  assert.match(String(d.registros[0].motivo), /parecer\.p7s/, 'o nome fica no banco, que é de onde a tela lê');
+  assert.match(String(d.registros[0].motivo), /tipo/);
+});
+
+test('E2: PDF acima de 10 MB é recusado por tamanho, e a mensagem conclui', async () => {
+  const grande = mensagem({ anexos: [anexo('parecer.pdf', 'application/pdf', 10 * 1024 * 1024 + 1)] });
+  const { deps, d } = dubles();
+  const { r } = await comLogs(() => tratarMensagem(RUN, PROJETO, grande, REGRAS, deps));
+  assert.equal(r.anexados, 0);
+  assert.equal(r.recusados, 1);
+  assert.equal(r.concluida, true);
+  assert.deepEqual(d.anexosPedidos, []);
+  assert.match(String(d.registros[0].motivo), /10 MB/);
+});
+
+test('E2: PDF de mime genérico sobe com o mime que o bucket conhece', async () => {
+  // octet-stream no storage é recusado: sem isto o PDF ficava em retentativa.
+  const m = mensagem({ anexos: [anexo('parecer.pdf', 'application/octet-stream')] });
+  const { deps, d } = dubles();
+  const { r } = await comLogs(() => tratarMensagem(RUN, PROJETO, m, REGRAS, deps));
+  assert.equal(r.anexados, 1);
+  assert.deepEqual(d.mimesSubidos, ['application/pdf']);
+});
+
+test('E2: regra que não anexa não conta recusado — não foi o bucket que impediu', async () => {
+  const m = mensagem({
+    assunto: 'AVISO DA EDP - NOTA 45006443920',
+    anexos: [anexo('parecer.p7s', 'application/pkcs7-signature')],
+  });
+  const { deps } = dubles();
+  const { r } = await comLogs(() => tratarMensagem(RUN, PROJETO, m, REGRAS, deps));
+  assert.equal(r.recusados, 0);
+});
+
+test('E2: o log do arquivo recusado não leva o nome (que às vezes traz o titular)', async () => {
+  const m = mensagem({
+    anexos: [anexo('parecer.pdf', 'application/pdf'), anexo('ASSINATURA_WERLHE_DE_ARAUJO_LIMA.p7s', 'application/pkcs7-signature')],
+  });
+  const { deps } = dubles();
+  const { logs } = await comLogs(() => tratarMensagem(RUN, PROJETO, m, REGRAS, deps));
+  assert.match(logs, /não aceita/);
+  assert.match(logs, /"recusados":1/);
+  assert.doesNotMatch(logs, /WERLHE|ARAUJO/i);
+  assert.doesNotMatch(logs, /\.p7s/i);
+});
+
+// ── E5: dois anexos de MESMO nome, e o log que dizia mentira ────────────────
+
+test('E5: dois anexos de mesmo nome na mesma mensagem viram DOIS anexos, com chaves diferentes', async () => {
+  const dupla = mensagem({
+    anexos: [anexo('parecer.pdf', 'application/pdf', 1_000), anexo('parecer.pdf', 'application/pdf', 2_000)],
+  });
+  const { deps, d } = dubles();
+  const { r } = await comLogs(() => tratarMensagem(RUN, PROJETO, dupla, REGRAS, deps));
+  assert.deepEqual(d.ocorrenciasPedidas, [1, 2]);
+  assert.equal(new Set(d.chavesPedidas).size, 2, 'o segundo não pode colidir com o primeiro e sumir');
+  assert.deepEqual(d.chavesPedidas, ['<abc-123@edp.com.br>#045006443920#parecer.pdf', '<abc-123@edp.com.br>#045006443920#parecer.pdf#2']);
+  assert.equal(r.anexados, 2);
+  assert.equal(d.subidos.length, 2);
+});
+
+test('E5: a ocorrência é contada na mensagem inteira — a imagem de mesmo nome não desloca o índice', async () => {
+  // O índice tem de ser o mesmo em todo run para a retentativa retomar a MESMA
+  // linha: contar só os anexos que sobraram dos filtros o faria depender deles.
+  const m = mensagem({
+    anexos: [anexo('parecer.pdf', 'image/png', 10), anexo('parecer.pdf', 'application/pdf', 1_000)],
+  });
+  const { deps, d } = dubles();
+  await comLogs(() => tratarMensagem(RUN, PROJETO, m, REGRAS, deps));
+  assert.deepEqual(d.ocorrenciasPedidas, [2]);
+});
+
+test('E5: "já resolvido" e "projeto não existe" têm logs diferentes, e cada um diz a verdade', async () => {
+  const resolvido = dubles({ jaResolvidos: ['parecer.pdf'] });
+  const lr = await comLogs(() => tratarMensagem(RUN, PROJETO, mensagem(), REGRAS, resolvido.deps));
+  assert.match(lr.logs, /já estava resolvido/);
+  assert.doesNotMatch(lr.logs, /não existe/);
+
+  const sumiu = dubles({ projetoInexistente: true });
+  const ls = await comLogs(() => tratarMensagem(RUN, PROJETO, mensagem(), REGRAS, sumiu.deps));
+  assert.match(ls.logs, /projeto.*não existe/);
+  assert.doesNotMatch(ls.logs, /já estava resolvido/, 'não dizer "resolvido no card" de projeto que nem existe');
+  assert.deepEqual(sumiu.d.subidos, []);
+});
+
+// ── E6: anexo sem nome ──────────────────────────────────────────────────────
+
+test('E6: anexo sem nome vira ressalva e contador, mesmo em regra que não lê PDF', async () => {
+  const carta = mensagem({
+    assunto: 'EDP - CARTA DE OBRAS 45006443920',
+    anexos: [anexo('carta.pdf', 'application/pdf')],
+    anexosSemNome: 2,
+  });
+  const { deps, d } = dubles();
+  const { r } = await comLogs(() => tratarMensagem(RUN, PROJETO, carta, REGRAS, deps));
+  assert.equal(r.semNome, 2);
+  assert.match(String(d.registros[0].motivo), /2 anexo\(s\) sem nome de arquivo/);
+  assert.equal(r.concluida, true, 'é descarte conhecido, não falha passageira');
+});
+
+test('E6: sem anexo sem nome, o contador é zero e não há ressalva', async () => {
+  const { deps, d } = dubles();
+  const { r } = await comLogs(() => tratarMensagem(RUN, PROJETO, mensagem(), REGRAS, deps));
+  assert.equal(r.semNome, 0);
+  assert.equal(d.registros[0].motivo, null);
 });
 
 // ── D7: a triagem, sem IMAP e sem banco ───────────────────────────────────

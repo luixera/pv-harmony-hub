@@ -23,6 +23,13 @@ export interface MensagemLida {
   recebidoEm: Date | null;
   texto: string;
   anexos: { nome: string; mime: string; bytes: Buffer }[];
+  /**
+   * Anexos com conteúdo mas SEM nome de arquivo, que não entram em `anexos`
+   * (sem nome não há como identificar o arquivo nem montar a chave dele). Não
+   * contam as imagens: logo de assinatura inline quase nunca tem nome, e não é
+   * documento de qualquer jeito. Existe para o descarte deixar rastro.
+   */
+  anexosSemNome: number;
 }
 
 /**
@@ -83,14 +90,20 @@ export function extrairEnvelope(uid: number, env: EnvelopeBruto | null | undefin
  * tem de registrar.
  */
 export function extrairMensagem(p: ParsedMail, uid: number, messageIdDoEnvelope?: string | null): MensagemLida {
-  const anexos = (p.attachments ?? [])
-    // Buffer vazio é truthy: checa o tamanho para não anexar um PDF de 0 byte.
-    .filter(a => (a.content?.length ?? 0) > 0 && (a.filename ?? '').trim() !== '')
+  // Buffer vazio é truthy: checa o tamanho para não anexar um PDF de 0 byte.
+  const comConteudo = (p.attachments ?? []).filter(a => (a.content?.length ?? 0) > 0);
+  const anexos = comConteudo
+    .filter(a => (a.filename ?? '').trim() !== '')
     .map(a => ({
       nome: String(a.filename),
       mime: a.contentType || 'application/octet-stream',
       bytes: Buffer.from(a.content as Buffer),
     }));
+  // Sem nome o anexo não entra, mas não pode SUMIR: numa regra sem leitura de PDF
+  // nem a ressalva "não trouxe PDF" aparecia, e o documento não existia para ninguém.
+  const anexosSemNome = comConteudo
+    .filter(a => (a.filename ?? '').trim() === '' && !/^image\//i.test(a.contentType ?? ''))
+    .length;
   return {
     uid,
     messageId: idDaMensagem(messageIdDoEnvelope ?? p.messageId, uid),
@@ -99,6 +112,7 @@ export function extrairMensagem(p: ParsedMail, uid: number, messageIdDoEnvelope?
     recebidoEm: p.date ?? null,
     texto: (p.text ?? '').replace(/\s+/g, ' ').trim(),
     anexos,
+    anexosSemNome,
   };
 }
 
@@ -122,7 +136,13 @@ export async function mensagemDoFonte(
   fonte: Buffer, uid: number, messageIdDoEnvelope?: string | null,
 ): Promise<MensagemLida | null> {
   try {
-    return extrairMensagem(await simpleParser(fonte), uid, messageIdDoEnvelope);
+    const m = extrairMensagem(await simpleParser(fonte), uid, messageIdDoEnvelope);
+    // Só o uid e a quantidade: o nome do outro anexo, o assunto e o corpo são
+    // dado de cliente. O uid é o que permite achar a mensagem na caixa.
+    if (m.anexosSemNome > 0) {
+      log('anexo sem nome de arquivo não foi anexado', { nivel: 'aviso', uid, quantidade: m.anexosSemNome });
+    }
+    return m;
   } catch (e) {
     log('não consegui interpretar o corpo desta mensagem; ela não foi tratada', {
       nivel: 'falha', uid, classe: (e instanceof Error ? e.name : typeof e) || 'erro',

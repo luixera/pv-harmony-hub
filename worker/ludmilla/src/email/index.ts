@@ -8,8 +8,8 @@ import {
 import { modoAtual } from '../local.js';
 import { abrirCaixa, type Caixa, type EnvelopeLido, type MensagemLida } from './caixa.js';
 import {
-  casaEndereco, casaTitular, comparavelTitular, ehImagem, pdfDoParecer,
-  protocoloDoAssunto, recomendacaoDoVeredito, regraQueCasa,
+  casaEndereco, casaTitular, comparavelTitular, destinoNoBucket, ehImagem, ocorrenciasPorNome, pdfDoParecer,
+  protocoloDoAssunto, protocolosNoAssunto, recomendacaoDoVeredito, regraQueCasa, separarPorProtocolo,
   type RegraEmail, type Veredito,
 } from './util.js';
 
@@ -156,11 +156,23 @@ async function lerParecer(pdf: Buffer, protocolo: string, tenantId: string): Pro
 }
 
 export interface Tratamento {
-  situacao: 'tratado' | 'ignorado' | 'bloqueado';
+  /**
+   *  · `tratado`   — seguiu o caminho normal;
+   *  · `ignorado`  — nenhuma regra casou;
+   *  · `bloqueado` — o titular do parecer não é o do projeto (a ÚNICA razão: é o
+   *                  que a tela rotula como "não anexei: titular divergiu");
+   *  · `sem_dono`  — o e-mail cita vários protocolos e nenhum arquivo traz o
+   *                  número deste: não dá para dizer qual documento é de qual.
+   */
+  situacao: 'tratado' | 'ignorado' | 'bloqueado' | 'sem_dono';
   /** arquivos que chegaram ao card de verdade NESTE run */
   anexados: number;
   /** imagens puladas (assinatura de e-mail) */
   imagensIgnoradas: number;
+  /** arquivos que o bucket não aceita (tipo ou tamanho): ignorados, nunca falhados */
+  recusados: number;
+  /** anexos sem nome de arquivo, que não dá para identificar nem anexar */
+  semNome: number;
   /**
    * false = falha passageira; a mensagem fica pendente e um run futuro tenta de
    * novo. O que conta como concluído está logo abaixo, no corpo da função.
@@ -188,9 +200,20 @@ export const DEPS_REAIS: DepsTratamento = {
   anexoDeEmail, subirDocumento, anexoEnviado, anexoErro, registrarEmailLido, lerParecer,
 };
 
+/**
+ * Trata UMA mensagem para UM projeto.
+ *
+ * `protocolosDaConta` são todos os protocolos que o run está procurando: é com
+ * eles que se sabe QUANTOS projetos o e-mail serve. O laço do run trata um
+ * protocolo por vez; se o assunto cita dois, esta função roda duas vezes para a
+ * mesma mensagem, e cada vez só pode levar para o card o arquivo DAQUELE
+ * protocolo (E1). Com um só protocolo citado nada disso entra em jogo. Sem a
+ * lista (chamada antiga), vale o caso de um protocolo.
+ */
 export async function tratarMensagem(
   run: Run, p: ProtocoloDeProjeto, m: MensagemLida, regras: RegraEmail[],
   deps: DepsTratamento = DEPS_REAIS,
+  protocolosDaConta: string[] = [p.protocolo],
 ): Promise<Tratamento> {
   const regra = regraQueCasa(regras, m.assunto, m.remetente);
   const comum = {
@@ -217,17 +240,75 @@ export async function tratarMensagem(
       anexos: 0, motivo: 'nenhuma regra casa com este assunto/remetente', recomendacao: null,
       concluida: true, arquivoLido: null,
     });
-    return { situacao: 'ignorado', anexados: 0, imagensIgnoradas: 0, concluida: true };
+    return { situacao: 'ignorado', anexados: 0, imagensIgnoradas: 0, recusados: 0, semNome: 0, concluida: true };
   }
+
+  // O índice de "este é o 2º arquivo de mesmo nome" sai da mensagem INTEIRA,
+  // antes de qualquer filtro: tem de ser o mesmo em todo run para a retentativa
+  // retomar a mesma linha de `portal_anexos` em vez de anexar de novo (E5).
+  const ocorrencias = ocorrenciasPorNome(m.anexos);
+  const todos = m.anexos.map((a, i) => ({ ...a, ocorrencia: ocorrencias[i] }));
 
   // Imagem não é documento: a assinatura HTML da EDP traz image001.png…004.png,
   // e cada uma virava documento do projeto e comentário no card do cliente.
-  const paraAnexar = m.anexos.filter(a => !ehImagem(a));
-  const imagensIgnoradas = m.anexos.length - paraAnexar.length;
+  const semImagem = todos.filter(a => !ehImagem(a));
+  const imagensIgnoradas = todos.length - semImagem.length;
+  const semNome = m.anexosSemNome;
+
+  // E1 — quantos projetos NOSSOS este e-mail serve. Com mais de um, o arquivo só
+  // vai para o card do protocolo cujo número está no NOME dele, e a IA lê o PDF
+  // desse protocolo (não o maior do e-mail, que pode ser o de outro cliente).
+  // Uma regra que não anexa nem lê não depende de arquivo nenhum: aí não há o que
+  // separar, e bloquear seria punir o que não tem risco.
+  const citados = protocolosNoAssunto(m.assunto, protocolosDaConta);
+  const varios = citados.length > 1;
+  const dependeDeArquivo = regra.anexar || regra.ler_pdf;
+  const doProtocolo = varios && dependeDeArquivo
+    ? separarPorProtocolo(semImagem, p.protocolo, citados).meus
+    : semImagem;
+
+  const ressalvaImagens = imagensIgnoradas > 0
+    ? [`${imagensIgnoradas} imagem(ns) do e-mail não foram anexadas (assinatura)`] : [];
+  const ressalvaSemNome = semNome > 0
+    ? [`${semNome} anexo(s) sem nome de arquivo não foram anexados`] : [];
+
+  if (varios && dependeDeArquivo && semImagem.length > 0 && doProtocolo.length === 0) {
+    // Nenhum arquivo traz o número deste protocolo: não há como dizer de quem é o
+    // documento, e anexar "por via das dúvidas" é entregar o de um cliente no card
+    // de outro. Não é falha passageira (insistir dá o mesmo): concluída, com o
+    // motivo na tela. A IA nem é chamada — pagaria para ler o PDF talvez errado.
+    await deps.registrarEmailLido({
+      ...comum, projectId: p.project_id, tipoDocumento: regra.tipo_documento,
+      veredito: null, resumo: null, anexos: 0,
+      motivo: [
+        'não anexei',
+        `o e-mail cita ${citados.length} protocolos e não consegui dizer qual documento é de qual (nenhum arquivo traz o número deste protocolo no nome) — confira à mão`,
+        ...ressalvaImagens, ...ressalvaSemNome,
+      ].join(' · '),
+      recomendacao: null, concluida: true, arquivoLido: null,
+    });
+    log('nada anexado: o e-mail cita mais de um protocolo e nenhum arquivo traz o número deste',
+      { nivel: 'aviso', projeto: p.codigo, protocolo: p.protocolo, protocolos_no_assunto: citados.length, arquivos: semImagem.length });
+    return { situacao: 'sem_dono', anexados: 0, imagensIgnoradas, recusados: 0, semNome, concluida: true };
+  }
+
+  // O que o bucket de fato aceita (E2). Só vale quando a regra anexa: arquivo
+  // que a regra nem queria anexar não foi "recusado" por ninguém.
+  const aceitos: (typeof doProtocolo[number] & { mime: string })[] = [];
+  const recusados: { nome: string; motivo: 'tipo' | 'tamanho' }[] = [];
+  if (regra.anexar) {
+    for (const a of doProtocolo) {
+      const destino = destinoNoBucket(a);
+      if (destino.aceito) aceitos.push({ ...a, mime: destino.mime });
+      else recusados.push({ nome: a.nome, motivo: destino.motivo });
+    }
+  }
 
   // O parecer é lido ANTES de anexar: o titular que ele traz entra na
-  // conferência. O PDF escolhido é o MAIOR, não o primeiro da lista.
-  const pdf = pdfDoParecer(m.anexos);
+  // conferência. O PDF escolhido é o MAIOR, não o primeiro da lista — entre os
+  // arquivos DESTE protocolo quando o e-mail serve vários. Ler o que o bucket
+  // recusa (um PDF acima de 10 MB) continua valendo: a recusa é de anexar.
+  const pdf = pdfDoParecer(doProtocolo);
   const parecer = regra.ler_pdf && pdf
     ? await deps.lerParecer(pdf.bytes, p.protocolo, run.tenant_id)
     : SEM_LEITURA;
@@ -237,9 +318,16 @@ export async function tratarMensagem(
 
   // tudo o que a pessoa precisa saber sobre esta mensagem, em uma frase
   const ressalvas: string[] = [];
-  if (regra.ler_pdf && !pdf) ressalvas.push('a regra pede a leitura do parecer, mas o e-mail não trouxe PDF');
+  if (varios && dependeDeArquivo && semImagem.length > 0) {
+    ressalvas.push(`o e-mail cita ${citados.length} protocolos: usei só ${doProtocolo.length} de ${semImagem.length} arquivo(s), os que trazem o número deste protocolo no nome`);
+  }
+  if (regra.ler_pdf && !pdf) {
+    ressalvas.push(varios && semImagem.length > 0
+      ? 'a regra pede a leitura do parecer, mas nenhum PDF traz o número deste protocolo no nome'
+      : 'a regra pede a leitura do parecer, mas o e-mail não trouxe PDF');
+  }
   if (parecer.erro) ressalvas.push(`não consegui ler o parecer: ${parecer.erro}`);
-  if (imagensIgnoradas > 0) ressalvas.push(`${imagensIgnoradas} imagem(ns) do e-mail não foram anexadas (assinatura)`);
+  ressalvas.push(...ressalvaImagens, ...ressalvaSemNome);
 
   const c = conferir(p, { titular: parecer.titular, endereco: parecer.endereco });
   if (c.motivo) ressalvas.push(c.motivo);
@@ -255,22 +343,38 @@ export async function tratarMensagem(
     });
     log('anexo bloqueado: o titular do parecer não é o do projeto',
       { nivel: 'aviso', projeto: p.codigo, protocolo: p.protocolo, por: c.por });
-    return { situacao: 'bloqueado', anexados: 0, imagensIgnoradas, concluida: true };
+    return { situacao: 'bloqueado', anexados: 0, imagensIgnoradas, recusados: 0, semNome, concluida: true };
+  }
+
+  if (recusados.length > 0) {
+    // O nome do arquivo vai para o motivo (banco, de onde a tela lê); no log só a
+    // contagem — nome de arquivo às vezes traz o titular.
+    ressalvas.push(`${recusados.length} arquivo(s) não anexado(s): o armazenamento do projeto só aceita pdf, xls, xlsx e docx de até 10 MB (${descreverRecusados(recusados)})`);
+    log('arquivo não anexado: o armazenamento do projeto não aceita o tipo ou o tamanho',
+      { nivel: 'aviso', projeto: p.codigo, protocolo: p.protocolo, recusados: recusados.length });
   }
 
   let anexados = 0;
   let anexoFalhou = false;
   if (regra.anexar) {
-    for (const a of paraAnexar) {
-      const pendente = await deps.anexoDeEmail(run.account_id, p.protocolo, p.project_id, m.messageId, a.nome, c.por);
-      if (!pendente) {
-        // Vazio = a linha já está `enviado` ou `bloqueado`; nada a refazer. (A
-        // RPC devolve a linha de novo quando ela ficou `pendente` ou `erro`,
+    for (const a of aceitos) {
+      const aberto = await deps.anexoDeEmail(
+        run.account_id, p.protocolo, p.project_id, m.messageId, a.nome, c.por, a.ocorrencia);
+      if (aberto.situacao === 'ja_resolvido') {
+        // A linha já está `enviado` ou `bloqueado` NESTE projeto; nada a refazer.
+        // (A RPC devolve `aberto` de novo quando ela ficou `pendente` ou `erro`,
         // justamente para a retentativa servir para algo.) Aviso, não silêncio.
         log('anexo já estava resolvido no card; não subi de novo',
           { nivel: 'aviso', projeto: p.codigo, protocolo: p.protocolo, mime: a.mime });
         continue;
       }
+      if (aberto.situacao === 'projeto_inexistente') {
+        // Dizer "já resolvido no card" aqui seria mentira: o card nem existe.
+        log('o projeto deste protocolo não existe mais (ou não é desta conta); não anexei',
+          { nivel: 'falha', projeto: p.codigo, protocolo: p.protocolo, mime: a.mime });
+        continue;
+      }
+      const pendente = aberto.anexo;
       try {
         const caminho = await deps.subirDocumento(pendente, a.bytes, a.mime);
         await deps.anexoEnviado(pendente.id, caminho, a.mime);
@@ -309,9 +413,16 @@ export async function tratarMensagem(
   log('e-mail tratado', {
     projeto: p.codigo, protocolo: p.protocolo, tipo: regra.tipo_documento,
     veredito: parecer.veredito, conferido_por: c.por, anexados,
-    imagens_ignoradas: imagensIgnoradas, recomendacao, concluida, tentativa,
+    imagens_ignoradas: imagensIgnoradas, recusados: recusados.length, sem_nome: semNome,
+    protocolos_no_assunto: citados.length, recomendacao, concluida, tentativa,
   });
-  return { situacao: 'tratado', anexados, imagensIgnoradas, concluida };
+  return { situacao: 'tratado', anexados, imagensIgnoradas, recusados: recusados.length, semNome, concluida };
+}
+
+/** Até três nomes, com o motivo de cada um; o resto vira "e mais N". Vai para o banco, nunca para o log. */
+function descreverRecusados(r: { nome: string; motivo: 'tipo' | 'tamanho' }[]): string {
+  const nomes = r.slice(0, 3).map(x => `${x.nome} [${x.motivo}]`).join(', ');
+  return r.length > 3 ? `${nomes} e mais ${r.length - 3}` : nomes;
 }
 
 /** O que a triagem decidiu, com as contagens que entram no `resultado`. */
@@ -381,6 +492,10 @@ export async function triar(
 /** As contas do run, para o `resultado` e para o log do fim. */
 interface Conta {
   lidos: number; tratados: number; anexados: number; ignorados: number; bloqueados: number;
+  /** e-mails de vários protocolos em que nenhum arquivo dizia de quem era (E1) */
+  semDono: number;
+  /** arquivos que o bucket não aceita (E2) · anexos sem nome de arquivo (E6) */
+  recusados: number; semNome: number;
   pulados: number; descartados: number; imagens: number; a_tentar_de_novo: number;
   /** mensagens cujo CORPO o parser não conseguiu interpretar (descarte visível) */
   naoLidas: number;
@@ -415,8 +530,11 @@ export async function executarVarreduraEmail(run: Run): Promise<void> {
     }
     caixa = await abrirCaixa(creds);
 
+    // com ela se sabe quantos projetos um e-mail serve (E1)
+    const todosOsProtocolos = protocolos.map(x => x.protocolo);
+
     const n: Conta = {
-      lidos: 0, tratados: 0, anexados: 0, ignorados: 0, bloqueados: 0,
+      lidos: 0, tratados: 0, anexados: 0, ignorados: 0, bloqueados: 0, semDono: 0, recusados: 0, semNome: 0,
       pulados: 0, descartados: 0, imagens: 0, a_tentar_de_novo: 0, naoLidas: 0,
       limpos: 0, falhasBusca: 0, falhasTratamento: 0,
     };
@@ -465,13 +583,16 @@ export async function executarVarreduraEmail(run: Run): Promise<void> {
           const m = env ? { ...baixada, messageId: env.messageId } : baixada;
           try {
             n.lidos++;
-            const r = await tratarMensagem(run, p, m, regras);
+            const r = await tratarMensagem(run, p, m, regras, DEPS_REAIS, todosOsProtocolos);
             n.anexados += r.anexados;
             n.imagens += r.imagensIgnoradas;
+            n.recusados += r.recusados;
+            n.semNome += r.semNome;
             if (!r.concluida) n.a_tentar_de_novo++;
             if (r.situacao === 'tratado') n.tratados++;
             else if (r.situacao === 'ignorado') n.ignorados++;
-            else n.bloqueados++;
+            else if (r.situacao === 'bloqueado') n.bloqueados++;
+            else n.semDono++;
           } catch (e) {
             // Banco, storage ou leitura do parecer estourando NÃO é falha da
             // caixa, e o log não pode dizer que é. A mensagem fica sem linha no
@@ -518,6 +639,12 @@ export async function executarVarreduraEmail(run: Run): Promise<void> {
         pulados: n.pulados, descartados: n.descartados,
         // se um dia uma imagem legítima for descartada, é por aqui que aparece
         imagens_ignoradas: n.imagens,
+        // `bloqueados` é SÓ divergência de titular (é como a tela o rotula). O e-mail
+        // de vários protocolos sem arquivo que diga de quem é vem aqui, à parte.
+        sem_dono: n.semDono,
+        // arquivos que o bucket não aceita (p7s, dwg, zip, acima de 10 MB) e anexos
+        // sem nome: descartes conhecidos, que não são falha — mas não somem
+        anexos_recusados: n.recusados, anexos_sem_nome: n.semNome,
         a_tentar_de_novo: n.a_tentar_de_novo, nao_lidas: n.naoLidas,
         falhas, falhas_busca: n.falhasBusca, falhas_tratamento: n.falhasTratamento,
       },
