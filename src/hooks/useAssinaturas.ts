@@ -48,7 +48,8 @@ export interface Assinatura {
 export interface Certificado {
   id: string;
   titular_nome: string;
-  titular_cpf: string;
+  /** Só vem com `useCertificadoAtivo({ comCpf: true })`. */
+  titular_cpf?: string;
   emissor: string | null;
   serial: string | null;
   validade_inicio: string | null;
@@ -103,14 +104,24 @@ export function useCatalogoAssinavel() {
   });
 }
 
-export function useCertificadoAtivo() {
+/**
+ * Colunas explícitas: nada de `arquivo_path`/`secret_id` no navegador. O CPF
+ * completo só vem quando a tela pede (`comCpf` — o cartão do admin, que o
+ * mostra mascarado); o staff, que vê a aba do projeto, nunca o recebe.
+ * (Dívida: o que protege de verdade é grant de coluna ou RPC já mascarada.)
+ */
+const COLUNAS_CERTIFICADO = 'id, titular_nome, emissor, serial, validade_inicio, validade_fim, situacao, erro, ativo';
+
+export function useCertificadoAtivo(opts: { comCpf?: boolean } = {}) {
   const disponivel = useAssinaturaDisponivel();
+  const comCpf = !!opts.comCpf;
   return useQuery({
-    queryKey: ['certificado-ativo'],
+    // mesmo prefixo ['certificado-ativo']: o invalidateQueries pega os dois
+    queryKey: ['certificado-ativo', comCpf],
     queryFn: async (): Promise<Certificado | null> => {
       const { data, error } = await supabase
         .from('certificados_digitais' as never)
-        .select('*')
+        .select(comCpf ? `${COLUNAS_CERTIFICADO}, titular_cpf` : COLUNAS_CERTIFICADO)
         .eq('ativo', true)
         .maybeSingle();
       if (error) throw error;

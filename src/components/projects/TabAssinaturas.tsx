@@ -141,7 +141,7 @@ export function TabAssinaturas({ projectId, companyId }: { projectId: string; co
             : certificado.situacao === 'conferindo'
               ? 'Conferindo o certificado…'
               : podeAssinar
-                ? `Certificado de ${certificado.titular_nome}${certificado.validade_fim ? ` · vence em ${format(new Date(certificado.validade_fim), 'dd/MM/yyyy')}` : ''}`
+                ? `Certificado de ${certificado.titular_nome}${certificado.validade_fim ? ` · vence em ${format(new Date(`${certificado.validade_fim}T00:00:00`), 'dd/MM/yyyy')}` : ''}`
                 : `Certificado ${certificado.situacao}${certificado.erro ? ` — ${certificado.erro}` : ''}`}
         </span>
       </div>

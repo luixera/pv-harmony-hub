@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { format } from 'date-fns';
+import { differenceInCalendarDays, format } from 'date-fns';
 import {
   FileSignature, ShieldCheck, ShieldAlert, Loader2, Upload, ExternalLink, Eye, Check, X,
 } from 'lucide-react';
@@ -52,6 +52,9 @@ function mascararCpf(cpf: string | null | undefined): string {
   return `***.***.${d.slice(6, 9)}-${d.slice(9, 11)}`;
 }
 
+/** Série do certificado, curta: os 8 últimos caracteres bastam para distinguir renovações. */
+const abreviarSerie = (serial: string) => (serial.length > 10 ? `…${serial.slice(-8)}` : serial);
+
 const abrir = async (path: string | null) => {
   if (!path) return;
   const url = await urlDoArquivo(path);
@@ -60,7 +63,7 @@ const abrir = async (path: string | null) => {
 
 /** Cadastro e estado do certificado — só o admin. */
 function CartaoCertificado() {
-  const { data: c } = useCertificadoAtivo();
+  const { data: c, isLoading, isError } = useCertificadoAtivo({ comCpf: true });
   const cadastrar = useCadastrarCertificado();
   const fileRef = useRef<HTMLInputElement>(null);
   const [arquivo, setArquivo] = useState<File | null>(null);
@@ -83,19 +86,23 @@ function CartaoCertificado() {
       limpar();
     } catch {
       // o toast de erro já saiu no onError do hook; os campos ficam para
-      // tentar de novo — menos a senha, que não fica em memória um segundo
-      // além do necessário.
+      // tentar de novo — menos a senha: o campo é esvaziado e, depois do
+      // `reset()` abaixo, nada mais a referencia (JS não zera a string; ela
+      // só fica sem dono para o coletor de lixo).
       setSenha('');
     } finally {
-      // tira a senha das `variables` da mutação
+      // solta a senha das `variables` da mutação
       cadastrar.reset();
     }
   };
 
-  const dias = c?.validade_fim
-    ? Math.ceil((new Date(c.validade_fim).getTime() - Date.now()) / 864e5)
-    : null;
-  // sem validade (ainda em conferência) não há selo; data passada = vencido
+  // `validade_fim` é DATE ("2026-12-31"): sem o horário, `new Date` o lê como
+  // meia-noite UTC e, no Brasil, mostra o dia anterior. O certificado vale
+  // até o FIM do dia da validade (o banco só marca vencido quando < hoje),
+  // por isso a conta é em dias de calendário: 0 = vence hoje, < 0 = vencido.
+  const fim = c?.validade_fim ? new Date(`${c.validade_fim}T00:00:00`) : null;
+  const dias = fim ? differenceInCalendarDays(fim, new Date()) : null;
+  // sem validade (ainda em conferência) não há selo
   const mostraSelo = dias !== null && (c?.situacao === 'ok' || c?.situacao === 'vencido');
 
   return (
@@ -104,19 +111,24 @@ function CartaoCertificado() {
         {c?.situacao === 'ok' ? <ShieldCheck className="w-5 h-5 text-emerald-600" /> : <ShieldAlert className="w-5 h-5 text-amber-600" />}
         <span className="font-semibold">Certificado digital (A1)</span>
         {mostraSelo && dias !== null && (
-          <span className={`ml-auto text-xs px-2 py-0.5 rounded-full ${dias <= 0 ? 'bg-red-100 text-red-800' : dias <= 30 ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'}`}>
-            {dias <= 0 ? 'vencido' : `vence em ${dias} dia${dias > 1 ? 's' : ''}`}
+          <span className={`ml-auto text-xs px-2 py-0.5 rounded-full ${dias < 0 ? 'bg-red-100 text-red-800' : dias <= 30 ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'}`}>
+            {dias < 0 ? 'vencido' : dias === 0 ? 'vence hoje' : `vence em ${dias} dia${dias > 1 ? 's' : ''}`}
           </span>
         )}
       </div>
 
-      {c ? (
+      {isLoading ? (
+        <div className="flex py-2"><Loader2 className="w-4 h-4 animate-spin text-primary" /></div>
+      ) : isError ? (
+        // erro NÃO é "sem certificado": cadastrar desativa o que existe
+        <p className="text-sm text-red-700">Não consegui ler o certificado — recarregue a página.</p>
+      ) : c ? (
         <div className="text-sm space-y-1">
           <p><span className="text-muted-foreground">Titular:</span> {c.titular_nome}</p>
           <p><span className="text-muted-foreground">CPF:</span> {mascararCpf(c.titular_cpf)}</p>
           {c.emissor && <p><span className="text-muted-foreground">Emissor:</span> {c.emissor}</p>}
           {c.serial && <p className="font-mono text-xs"><span className="text-muted-foreground font-sans">Série:</span> {c.serial}</p>}
-          {c.validade_fim && <p><span className="text-muted-foreground">Validade:</span> {format(new Date(c.validade_fim), 'dd/MM/yyyy')}</p>}
+          {fim && <p><span className="text-muted-foreground">Validade:</span> {format(fim, 'dd/MM/yyyy')}</p>}
           <p>
             <span className="text-muted-foreground">Situação:</span>{' '}
             {SITUACAO_CERTIFICADO[c.situacao] ?? c.situacao}
@@ -127,7 +139,7 @@ function CartaoCertificado() {
         <p className="text-sm text-muted-foreground">Nenhum certificado cadastrado. Sem ele, ninguém assina.</p>
       )}
 
-      {!abrindo ? (
+      {isLoading || isError ? null : !abrindo ? (
         <Button variant="outline" size="sm" className="mt-3 gap-2" onClick={() => setAbrindo(true)}>
           <Upload className="w-4 h-4" /> {c ? 'Trocar certificado' : 'Cadastrar certificado'}
         </Button>
@@ -145,6 +157,7 @@ function CartaoCertificado() {
           <Input
             type="password" value={senha} onChange={e => setSenha(e.target.value)}
             placeholder="Senha do certificado" autoComplete="new-password"
+            data-1p-ignore data-lpignore="true"
           />
           <p className="text-xs text-muted-foreground">
             A senha vai direto para o cofre do banco. Ninguém — nem você, depois — consegue
@@ -185,6 +198,7 @@ function Linha({ l, ehAdmin }: { l: LinhaRegistro; ehAdmin: boolean }) {
       <p className="text-xs text-muted-foreground mt-1">
         {l.tipo} · pedido por {l.pedida_por_nome} em {format(new Date(l.pedida_em), 'dd/MM/yyyy HH:mm')}
         {l.titular_nome ? ` · e-CPF de ${l.titular_nome}` : ''}
+        {l.serial ? ` · série ${abreviarSerie(l.serial)}` : ''}
         {l.liberada_por_nome ? ` · liberado por ${l.liberada_por_nome}` : ''}
       </p>
       {l.recusa && <p className="text-xs text-red-700 mt-1">{l.recusa}</p>}
@@ -221,7 +235,10 @@ function Linha({ l, ehAdmin }: { l: LinhaRegistro; ehAdmin: boolean }) {
             )}
             <Button
               size="sm" variant="outline" className="gap-1.5" disabled={recusar.isPending}
-              onClick={() => recusar.mutate({ id: l.id, motivo: 'Não liberado.', projectId: l.project_id })}
+              onClick={() => {
+                if (!window.confirm(`Não assinar o documento de ${l.codigo_projeto}? O pedido será recusado.`)) return;
+                recusar.mutate({ id: l.id, motivo: 'Não liberado.', projectId: l.project_id });
+              }}
             >
               <X className="w-3.5 h-3.5" /> Não assinar
             </Button>
@@ -236,7 +253,7 @@ export default function Assinaturas() {
   const { user } = useAuth();
   const { isLoading: carregandoTenant } = useTenant();
   const disponivel = useAssinaturaDisponivel();
-  const { data: registro = [], isLoading } = useRegistroAssinaturas();
+  const { data: registro = [], isLoading, isError: erroRegistro } = useRegistroAssinaturas();
 
   if (carregandoTenant) {
     return (
@@ -280,9 +297,11 @@ export default function Assinaturas() {
           </>
         )}
 
-        <h2 className="text-sm font-semibold text-muted-foreground mb-2">Tudo o que foi assinado</h2>
+        <h2 className="text-sm font-semibold text-muted-foreground mb-2">Histórico</h2>
         {isLoading ? (
           <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-primary" /></div>
+        ) : erroRegistro ? (
+          <p className="text-sm text-red-700 py-6 text-center">Não consegui carregar o extrato — recarregue a página.</p>
         ) : resto.length === 0 ? (
           <p className="text-sm text-muted-foreground py-6 text-center">Nada por aqui ainda.</p>
         ) : (
