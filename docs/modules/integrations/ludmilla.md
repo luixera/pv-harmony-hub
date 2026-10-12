@@ -540,6 +540,69 @@ silêncio**, recuperável só com `DELETE` à mão.
 **nenhuma regra reconheceu → `concluida = true`** de propósito; é configuração,
 não falha passageira, e insistir faria a robô rebaixar o mesmo e-mail duas vezes
 por dia para sempre. Bloqueio por titular também fecha: é decisão, não falha.
+O mesmo vale para o e-mail de vários protocolos sem arquivo que diga de quem é
+(próxima seção) e para o arquivo que o bucket não aceita (mais abaixo): descarte
+conhecido, nunca falha.
+
+A recomendação de etapa **nunca é rebaixada**: tentativa 1 leu o parecer
+favorável e deixou o cartão com `approved`; tentativa 2, com a IA falhando,
+chega com recomendação nula e `ludmilla_email_registrar` mantém a que já existia
+(`coalesce(p_recomendacao, u.recomendacao)`). Recomendação **nova** (não nula)
+substitui a velha. Sem isso, a IA falhando até o teto de 5 deixava o cartão sem
+etapa tendo tido uma.
+
+### E-mail que cita VÁRIOS protocolos (rodada 3, 12/10/2026)
+
+O laço do run trata **um protocolo por vez**. Um assunto como
+`NOTAS 45006443920 e 45006443921` roda `tratarMensagem` duas vezes para a mesma
+mensagem. O código antigo, para cada vez, anexava **todos** os arquivos e lia o
+**maior** PDF — de qualquer um dos dois. O parecer de um cliente aparecia no card
+do outro (de outra integradora, até) com o comentário "titular conferido", e o
+outro projeto era bloqueado por divergir do PDF errado. A premissa "o mesmo anexo
+serve os dois projetos" estava escrita num brief e nunca foi verificada.
+
+Agora:
+
+1. **Conta quantos dos NOSSOS protocolos o assunto cita** (`protocolosNoAssunto`,
+   por dígitos, sem zero à esquerda, piso de 8). Número de pedido, CEP ou
+   protocolo de atendimento no assunto não conta: só os da lista do run.
+2. **Com mais de um, só vai para o card o arquivo cujo NOME traz o número daquele
+   protocolo** (`PARECER_45006441002.pdf`; `separarPorProtocolo`). Arquivo que
+   traz os **dois** números é ambíguo e não vai para nenhum card. A IA lê o PDF
+   **desse protocolo**, não o maior do e-mail — então o titular confere contra o
+   documento certo.
+3. **Se nenhum arquivo casar pelo nome, não anexa nada**: a IA nem é chamada, a
+   linha fica `concluida = true` com `motivo` ("o e-mail cita N protocolos e não
+   consegui dizer qual documento é de qual … confira à mão"), e cai no grupo
+   "Terminei, mas com um porém" da tela. No `resultado` do run vai em
+   `sem_dono` — **não** em `bloqueados`, que a tela rotula como "titular
+   divergiu".
+
+**Com UM protocolo citado nada muda**: anexa todos os não-imagem e lê o maior PDF.
+Regra que não anexa nem lê PDF não depende de arquivo e não é afetada.
+
+### O que o bucket de documentos aceita (rodada 3)
+
+O bucket `project-documents` aceita **pdf, xls, xlsx, docx, jpeg, png e webp, até
+10 MiB (10485760 bytes)** — lido de `storage.buckets` em 12/10/2026, e o worker
+espelha isso em `util.ts` (`LIMITE_BUCKET_BYTES`, `destinoNoBucket`). Mudar o
+bucket sem mudar o worker reabre o defeito abaixo.
+
+O worker mandava tudo o que não era imagem e o storage recusava o resto. Cenário:
+`parecer.pdf` + `parecer.p7s` (assinatura digital, comum). O `.p7s` era recusado
+→ falha → a mensagem ficava pendente → a cada run a IA **relia o mesmo PDF** (até
+5 leituras pagas) antes de a mensagem ser abandonada no teto. Um PDF acima de
+10 MB caía no mesmo caminho. Agora o arquivo que o bucket não aceita é
+**ignorado, não falhado**: não abre linha em `portal_anexos`, conta em
+`anexos_recusados` no `resultado`, e entra no `motivo` com o nome e a razão
+(`tipo` ou `tamanho`). O nome vai para o banco, nunca para o log. Cliente de
+e-mail que declara `application/octet-stream` para um PDF sobe com o mime da
+extensão (o storage confere o mime declarado). Um PDF recusado por tamanho **ainda
+é lido** pela IA: a recusa é de anexar.
+
+Anexo **sem nome de arquivo** também deixa rastro: era filtrado em silêncio. Agora
+conta em `anexos_sem_nome`, entra no `motivo` e vai para o log (só uid e
+quantidade). Imagem sem nome (logo inline de assinatura) não conta.
 
 A tentativa é contada **antes de a IA ser chamada** (`ludmilla_email_tentativa`).
 Sem isso, um tratamento que morresse antes do registro não contava — e todo run
@@ -549,14 +612,20 @@ seguinte baixava o e-mail **e pagava a IA de novo**, indefinidamente, sem avisar
 
 `id_arquivo` é `mensagem#protocolo#arquivo`, montado por uma expressão única nas
 duas pontas (`idArquivoDeEmail` no worker, `ludmilla_email_id_arquivo` no banco)
-— divergir entre elas faria a robô re-anexar o que já anexou.
+— divergir entre elas faria a robô re-anexar o que já anexou. Dois anexos de
+**mesmo nome** na mesma mensagem ganham a ocorrência a partir do segundo
+(`…#parecer.pdf#2`); o primeiro mantém a chave de sempre. O índice é contado na
+mensagem **inteira**, antes de qualquer filtro, para ser o mesmo em todo run.
 
 Sem o protocolo na chave, um e-mail que cita **dois** protocolos colidia, e num
 dos ramos **o documento ia para o card do cliente errado**. Além da chave, o
 `ON CONFLICT` exige que a linha existente seja do **mesmo projeto**, e o worker
 confere o `projeto_id` devolvido antes de subir arquivo: chave certa **e** guarda.
-Linha parada em `pendente` ou `erro` volta para a fila; `enviado` e `bloqueado`
-devolvem vazio.
+Linha parada em `pendente` ou `erro` volta para a fila. `ludmilla_email_anexo_novo`
+responde **sempre uma linha**, com `abertura` = `aberto` (suba o arquivo),
+`ja_resolvido` (`enviado`/`bloqueado` neste projeto) ou `projeto_inexistente` —
+eram duas respostas misturadas num conjunto vazio, e o log dizia "já resolvido no
+card" até para projeto que nem existia.
 
 A UNIQUE `portal_anexos (account_id, id_arquivo)` **não** foi alterada: com o
 protocolo dentro da chave ela já discrimina, e `project_id` é nulável, então
@@ -593,7 +662,13 @@ Edge function Deno que recebe o PDF em base64 e devolve
 - O veredito é normalizado (minúsculas, sem acento) antes da lista branca:
   "favorável" com acento cairia em `inconclusivo` e a recomendação não sairia.
   Marcadores que não são nome ("nao consta", "a definir", "ilegivel"…) viram
-  `null`, senão bloqueariam o anexo por falsa divergência de titular.
+  `null`, senão bloqueariam o anexo por falsa divergência de titular. Em
+  **titular e endereço** o marcador vale em qualquer ponto da frase, como palavra
+  inteira ("Não consta.", "Não identificado no documento", "Titular não
+  identificado"); errar para o lado de casar demais é seguro (só faz a conferência
+  cair para o protocolo). No **resumo** segue igualdade exata: "Não consta
+  restrição; conexão aprovada." é um resumo legítimo. O teste
+  `parecer-marcadores.test.ts` carrega o arquivo real da função, sem Deno.
 
 ### Banco
 
@@ -605,8 +680,8 @@ Edge function Deno que recebe o PDF em base64 e devolve
 | `ludmilla_email_credencial` · `_protocolos` · `_regras` | o que o run precisa (só service role) |
 | `ludmilla_email_mensagem_pendente` | "preciso tratar?" — chave `(conta, mensagem, protocolo)` |
 | `ludmilla_email_tentativa` | conta a tentativa ANTES do gasto de IA |
-| `ludmilla_email_anexo_novo` · `ludmilla_email_id_arquivo` | abre o anexo com a chave que carrega o protocolo |
-| `ludmilla_email_registrar` | fecha a mensagem e levanta a recomendação |
+| `ludmilla_email_anexo_novo` · `ludmilla_email_id_arquivo` | abre o anexo com a chave que carrega o protocolo (e a ocorrência, nos de mesmo nome); responde `aberto` / `ja_resolvido` / `projeto_inexistente` |
+| `ludmilla_email_registrar` | fecha a mensagem e levanta a recomendação (nunca a rebaixa para nula) |
 | `ludmilla_email_reler` | a tela reabre uma mensagem travada (zera `tentativas`) |
 | `ludmilla_anexo_frase` | o comentário no card diz a concessionária **da conta** e o que de fato foi conferido |
 
@@ -634,14 +709,29 @@ linha. Sem isso, corrigir uma regra não serviria para o passado.
 
 ### O que NÃO está provado
 
-**O run nunca rodou.** Toda a verificação é de tipo, teste unitário (142 testes,
-`fail 0`) e SQL executado à mão. O laço de `executarVarreduraEmail` não tem teste
-— a spec §9 manda para o teste manual de ponta a ponta. O primeiro run é
-**manual e acompanhado**, e nele vale olhar: `bloqueados` (o bloqueio por titular
-nunca rodou contra PDF real), `imagens_ignoradas`, `nao_lidas`,
-`a_tentar_de_novo`, o tempo do run, e se aparece algum `imap-uid-` no log
-(envelope sem `Message-ID`: aí o uid vira o id do dedupe, e se a caixa for
+**O run nunca rodou.** Toda a verificação é de tipo, teste unitário (193 testes,
+`fail 0`) e SQL executado à mão (em `begin; … rollback;`). O laço de
+`executarVarreduraEmail` não tem teste — a spec §9 manda para o teste manual de
+ponta a ponta. O primeiro run é **manual e acompanhado**, e nele vale olhar:
+`bloqueados` (o bloqueio por titular nunca rodou contra PDF real),
+`imagens_ignoradas`, `sem_dono` (e-mail de vários protocolos sem arquivo que diga
+de quem é), `anexos_recusados` (p7s, dwg, zip, acima de 10 MB), `anexos_sem_nome`,
+`nao_lidas`, `a_tentar_de_novo`, o tempo do run, e se aparece algum `imap-uid-` no
+log (envelope sem `Message-ID`: aí o uid vira o id do dedupe, e se a caixa for
 recriada a mensagem é tratada de novo). Só depois disso se fala em agendamento.
+
+A tela **ainda não mostra** `sem_dono`, `anexos_recusados` e `anexos_sem_nome`
+como contadores (a rodada 3 não tocou em `src/`): leia-os do `resultado` do run
+(SQL no roteiro do primeiro run). As linhas com ressalva já aparecem no grupo
+"Terminei, mas com um porém".
+
+**Lacunas conhecidas do E1** (decididas, não esquecidas): se o assunto cita dois
+protocolos mas **só um é nosso** (o outro é de projeto concluído, de outra conta,
+ou ficou fora do teto de 80), a contagem dá 1 e vale o caso normal — anexa tudo.
+E, com um protocolo só no assunto, um arquivo cujo nome traz o número de **outro**
+projeto nosso também é anexado: a regra do usuário é "com um protocolo nada
+muda". Se o primeiro run mostrar um desses casos, a correção é contar também os
+números do nome dos arquivos.
 
 **Dois projetos ativos da EDP estão sem número de protocolo** — não há o que
 buscar, e eles ficam fora da automação até ganharem protocolo.

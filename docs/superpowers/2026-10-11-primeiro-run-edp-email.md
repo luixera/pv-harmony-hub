@@ -16,6 +16,13 @@ Contexto do módulo: [docs/modules/integrations/ludmilla.md](../modules/integrat
 
 ## 1. Antes de qualquer coisa — a ordem importa
 
+> **Já está no banco, antes do push** (12/10/2026): a migração
+> `20261012120000_ludmilla_email_rodada3.sql` (recomendação nunca rebaixada,
+> chave do anexo com ocorrência, `ludmilla_email_anexo_novo` com `abertura`) e a
+> `ludmilla-parecer` com os marcadores por frase (versão 12). O código do robô só
+> sobe no push; o robô antigo da VPS não tem o run de e-mail, então nada chama as
+> funções novas antes disso.
+
 **Publicar primeiro, rodar depois.** Se o run vier antes do deploy, ele toma 401
 na leitura do parecer, porque o segredo que a função usa para reconhecer o robô é
 definido pelo `deploy.yml`.
@@ -104,6 +111,9 @@ SELECT s.situacao, s.protocolos_lidos, s.mudancas,
        s.resultado->>'anexados'           AS anexados,
        s.resultado->>'bloqueados'         AS bloqueados,
        s.resultado->>'imagens_ignoradas'  AS imagens_ignoradas,
+       s.resultado->>'sem_dono'           AS sem_dono,
+       s.resultado->>'anexos_recusados'   AS anexos_recusados,
+       s.resultado->>'anexos_sem_nome'    AS anexos_sem_nome,
        s.resultado->>'a_tentar_de_novo'   AS a_tentar_de_novo,
        s.resultado->>'nao_lidas'          AS nao_lidas,
        s.resultado->>'falhas_busca'       AS falhas_busca,
@@ -132,6 +142,9 @@ SELECT m.protocolo, p.code AS projeto, m.tipo_documento, m.veredito,
 |---|---|
 | **`bloqueados`** | parecer que a robô **recusou** anexar por divergência de nome do titular. É o único bloqueio do fluxo, e **nunca rodou contra um PDF real**. Se vier alto, abra as mensagens e veja se a divergência é real ou se é a IA lendo mal o nome |
 | **`imagens_ignoradas`** | a robô não anexa imagem (é quase sempre logo de assinatura). Se uma concessionária mandar documento **escaneado**, este contador é o único lugar onde isso aparece |
+| **`sem_dono`** | e-mail que cita **mais de um** protocolo e nenhum arquivo traz o número deste no nome: a robô **não anexou nada** e não chamou a IA. Cada linha tem o `motivo` ("confira à mão") — anexe à mão. A tela não mostra este contador; as linhas aparecem em "Terminei, mas com um porém" |
+| **`anexos_recusados`** | arquivo que o bucket não aceita (p7s, dwg, zip, acima de 10 MB): ignorado, não é falha. O nome e a razão estão no `motivo` da mensagem. Se vier um PDF legítimo acima de 10 MB, é decisão de produto aumentar o limite do bucket |
+| **`anexos_sem_nome`** | anexo sem nome de arquivo (não dá para identificar nem anexar). Normalmente 0 |
 | **`a_tentar_de_novo`** | mensagens que ficaram para a próxima (IA falhou, anexo não subiu). Normal ser > 0; preocupante é ficar igual run após run |
 | **`nao_lidas`** | corpo de e-mail que não parseou. Condição permanente — não entra em `falhas` de propósito |
 | **`duracao`** | até 80 buscas IMAP em sequência. Se passar de alguns minutos, medir antes de agendar |
@@ -161,7 +174,11 @@ Nada disso é automatizável, e é a razão de o primeiro run ser acompanhado.
   destaque; "Ler de novo" zera o contador e a robô volta nela.
 - **Anexo no card errado** → pare o agendamento, não enfileire outro run, e
   guarde o `id` da mensagem e do anexo. Isso não deveria acontecer (chave com
-  protocolo + guarda de projeto), e se acontecer é um achado grave.
+  protocolo + guarda de projeto + arquivo escolhido pelo número no nome quando o
+  e-mail cita vários protocolos), e se acontecer é um achado grave. Os dois casos
+  que a regra **não** cobre estão em "Lacunas conhecidas do E1" na doc do módulo:
+  assunto com dois protocolos em que só um é nosso, e arquivo com o número de
+  outro projeto nosso num e-mail de um protocolo só.
 
 **Não agende nada** (cron) antes de olhar os números e os cards deste primeiro
 run.
