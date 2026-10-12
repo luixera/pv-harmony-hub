@@ -90,9 +90,15 @@ A exceção à regra de isolamento está registrada no **ADR 0008**.
 Duas tabelas merecem justificativa:
 
 **`rede_celula_agregada`** existe por causa do zoom. Num mapa exploratório,
-zoom estadual não pode varrer centenas de milhares de pontos. A célula é
-pré-calculada na ingestão; zoom distante lê milhares de polígonos, zoom próximo
-lê feições reais no bounding box.
+zoom estadual não pode varrer centenas de milhares de pontos. Zoom distante lê
+milhares de polígonos; zoom próximo lê feições reais no bounding box.
+
+> **Refinamento na execução da Fase A (12/10/2026).** Esta spec previa a célula
+> pré-calculada *na ingestão*. Ela passou a ser derivada **no banco**, por
+> `rede_celula_recalcular()`: a célula é `floor(coordenada / passo)`, aritmética
+> pura sobre `rede_transformador`. Com isso a ingestão fica só com insumos e o
+> agregado volta a ser recalculável sem reimportar nada — a mesma separação
+> insumo/veredito da §6, aplicada também ao zoom.
 
 **`rede_importacao`** não é só auditoria: é ela que alimenta o rótulo de
 data-base e de idade do dado na tela. Com a opção B da §6, esse rótulo é a
@@ -159,8 +165,8 @@ sobe só o total por trafo. Os segmentos de BT não sobem.
 2. **Extrair** as camadas com `ogr2ogr` (GDAL). **Não roda em Edge Function**:
    Deno não tem GDAL e o arquivo é grande.
 3. **Transformar e agregar**: filtrar camadas, agregar UC e geração por trafo e
-   por alimentador, simplificar traçado, calcular as células de zoom. Saída:
-   um CSV por tabela de destino.
+   por alimentador, simplificar traçado. Saída: um CSV por tabela de destino.
+   As células de zoom **não** entram aqui — são derivadas no banco (ver §3).
 4. **Carregar** com `COPY` (a skill de Postgres é explícita: 10–50× mais rápido
    que INSERT em lote) para tabelas de *staging*, e só então upsert para as
    definitivas **dentro de uma transação** — para o mapa nunca ficar

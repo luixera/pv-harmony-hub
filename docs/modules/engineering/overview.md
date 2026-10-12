@@ -71,7 +71,7 @@ qual item do catálogo foi encontrado para o módulo e para o inversor, quantos
 dados técnicos estão preenchidos, **quais faltam**, e dá acesso aos documentos
 (datasheet/INMETRO/AFCI).
 
-## Os 12 grupos
+## Os 13 grupos
 
 | # | group_key | O que controla | Fase |
 |---|---|---|---|
@@ -87,6 +87,40 @@ dados técnicos estão preenchidos, **quais faltam**, e dá acesso aos documento
 | 10 | `norms` | referências normativas (justificam as regras) | **1 ✅** (informativo) |
 | 11 | `alerts` | avisos — nunca bloqueiam (desligar silencia tudo) | **1 ✅** |
 | 12 | `suggestions` | nº mínimo de alternativas apresentadas | **1 ✅** |
+| 13 | `grid_capacity` | capacidade da rede e risco de inversão de fluxo: janela de geração, fator de segurança, limiares de atenção/risco, fator de potência | **A 🟡** (base, cálculo e mapa; ingestão pendente) |
+
+## Grupo 13 — capacidade de rede e inversão de fluxo (Fase A)
+
+Este grupo não dimensiona nada: ele parametriza o **semáforo de risco de
+inversão de fluxo** exibido no console (`/painel` → Capacidade de rede, só
+master). Spec: [docs/superpowers/specs/2026-10-10-capacidade-rede-design.md](../../superpowers/specs/2026-10-10-capacidade-rede-design.md).
+
+**Insumo e veredito são coisas separadas.** A ingestão da BDGD grava só
+insumos nas tabelas `rede_*` — potência nominal, carga mínima diurna
+estimada, GD já conectada. Margem, ocupação e cor são **derivados** por
+`grid_capacity_recalcular()`, que relê as regras deste grupo a cada chamada.
+Consequência prática: mudar `attention_threshold` na tela de Regras custa
+segundos, não uma reimportação de gigabytes. Medido na execução da Fase A —
+baixar o limiar de 60 para 15 levou "folga" de 4 para 1 e "atenção" de 3
+para 6, sem tocar na origem.
+
+**"Sem dado" nunca vira "folga".** Trafo sem carga conhecida (nula ou zero)
+sai como `sem_dado`, em forma e cor próprias. Ausência de informação não é
+ausência de risco, e pintar de verde um ponto sem dado é o jeito mais rápido
+de transformar a ferramenta em passivo.
+
+**A defasagem não é descontada — é rotulada** (opção B da spec). A BDGD é
+anual, com data-base em 31/12, e a GD conectada cresce no meio do ano. Em
+vez de aplicar uma correção inventada sobre o dado, a tela mostra a
+data-base e a idade em meses, à vista, ao lado do semáforo.
+
+**Não é parecer de acesso** e **não cruza com os projetos do GD Manager**
+(decisão de escopo, 10/10/2026). A carga mínima é estimativa derivada da
+curva das unidades consumidoras; só a distribuidora emite parecer, com
+estudo por ponto de conexão — REN 1.000/2021, art. 73.
+
+As tabelas `rede_*` não têm `tenant_id`: dado público, idêntico para todos.
+Ver [ADR 0008](../../adr/0008-rede-publica-sem-tenant.md).
 
 ## Liga/desliga por FUNÇÃO e por regra (Fase 2)
 
