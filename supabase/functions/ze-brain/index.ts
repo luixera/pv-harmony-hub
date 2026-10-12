@@ -262,13 +262,17 @@ async function trabalhar(cfg: Config): Promise<Record<string, unknown>> {
     const { data: hist } = await admin.from('ze_messages')
       .select('papel, texto, created_at, processada_em')
       .eq('tenant_id', cfg.tenant_id).gte('created_at', desde).neq('papel', 'sistema')
-      .order('created_at', { ascending: true }).limit(40)
+      .order('created_at', { ascending: false }).limit(40)
 
     // Há o que responder se existe fala do GESTOR ainda não consumida — e não
     // "se a última linha é dele": um recado do Zé (papel 'ze') pode entrar no
     // meio, depois da pergunta e antes de este cérebro rodar, e não pode fazer
     // a pergunta do gestor ser ignorada.
-    const lista = (hist ?? []) as Record<string, any>[]
+    // As 40 MAIS RECENTES (desc), na ordem cronológica (reverse). Com asc o recorte
+    // pegava as 40 mais antigas das 24 h: passando de 40 linhas (os recados da
+    // outbox enchem o chat), as novas ficavam de fora, `temNovo` dava false e o
+    // Zé parava de responder.
+    const lista = ((hist ?? []) as Record<string, any>[]).slice().reverse()
     const temNovo = lista.some(m => m.papel === 'user' && !m.processada_em)
     // A conversa que o modelo vê TERMINA na última fala do gestor (a API exige
     // que o último turno seja de usuário); recados do Zé depois dela ficam de

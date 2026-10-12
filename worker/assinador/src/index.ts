@@ -4,8 +4,8 @@ import { cpfMascarado, lerCertificado, type DadosCertificado } from './certifica
 import { converterParaPdf, encerrarConversaoEmCurso, precisaConverter, temSoffice } from './preparar.js';
 import {
   PassoRecusado, Trabalho, apagar, baixar, caminhoAprovado, certificadoConferido, certificadosParaConferir,
-  dadosDoCertificado, entregarRecados, nomeAssinado, nomeSeguroParaStorage, passo, pedirAoZe, pegarTrabalho,
-  recadoDoZe, sha256, subir, triar,
+  dadosDoCertificado, enfileirarRecado, entregarRecados, nomeAssinado, nomeSeguroParaStorage, passo, pedirAoZe,
+  pegarTrabalho, sha256, subir, textoLimpo, triar,
 } from './fila.js';
 
 /**
@@ -47,6 +47,17 @@ async function avisarZe(id: string): Promise<void> {
   } catch (e) {
     log('não consegui avisar o Zé — a assinatura segue aguardando o gestor', { assinatura: id, erro: (e as Error).message });
   }
+}
+
+/**
+ * Conta ao gestor pelo Zé, pela outbox (reenvio garantido). Nunca lança: quem
+ * chama pode estar depois de um passo irreversível (o documento já assinado), e
+ * falhar o aviso não pode virar "erro do trabalho". Só loga.
+ */
+async function avisarPelaFila(tenantId: string, texto: string, assinatura: string): Promise<void> {
+  const r = await enfileirarRecado(tenantId, texto);
+  if (r.erro) log('não consegui enfileirar o recado do Zé', { assinatura, erro: r.erro });
+  else if (!r.enfileirado) log('recado do Zé não enfileirado — o tenant não tem Zé ligado', { assinatura });
 }
 
 /** Confere um certificado recém-cadastrado: abre o .pfx e grava os metadados. */
@@ -174,7 +185,8 @@ async function peneirar(t: Trabalho): Promise<void> {
   } else if (veredito === 'nao_projeto') {
     await passo(t.id, 'recusado', { recusa: motivo || 'Não tem cunho de projeto.' });
     log('triagem barrou', { assinatura: t.id, motivo });
-    await recadoDoZe(t.tenant_id, `Barrei uma assinatura: ${motivo || 'o documento não tem cunho de projeto.'}`);
+    // o motivo foi escrito por uma IA que leu o PDF de um cliente: entra limpo
+    await avisarPelaFila(t.tenant_id, `Barrei uma assinatura: ${textoLimpo(motivo, 300) || 'o documento não tem cunho de projeto.'}`, t.id);
   } else {
     await passo(t.id, 'aguardando_ze', { recusa: motivo || 'A triagem ficou em dúvida.' });
     await avisarZe(t.id);
@@ -227,10 +239,12 @@ async function assinarTrabalho(t: Trabalho): Promise<void> {
   }
   log('assinado', { assinatura: t.id, codigo: t.codigo_verificacao, bytes: assinado.length });
 
-  await recadoDoZe(t.tenant_id,
-    `Assinei ${nome} com o e-CPF de ${d.titularNome}, ` +
+  // O único sinal, fora da tela, de que o e-CPF foi usado: vai pela outbox (com
+  // reenvio), não numa tentativa única. O nome do arquivo vem de um cliente.
+  await avisarPelaFila(t.tenant_id,
+    `Assinei ${textoLimpo(nome, 120)} com o e-CPF de ${textoLimpo(d.titularNome, 80)}, ` +
     `${new Date().toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' })}. ` +
-    `Código ${t.codigo_verificacao}.`);
+    `Código ${t.codigo_verificacao}.`, t.id);
 }
 
 async function executar(t: Trabalho): Promise<void> {

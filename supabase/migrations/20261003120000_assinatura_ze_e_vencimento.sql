@@ -111,7 +111,13 @@ GRANT EXECUTE ON FUNCTION public.ze_recado_enfileirar(UUID, TEXT, UUID) TO servi
 -- ── O worker pega a fila ────────────────────────────────────────────────────
 -- `tentativas` sobe AQUI (no pegar), e não só quando o worker conta o fracasso:
 -- se o envio sai mas a marcação falha, o recado volta depois do prazo — e o
--- limite de 3 impede o gestor de receber o mesmo aviso a cada 2 minutos.
+-- limite de tentativas impede o gestor de receber o mesmo aviso sem parar.
+--
+-- ESPERA CRESCENTE entre as tentativas: 2 min * 2^tentativas, no máximo 60 min,
+-- até 8 tentativas (esperas de 4, 8, 16, 32, 60, 60 e 60 min: ~4 h no total).
+-- Com espera fixa e teto 3, um Zé desconectado por 5 minutos esgotaria o
+-- "Libero?" e o aviso de vencimento; assim aguenta horas fora do ar sem repetir
+-- o aviso a cada 2 minutos. A rede final continua sendo o descarte por idade.
 CREATE OR REPLACE FUNCTION public.ze_recados_pendentes()
 RETURNS TABLE (id UUID, tenant_id UUID, texto TEXT)
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''
@@ -128,16 +134,27 @@ BEGIN
      SET entregue_em = now(), nota = 'descartado: mais de 20 h sem entrega'
    WHERE r.entregue_em IS NULL AND r.criado_em < now() - interval '20 hours';
 
-  -- esgotou as 3 tentativas: fica registrado, não volta mais
+  -- Pergunta obsoleta: o "Libero?" cuja pendência já foi decidida (pela tela, por
+  -- expiração...) não pode chegar ao gestor — ele receberia uma pergunta que
+  -- já não existe.
   UPDATE public.ze_recados r
-     SET nota = 'desistiu: 3 tentativas sem entrega'
-   WHERE r.entregue_em IS NULL AND r.tentativas >= 3 AND r.nota IS DISTINCT FROM 'desistiu: 3 tentativas sem entrega';
+     SET entregue_em = now(), nota = 'descartado: a pergunta já foi decidida'
+   WHERE r.entregue_em IS NULL AND r.pendencia_id IS NOT NULL
+     AND EXISTS (SELECT 1 FROM public.ze_pending_actions pa
+                  WHERE pa.id = r.pendencia_id AND pa.situacao <> 'pendente');
+
+  -- esgotou as 8 tentativas: fica registrado, não volta mais
+  UPDATE public.ze_recados r
+     SET nota = 'desistiu: 8 tentativas sem entrega'
+   WHERE r.entregue_em IS NULL AND r.tentativas >= 8 AND r.nota IS DISTINCT FROM 'desistiu: 8 tentativas sem entrega';
 
   RETURN QUERY
     WITH pegos AS (
       SELECT r.id FROM public.ze_recados r
-       WHERE r.entregue_em IS NULL AND r.tentativas < 3
-         AND (r.claim_em IS NULL OR r.claim_em < now() - interval '2 minutes')
+       WHERE r.entregue_em IS NULL AND r.tentativas < 8
+         AND (r.claim_em IS NULL
+              OR r.claim_em < now() - least(interval '60 minutes',
+                                            interval '2 minutes' * power(2::double precision, r.tentativas::double precision)))
        ORDER BY r.criado_em
        LIMIT 10
        FOR UPDATE SKIP LOCKED
@@ -155,7 +172,7 @@ GRANT EXECUTE ON FUNCTION public.ze_recados_pendentes() TO service_role;
 -- ── O worker fecha o recado ─────────────────────────────────────────────────
 -- _ok: marca entregue (e, se era o "Libero?", carimba a pendência). Não _ok: a
 -- tentativa já foi contada ao pegar; aqui só fica a nota — e o claim_em recente
--- faz o recado esperar 2 minutos antes de voltar.
+-- faz o recado esperar (espera crescente, ver acima) antes de voltar.
 CREATE OR REPLACE FUNCTION public.ze_recado_entregue(_id UUID, _ok BOOLEAN)
 RETURNS BOOLEAN
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''

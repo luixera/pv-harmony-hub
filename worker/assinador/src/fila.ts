@@ -191,6 +191,43 @@ export async function recadoDoZe(tenantId: string, texto: string): Promise<boole
   }
 }
 
+/**
+ * Texto de FORA (motivo escrito pela IA que leu o PDF, nome de arquivo de cliente)
+ * vira texto limpo antes de entrar numa fala do Zé: uma linha, sem aspas, crase
+ * nem colchetes angulares, com tamanho limitado. Espelha `ze_texto_limpo` do banco.
+ */
+export function textoLimpo(texto: string | null | undefined, max: number): string {
+  return (texto ?? '')
+    .replace(/[\r\n\t"'`“”‘’«»<>]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, max);
+}
+
+export interface ResultadoDoEnfileirar { enfileirado: boolean; erro?: string }
+
+/**
+ * Põe o recado na outbox do banco (`ze_recado_enfileirar`): dali ele sai com
+ * reenvio, mesmo que o Zé esteja caído agora. NUNCA lança — o "Assinei" roda
+ * depois do `passo('assinado')`, e uma exceção ali cairia no catch do trabalho
+ * com o documento JÁ assinado. `enfileirado: false` sem `erro` = o tenant não tem
+ * Zé ligado (o banco devolve nulo); com `erro` = a RPC falhou.
+ */
+export async function enfileirarRecado(
+  tenantId: string,
+  texto: string,
+  rpc: (args: { _tenant: string; _texto: string }) => PromiseLike<{ data: unknown; error: { message: string } | null }> =
+    (args) => supabase().rpc('ze_recado_enfileirar', args),
+): Promise<ResultadoDoEnfileirar> {
+  try {
+    const { data, error } = await rpc({ _tenant: tenantId, _texto: texto });
+    if (error) return { enfileirado: false, erro: error.message };
+    return { enfileirado: typeof data === 'string' && data.length > 0 };
+  } catch (e) {
+    return { enfileirado: false, erro: (e as Error).message };
+  }
+}
+
 export interface RecadoPendente { id: string; tenant_id: string; texto: string }
 
 /** Pega até 10 recados da outbox (a RPC já descarta os velhos e marca o claim). */
