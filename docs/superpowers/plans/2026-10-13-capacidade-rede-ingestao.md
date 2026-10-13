@@ -614,7 +614,7 @@ git commit -m "feat(bdgd): catalogo da ANEEL e download com guard-rail de disco"
 
 **Interfaces:**
 - Consumes: `gerarCaseSql`, `Curva` de `./curvas.js`.
-- Produces: `export async function lerCurvas(gdb: string): Promise<Curva[]>`; `export function sqlCargaPorTrafo(caseSql: string, camada: 'UCBT_tab' | 'UCMT_tab'): string`; `export function sqlGdPorTrafo(camada: 'UGBT_tab' | 'UGMT_tab'): string`; `export async function extrair(gdb: string, dir: string, janela: { inicio: number; fim: number }): Promise<{ trafos: string; carga: string; gd: string; alimentadores: string; subestacoes: string }>` (caminhos dos CSVs).
+- Produces: `export async function lerCurvas(gdb: string): Promise<Curva[]>`; `export function sqlCargaPorTrafo(caseSql: string, camada: 'UCBT_tab' | 'UCMT_tab'): string`; `export function sqlGdPorTrafo(camada: 'UGBT_tab' | 'UGMT_tab'): string`; `export async function extrair(gdb: string, dir: string, janela: { inicio: number; fim: number }): Promise<{ trafos: string; carga: string; gd: string; alimentadores: string; cargaAlim: string; gdAlim: string; subestacoes: string }>` (caminhos dos CSVs).
 
 Todos os comandos abaixo foram **rodados** na Piratininga em 13/10/2026, com o tempo medido. Não os reescreva de cabeça.
 
@@ -727,7 +727,8 @@ export async function lerCurvas(gdb: string): Promise<Curva[]> {
 
 export async function extrair(
   gdb: string, dir: string, janela: { inicio: number; fim: number },
-): Promise<{ trafos: string; carga: string; gd: string; alimentadores: string; subestacoes: string }> {
+): Promise<{ trafos: string; carga: string; gd: string; alimentadores: string;
+             cargaAlim: string; gdAlim: string; subestacoes: string }> {
   await mkdir(dir, { recursive: true });
   const caseSql = gerarCaseSql(await lerCurvas(gdb), janela.inicio, janela.fim);
 
@@ -747,12 +748,23 @@ export async function extrair(
   const alimentadores = await paraCsv(gdb, join(dir, 'alimentadores.csv'),
     `SELECT COD_ID, NOME, SUB FROM CTMT`);
 
+  // Carga e GD por ALIMENTADOR: 0,3 s cada, e sem elas
+  // `rede_aplicar_alimentadores` e letra morta — todo alimentador ficaria
+  // `sem_dado` para sempre. Mesma agregacao dos trafos, agrupando por CTMT.
+  const cargaAlim = await paraCsv(gdb, join(dir, 'carga-alim.csv'),
+    `SELECT u.CTMT AS alimentador,
+            sum( ((${soma12('u')})/12.0) / (30.4*24.0) * (${caseSql}) ) AS carga_min_diurna_kw
+       FROM UCBT_tab u WHERE u.CTMT <> '' GROUP BY u.CTMT`);
+  const gdAlim = await paraCsv(gdb, join(dir, 'gd-alim.csv'),
+    `SELECT CTMT AS alimentador, sum(POT_INST) AS gd_kw
+       FROM UGBT_tab WHERE CTMT <> '' GROUP BY CTMT`);
+
   // SUB e MultiPolygon e rede_subestacao.geom e Point: ponto na superficie.
   const subestacoes = await paraCsv(gdb, join(dir, 'subestacoes.csv'),
     `SELECT COD_ID, NOME, ST_X(ST_PointOnSurface(SHAPE)) AS lng,
             ST_Y(ST_PointOnSurface(SHAPE)) AS lat FROM SUB`);
 
-  return { trafos, carga, gd, alimentadores, subestacoes };
+  return { trafos, carga, gd, alimentadores, cargaAlim, gdAlim, subestacoes };
 }
 ```
 
@@ -780,11 +792,15 @@ Esperado, conferido em 13/10/2026 — **compare linha por linha, é o teste mais
 
 | arquivo | linhas (+1 de cabeçalho) |
 |---|---|
-| `trafos.csv` | 52.976 |
+| `trafos.csv` | 52.976 (dos quais **52.971** com `SIT_ATIV = 'AT'`, e só esses sobem) |
 | `carga.csv` | 49.378 |
 | `gd.csv` | 19.643 |
 | `alimentadores.csv` | 553 |
 | `subestacoes.csv` | 139 |
+| `carga-alim.csv` | **474** |
+| `gd-alim.csv` | **440** |
+
+Os dois últimos são menores que os 553 alimentadores de propósito: **79 alimentadores não têm nenhuma UC de baixa tensão** e 113 não têm GD. `rede_aplicar_alimentadores` manda esses para `sem_dado`, que é a resposta correta — não é perda de linha.
 
 Tempo total esperado: **menos de 20 s**. Se passar de um minuto, um `JOIN` voltou para o SQL.
 
@@ -870,11 +886,22 @@ test('trafo sem carga fica NULO, nunca zero', () => {
   assert.equal(r[0].gd_conectada_kw, 0);   // sem GD e zero de verdade: ninguem conectou
 });
 
-test('trafo sem geometria e descartado, com o codigo no erro', () => {
-  assert.throws(() => montarTrafos(
-    [{ Shape: '', COD_ID: 'SEM_GEOM', POT_NOM: '75', CTMT: 'A', SUB: 'S',
-       FAS_CON_P: 'ABC', FAS_CON_S: 'ABCN', TEN_LIN_SE: '0.22', SIT_ATIV: 'AT' }],
-    [], []), /SEM_GEOM/);
+const bom = (cod: string) => ({ Shape: 'POINT (-47.6 -23.5)', COD_ID: cod,
+  POT_NOM: '75', CTMT: 'A', SUB: 'S', FAS_CON_P: 'ABC', FAS_CON_S: 'ABCN',
+  TEN_LIN_SE: '0.22', SIT_ATIV: 'AT' });
+
+test('um trafo sem geometria e descartado, nao aborta a ingestao', () => {
+  // Abortar 6,5 GB por uma linha torta e pior que seguir sem ela.
+  const entrada = [...Array.from({ length: 200 }, (_, i) => bom(`T${i}`)),
+                   { ...bom('SEM_GEOM'), Shape: '' }];
+  const r = montarTrafos(entrada, [], []);
+  assert.equal(r.length, 200);
+  assert.ok(!r.some(x => x.codigo === 'SEM_GEOM'));
+});
+
+test('descarte em massa aborta, porque e defeito de dado', () => {
+  const entrada = [bom('T1'), { ...bom('A'), Shape: '' }, { ...bom('B'), Shape: '' }];
+  assert.throws(() => montarTrafos(entrada, [], []), /sem geometria utilizavel/);
 });
 
 test('trafo desativado na BDGD nao entra', () => {
@@ -969,10 +996,11 @@ export function montarTrafos(
   const porGd = new Map(gd.map(g => [g.trafo, num(g.gd_kw)]));
 
   const saida: LinhaTrafo[] = [];
+  const descartados: string[] = [];
   for (const t of trafos) {
     if (t.SIT_ATIV !== 'AT') continue;          // desativado na BDGD não entra
     const p = pontoDeWkt(t.Shape ?? '');
-    if (!p) throw new Error(`Transformador ${t.COD_ID} sem geometria de ponto utilizavel.`);
+    if (!p) { descartados.push(t.COD_ID); continue; }
     const tenKv = num(t.TEN_LIN_SE);
     saida.push({
       codigo: t.COD_ID,
@@ -986,6 +1014,18 @@ export function montarTrafos(
       gd_conectada_kw: duasCasas(porGd.get(t.COD_ID) ?? 0),
       lng: p.lng, lat: p.lat,
     });
+  }
+  // Abortar 6,5 GB de ingestão por uma linha torta é pior que seguir sem ela.
+  // Mas descarte em massa é defeito de dado, e aí parar é o certo: na
+  // Piratininga o número real é ZERO (medido em 13/10/2026).
+  if (descartados.length > 0) {
+    const pct = descartados.length / trafos.length * 100;
+    const amostra = descartados.slice(0, 5).join(', ');
+    if (pct > 1) {
+      throw new Error(
+        `${descartados.length} trafos (${pct.toFixed(2)}%) sem geometria utilizavel: ${amostra}...`);
+    }
+    console.warn(`[bdgd] ${descartados.length} trafos sem geometria, descartados: ${amostra}`);
   }
   return saida;
 }
@@ -1099,14 +1139,22 @@ export async function ingerir(sigla: string): Promise<void> {
       importacao_id: imp.id, codigo: s.COD_ID, nome: s.NOME || null,
       lng: Number(s.lng), lat: Number(s.lat),
     }));
+    const cargaPorAlim = new Map(lerCsv(await readFile(csv.cargaAlim, 'utf8'))
+      .map(x => [x.alimentador, x.carga_min_diurna_kw]));
+    const gdPorAlim = new Map(lerCsv(await readFile(csv.gdAlim, 'utf8'))
+      .map(x => [x.alimentador, x.gd_kw]));
+    const n2 = (v: string | undefined) => {
+      if (v === undefined || v.trim() === '') return null;
+      const n = Number(v);
+      return Number.isFinite(n) ? Math.round(n * 100) / 100 : null;
+    };
     const alims = lerCsv(await readFile(csv.alimentadores, 'utf8')).map(a => ({
       importacao_id: imp.id, codigo: a.COD_ID, subestacao_codigo: a.SUB || null,
       // tensao_kv fica nula de proposito: TEN_NOM e codigo de dominio, nao kV.
       tensao_kv: null,
-      // carga e GD por alimentador saem de outra agregacao, ainda nao feita;
-      // `rede_aplicar_alimentadores` as le e manda o alimentador para
-      // `sem_dado` enquanto forem nulas — que e a resposta honesta.
-      carga_min_diurna_kw: null, gd_conectada_kw: null,
+      carga_min_diurna_kw: n2(cargaPorAlim.get(a.COD_ID)),
+      // GD ausente e zero de verdade: ninguem conectou nada neste alimentador.
+      gd_conectada_kw: n2(gdPorAlim.get(a.COD_ID)) ?? 0,
     }));
     const trafos = montarTrafos(
       lerCsv(await readFile(csv.trafos, 'utf8')),
@@ -1185,6 +1233,22 @@ git commit -m "feat(bdgd): orquestracao da ingestao com auditoria e vigilancia d
 
 **Files:** nenhum. Esta task é execução e conferência.
 
+> **Antes de qualquer coisa: tirar a amostra do ar.** O seed
+> `supabase/seeds/rede-amostra.sql` criou a distribuidora `AMOSTRA` com
+> `data_base = 2025-12-31` — **a mesma data-base da CPFL**. E
+> `rede_base_atual()` escolhe a distribuidora por `data_base DESC`, sem critério
+> de desempate. Com as duas no banco, o rótulo da tela pode dizer
+> "AMOSTRA — não é dado real" sobre dado real da CPFL, ou o contrário.
+>
+> ```sql
+> DELETE FROM public.rede_distribuidora WHERE sigla = 'AMOSTRA';
+> ```
+>
+> O `ON DELETE CASCADE` leva subestação, alimentador, trafo, células e
+> importação da amostra junto. Confirme com
+> `select sigla, data_base from public.rede_distribuidora;` — só a CPFL deve
+> sobrar.
+
 - [ ] **Step 1: Instalar o GDAL na VPS**
 
 ```bash
@@ -1212,8 +1276,8 @@ Esperado no log, **conferido em 13/10/2026**:
 
 ```
 [bdgd] CPFL_Piratininga · data-base 2025-12-31 · 0.41 GB
-[bdgd] 139 subestacoes · 553 alimentadores · 52976 trafos
-[bdgd] promovido: { subestacao: 139, alimentador: 553, transformador: 52976, inativados: 0 }
+[bdgd] 139 subestacoes · 553 alimentadores · 52971 trafos
+[bdgd] promovido: { subestacao: 139, alimentador: 553, transformador: 52971, inativados: 0 }
 ```
 
 E o semáforo na faixa medida pelo script de validação (§9.4 da spec): **~11,7% risco, ~4,5% atenção, ~76,6% folga, ~7,2% sem dado**. Divergência grande aqui significa que a janela de geração, o fator de forma ou a junção carga↔trafo saiu diferente — não siga adiante; compare com a tabela da §9.4.
@@ -1310,7 +1374,7 @@ git commit -m "docs: ingestao da BDGD carregada e agendada"
 - [ ] `apt-get update && apt-get install -y gdal-bin` → `ogr2ogr --version` ≥ 3.8
 - [ ] `npm ci` → `npx tsc --version` 5.8.x → **65** erros em `tsconfig.app.json`
 - [ ] Worker: `rm -rf dist-test && npm test` → **106 testes, 82 passando, 24 falhando**
-- [ ] Extração na Piratininga: 52.976 / 49.378 / 19.643 / 553 / 139 linhas, em menos de 20 s
+- [ ] Extração na Piratininga: 52.976 (52.971 ativos) / 49.378 / 19.643 / 553 / 139 linhas, em menos de 20 s
 - [ ] `rede_importacao` com `situacao = 'concluida'` e `data_base = 2025-12-31`
 - [ ] Semáforo na faixa da §9.4 da spec (~11,7% risco · ~4,5% atenção · ~76,6% folga · ~7,2% sem dado)
 - [ ] **Zero** trafos com carga nula ou zero classificados como `folga`
