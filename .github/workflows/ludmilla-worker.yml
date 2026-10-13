@@ -7,6 +7,10 @@ name: Ludmilla — deploy do robô na VPS
 # (se faltarem), grava o ambiente em /etc/ludmilla/env e (re)inicia o serviço
 # systemd `ludmilla-worker`. Idempotente.
 #
+# Opção `bdgd`: depois do deploy, roda `bdgd <SIGLA>` na VPS — a ingestão da
+# BDGD da capacidade de rede (docs/modules/engineering/overview.md). Lista
+# fechada de distribuidoras; vazio não carrega nada.
+#
 # Segredos necessários (Settings → Secrets → Actions):
 #   VPS_HOST, VPS_USER, VPS_SSH_PORT, VPS_SSH_KEY  — os mesmos do deploy do site
 #   SUPABASE_URL                                   — https://yqsqrdndvsnhbsoaoilf.supabase.co
@@ -23,6 +27,16 @@ on:
         description: 'Só diagnosticar na VPS, sem instalar nada'
         type: boolean
         default: false
+      # Ingestão da BDGD (capacidade de rede) depois do deploy. Lista FECHADA e
+      # não texto livre: o valor vai parar num comando por SSH na VPS.
+      bdgd:
+        description: 'Depois do deploy, carregar a BDGD desta distribuidora (vazio = não carrega)'
+        type: choice
+        default: ''
+        options:
+          - ''
+          - CPFL_Piratininga
+          - CPFL_Paulista
 
 concurrency:
   group: ludmilla-worker
@@ -31,7 +45,7 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 45   # deploy ~2 min + ingestão da Paulista (1,2 GB) pode passar de 15
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -106,3 +120,19 @@ jobs:
             ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} \
             "SIMULAR='$SIMULAR' SUPABASE_URL='$SUPABASE_URL' SUPABASE_SERVICE_ROLE_KEY='$SUPABASE_SERVICE_ROLE_KEY' bash -s" \
             < worker/ludmilla/deploy/instalar.sh
+
+      # Roda o comando que o instalar.sh acabou de instalar. Não passa segredo
+      # nenhum: o wrapper lê a service role de /etc/ludmilla/env na própria VPS.
+      - name: Ingestão da BDGD
+        if: ${{ inputs.bdgd != '' && !inputs.simular }}
+        timeout-minutes: 30
+        env:
+          SIGLA: ${{ inputs.bdgd }}
+        run: |
+          # defesa em profundidade: o choice já restringe, e isto garante que
+          # nada além de letras e sublinhado chega ao comando remoto
+          [[ "$SIGLA" =~ ^[A-Za-z_]+$ ]] || { echo "sigla inválida: $SIGLA" >&2; exit 1; }
+          ssh -i ~/.ssh/deploy_key -p ${{ secrets.VPS_SSH_PORT }} -o StrictHostKeyChecking=no \
+            -o ServerAliveInterval=30 -o ServerAliveCountMax=10 \
+            ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} \
+            "df -h /var/tmp && /usr/local/bin/bdgd '$SIGLA'"
