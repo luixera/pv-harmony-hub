@@ -82,12 +82,15 @@ passo "GDAL (ingestão da BDGD)"
 # O ogr2ogr lê o Geodatabase da ANEEL e faz a agregação fora do banco. É
 # dependência de SISTEMA, não de npm. O `apt-get update` antes não é opcional:
 # sem ele o install falha com 404 em libminizip1t64/libmysqlclient21.
-if command -v ogr2ogr >/dev/null 2>&1; then
-  echo "ogr2ogr já presente: $(ogr2ogr --version)"
+# E o `unzip`: a ANEEL entrega o .gdb zipado. Faltou na 1ª ingestão real
+# (13/10/2026, "spawn unzip ENOENT") — o container de desenvolvimento tinha,
+# a VPS não.
+if command -v ogr2ogr >/dev/null 2>&1 && command -v unzip >/dev/null 2>&1; then
+  echo "ogr2ogr já presente: $(ogr2ogr --version) · unzip presente"
 else
   apt-get update -qq || echo "aviso: apt-get update falhou"
-  apt-get install -y gdal-bin || falhar "não consegui instalar o gdal-bin (sem ele a ingestão da BDGD não roda)"
-  echo "ogr2ogr: $(ogr2ogr --version)"
+  apt-get install -y gdal-bin unzip || falhar "não consegui instalar gdal-bin/unzip (sem eles a ingestão da BDGD não roda)"
+  echo "ogr2ogr: $(ogr2ogr --version) · unzip: $(unzip -v | head -1)"
 fi
 
 passo "comando bdgd (/usr/local/bin/bdgd)"

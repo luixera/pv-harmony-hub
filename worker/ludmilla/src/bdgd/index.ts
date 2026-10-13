@@ -5,6 +5,7 @@ import { supabase, reportarDisco } from '../fila.js';
 import { acharItem, baixarEExtrair } from './catalogo.js';
 import { extrair } from './extrair.js';
 import { lerCsv, montarTrafos, enviarEmLotes } from './carregar.js';
+import { jaCarregada, type ImportacaoResumo } from './guarda.js';
 
 /**
  * Ingestão da BDGD de uma distribuidora, ponta a ponta.
@@ -27,18 +28,32 @@ export async function ingerir(sigla: string): Promise<void> {
   // isto por cron mensal só faz sentido se o caminho comum for sair sem fazer
   // nada: baixar 1,2 GB para reimportar o que já está carregado é desperdício
   // de banda, de disco e de tempo da VPS.
-  const { data: atual } = await sb.from('rede_distribuidora')
-    .select('data_base').eq('sigla', item.sigla).maybeSingle();
-  if (atual?.data_base === item.dataBase) {
-    console.log(`[bdgd] ${item.sigla} ja esta na data-base ${item.dataBase}; nada a fazer.`);
+  //
+  // A pergunta vai às IMPORTAÇÕES CONCLUÍDAS, não a `rede_distribuidora.data_base`
+  // — ver guarda.ts: uma falha deixava a data-base gravada sem dado nenhum, e a
+  // guarda pulava a carga para sempre.
+  const { data: existente, error: eEx } = await sb.from('rede_distribuidora')
+    .select('id').eq('sigla', item.sigla).maybeSingle();
+  if (eEx) throw new Error(`Nao consegui ler a distribuidora: ${eEx.message}`);
+  let anteriores: ImportacaoResumo[] = [];
+  if (existente) {
+    const { data, error } = await sb.from('rede_importacao')
+      .select('data_base, situacao').eq('distribuidora_id', existente.id);
+    if (error) throw new Error(`Nao consegui ler as importacoes anteriores: ${error.message}`);
+    anteriores = (data ?? []) as ImportacaoResumo[];
+  }
+  if (jaCarregada(anteriores, item.dataBase)) {
+    console.log(`[bdgd] ${item.sigla} ja tem importacao concluida da data-base ${item.dataBase}; nada a fazer.`);
     return;
   }
 
-  // A distribuidora precisa existir antes da importação apontar para ela.
+  // A distribuidora precisa existir antes da importação apontar para ela. SEM
+  // data_base: ela só é gravada depois da promoção. Senão `rede_base_atual()`
+  // mostraria na tela a data-base de uma carga que falhou.
   const { data: dist, error: eDist } = await sb
     .from('rede_distribuidora')
     .upsert({ sigla: item.sigla, nome: item.sigla.replace(/_/g, ' '),
-              codigo_aneel: item.codigoAneel, uf: 'SP', data_base: item.dataBase },
+              codigo_aneel: item.codigoAneel, uf: 'SP' },
             { onConflict: 'sigla' })
     .select('id').single();
   if (eDist || !dist) throw new Error(`Nao consegui registrar a distribuidora: ${eDist?.message}`);
@@ -105,6 +120,11 @@ export async function ingerir(sigla: string): Promise<void> {
       .rpc('rede_importacao_promover' as never, { p_importacao_id: imp.id } as never);
     if (eProm) throw new Error(`Promocao falhou: ${eProm.message}`);
     console.log('[bdgd] promovido:', prom);
+
+    // Só agora a data-base vira verdade: a promoção concluiu.
+    const { error: eBase } = await sb.from('rede_distribuidora')
+      .update({ data_base: item.dataBase }).eq('id', dist.id);
+    if (eBase) throw new Error(`Promovido, mas nao gravei a data-base: ${eBase.message}`);
 
     // A faxina do staging e nossa, nao da funcao de promocao: ela garante que
     // o mapa nunca fica meio-carregado, e isso ja aconteceu. Se um destes
