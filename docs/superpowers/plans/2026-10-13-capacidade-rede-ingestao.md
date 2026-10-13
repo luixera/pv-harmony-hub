@@ -20,6 +20,7 @@
 - **GDAL precisa de `apt-get update` antes do install.** Sem isso o `apt-get install gdal-bin` falha com 404 em `libminizip1t64` e `libmysqlclient21`. Verificado em 13/10/2026.
 - **`ativo = false`, nunca `DELETE`.** O que desapareceu da BDGD é marcado, nunca apagado em silêncio (comentário de coluna em `rede_transformador.ativo`).
 - As tabelas `rede_*` **não têm `tenant_id`** (ADR 0008) e **não cruzam com projetos do GD Manager** (decisão de escopo de 10/10/2026).
+- **Só para verificar daqui de dentro:** o `fetch` do Node não lê `HTTPS_PROXY`, então no container de desenvolvimento qualquer teste que chame a ANEEL precisa de `NODE_USE_ENV_PROXY=1` (Node ≥ 22.21) e `NODE_EXTRA_CA_CERTS=/root/.ccr/ca-bundle.crt`. **Na VPS não é preciso nada disso** — ela tem saída direta. Sem a variável o erro é um `fetch failed`/`ENOTFOUND` que não parece ser de proxy.
 
 ## Decisões medidas (não as reabra sem medir de novo)
 
@@ -35,7 +36,7 @@ Tudo abaixo foi medido na BDGD real `CPFL_Piratininga_2937_2025-12-31_V11` em 13
 | **Fator de forma, não valor absoluto** | A carga mínima diurna sai de `(energia média mensal → kW médio) × (mínimo na janela ÷ média diária)`. Usar a **forma** da curva torna o resultado independente de como a ANEEL normaliza `POT_xx`. | fator de 0,000 a 1,573 |
 | **Mínimo diurno zero é dado correto** | `IP-Tipo1` (iluminação pública) e `SP-Tipo10` têm mínimo zero ao meio-dia — fisicamente certo. São 0,14% das UCs. Um trafo que só alimente iluminação pública cai em `carga <= 0` e a regra já o manda para `sem_dado`, nunca `folga`. | 2 de 68 tipologias |
 
-**Volume de disco:** zip 0,41 GB → extraído 2,2 GB (**5,3×**) na Piratininga. A Paulista tem 1,22 GB de zip, logo ~6,5 GB extraídos: o guard-rail precisa de **~8 GB livres** para zip e extraído coexistirem.
+**Volume de disco:** zip 0,41 GB → extraído 2,2 GB (**5,3×**) na Piratininga. A Paulista tem 1,22 GB de zip, logo ~6,5 GB extraídos. Rodando o próprio `cabeNoDisco` contra os tamanhos reais da ANEEL (13/10/2026): a Piratininga exige **3,4 GB livres** e a Paulista **10,0 GB** — não os ~8 GB que a estimativa a olho dava.
 
 **Camadas e campos:** tabela completa na §9.1 da spec. Não os deduza; leia de lá.
 
@@ -626,7 +627,16 @@ import('./dist/bdgd/catalogo.js').then(async m => {
 "
 ```
 
-Esperado: `CPFL_Piratininga 2025-12-31 0.41 GB` e `{ cabe: true, ... }`.
+Esperado, medido em 13/10/2026:
+
+```
+CPFL_Piratininga   cod 2937  base 2025-12-31 0.41 GB | precisa 3.4 GB  | cabe true
+CPFL_Paulista      cod 63    base 2025-12-31 1.22 GB | precisa 10.0 GB | cabe true
+Paulista em 8 GB livres : false
+Paulista em 12 GB livres: true
+```
+
+No container de desenvolvimento, prefixe com `NODE_USE_ENV_PROXY=1 NODE_EXTRA_CA_CERTS=/root/.ccr/ca-bundle.crt` (ver Global Constraints).
 
 - [ ] **Step 6: Commit**
 
@@ -1304,7 +1314,7 @@ O `apt-get update` é obrigatório: sem ele o install falha com 404 em `libminiz
 df -h /
 ```
 
-Precisa de **~8 GB livres** para a Paulista (zip 1,22 GB + extraído ~6,5 GB). A Piratininga precisa de ~2,8 GB. Se não houver, o guard-rail da Task 3 recusa antes de baixar — o que é o comportamento certo, não um defeito.
+Precisa de **10,0 GB livres** para a Paulista e **3,4 GB** para a Piratininga — os dois números saem do próprio `cabeNoDisco` com o `content-length` real da ANEEL. Se não houver, o guard-rail da Task 3 recusa antes de baixar — o que é o comportamento certo, não um defeito.
 
 - [ ] **Step 3: Rodar a Piratininga**
 
