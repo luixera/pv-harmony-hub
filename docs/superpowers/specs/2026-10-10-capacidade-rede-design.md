@@ -393,27 +393,86 @@ e `has_table_privilege` para **todo** objeto novo do schema, e rodar o linter
 antes de dar a fase por pronta. Correção em
 `supabase/migrations/20261013093000_rede_fechamento_views.sql`.
 
-## 9. Pendências de verificação — não são fatos
+## 9. Verificação das pendências — resolvidas em 13/10/2026
 
-A política de rede deste ambiente negou **todos** os hosts das fontes:
-`dadosabertos.aneel.gov.br`, `sigel.aneel.gov.br`, `www.aneel.gov.br`,
-`dados.ons.org.br`, `www.epe.gov.br`, `www.cpfl.com.br`,
-`gdneoenergiaelektro.neoenergia.com`, `www.enel.com.br`, `arcgis.com` (403 no
-CONNECT). O levantamento saiu de busca web, que roda fora do container.
+Esta seção listava três pendências porque a política de rede do ambiente negava
+todos os hosts das fontes. A rede foi liberada e as três foram **medidas** na
+BDGD real da CPFL Piratininga (`CPFL_Piratininga_2937_2025-12-31_V11`). O que
+está abaixo é dado observado, não mais conhecimento prévio.
 
-Portanto, **confirmar antes de a implementação começar**:
+### 9.1 Camadas e campos (pendência 1)
 
-1. **Nomes e campos exatos das camadas da BDGD.** O desenho depende de existirem
-   trafo, alimentador, subestação e geração — não dos nomes, que vêm de
-   conhecimento prévio e não foram verificados nesta sessão.
-2. **Volume real** do `.gdb` da CPFL, para dimensionar disco e o guard-rail.
-3. **Se alguma das quatro distribuidoras de SP** tem consulta de capacidade que
-   a busca não indexou.
+A BDGD tem **43 camadas**. As que o módulo usa, com o papel de cada uma:
 
-Liberar em Network access do ambiente (Custom + Allowed domains, mantendo a
-lista padrão de gerenciadores de pacote) resolve. Os números de contagem que
-aparecem no mockup são ordem de grandeza para dimensionar a tela, não dado
-medido.
+| Camada | Feições (Piratininga) | Papel | Campos que importam |
+|---|---|---|---|
+| `UNTRMT` | 52.976 (Point) | → `rede_transformador` | `COD_ID`, `POT_NOM`, `CTMT`, `SUB`, `FAS_CON_P/S/T`, `TEN_LIN_SE`, `SIT_ATIV`, `DIST` |
+| `CTMT` | 553 (sem geom) | → `rede_alimentador` | `COD_ID`, `NOME`, `SUB`, `TEN_NOM`, `ENE_01..12`, `PNTMT_01..12` |
+| `SUB` | 139 (**MultiPolygon**) | → `rede_subestacao` | `COD_ID`, `NOME` |
+| `SSDMT` | 396.983 (MultiLineString) | traçado do alimentador | geometria por `CTMT` |
+| `UCBT_tab` / `UCMT_tab` | 2.037.215 / 7.581 | consumo → carga mínima | `UNI_TR_MT`, `TIP_CC`, `ENE_01..12` |
+| `UGBT_tab` / `UGMT_tab` | 49.771 / 569 | GD já conectada | `UNI_TR_MT`, `POT_INST`, `CEG_GD`, `DAT_CON` |
+| `CRVCRG` | 204 | curvas de carga | `COD_ID`, `TIP_DIA`, `POT_01..POT_96` |
+
+Três achados que mudam a implementação:
+
+- **`UGBT_tab.UNI_TR_MT` aponta direto para `UNTRMT.COD_ID`.** A GD por
+  transformador é `sum(POT_INST) group by UNI_TR_MT` — não precisa de
+  cruzamento espacial, que era o risco do desenho original.
+- **`CRVCRG` tem 96 valores de quarto de hora por tipologia e tipo de dia**
+  (`DU`/`SA`/`DO`, 68 tipologias). A junção `UCBT_tab.TIP_CC` →
+  `CRVCRG.COD_ID` fechou **51 de 51** valores na amostra, com zero UCs sem
+  `UNI_TR_MT`. Ou seja: a carga mínima **diurna** é calculável de verdade,
+  não estimada por média.
+- **`SUB` vem como MultiPolygon**, e `rede_subestacao.geom` é
+  `geometry(Point,4326)`. A ingestão tem de aplicar `ST_PointOnSurface` (ou
+  mudar a coluna). Decidido: centroide na ingestão, porque a tela só usa o
+  ponto.
+
+### 9.2 Volume (pendência 2)
+
+| | zip | extraído | razão |
+|---|---|---|---|
+| CPFL Piratininga | 0,41 GB | **2,2 GB** | 5,3× |
+| CPFL Paulista | 1,22 GB | ~6,5 GB (estimado pela razão) | — |
+
+O guard-rail de disco da VPS precisa de folga para zip + extraído ao mesmo
+tempo: **~8 GB** para a Paulista. Dá para derrubar o zip após extrair.
+
+### 9.3 Consulta própria das distribuidoras (pendência 3)
+
+Não verificada — não era necessária para a Fase A e não bloqueia o Plano 3. Se
+alguma distribuidora de SP publicar consulta de capacidade por ponto, ela é
+complemento, não substituto: a BDGD é a única fonte uniforme para as quatro.
+
+### 9.4 A fórmula rodada sobre dado real
+
+A cadeia da §6 foi executada uma vez sobre a Piratininga inteira para validar a
+fórmula antes de escrever a ingestão. Normalização usada: a **forma** da curva
+(mínimo diurno ÷ média diária), que torna o resultado independente de como a
+ANEEL normaliza `POT_xx`.
+
+Entrada: 2.044.796 UCs, 49.770 unidades geradoras, **267,9 MW** de GD já
+conectada, 52.976 transformadores. Saída com os defaults do grupo 13 (fator
+0,80 · atenção 60% · risco 100%):
+
+| estado | trafos | % |
+|---|---|---|
+| risco | 6.183 | 11,7% |
+| atenção | 2.406 | 4,5% |
+| folga | 40.586 | 76,6% |
+| sem dado | 3.801 | 7,2% |
+
+**Isto é resultado de um script de validação, não da ferramenta** — serve para
+mostrar que a cadeia fecha e que a ordem de grandeza é plausível, não como
+número de produto.
+
+Uma checagem que valeu: duas das 68 tipologias têm mínimo diurno **zero** —
+`IP-Tipo1` (iluminação pública) e `SP-Tipo10`. Zero ao meio-dia em iluminação
+pública é **fisicamente correto**, não defeito de dado, e as duas somam 0,14%
+das UCs e 0,29% da energia; não distorcem o resultado. Melhor ainda: um trafo
+que só alimente iluminação pública cai em `carga <= 0` e a regra já o manda
+para `sem_dado`, nunca para `folga`.
 
 ## 10. Fora desta entrega
 
