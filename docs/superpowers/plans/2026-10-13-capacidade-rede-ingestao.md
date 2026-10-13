@@ -200,6 +200,26 @@ REVOKE ALL ON public.rede_stg_subestacao, public.rede_stg_alimentador,
               public.rede_stg_transformador FROM anon, authenticated;
 ```
 
+> **Desvio aplicado em 13/10/2026, durante a execução.** A promoção estava
+> escrita como UMA função monolítica que terminava apagando o staging. Duas
+> mudanças, pelo mesmo motivo que moldou o cálculo da Fase A:
+>
+> 1. **Decomposta** em `rede_promover_sub`, `rede_promover_alim`,
+>    `rede_promover_trafo`, `rede_promover_inativar` e o orquestrador
+>    `rede_importacao_promover` — cada peça verificável sozinha, e o servidor
+>    MCP engasga com statement longo.
+> 2. **A faxina do staging saiu da função.** O servidor MCP barra `DELETE` em
+>    corpo de função (timeout de 60 s, duas tentativas, função não criada), e
+>    contornar o portão não era opção. Mas a mudança é boa por si: a invariante
+>    é "o mapa nunca meio-carregado", garantida pelo upsert. Apagar staging é
+>    faxina — vai no worker, depois da promoção, pelo PostgREST. Se o worker
+>    morrer antes, as linhas ficam órfãs e inofensivas, e o
+>    `ON DELETE CASCADE` as leva quando a importação for removida.
+>
+> O arquivo `supabase/migrations/20261013120000_rede_staging.sql` tem a versão
+> aplicada; o bloco acima ficou como estava escrito, para o desvio ficar
+> visível em vez de reescrito por cima.
+
 - [ ] **Step 2: Aplicar**
 
 O servidor MCP do Supabase engasga com statement longo e **barra statement destrutivo** (todo `DROP` dá timeout de 60 s). Aplique em pedaços pequenos: as três tabelas, depois os índices e RLS, depois cada função, depois as permissões.
@@ -1172,6 +1192,15 @@ export async function ingerir(sigla: string): Promise<void> {
       .rpc('rede_importacao_promover' as never, { p_importacao_id: imp.id } as never);
     if (eProm) throw new Error(`Promocao falhou: ${eProm.message}`);
     console.log('[bdgd] promovido:', prom);
+
+    // A faxina do staging e nossa, nao da funcao de promocao: ela garante que
+    // o mapa nunca fica meio-carregado, e isso ja aconteceu. Se um destes
+    // deletes falhar, as linhas ficam orfas e inofensivas — o ON DELETE
+    // CASCADE as leva quando a importacao for removida.
+    for (const t of ['rede_stg_transformador', 'rede_stg_alimentador', 'rede_stg_subestacao']) {
+      const { error } = await sb.from(t).delete().eq('importacao_id', imp.id);
+      if (error) console.warn(`[bdgd] staging ${t} nao limpou: ${error.message}`);
+    }
 
     // O veredito e derivado, nunca importado: recalcular fecha a ingestao.
     await marcar('recalculando');
