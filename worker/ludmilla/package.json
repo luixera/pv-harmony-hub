@@ -8,7 +8,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "tsc -p tsconfig.test.json && node scripts/testes.mjs",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "bdgd": "node dist/bdgd/index.js"
   },
   "engines": {
     "node": ">=22"
