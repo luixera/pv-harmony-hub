@@ -2,7 +2,7 @@ import { useState, useCallback, useMemo, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { GoogleMap, useJsApiLoader, Marker, Rectangle } from '@react-google-maps/api';
 import { supabase } from '@/integrations/supabase/client';
-import { AlertTriangle, Clock } from 'lucide-react';
+import { AlertTriangle, Clock, Satellite, Map } from 'lucide-react';
 import { card, GOLD, Loading, SectionTitle } from './ConsoleSections';
 
 /**
@@ -50,23 +50,68 @@ interface Resposta {
   excedeu: boolean;
 }
 
-/** Marcador por estado: forma distinta, não só cor. */
-function iconeDe(risco: string): google.maps.Symbol {
+/**
+ * Marcador por estado: **forma** distinta, não só cor.
+ *
+ * As cores são as validadas contra daltonismo (verde×âmbar dá ΔE 12,6 em
+ * protanopia) e NÃO mudam entre as camadas. O que muda é o miolo e o contorno.
+ *
+ * POR QUE AS DUAS VERSÕES: no desenho original, "atenção" e "sem dado" eram
+ * anéis **vazados** (`fillColor: 'transparent'`) — ótimo sobre o fundo escuro
+ * liso do console, e quase invisível sobre foto de satélite, onde o interior
+ * mostra o telhado. Sobre imagem, todo marcador ganha miolo opaco e contorno
+ * escuro; é o contorno que separa a marca da foto, clara ou escura.
+ *
+ * E "sem dado" deixou de ser anel fino para ser QUADRADO: distinguir anel
+ * grosso de anel fino só pela espessura já era frágil, e sobre imagem não
+ * sobrevive. Quadrado cinza não se confunde com nenhum círculo.
+ *
+ * LIMITE MEDIDO, e não escondido (13/10/2026). Contra os tons típicos de
+ * imagem, o contorno escuro `#07070B` dá 15,9:1 em telhado claro e 9,8:1 em
+ * concreto, mas só 2,1:1 em vegetação e 1,4:1 em asfalto. Considerando que a
+ * marca se lê quando o contorno **ou** o preenchimento separa do fundo, sobram
+ * **4 combinações fracas em 24**: folga, risco e sem-dado sobre vegetação, e
+ * folga sobre asfalto — todas marca escura sobre fundo escuro. Contorno branco
+ * foi testado e é pior (7 em 24: falha em telhado e concreto).
+ *
+ * O que sustenta a leitura nesses quatro casos: a FORMA (que não depende de
+ * contraste), o marcador maior no satélite, e sobretudo a LISTA LATERAL, que é
+ * o equivalente acessível e não depende do mapa. Se na prática incomodar, o
+ * próximo passo é um halo de duas cores — dois marcadores por ponto, o que o
+ * teto de 1500 feições da RPC torna viável (3000 marcadores).
+ */
+function iconeDe(risco: string, satelite: boolean): google.maps.Symbol {
   const cor = CORES[risco] ?? CORES.sem_dado;
+  // Sobre imagem, o contorno escuro é o que garante a leitura; sobre o mapa
+  // liso, um fio claro basta e fica mais leve.
+  const contorno = satelite ? '#07070B' : 'rgba(255,255,255,0.45)';
+  const peso = satelite ? 2.2 : 1.6;
+  // Miolo dos vazados: opaco sobre imagem, transparente sobre o mapa liso.
+  const miolo = satelite ? '#0E0E14' : 'transparent';
+  const opacidadeMiolo = satelite ? 0.92 : 0;
+  // Maior sobre imagem: área não compensa contraste, mas um alvo maior é mais
+  // fácil de achar e de clicar num fundo cheio de textura.
+  const s = satelite ? 1.25 : 1;
+
   if (risco === 'risco') {
     return { path: 'M 0 -8 L 7 6 L -7 6 Z', fillColor: cor, fillOpacity: 1,
-             strokeColor: '#0E0E14', strokeWeight: 1.5, scale: 1 };
+             strokeColor: satelite ? '#07070B' : '#0E0E14',
+             strokeWeight: satelite ? 2 : 1.5, scale: s };
   }
   if (risco === 'atencao') {
-    return { path: google.maps.SymbolPath.CIRCLE, fillColor: 'transparent', fillOpacity: 0,
-             strokeColor: cor, strokeWeight: 4, scale: 6 };
+    return { path: google.maps.SymbolPath.CIRCLE, fillColor: miolo,
+             fillOpacity: opacidadeMiolo, strokeColor: cor,
+             strokeWeight: 4, scale: 6 * s };
   }
   if (risco === 'sem_dado') {
-    return { path: google.maps.SymbolPath.CIRCLE, fillColor: 'transparent', fillOpacity: 0,
-             strokeColor: cor, strokeWeight: 2, scale: 6 };
+    return { path: 'M -5.5 -5.5 L 5.5 -5.5 L 5.5 5.5 L -5.5 5.5 Z',
+             fillColor: satelite ? cor : miolo,
+             fillOpacity: satelite ? 0.85 : opacidadeMiolo,
+             strokeColor: satelite ? '#07070B' : cor,
+             strokeWeight: 2, scale: s };
   }
   return { path: google.maps.SymbolPath.CIRCLE, fillColor: cor, fillOpacity: 1,
-           strokeColor: 'rgba(255,255,255,0.45)', strokeWeight: 1.6, scale: 6 };
+           strokeColor: contorno, strokeWeight: peso, scale: 6 * s };
 }
 
 const mesesDesde = (iso: string) => {
@@ -86,6 +131,10 @@ export function NetworkSection() {
   const [zoom, setZoom] = useState(14);
   const [soRisco, setSoRisco] = useState(false);
   const [aberto, setAberto] = useState<Ponto | null>(null);
+  // Satélite por padrão: o que se quer ver aqui é o contexto físico do ponto —
+  // galpão, loteamento, área rural. `hybrid` e não `satellite` porque sem os
+  // rótulos de via não se sabe onde se está.
+  const [satelite, setSatelite] = useState(true);
 
   const q = useQuery({
     // A caixa entra na chave arredondada a 2 casas: arrastar meia rua não
@@ -158,6 +207,24 @@ export function NetworkSection() {
                  style={{ width: 15, height: 15, accentColor: GOLD, cursor: 'pointer' }} />
           Só o que não está com folga
         </label>
+
+        {/* camada base: satélite (com rótulos de via) ou mapa liso */}
+        <div role="group" aria-label="Camada do mapa"
+             style={{ display: 'inline-flex', borderRadius: 8, overflow: 'hidden',
+                      border: '1px solid rgba(255,255,255,0.12)' }}>
+          {([['Satélite', true], ['Mapa', false]] as const).map(([rotulo, valor]) => (
+            <button key={rotulo} type="button" onClick={() => setSatelite(valor)}
+                    aria-pressed={satelite === valor}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 5,
+                             padding: '5px 11px', border: 'none', cursor: 'pointer',
+                             fontSize: 11.5, fontWeight: satelite === valor ? 700 : 500,
+                             fontFamily: 'inherit',
+                             background: satelite === valor ? 'rgba(245,168,0,0.16)' : 'transparent',
+                             color: satelite === valor ? GOLD : '#9A9AA8' }}>
+              {valor ? <Satellite size={12} /> : <Map size={12} />} {rotulo}
+            </button>
+          ))}
+        </div>
       </div>
 
       {q.isError && (
@@ -195,18 +262,26 @@ export function NetworkSection() {
               onLoad={onLoad}
               onUnmount={onUnmount}
               onIdle={onIdle}
+              // `mapTypeId` controlado por nós, com o controle nativo desligado:
+              // o seletor fica no cabeçalho da seção, no estilo do console.
+              mapTypeId={satelite ? 'hybrid' : 'roadmap'}
               options={{ mapTypeControl: false, streetViewControl: false, fullscreenControl: false }}
             >
               {pontos.map(p => (
                 <Marker key={p.id} position={{ lat: p.lat, lng: p.lng }}
-                        icon={iconeDe(p.risco)} title={`${p.codigo} · ${ROTULOS[p.risco]}`}
+                        icon={iconeDe(p.risco, satelite)} title={`${p.codigo} · ${ROTULOS[p.risco]}`}
                         onClick={() => setAberto(p)} />
               ))}
               {celulas.map(c => (
                 <Rectangle key={c.id}
                   bounds={{ west: c.oeste, south: c.sul, east: c.leste, north: c.norte }}
-                  options={{ fillColor: CORES[c.risco], fillOpacity: 0.3,
-                             strokeColor: CORES[c.risco], strokeOpacity: 0.6, strokeWeight: 1 }} />
+                  // Sobre imagem a célula precisa de borda forte e miolo mais
+                  // fraco: 0,3 de cor saturada sobre foto fica barro, e some.
+                  options={satelite
+                    ? { fillColor: CORES[c.risco], fillOpacity: 0.22,
+                        strokeColor: CORES[c.risco], strokeOpacity: 1, strokeWeight: 2.5 }
+                    : { fillColor: CORES[c.risco], fillOpacity: 0.3,
+                        strokeColor: CORES[c.risco], strokeOpacity: 0.6, strokeWeight: 1 }} />
               ))}
             </GoogleMap>
           )}
@@ -296,12 +371,13 @@ export function NetworkSection() {
                        letterSpacing: '0.07em' }}>Risco de inversão de fluxo</span>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: 11.5, color: '#D5D5DD' }}>
           <span style={{ width: 12, height: 12, borderRadius: 6, background: CORES.folga,
-                         border: '1.6px solid rgba(255,255,255,0.45)', boxSizing: 'border-box' }} />
+                         border: `1.6px solid ${satelite ? '#07070B' : 'rgba(255,255,255,0.45)'}`,
+                         boxSizing: 'border-box' }} />
           Sem risco aparente
         </span>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: 11.5, color: '#D5D5DD' }}>
           <span style={{ width: 13, height: 13, borderRadius: 7, border: `4px solid ${CORES.atencao}`,
-                         boxSizing: 'border-box' }} />
+                         background: satelite ? '#0E0E14' : 'transparent', boxSizing: 'border-box' }} />
           Atenção
         </span>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: 11.5, color: '#D5D5DD' }}>
@@ -310,8 +386,10 @@ export function NetworkSection() {
           Risco
         </span>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: 11.5, color: '#D5D5DD' }}>
-          <span style={{ width: 13, height: 13, borderRadius: 7, border: `2px dashed ${CORES.sem_dado}`,
-                         boxSizing: 'border-box' }} />
+          {/* quadrado, e não anel fino: sobre satélite a diferença de espessura
+              entre dois anéis não se lê */}
+          <span style={{ width: 12, height: 12, background: satelite ? CORES.sem_dado : 'transparent',
+                         border: `2px solid ${CORES.sem_dado}`, boxSizing: 'border-box' }} />
           Sem dado
         </span>
       </div>

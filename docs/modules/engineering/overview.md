@@ -151,6 +151,34 @@ Três armadilhas medidas, que estão no plano com o número de cada uma:
   (46/63/49/37); gravá-los em `tensao_kv` inventaria tensões inexistentes.
   A coluna fica nula.
 
+### A camada de satélite no mapa
+
+O mapa abre em **satélite** (`hybrid`, que traz os rótulos de via — sem eles não
+se sabe onde se está), com um seletor para o mapa liso no cabeçalho da seção.
+O que se quer ver ali é o contexto físico do ponto: galpão, loteamento, área
+rural.
+
+Trocar a camada **não é só trocar `mapTypeId`**. No desenho original, "atenção"
+e "sem dado" eram anéis vazados — ótimos sobre o fundo escuro liso do console, e
+quase invisíveis sobre foto, onde o interior mostra o telhado. Sobre imagem,
+todo marcador ganha miolo opaco e contorno escuro, e "sem dado" passou de anel
+fino a **quadrado**: distinguir dois anéis pela espessura já era frágil e sobre
+imagem não sobrevive.
+
+As cores **não mudam** entre as camadas — são as validadas contra daltonismo
+(ΔE 12,6 em protanopia). O que muda é miolo, contorno e tamanho.
+
+**Limite medido, registrado de propósito.** Contra os tons típicos de imagem, o
+contorno escuro dá 15,9:1 em telhado claro e 9,8:1 em concreto, mas 2,1:1 em
+vegetação e 1,4:1 em asfalto. Contando que a marca se lê quando o contorno
+**ou** o preenchimento separa do fundo, sobram **4 combinações fracas em 24**:
+folga, risco e sem-dado sobre vegetação, e folga sobre asfalto — sempre marca
+escura sobre fundo escuro. Contorno branco foi medido e é pior (7 em 24). O que
+sustenta esses casos é a forma, o marcador maior e a lista lateral, que é o
+equivalente acessível e não depende do mapa. Se incomodar na prática, o próximo
+passo é halo de duas cores com dois marcadores por ponto — viável porque a RPC
+limita a 1500 feições.
+
 A auditoria em `rede_importacao` registra data-base, arquivo, etapa e linhas
 por camada, e é dela que a tela tira o rótulo de idade do dado. O disco da VPS
 é reportado em cada etapa por `reportarDisco('ingestao', etapa)`.
