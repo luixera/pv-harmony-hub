@@ -5,7 +5,7 @@ import { supabase, reportarDisco } from '../fila.js';
 import { acharItem, baixarEExtrair } from './catalogo.js';
 import { extrair } from './extrair.js';
 import { lerCsv, montarTrafos, enviarEmLotes } from './carregar.js';
-import { jaCarregada, type ImportacaoResumo } from './guarda.js';
+import { jaCarregada, desfechoDa, type ImportacaoResumo } from './guarda.js';
 
 /**
  * Ingestão da BDGD de uma distribuidora, ponta a ponta.
@@ -115,16 +115,26 @@ export async function ingerir(sigla: string): Promise<void> {
     await enviarEmLotes('rede_stg_alimentador', alims);
     await enviarEmLotes('rede_stg_transformador', trafos);
 
-    await marcar('promovendo');
-    const { data: prom, error: eProm } = await sb
-      .rpc('rede_importacao_promover' as never, { p_importacao_id: imp.id } as never);
-    if (eProm) throw new Error(`Promocao falhou: ${eProm.message}`);
-    console.log('[bdgd] promovido:', prom);
+    // A promoção NÃO roda aqui. A API tem 8 s de statement_timeout e a da
+    // Piratininga levou 11 s no banco (13/10/2026, run 59). O banco faz o
+    // trabalho num job de pg_cron — promoção, data-base e recálculo do
+    // semáforo, numa transação — e nós só pedimos e esperamos o desfecho.
+    await marcar('aguardando_promocao');
+    const { error: eSol } = await sb
+      .rpc('rede_solicitar_promocao' as never, { p_importacao_id: imp.id } as never);
+    if (eSol) throw new Error(`Nao consegui pedir a promocao: ${eSol.message}`);
 
-    // Só agora a data-base vira verdade: a promoção concluiu.
-    const { error: eBase } = await sb.from('rede_distribuidora')
-      .update({ data_base: item.dataBase }).eq('id', dist.id);
-    if (eBase) throw new Error(`Promovido, mas nao gravei a data-base: ${eBase.message}`);
+    const prazo = Date.now() + 20 * 60_000;   // o job dispara em ate 1 min
+    for (;;) {
+      await new Promise(r => setTimeout(r, 15_000));
+      const { data: st, error: eSt } = await sb.from('rede_importacao')
+        .select('situacao, erro, linhas_por_camada').eq('id', imp.id).maybeSingle();
+      if (eSt) { console.warn(`[bdgd] leitura da situacao falhou: ${eSt.message}`); continue; }
+      const d = desfechoDa(st?.situacao);
+      if (d === 'concluida') { console.log('[bdgd] promovido no banco:', st?.linhas_por_camada); break; }
+      if (d === 'falhou') throw new Error(st?.erro ?? 'importacao sumiu durante a promocao');
+      if (Date.now() > prazo) throw new Error('Promocao nao terminou em 20 min; veja cron.job_run_details');
+    }
 
     // A faxina do staging e nossa, nao da funcao de promocao: ela garante que
     // o mapa nunca fica meio-carregado, e isso ja aconteceu. Se um destes
@@ -134,12 +144,6 @@ export async function ingerir(sigla: string): Promise<void> {
       const { error } = await sb.from(t).delete().eq('importacao_id', imp.id);
       if (error) console.warn(`[bdgd] staging ${t} nao limpou: ${error.message}`);
     }
-
-    // O veredito e derivado, nunca importado: recalcular fecha a ingestao.
-    await marcar('recalculando');
-    const { data: semaforo } = await sb.rpc('grid_capacity_recalcular' as never);
-    const { data: celulas } = await sb.rpc('rede_celula_recalcular' as never);
-    console.log('[bdgd] semaforo:', semaforo, '| celulas:', celulas);
 
     await reportarDisco('ingestao', 'concluida');
   } catch (e) {

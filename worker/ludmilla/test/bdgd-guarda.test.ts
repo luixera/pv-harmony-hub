@@ -29,3 +29,23 @@ test('concluida de data-base ANTERIOR nao impede a nova', () => {
 test('sem importacao nenhuma, nao esta carregada', () => {
   assert.equal(jaCarregada([], '2025-12-31'), false);
 });
+
+import { desfechoDa } from '../src/bdgd/guarda.js';
+
+// A promocao passou para um job de pg_cron (13/10/2026: a API tem 8 s e a
+// promocao da Piratininga levava 11). O worker so pergunta o desfecho.
+
+test('rodando e esperar', () => {
+  assert.equal(desfechoDa('rodando'), 'esperar');
+});
+
+test('concluida e falhou encerram a espera', () => {
+  assert.equal(desfechoDa('concluida'), 'concluida');
+  assert.equal(desfechoDa('falhou'), 'falhou');
+});
+
+test('importacao que sumiu nao pode virar espera eterna', () => {
+  assert.equal(desfechoDa(null), 'falhou');
+  assert.equal(desfechoDa(undefined), 'falhou');
+  assert.equal(desfechoDa('estado-inventado'), 'falhou');
+});
