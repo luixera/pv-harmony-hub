@@ -135,3 +135,72 @@ A mensalidade não tinha histórico de pagamento nenhum antes disso — só
 `amount_paid` na cobrança. O recebimento trouxe
 `subscription_payment_history`, que é o espelho de `payment_history` para a
 assinatura (inclusive as linhas negativas do estorno).
+
+## Reconstrução do histórico antigo (out/2026)
+
+Os pagamentos lançados **antes** de o recebimento em lote existir estavam
+soltos, projeto a projeto: a empresa não via "aquele depósito pagou estes dois
+e abateu parte de um terceiro". Pedido do usuário: reconstruir esse
+agrupamento no histórico.
+
+- **RN-FIN-13 — o critério é empresa + data.** Mesma empresa e mesma data de
+  pagamento = **um** recebimento, de valor igual à soma do dia. Na prática
+  quem lançou fez todos os abatimentos do mesmo dinheiro no mesmo dia. Dois
+  depósitos reais no mesmo dia viram um cartão só — imprecisão aceita pelo
+  critério e dita ao usuário antes de rodar.
+- **RN-FIN-14 — reconstruído não se disfarça de lançado.**
+  `financial_receipts.origin` vale `lancado` ou `reconstruido`, e a tela marca
+  o cartão. "Alguém lançou R$ 1.000" e "o sistema somou o dia e deu R$ 1.000"
+  são afirmações diferentes, e a segunda carrega a premissa da RN-FIN-15.
+- **RN-FIN-15 — reconstruído nasce com crédito zero.** Pelo próprio critério a
+  soma do dia **é** o depósito; se sobrou dinheiro na vida real, essa sobra
+  nunca foi registrada em lugar nenhum. O sistema não adivinha.
+- **RN-FIN-16 — pagamento já estornado fica de fora.** Ele voltou; entrar no
+  cartão seria mostrar dinheiro que não ficou.
+- **RN-FIN-17 — reconstruído NÃO se estorna.** O agrupamento é derivado:
+  estorná-lo lançaria contrapartidas negativas em pagamentos reais, e quem
+  clicasse achando que desfazia a *reconstrução* estaria desfazendo *dinheiro*.
+  A tela esconde o botão e um **gatilho no banco**
+  (`fn_barra_estorno_reconstruido`) recusa — tela não é guarda. Para reverter
+  um pagamento antigo, o caminho continua sendo o estorno dentro do projeto;
+  para desfazer a reconstrução inteira existe
+  `recebimento_reconstrucao_desfazer()`.
+
+Execução em 14/10/2026: **57 recebimentos, 182 pagamentos, R$ 77.179,12**.
+Ficaram de fora 2 pagamentos estornados (R$ 1.256,72), que somados fecham os
+R$ 78.435,84 do levantamento. `subscription_payment_history` estava vazio, então
+a reconstrução cobre só ARTs. A função é idempotente (só enxerga pagamento com
+`receipt_id IS NULL`), então rodar de novo não cria nada.
+
+## Panorama e dossiê (out/2026)
+
+A tela do financeiro tinha um **filtro** de empresa, que mudava a lista mas não
+mudava a pergunta que a tela responde — e abria espaço para ler o dado de uma
+empresa achando que era de outra (preocupação do usuário). Escolher uma empresa
+passa a **trocar a tela**:
+
+- **Panorama** (`Todas as empresas`): KPIs, empresas em aberto com prazo,
+  assinaturas, **últimos** recebimentos (não o histórico completo) e os
+  projetos para quitar em lote.
+- **Dossiê** (uma empresa): só dela — cabeçalho com o nome, indicadores,
+  gráfico de volume contra dinheiro, histórico completo de recebimentos e os
+  projetos dela.
+
+- **RN-FIN-18 — o prazo médio é medido do projeto ENTRAR até o pagamento, não
+  do vencimento.** `project_financials.due_date` está vazio nas 281 linhas do
+  banco (medido em 13/10/2026), então prazo contra vencimento **não existe**.
+  A régua é outra e a tela diz isso em letra miúda: não é atraso contratual.
+  Se um dia houver regra de vencimento para a ART, o ponto de troca é
+  `financeiro_empresas_resumo` / `financeiro_empresa_painel`.
+  Prazo **nulo** = nunca pagou, que é outra categoria de problema e aparece
+  como "nunca pagou", não como prazo ruim (há 3 empresas assim).
+  O prazo global é **média ponderada pela quantidade de pagamentos**
+  (`src/lib/prazoMedio.ts`, com teste) — a média simples daria a uma empresa
+  com 1 pagamento o mesmo peso de outra com 60.
+- **RN-FIN-19 — o valor por projeto se adapta pelo DADO, não pelo
+  `pricing_type`.** 34 das 36 empresas são `manual`/`fixed` e nenhuma é
+  `per_kwp` ou faixa, então o tipo não discrimina nada; e a variação real não
+  segue o tipo (uma `manual` tem 22 projetos no mesmo valor, outra vai de
+  R$ 498 a R$ 3.700). Quem decide é `valores_distintos`: valor único vira um
+  número ("sempre o mesmo"), valor que varia mostra a média com a faixa.
+  Gráfico de ticket seria uma linha reta na maioria das empresas.

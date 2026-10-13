@@ -13,6 +13,12 @@ regra da empresa, quitação (total e em lote), estorno e histórico.
 - **Recebimento em lote** — a empresa manda um valor redondo e o sistema sugere
   quitar as ARTs mais antigas e abater o resto; a empresa vê o que cada
   pagamento dela quitou. Ver RN-FIN-07 a RN-FIN-12.
+- **Histórico reconstruído** — os pagamentos anteriores ao recebimento em lote
+  foram agrupados por empresa + data, marcados como `reconstruido`.
+  Ver RN-FIN-13 a RN-FIN-17.
+- **Panorama e dossiê** — escolher uma empresa troca a tela por um dossiê dela
+  (indicadores, gráfico de volume contra dinheiro, histórico). Ver RN-FIN-18
+  e RN-FIN-19.
 - Assinatura mensal por empresa (`company_subscription_charges`).
 - Financeiro da empresa (`/company/financial`).
 - Dashboards e relatórios financeiros.

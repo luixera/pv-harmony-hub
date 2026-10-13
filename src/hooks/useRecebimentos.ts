@@ -54,6 +54,15 @@ export interface Recebimento {
   credit: number;
   notes: string | null;
   criado_por: string;
+  /**
+   * De onde veio o cartão. `reconstruido` é dedução do sistema — somou os
+   * pagamentos da mesma empresa no mesmo dia, para o histórico anterior ao
+   * recebimento em lote também contar o que cada dinheiro quitou. Nesse caso
+   * `credit` é sempre 0, porque a sobra nunca foi registrada em lugar nenhum.
+   * A tela marca a diferença: "alguém lançou R$ 1.000" e "o sistema somou o
+   * dia e deu R$ 1.000" não são a mesma afirmação.
+   */
+  origin: 'lancado' | 'reconstruido';
   reversed_at: string | null;
   reversal_reason: string | null;
   linhas: ParcelaDoRecebimento[];
@@ -141,6 +150,7 @@ export function useRecebimentos(companyId?: string | null, limite = 50) {
         credit: num(r.credit),
         notes: (r.notes as string | null) ?? null,
         criado_por: String(r.criado_por ?? '—'),
+        origin: r.origin === 'reconstruido' ? 'reconstruido' : 'lancado',
         reversed_at: (r.reversed_at as string | null) ?? null,
         reversal_reason: (r.reversal_reason as string | null) ?? null,
         linhas: (((r.linhas as unknown[]) ?? []) as Record<string, unknown>[]).map(l => ({

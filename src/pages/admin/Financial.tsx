@@ -7,8 +7,10 @@ import { FinancialReportModal } from '@/components/financial/FinancialReportModa
 import { BatchSettleDialog } from '@/components/financial/BatchSettleDialog';
 import { RecebimentoDialog } from '@/components/financial/RecebimentoDialog';
 import { RecebimentosBloco } from '@/components/financial/RecebimentosBloco';
+import { DossieEmpresa } from '@/components/financial/DossieEmpresa';
+import { useEmpresasResumo, prazoMedioGlobal } from '@/hooks/useDossieFinanceiro';
 import { BarChart, Bar, Tooltip, ResponsiveContainer, Cell, XAxis } from 'recharts';
-import { Loader2, FileText, TrendingUp, Wallet, AlertCircle, DollarSign, CheckCircle2, RotateCcw, CalendarClock } from 'lucide-react';
+import { Loader2, FileText, TrendingUp, Wallet, AlertCircle, DollarSign, CheckCircle2, RotateCcw, CalendarClock, Clock, ChevronRight } from 'lucide-react';
 import { useWindowSize } from '@/hooks/useWindowSize';
 import { formatCurrency } from '@/lib/utils';
 import {
@@ -201,6 +203,8 @@ function KpiBlock({
 export default function Financial() {
   const { data, isLoading } = useFinancialDashboard();
   const { data: companies = [] } = useCompanies();
+  // a lista de empresas com dívida e prazo: é a porta do dossiê
+  const { data: empresas = [] } = useEmpresasResumo();
   const { isMobile, isTablet } = useWindowSize();
 
   const [companyFilter, setCompanyFilter] = useState('all');
@@ -244,6 +248,17 @@ export default function Financial() {
   };
 
   const totalAberto = filteredProjetos.reduce((s, p) => s + p.balance, 0);
+
+  /**
+   * Escolher uma empresa troca a tela por um dossiê dela (decisão do usuário,
+   * out/2026) — antes era só um filtro de lista, o que deixava a tela no meio
+   * do caminho entre panorama e dossiê e abria espaço para ler o dado de uma
+   * empresa pensando que era de outra.
+   */
+  const dossie = companyFilter !== 'all';
+  // ponderado pela quantidade de pagamentos: é a média real, sem 2ª consulta
+  const prazoTenant = prazoMedioGlobal(empresas);
+
   const recebidoPct = kpis?.totalFaturado ? (kpis.totalRecebido / kpis.totalFaturado) * 100 : 0;
   const abertoPct   = kpis?.totalFaturado ? (kpis.totalAberto   / kpis.totalFaturado) * 100 : 0;
   const vencidoPct  = kpis?.totalFaturado ? ((kpis?.totalVencido || 0) / kpis.totalFaturado) * 100 : 0;
@@ -266,21 +281,50 @@ export default function Financial() {
         <div style={{ marginBottom: 24, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
           <div>
             <h1 style={{ fontSize: isMobile ? 20 : 26, fontWeight: 700, color: '#1A1A1A', margin: 0 }}>Financeiro</h1>
-            <p style={{ fontSize: 13, color: '#999', margin: '4px 0 0' }}>Controle de faturamento e recebíveis</p>
+            <p style={{ fontSize: 13, color: '#999', margin: '4px 0 0' }}>
+              {dossie ? 'Dossiê de uma empresa' : 'Controle de faturamento e recebíveis'}
+            </p>
           </div>
-          {/* Valor redondo que a empresa manda: lança uma vez e distribui */}
-          <button
-            onClick={() => setShowRecebimento(true)}
-            style={{
-              display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 14px', borderRadius: 8,
-              border: 'none', background: '#F5A800', color: '#1A1A1A', fontSize: 13, fontWeight: 700, cursor: 'pointer',
-            }}
-          >
-            <Wallet size={14} /> Registrar recebimento
-          </button>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            {/* O seletor fica no topo porque é ele que troca a tela, não um
+                filtro escondido no meio da lista. */}
+            <select
+              value={companyFilter}
+              onChange={e => { setCompanyFilter(e.target.value); clearSelection(); }}
+              aria-label="Empresa"
+              style={{
+                padding: '9px 12px', borderRadius: 9, border: '1px solid #DEDEDE', background: '#fff',
+                fontSize: 13, fontWeight: 600, color: '#1A1A1A', outline: 'none',
+                maxWidth: isMobile ? 190 : 260, cursor: 'pointer',
+              }}
+            >
+              <option value="all">Todas as empresas</option>
+              {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+            {/* Valor redondo que a empresa manda: lança uma vez e distribui */}
+            <button
+              onClick={() => setShowRecebimento(true)}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 14px', borderRadius: 8,
+                border: 'none', background: '#F5A800', color: '#1A1A1A', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+              }}
+            >
+              <Wallet size={14} /> Registrar recebimento
+            </button>
+          </div>
         </div>
 
-        {/* ── Hero KPI ── */}
+        {/* ── Dossiê da empresa escolhida: nada aqui é de outra empresa ── */}
+        {dossie && (
+          <DossieEmpresa
+            companyId={companyFilter}
+            prazoDoTenant={prazoTenant}
+            onVoltar={() => { setCompanyFilter('all'); clearSelection(); }}
+          />
+        )}
+
+        {/* ── Hero KPI (só no panorama) ── */}
+        {!dossie && (
         <div style={{ background: '#1A1A1A', borderRadius: 14, padding: isMobile ? '20px 18px' : '24px 28px', marginBottom: 18 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 22 }}>
             <div>
@@ -289,7 +333,7 @@ export default function Financial() {
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : '1fr 1fr 1fr 1fr', gap: isMobile ? 20 : 32 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(auto-fit, minmax(130px, 1fr))', gap: isMobile ? 20 : 28 }}>
             <KpiBlock
               label="Total Faturado"
               value={fmt(kpis?.totalFaturado || 0)}
@@ -322,13 +366,29 @@ export default function Financial() {
               barColor="#FF6B6B"
               icon={AlertCircle}
             />
+            {/* Mede do projeto ENTRAR até o dinheiro chegar: as ARTs não têm
+                vencimento cadastrado, então não é atraso contratual. */}
+            <KpiBlock
+              label="Prazo médio"
+              value={prazoTenant === null ? '—' : `${prazoTenant} dias`}
+              sub={prazoTenant === null ? 'nenhum pagamento' : 'do projeto entrar até pagar'}
+              barPct={prazoTenant === null ? 0 : Math.min(100, (prazoTenant / 60) * 100)}
+              barColor="#378ADD"
+              icon={Clock}
+            />
           </div>
         </div>
+        )}
 
         {/* ── Grid principal ── */}
-        <div style={{ display: 'grid', gridTemplateColumns: isTablet ? '1fr' : '340px 1fr', gap: 16, alignItems: 'start' }}>
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: dossie || isTablet ? '1fr' : '340px 1fr',
+          gap: 16, alignItems: 'start',
+        }}>
 
-          {/* ── Coluna esquerda ── */}
+          {/* ── Coluna esquerda (só no panorama) ── */}
+          {!dossie && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
 
             {/* Card Gráfico por status */}
@@ -355,10 +415,14 @@ export default function Financial() {
               )}
             </div>
 
-            {/* Card Por empresa */}
+            {/* Card Por empresa — cada linha abre o dossiê daquela empresa.
+                O prazo fica aqui porque é onde ele rende: dá para ver numa
+                olhada quem deve muito (problema de valor) e quem paga devagar
+                ou nunca pagou (problema de comportamento), que se resolvem de
+                formas diferentes. */}
             <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #EFEFEF', padding: '18px 20px' }}>
               <p style={{ fontSize: 13, fontWeight: 700, color: '#1A1A1A', marginBottom: 4 }}>Em aberto por empresa</p>
-              <p style={{ fontSize: 11, color: '#999', marginBottom: 14 }}>Valor pendente por integrador</p>
+              <p style={{ fontSize: 11, color: '#999', marginBottom: 14 }}>Clique para abrir o dossiê da empresa</p>
               {porEmpresa.length === 0 ? (
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '20px 0', gap: 6 }}>
                   <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#E1F5EE', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -370,17 +434,40 @@ export default function Financial() {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                   {porEmpresa.map((e, i) => {
                     const pct = porEmpresa[0]?.balance ? (e.balance / porEmpresa[0].balance) * 100 : 0;
+                    const r = empresas.find(x => x.company_id === e.companyId);
+                    const nuncaPagou = !!r && r.pagamentos === 0;
                     return (
-                      <div key={e.companyId}>
+                      <button
+                        key={e.companyId}
+                        onClick={() => { setCompanyFilter(e.companyId); clearSelection(); }}
+                        title={`Abrir o dossiê de ${e.companyName}`}
+                        style={{
+                          display: 'block', width: '100%', textAlign: 'left', padding: 0,
+                          border: 'none', background: 'none', cursor: 'pointer',
+                        }}
+                      >
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 5 }}>
                           <div style={{ width: 10, height: 10, borderRadius: '50%', background: COMPANY_COLORS[i % COMPANY_COLORS.length], flexShrink: 0 }} />
                           <p style={{ flex: 1, fontSize: 12, color: '#333', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', margin: 0 }}>{e.companyName}</p>
+                          {r && (
+                            <span style={{
+                              fontSize: 10, fontWeight: 700, flexShrink: 0,
+                              fontVariantNumeric: 'tabular-nums',
+                              color: nuncaPagou ? '#A32D2D'
+                                : r.prazo_medio_dias !== null && prazoTenant !== null && r.prazo_medio_dias > prazoTenant + 2 ? '#A32D2D'
+                                : r.prazo_medio_dias !== null && prazoTenant !== null && r.prazo_medio_dias < prazoTenant - 2 ? '#0F6E56'
+                                : '#999',
+                            }}>
+                              {nuncaPagou ? 'nunca pagou' : `${r.prazo_medio_dias} d`}
+                            </span>
+                          )}
                           <p style={{ fontSize: 12, fontWeight: 700, color: '#D85A30', margin: 0, flexShrink: 0 }}>{fmt(e.balance)}</p>
+                          <ChevronRight size={13} style={{ color: '#CCC', flexShrink: 0 }} />
                         </div>
                         <div style={{ height: 3, borderRadius: 2, background: '#F0F0F0', overflow: 'hidden', marginLeft: 20 }}>
                           <div style={{ height: '100%', width: `${pct}%`, background: COMPANY_COLORS[i % COMPANY_COLORS.length], borderRadius: 2 }} />
                         </div>
-                      </div>
+                      </button>
                     );
                   })}
                 </div>
@@ -389,13 +476,6 @@ export default function Financial() {
 
             {/* Card Assinaturas mensais */}
             <SubscriptionsCard assinaturas={data?.assinaturas ?? []} />
-
-            {/* O valor que entrou e o que ele quitou. Segue o filtro de empresa
-                da tela: com "todas", mostra de quem é cada depósito. */}
-            <RecebimentosBloco
-              companyId={companyFilter === 'all' ? null : companyFilter}
-              podeEstornar
-            />
 
             {/* Card Extrato PDF */}
             <div style={{ background: 'linear-gradient(135deg, #1A1A1A 0%, #2D2D2D 100%)', borderRadius: 12, padding: '20px 20px' }}>
@@ -419,8 +499,30 @@ export default function Financial() {
               </button>
             </div>
           </div>
+          )}
 
-          {/* ── Coluna direita — Projetos em Aberto ── */}
+          {/* ── Coluna direita ── */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14, minWidth: 0 }}>
+
+          {/* Últimos recebimentos: no panorama, só os mais recentes — o
+              histórico completo é pergunta de dossiê, não de visão geral. */}
+          {!dossie && (
+            <RecebimentosBloco
+              companyId={null}
+              podeEstornar
+              titulo="Últimos recebimentos"
+              subtitulo="O que entrou recentemente, de todas as empresas"
+              compacto
+              limite={300}
+              rodape={
+                <span style={{ fontSize: 11.5, color: '#8A8A8A' }}>
+                  Escolha uma empresa no topo para ver o histórico completo dela
+                </span>
+              }
+            />
+          )}
+
+          {/* Projetos em Aberto */}
           <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #EFEFEF', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
 
             {/* Header */}
@@ -478,16 +580,10 @@ export default function Financial() {
               </div>
             )}
 
-            {/* Filters */}
+            {/* Filters — a empresa é escolhida no topo da tela (é ela que troca
+                o modo), então aqui fica só o status, para não haver dois
+                controles com o mesmo significado. */}
             <div style={{ padding: '12px 16px', background: '#F8F8F8', borderBottom: '1px solid #F0F0F0', display: 'flex', gap: 10 }}>
-              <select
-                value={companyFilter}
-                onChange={e => setCompanyFilter(e.target.value)}
-                style={{ flex: 1, padding: '8px 10px', borderRadius: 8, border: '1px solid #E8E8E8', fontSize: 12, background: '#fff', outline: 'none', color: '#333' }}
-              >
-                <option value="all">Todas as empresas</option>
-                {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
               <select
                 value={statusFilter}
                 onChange={e => setStatusFilter(e.target.value)}
@@ -576,6 +672,7 @@ export default function Financial() {
                 <p style={{ fontSize: 15, fontWeight: 800, color: '#D85A30', margin: 0 }}>{fmt(totalAberto)}</p>
               </div>
             </div>
+          </div>
           </div>
         </div>
       </div>

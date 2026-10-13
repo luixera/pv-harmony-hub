@@ -78,3 +78,29 @@ entra como linha **negativa**, nunca como `delete`.
 RLS: equipe do tenant (`financeiro_equipe_ok()`) lê e escreve; a empresa lê só
 as linhas dela (`company_id = get_user_company_id(auth.uid())`) e **não
 escreve** — RN-FIN-12. Master vê tudo.
+
+### `origin` — de onde veio o cartão (out/2026)
+
+`lancado` (alguém registrou na tela) ou `reconstruido` (o sistema somou os
+pagamentos da empresa naquela data — ver RN-FIN-13 a RN-FIN-17). Com `check`
+constraint, default `lancado`.
+
+Gatilho **`trg_barra_estorno_reconstruido`** (`fn_barra_estorno_reconstruido`)
+recusa marcar `reversed_at` num recebimento reconstruído: estorná-lo lançaria
+contrapartidas negativas em pagamentos reais. A tela também esconde o botão,
+mas a guarda que vale é esta.
+
+## `due_date` das ARTs está vazio
+
+Conferido em 13/10/2026: `project_financials.due_date` é **nulo nas 281
+linhas**. Consequências que a doc precisa registrar, porque não são óbvias
+olhando o esquema:
+
+- não existe "dias de atraso contra o vencimento" — o prazo médio do financeiro
+  mede do projeto **entrar** até o pagamento (RN-FIN-18);
+- `recebimento_abertos` ordena ARTs por `due_date NULLS LAST`, o que hoje cai
+  sempre no desempate por `created_at`;
+- o KPI "Vencido" do painel **não** é zero: ele conta mensalidades, porque
+  `company_subscription_charges.due_date` esse sim é preenchido.
+
+Criar regra de vencimento para a ART é decisão de negócio pendente.
