@@ -56,7 +56,29 @@ function caber(texto: string, fonte: PDFFont, tamanho: number, max: number): str
  *     assinatura seguinte é um append puro.
  */
 export async function estampar(pdf: Buffer, e: Estampa): Promise<Buffer> {
-  const doc = await PDFDocument.load(pdf);
+  // O pdf-lib recusa PDF com senha/permissões com uma mensagem em inglês, e essa
+  // mensagem iria direto para a coluna `erro` e para a tela. NÃO usamos
+  // `ignoreEncryption: true`: estampar um PDF protegido o regravaria passando por
+  // cima da proteção que o autor pôs (e o pdf-lib não decifra o conteúdo, então o
+  // resultado nem seria confiável).
+  let doc: PDFDocument;
+  try {
+    doc = await PDFDocument.load(pdf);
+  } catch (err) {
+    // `instanceof EncryptedPDFError` NÃO funciona no pdf-lib 1.17 (a classe é
+    // compilada para ES5 e perde o protótipo): reconhecemos pela mensagem, e o
+    // teste "PDF protegido" falha se uma atualização do pdf-lib mudar o texto.
+    if (/is encrypted/i.test((err as Error)?.message ?? '')) {
+      throw new Error(
+        'O PDF está protegido por senha ou por permissões (comum em formulário de concessionária). ' +
+        'Salve uma cópia sem proteção e envie de novo.',
+      );
+    }
+    throw new Error(
+      'Não consegui abrir o PDF para preparar a assinatura: o arquivo parece corrompido ou não é um PDF válido. ' +
+      'Gere o PDF de novo e envie de novo.',
+    );
+  }
   const fonte = await doc.embedFont(StandardFonts.Helvetica);
   const negrito = await doc.embedFont(StandardFonts.HelveticaBold);
   const paginas = doc.getPages();
@@ -88,7 +110,7 @@ export async function estampar(pdf: Buffer, e: Estampa): Promise<Buffer> {
 }
 
 /**
- * Anexa a assinatura PAdES ao PDF **já aprovado**. Nenhum byte do que a pessoa
+ * Anexa a assinatura (CMS `adbe.pkcs7.detached`) ao PDF **já aprovado**. Nenhum byte do que a pessoa
  * conferiu é reescrito: o resultado tem o aprovado como prefixo exato.
  *
  * A garantia é ESTRUTURAL: antes de devolver, confere o resultado e LANÇA erro

@@ -63,7 +63,11 @@ function Linha({ a, projectId }: { a: Assinatura; projectId: string }) {
         <p style={{ fontSize: 12, color: '#666', marginTop: 6 }}>e-CPF de {a.titular_nome}</p>
       )}
       {a.motivo && <p style={{ fontSize: 12, color: '#888', marginTop: 4 }}>{a.motivo}</p>}
-      {a.recusa && <p style={{ fontSize: 12, color: '#B3261E', marginTop: 4 }}>{a.recusa}</p>}
+      {/* `recusa` também guarda o motivo da DÚVIDA (linha em "Esperando liberação"):
+          vermelho só quando o pedido foi de fato recusado */}
+      {a.recusa && (
+        <p style={{ fontSize: 12, color: a.situacao === 'recusado' ? '#B3261E' : '#888', marginTop: 4 }}>{a.recusa}</p>
+      )}
       {a.erro && <p style={{ fontSize: 12, color: '#B3261E', marginTop: 4 }}>{a.erro}</p>}
 
       <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>

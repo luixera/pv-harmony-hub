@@ -158,7 +158,7 @@ hook `src/hooks/useAssinaturas.ts`.
 |---|---|---|
 | Banco | `supabase/migrations/20261003*` | tabelas, funções (RPCs), tranca, crons |
 | **Assinador** | `worker/assinador/` (VPS, systemd `gdm-assinador`) | prepara, tria e assina; confere certificados; entrega os recados do Zé |
-| `assinatura-triagem` | `supabase/functions/assinatura-triagem/` | a peneira do Claudinho (só o robô chama) |
+| `assinatura-triagem` | `supabase/functions/assinatura-triagem/` | a peneira do Claudinho (só o robô chama); publicada pelo passo "Deploy assinatura-triagem" do `deploy.yml` |
 | `ze-brain` (`modo:'recado'`) | `supabase/functions/ze-brain/` | entrega o texto pronto ao gestor, sem chamar o modelo |
 | Deploy do robô | `.github/workflows/assinador-worker.yml` + `worker/assinador/deploy/` | workflow manual: testa, compila, sincroniza, instala |
 

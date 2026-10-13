@@ -133,6 +133,11 @@ export function useCertificadoAtivo(opts: { comCpf?: boolean } = {}) {
   });
 }
 
+/** Exatamente os campos de `Assinatura` — sem `titular_cpf`, `serial`, hashes nem caminhos internos. */
+const COLUNAS_ASSINATURA =
+  'id, project_id, document_id, assinavel_id, situacao, titular_nome, motivo, recusa, erro, ' +
+  'codigo_verificacao, documento_aprovado_path, documento_assinado_id, pedida_em, created_at';
+
 export function useAssinaturasDoProjeto(projectId: string | undefined) {
   const disponivel = useAssinaturaDisponivel();
   return useQuery({
@@ -141,7 +146,9 @@ export function useAssinaturasDoProjeto(projectId: string | undefined) {
       if (!projectId) return [];
       const { data, error } = await supabase
         .from('assinaturas' as never)
-        .select('*')
+        // colunas explícitas (as da interface Assinatura): `select('*')` traria
+        // `titular_cpf` completo para o staff que só abre a aba do projeto
+        .select(COLUNAS_ASSINATURA)
         .eq('project_id', projectId)
         .order('created_at', { ascending: false });
       if (error) throw error;

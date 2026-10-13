@@ -54,7 +54,11 @@ Números estáveis (`RN-ASS-NN`): outras docs e comentários apontam para eles.
   assinatura — o veredito é a última barreira, e o conteúdo do documento é o
   caminho natural de injeção de prompt. Resíduo aceito: prosa contendo uma cerca
   com um objeto dentro ainda é lida como o veredito da cerca.
-  Documento **gerado** pelo sistema (`exige_triagem = false`) não passa por ela.
+  Documento **gerado** pelo sistema poderia ser isento (`exige_triagem = false`),
+  mas esse canal não existe: **hoje todos os tipos exigem triagem**, inclusive o
+  `formulario_concessionaria` (que já foi semeado sem ela e deixava um contrato
+  enviado com esse tipo chegar ao e-CPF sem peneira — corrigido em 12/10/2026).
+  A isenção só volta junto com o canal do documento gerado.
 
 - **RN-ASS-05a — Documento misto é dúvida, não recusa.** Um ART legítimo tem
   campo de valor de contrato. `nao_projeto` recusa **sem passar pelo gestor**;
@@ -142,6 +146,19 @@ Números estáveis (`RN-ASS-NN`): outras docs e comentários apontam para eles.
 - **RN-ASS-16 — O vencimento é avisado.** Em 30, 15, 7, 1 e 0 dias: sino para os
   admins e recado do Zé. Uma vez por dia (`avisado_em`), só para certificado
   `ok`.
+
+- **RN-ASS-16a — Toda assinatura acende o sino dos admins.** Além do "Assinei…"
+  do Zé (que depende do WhatsApp: tenant sem Zé, falha de enfileirar ou Zé fora
+  do ar por mais de 20 h apagam o aviso), `assinatura_passo` insere uma
+  notificação para cada admin do tenant no mesmo commit da assinatura.
+
+- **RN-ASS-16b — O nome na estampa é o do certificado.** A conferência grava o
+  nome lido do `.pfx` por cima do digitado no cadastro; o CPF continua sendo
+  conferido contra o informado.
+
+- **RN-ASS-16c — "Esperando liberação" nunca fica sem pergunta.** Se o pedido ao
+  Zé falhar depois de a linha ir para `aguardando_ze`, o cron de hora em hora
+  reabre a pergunta (linha parada há mais de 15 min, sem pendência aberta).
 
 ## D. O rastro
 

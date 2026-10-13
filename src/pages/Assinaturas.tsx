@@ -201,7 +201,10 @@ function Linha({ l, ehAdmin }: { l: LinhaRegistro; ehAdmin: boolean }) {
         {l.serial ? ` · série ${abreviarSerie(l.serial)}` : ''}
         {l.liberada_por_nome ? ` · liberado por ${l.liberada_por_nome}` : ''}
       </p>
-      {l.recusa && <p className="text-xs text-red-700 mt-1">{l.recusa}</p>}
+      {/* `recusa` guarda também o motivo da DÚVIDA: vermelho só se foi recusado */}
+      {l.recusa && (
+        <p className={`text-xs mt-1 ${l.situacao === 'recusado' ? 'text-red-700' : 'text-muted-foreground'}`}>{l.recusa}</p>
+      )}
       {l.erro && <p className="text-xs text-red-700 mt-1">{l.erro}</p>}
 
       <div className="flex flex-wrap gap-2 mt-3">

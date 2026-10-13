@@ -125,12 +125,14 @@ export async function dadosDoCertificado(id: string) {
 
 export async function certificadoConferido(
   id: string, situacao: 'ok' | 'invalido' | 'vencido',
-  dados?: { emissor?: string; serial?: string; inicio?: string; fim?: string; erro?: string },
+  dados?: { emissor?: string; serial?: string; inicio?: string; fim?: string; erro?: string; titularNome?: string },
 ): Promise<void> {
   const { error } = await supabase().rpc('certificado_conferido', {
     p_id: id, p_situacao: situacao,
     p_emissor: dados?.emissor ?? null, p_serial: dados?.serial ?? null,
     p_inicio: dados?.inicio ?? null, p_fim: dados?.fim ?? null, p_erro: dados?.erro ?? null,
+    // o nome LIDO DO .pfx: o banco o grava por cima do que o admin digitou
+    p_titular_nome: dados?.titularNome ?? null,
   });
   if (error) throw new Error(`Não consegui fechar a conferência: ${error.message}`);
 }

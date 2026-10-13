@@ -172,10 +172,11 @@ Módulo [signatures](../modules/signatures/overview.md) — Fase 1, só GD Manag
 - **`tsconfig.json` raiz não checa nada** (`files: []`); usar sempre
   `tsconfig.app.json`. Risco de falso "ok" no typecheck.
 - **Deploy de edge functions é lista manual** no workflow — fácil esquecer de
-  publicar função nova. Caso real: a `assinatura-triagem` **não está em
-  nenhum workflow** (o deploy dela é manual, no [aceite](../modules/signatures/aceite.md)),
-  e o job de funções do `deploy.yml` tem `continue-on-error`: uma falha ali
-  não derruba o deploy e passa em silêncio.
+  publicar função nova. Caso real (corrigido em 12/10/2026): a
+  `assinatura-triagem` ficou de fora do `deploy.yml`; agora tem passo próprio. E
+  o job de funções do `deploy.yml` tem `continue-on-error`: uma falha ali
+  não derruba o deploy e passa em silêncio (confira com `supabase functions list`;
+  ver o [aceite](../modules/signatures/aceite.md)).
 - **Estilo misto** inline vs shadcn/ui em telas legadas.
 - **Convenção de faixa de preço** (`tiered_flat`): no limite exato, vale a faixa
   que termina nele — documentado, mas pode confundir.

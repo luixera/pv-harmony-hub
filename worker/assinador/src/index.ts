@@ -14,7 +14,7 @@ import {
  * Três etapas, a mesma fila:
  *  - preparando → converte (se preciso) + estampa → `conferir` (espera a pessoa)
  *  - triagem    → peneira do Claudinho → `pendente` | `recusado` | `aguardando_ze`
- *  - pendente   → anexa a assinatura PAdES → `assinado`
+ *  - pendente   → anexa a assinatura `adbe.pkcs7.detached` → `assinado`
  *
  * O original nunca é tocado. Depois do "está certo" nenhum byte é reescrito:
  * a assinatura é append sobre os bytes aprovados.
@@ -94,6 +94,7 @@ async function conferirCertificado(id: string): Promise<void> {
   const venceu = d.fim.getTime() < Date.now();
   await certificadoConferido(id, venceu ? 'vencido' : 'ok', {
     emissor: d.emissor, serial: d.serial,
+    titularNome: d.titularNome,
     inicio: d.inicio.toISOString().slice(0, 10),
     fim: d.fim.toISOString().slice(0, 10),
     erro: venceu ? `O certificado venceu em ${d.fim.toLocaleDateString('pt-BR')}.` : undefined,

@@ -74,7 +74,10 @@ id -u "$USUARIO" >/dev/null 2>&1 || useradd --system --create-home --shell /usr/
 
 passo "dependências"
 cd "$APP" || falhar "sem $APP"
-npm ci --omit=dev --no-audit --no-fund </dev/null || falhar "npm ci falhou"
+# `env -u`: o npm roda como root e executa o `postinstall` de cada dependência. A
+# service role (que decifra a senha do certificado) está exportada neste shell;
+# só este comando a perde, sem depender de um `unset` mais adiante.
+env -u SUPABASE_SERVICE_ROLE_KEY npm ci --omit=dev --no-audit --no-fund </dev/null || falhar "npm ci falhou"
 # O código é do root e só leitura para o serviço (a unit repete isso com
 # ReadOnlyPaths): um worker comprometido não consegue reescrever o próprio código.
 chown -R root:root "$APP"

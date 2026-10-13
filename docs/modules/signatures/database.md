@@ -36,9 +36,14 @@ não abra a escrita.
 | `ativo` | desligar um tipo sem apagar histórico |
 | `created_at`, `updated_at` | |
 
-Semeado para o tenant `is_library` com 6 tipos. **Só `formulario_concessionaria`
-dispensa a triagem** (é o que nós geramos); `art` e `procuracao_concessionaria`
-são só `enviado`; os outros são `ambos`. Mexer no catálogo é só pela função
+Semeado para o tenant `is_library` com 6 tipos. **Todos exigem triagem.**
+`formulario_concessionaria` chegou a ser semeado sem triagem ("é o que nós
+geramos"), mas o canal "documento gerado" nunca foi construído e o tipo aparece
+no seletor de upload — então um contrato enviado com esse tipo chegaria ao e-CPF
+sem peneira. Corrigido em `20261003150000_assinatura_correcoes_finais.sql`; só
+volta a `false` **quando esse canal existir** (a isenção pressupõe que o sistema
+produziu o arquivo). `art` e `procuracao_concessionaria` são só `enviado`; os
+outros são `ambos`. Mexer no catálogo é só pela função
 `catalogo_assinavel_salvar` (admin) — não há tela.
 
 ### `certificados_digitais`
@@ -170,11 +175,11 @@ senha do certificado. Todas checam `auth.role() = 'service_role'` por dentro.
 | Função | Retorna | O que faz |
 |---|---|---|
 | `certificado_do_robo(p_id uuid)` | `arquivo_path, senha, titular_cpf, titular_nome` | **o único caminho de leitura da senha** (Vault decifrado). Só do certificado `ativo` |
-| `certificado_conferido(p_id, p_situacao, p_emissor, p_serial, p_inicio date, p_fim date, p_erro)` | `boolean` | o robô grava o resultado da conferência |
+| `certificado_conferido(p_id, p_situacao, p_emissor, p_serial, p_inicio date, p_fim date, p_erro, p_titular_nome)` | `boolean` | o robô grava o resultado da conferência. **`p_titular_nome` é o nome lido do `.pfx` e sobrescreve o digitado** (é ele que a assinatura usa; sem nome, mantém o que está) |
 | `assinatura_claim()` | 18 colunas (inclui `company_id`, `cidade`, `file_*`) | pega o próximo trabalho: `FOR UPDATE SKIP LOCKED`, **lease de 10 min**, até 3 tentativas por etapa; quem esgotou vai para `erro`. Devolve `company_id` porque a policy do bucket `project-documents` exige a **empresa** como 1º segmento do caminho (não o tenant) |
-| `assinatura_passo(p_id uuid, p_situacao text, p_campos jsonb default '{}')` | `boolean` | devolve o passo, com a tabela de transições. Ao chegar em `assinado`: insere o documento novo, comenta no card e escreve em `project_history`. **`FALSE` = pare e não publique o resultado** |
+| `assinatura_passo(p_id uuid, p_situacao text, p_campos jsonb default '{}')` | `boolean` | devolve o passo, com a tabela de transições. Ao chegar em `assinado`: insere o documento novo, comenta no card, escreve em `project_history` e **insere uma notificação (sino) para cada admin do tenant** (em sub-bloco: falha de aviso não desfaz a assinatura). **`FALSE` = pare e não publique o resultado** |
 | `assinatura_codigo_novo(_tenant uuid)` | `text` | 6 caracteres, até 50 tentativas até achar um livre |
-| `assinatura_pedir_ao_ze(p_id uuid)` | `uuid` | abre a pendência `liberar_assinatura` (uma por assinatura; advisory lock + índice único) e enfileira o "Libero?" |
+| `assinatura_pedir_ao_ze(p_id uuid)` | `uuid` | abre a pendência `liberar_assinatura` (uma por assinatura; advisory lock + índice único) e enfileira o "Libero?". É um invólucro (checa `service_role`) sobre `assinatura_pedir_ao_ze_interno`, que o cron também chama (sem JWT) para **reabrir a pergunta** de quem ficou em `aguardando_ze` há mais de 15 min sem pendência |
 | `ze_recado_enfileirar(_tenant uuid, _texto text, _pendencia uuid default null)` | `uuid` | só enfileira se o tenant **tem Zé ligado** |
 | `ze_recados_pendentes()` | `id, tenant_id, texto` | o worker pega até 10 recados |
 | `ze_recado_entregue(_id uuid, _ok boolean)` | `boolean` | fecha o recado; se era o "Libero?", carimba `perguntada_em` |
@@ -249,7 +254,7 @@ original, corrigido na Task 5.
 | Job | Agenda | O que faz |
 |---|---|---|
 | `certificado-vencimento` | `0 10 * * *` (10:00 UTC = 07:00 em Brasília) | `certificados_avisar_vencimento()`: avisa em **30, 15, 7, 1 e 0 dias** antes de `validade_fim` (sino para os admins + recado do Zé); idempotente via `avisado_em`; só certificado `ok` avisa. Também move para `vencido` quem passou da validade |
-| `ze-expirar` | `0 * * * *` (de hora em hora) | `ze_expirar_pendentes()`: pendência de 24 h vira `expirada` **e a assinatura vira `recusado`** com comentário no card e recado. Era diário às 04:00; a pendência vive 24 h, não ~48 |
+| `ze-expirar` | `0 * * * *` (de hora em hora) | `ze_expirar_pendentes()`: pendência de 24 h vira `expirada` **e a assinatura vira `recusado`** com comentário no card e recado. Era diário às 04:00; a pendência vive 24 h, não ~48. Depois disso, **reabre a pergunta** de toda assinatura em `aguardando_ze` há mais de 15 min sem pendência aberta (cada reabertura em sub-bloco: se falhar, tenta no ciclo seguinte) |
 
 ## O que o `ze_resolver_pendencia` exige para liberar
 

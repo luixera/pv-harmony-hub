@@ -12,8 +12,9 @@ sozinho. Ele está dividido em quem faz o quê:
 | **4** | você, sabendo | armadilhas conhecidas |
 | **5** | quem desenvolve | o que olhar se algo falhar |
 
-**Estado de partida:** o banco já está pronto (as cinco migrações de 03/10 foram
-aplicadas e as provas SQL passaram). Falta tudo o que mora fora do banco: as duas
+**Estado de partida:** o banco já está pronto (as seis migrações de 03/10 —
+a última, `20261003150000_assinatura_correcoes_finais.sql`, é a da revisão final
+— foram aplicadas e as provas SQL passaram). Falta tudo o que mora fora do banco: as duas
 edge functions, o robô na VPS e o front. **A tela de assinaturas nunca foi vista
 autenticada por quem a construiu, e o robô nunca rodou na VPS.** Se algo estiver
 estranho, é esperado que apareça aqui — anote com print.
@@ -64,6 +65,15 @@ Marque cada item. Você só começa a Parte 2 quando todos estiverem marcados.
 
   (`npx supabase db query --linked -f arquivo.sql`.)
 
+- [ ] **A tranca do "Formulário da concessionária" está fechada.** Este item é
+  **pré-requisito do passo 7b** — sem ele o passo 7b assinaria o contrato de
+  teste de verdade:
+
+  ```sql
+  select codigo, exige_triagem from public.documentos_assinaveis order by codigo;
+  -- as 6 linhas têm de dizer exige_triagem = true (em especial formulario_concessionaria)
+  ```
+
 ### 1.2 Deploy da `ze-brain` — **primeiro, antes do robô**
 
 - [ ] Publicar a `ze-brain` (push em `main` roda `deploy.yml`, ou
@@ -80,7 +90,11 @@ Marque cada item. Você só começa a Parte 2 quando todos estiverem marcados.
 
 ### 1.3 Deploy da `assinatura-triagem`
 
-- [ ] Publicar (ela **não está em nenhum workflow**, é manual):
+- [ ] Publicar. Ela **agora vai pelo deploy normal** (o passo "Deploy
+  assinatura-triagem" do `deploy.yml`, no mesmo push em `main` da `ze-brain`).
+  Como o job de funções tem `continue-on-error`, **confirme que subiu**
+  (`supabase functions list` mostra a versão e a data). Se precisar publicar à
+  mão:
 
   ```
   supabase functions deploy assinatura-triagem --project-ref yqsqrdndvsnhbsoaoilf --no-verify-jwt
@@ -101,6 +115,16 @@ Marque cada item. Você só começa a Parte 2 quando todos estiverem marcados.
 > Sem essa chave a segurança **não é quebrada, ela fecha**: a triagem passa a
 > responder "dúvida" para tudo e os recados não são entregues. É um sintoma
 > confuso, por isso a conferência vem antes.
+
+> ### ⚠️ O deploy pode passar verde com a chave faltando
+>
+> O job de funções do `deploy.yml` tem **`continue-on-error: true`**: se ele
+> falhar (inclusive no passo que grava `ASSINADOR_WORKER_KEY`), o deploy do front
+> **passa verde do mesmo jeito**. O sintoma — **403 na triagem, e então "dúvida"
+> para todo documento** — é o mais confuso do subsistema: parece que a IA não
+> confia em nada. Antes de qualquer teste, confirme com `supabase secrets list`
+> que a chave está lá e, com `supabase functions list`, que `ze-brain` e
+> `assinatura-triagem` têm a data do deploy de hoje.
 
 ### 1.5 Rodar o workflow do robô — primeiro só diagnóstico
 
@@ -166,6 +190,15 @@ O robô olha a fila a cada 15 segundos. Espere a situação sair de
 **Esperado:** **"válido"**, com **emissor**, **série** e **validade**
 preenchidos, e o CPF aparecendo mascarado (`***.***.123-45`).
 
+**Confira também o NOME, não só o CPF.** Na conferência o robô grava o nome
+**lido do certificado** por cima do que você digitou no cadastro. Compare o nome
+mostrado no cartão com o que está no seu e-CPF (é o CN do certificado: algo como
+`JOÃO DA SILVA JUNIOR`). **Se divergir do que você digitou, o do certificado é o
+que vale** — é ele que aparece na estampa de todo PDF e no recado do Zé. Se o
+nome do certificado estiver errado de verdade (por exemplo, sem acento), isso é
+do certificado, não do sistema: avise antes de assinar qualquer coisa, porque a
+estampa sai na parte visível de um documento entregue à concessionária.
+
 - **"inválido"**: leia a mensagem. As causas são senha errada, arquivo
   corrompido ou **CPF diferente do que está dentro do certificado**. Cadastre de
   novo (o novo substitui o anterior).
@@ -213,8 +246,16 @@ O memorial passa pela triagem do Claudinho. A linha vai por **"Em triagem"** →
 > sobre um documento que é seu), o Zé vai te perguntar "Libero?" no WhatsApp.
 > Sendo o seu memorial de teste, responda "pode". Isso não é erro — é a regra
 > funcionando.
+>
+> **E se o "Libero?" não chegar?** Não fique esperando: abra **Assinaturas** na
+> sidebar, ache o pedido em **"Esperando liberação"** (bloco "Esperando você") e
+> **libere ou recuse por ali** — o botão Liberar é do admin. Além disso, o
+> sistema **reabre a pergunta sozinho em até uma hora**: se o pedido ao Zé falhou
+> (rede, 502) e a linha ficou parada em "Esperando liberação" por mais de 15
+> minutos sem pergunta aberta, a faxina de hora em hora a refaz. A pergunta
+> reaberta aparece como recado novo no WhatsApp.
 
-Quando virar **"Assinado"**, confirme as **três provas**:
+Quando virar **"Assinado"**, confirme as **quatro provas**:
 
 1. **O documento assinado**: um arquivo **`..._assinado.pdf`** apareceu no
    projeto (e em **Assinaturas → Abrir assinado**). Abra e veja a estampa.
@@ -222,9 +263,13 @@ Quando virar **"Assinado"**, confirme as **três provas**:
    "Documento assinado" no histórico do projeto.
 3. **O recado no WhatsApp**, no chat "Você", dito pelo Zé, no formato:
    *"Assinei … com o e-CPF de …, 14:32. Código AX7F2."*
+4. **O sino de notificações** (canto superior da tela): "Documento assinado com
+   o e-CPF", com o nome do documento e o código. Este aviso **não depende do
+   WhatsApp**: sai no mesmo instante da assinatura, para todos os admins.
 
 Se o recado não chegar em ~5 minutos, avise — Parte 5. (A entrega é feita por
-uma fila com reenvio, então um atraso pequeno é normal.)
+uma fila com reenvio, então um atraso pequeno é normal. O sino já deve estar lá
+mesmo que o WhatsApp esteja fora.)
 
 ### Passo 6 — Validar o assinado no ITI
 
@@ -283,6 +328,46 @@ memorial**.
 "Assinado" sem triagem barrar): a **tranca falhou** — o e-CPF assinou algo que
 não é de projeto. Pare, **anote o código de verificação**, não repita com
 documento real e avise quem desenvolve.
+
+### Passo 7b — O teste da tranca com o tipo que NÃO tinha triagem
+
+> ### ⚠️ Só faça este passo DEPOIS de conferir o item 1.1
+>
+> Este passo repete o passo 7 escolhendo **"Formulário da concessionária"** — o
+> tipo que foi semeado **sem triagem** e que, antes da correção da revisão final,
+> deixava um contrato chegar ao e-CPF sem nenhuma barreira além do seu clique.
+> **Antes da correção, este passo assinaria o contrato de verdade.** Por isso:
+> rode a consulta do item 1.1 e só prossiga se `formulario_concessionaria` disser
+> `exige_triagem = true`.
+
+1. Use o **mesmo contrato de mentira** do passo 7.
+2. Aba **Assinaturas** do projeto de teste → escolha o tipo **"Formulário da
+   concessionária"** → envie o contrato.
+3. Em "Confira antes de assinar", dê o "está certo".
+
+**Esperado:** a linha passa por **"Em triagem"** (é a prova de que a correção
+pegou) e termina como no passo 7: **"Recusado"** pela triagem, ou **"Esperando
+liberação"** com o "Libero?" no WhatsApp — e aí responda **"não"**.
+
+**Se a linha foi direto para "Na fila para assinar" / "Assinado" sem passar por
+"Em triagem"**: a correção **não pegou** e o e-CPF assinou (ou vai assinar) um
+contrato. Cancele se ainda der tempo, **anote o código de verificação**, não
+repita com documento real e avise quem desenvolve.
+
+### Passo 7c — Cancelar um pedido
+
+1. Peça uma assinatura qualquer (o memorial de teste serve) e, **logo depois de
+   enviar**, enquanto a linha ainda está em **"Preparando o PDF…"** (ou em "Na
+   fila"/"Em triagem"), clique em **Cancelar**.
+
+**Esperado:** a linha vira **"Recusado"** e nada é assinado.
+
+> **O que este passo NÃO prova.** A corrida "cliquei em Recusar *enquanto o robô
+> estava assinando*" **não dá para exercitar à mão** — a janela é de segundos. Ela
+> está provada na prova SQL do banco: a transição para `assinado` de uma linha já
+> recusada é barrada (`assinatura_passo` devolve `FALSE`). Do lado do robô, o
+> `FALSE` vira `PassoRecusado` e o PDF assinado é apagado em vez de entregue —
+> isso está no código, mas o apagamento em si não tem teste automatizado.
 
 ### Passo 8 (opcional) — Conferir o papel de staff
 
@@ -372,6 +457,30 @@ de ambiente, é defeito a corrigir**. Traga o log.
   libere ou recuse por lá.
 - **O passo 4 depende de você olhar.** Nada impede você de clicar "Está certo"
   sem conferir; o sistema registra *quem* deu, mas não *se leu*.
+- **NÃO assine diagrama unifilar por enquanto.** A estampa é um retângulo
+  **opaco** de largura fixa (290 pt) no canto inferior direito, e não trata
+  `/Rotate`, `CropBox` nem `MediaBox` com origem diferente de zero. Unifilar é
+  prancha girada, de formato grande e com o **carimbo justamente nesse canto**: a
+  estampa pode cobri-lo, e o aprovador veria o estrago sem ter como corrigi-lo.
+  Vale também para qualquer PDF com a legenda ou o selo no canto inferior direito
+  da última página.
+- **PDF protegido (senha ou permissões) é recusado no preparo**, com a mensagem
+  "O PDF está protegido por senha ou por permissões…". É comum em formulário de
+  concessionária. Salve uma cópia sem proteção e envie de novo — o sistema não
+  tenta contornar a proteção, de propósito.
+- **Trocar o certificado com pedidos em andamento** derruba os pedidos já
+  aprovados ("Na fila para assinar"): depois de 3 tentativas eles vão para
+  "Erro" com **"Certificado não encontrado ou desativado"**. É falha fechada
+  (nada é assinado com o certificado errado), mas **a mensagem engana** — o
+  problema não é o certificado novo, é que o pedido apontava para o antigo.
+  Refaça os pedidos. Melhor: só troque o certificado com a fila vazia.
+- **PDF com mais de ~100 páginas** é recusado pela API da Anthropic, a triagem
+  falha e o pedido vira **dúvida → vai ao gestor sempre**. **Acima de 10 MB** o
+  arquivo **nem é enviado à IA**: vai direto ao Zé, sem triagem. Nos dois casos
+  a decisão é sua, por design.
+- **A `assinatura-triagem` agora vai pelo deploy normal** (`deploy.yml`), não
+  precisa mais de deploy manual; o alerta do `continue-on-error` (ver 1.4)
+  continua valendo.
 
 ---
 
@@ -384,7 +493,8 @@ de ambiente, é defeito a corrigir**. Traga o log.
 | "Deu erro" na tela | a mensagem é legível; 3 tentativas por etapa, com espera. O pedido pode ser cancelado e refeito |
 | Triagem sempre "dúvida" | a mensagem diz "Triagem indisponível: …". 403 = `ASSINADOR_WORKER_KEY` ausente ou função sem deploy (1.3/1.4); sem cota de IA também cai aqui |
 | Recado não chega | a fila: `select left(texto,60), tentativas, claim_em, entregue_em, nota from public.ze_recados order by criado_em desc limit 5;` — `nota` explica ("não entregue (Zé desconectado ou falha no envio)", "descartado: mais de 20 h…"). Confirme `ze-brain` com `modo:'recado'` publicada, Zé conectado e `ASSINADOR_WORKER_KEY` |
-| "Libero?" não chega | o recado do "Libero?" está em `ze_recados` com `pendencia_id`; só vale o "pode" depois de `perguntada_em` preenchido em `ze_pending_actions` |
+| "Libero?" não chega | o recado do "Libero?" está em `ze_recados` com `pendencia_id`; só vale o "pode" depois de `perguntada_em` preenchido em `ze_pending_actions`. Saída imediata: liberar/recusar pela página `/assinaturas`. Linha em `aguardando_ze` **sem** pendência aberta: a faxina de hora em hora (`ze-expirar`) a reabre depois de 15 min — confira `select id, situacao, updated_at from public.assinaturas where situacao = 'aguardando_ze';` e `select situacao, expira_em from public.ze_pending_actions where tipo = 'liberar_assinatura' order by created_at desc limit 5;` |
+| Estampa com o nome errado | o nome vem de `certificados_digitais.titular_nome`, que a conferência do robô sobrescreve com o CN do `.pfx`. Se a conferência nunca rodou (certificado em `conferindo`), vale o digitado |
 | Recusado por "O PDF mudou depois do 'está certo'" | o arquivo no bucket foi trocado; refazer o pedido |
 
 ---
@@ -403,6 +513,11 @@ O módulo está aceito quando **todos** estes itens forem verdadeiros:
   carimbo de tempo foi tomada — ver Passo 6).
 - [ ] O contrato de teste com o tipo errado foi **barrado ou recusado pelo seu
   "não"**, com o motivo no card.
+- [ ] O mesmo contrato, enviado como **"Formulário da concessionária"**, também
+  **passou pela triagem** (passo 7b) e foi barrado ou recusado pelo seu "não".
+- [ ] O nome mostrado no cartão do certificado é o **do certificado** (passo 2) e
+  o sino de notificações avisou da assinatura (passo 5).
+- [ ] Cancelar um pedido em "Preparando"/"Na fila" o deixou **"Recusado"** (passo 7c).
 - [ ] O log do instalador mostrou **`conversão ok — sob o sandbox da unit`** e os
   4 testes de conversão **passaram** no CI.
 

@@ -152,6 +152,31 @@ test('estampar não quebra com nome muito longo nem com caractere fora do WinAns
   assert.ok(/\r?\nxref\r?\n/.test(preparado.toString('latin1')));
 });
 
+test('estampar: PDF protegido vira erro em português (e o texto cru do pdf-lib não vaza)', async () => {
+  // PDF clássico com /Encrypt no trailer: é o que o pdf-lib reconhece como protegido
+  const base = (await (async () => {
+    const doc = await PDFDocument.create();
+    doc.addPage([595, 842]);
+    return Buffer.from(await doc.save({ useObjectStreams: false }));
+  })()).toString('latin1');
+  assert.ok(base.includes('/Root'), 'premissa: o trailer clássico tem /Root');
+  const protegido = Buffer.from(base.replace('/Root', '/Encrypt << /Filter /Standard /V 1 /R 2 >>\n/Root'), 'latin1');
+
+  await assert.rejects(
+    () => estampar(protegido, ESTAMPA),
+    (e: Error) => /protegido por senha ou por permiss/i.test(e.message)
+      && /sem prote/i.test(e.message)
+      && !/PDFDocument\.load|ignoreEncryption/i.test(e.message),
+  );
+});
+
+test('estampar: arquivo que não é PDF vira erro em português (e o texto cru do pdf-lib não vaza)', async () => {
+  await assert.rejects(
+    () => estampar(Buffer.from('isto não é um pdf, é só texto'), ESTAMPA),
+    (e: Error) => /corrompido ou não é um PDF/i.test(e.message) && !/Failed to parse|PDFDocument/i.test(e.message),
+  );
+});
+
 // ------------------------------------------------------------------- assinatura
 
 test('assinar ANEXA: os bytes aprovados são prefixo exato do assinado', async () => {
