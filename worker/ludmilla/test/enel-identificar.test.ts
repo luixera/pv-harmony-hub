@@ -135,3 +135,45 @@ test('referência do projeto: protocolo numérico, senão UC, senão o código',
   assert.equal(referenciaDoProjeto(C), 'UC 3333333333');
   assert.equal(referenciaDoProjeto(P({ codigo: 'PRJ-Z' })), 'PRJ-Z');
 });
+
+// ── Correção pré-revisão: nome do meio de OUTRA pessoa não casa (janela) ─────
+
+test('janela: nome do meio de OUTRA pessoa não casa (JOSE MARIA não é JOSE CARLOS)', () => {
+  assert.equal(titularNoAssunto('TROCA DE RELÓGIO - JOSE MARIA SANTOS', 'JOSE CARLOS SANTOS'), false);
+});
+
+test('janela: inicial que não é de nenhum nome do meio não casa (JOSE M. não é JOSE CARLOS)', () => {
+  assert.equal(titularNoAssunto('PROJETO GD - JOSE M. SANTOS', 'JOSE CARLOS SANTOS'), false);
+});
+
+test('janela: inicial de um nome do meio do titular casa (MARIA A. SILVA)', () => {
+  assert.equal(titularNoAssunto('PROJETO GD - MARIA A. SILVA', 'MARIA APARECIDA SILVA'), true);
+});
+
+test('janela: nome do meio omitido, com ou sem conector, casa', () => {
+  assert.equal(titularNoAssunto('PROJETO GD - MARIA SILVA', 'MARIA APARECIDA SILVA'), true);
+  assert.equal(titularNoAssunto('PROJETO GD - MARIA DA SILVA', 'MARIA APARECIDA SILVA'), true);
+});
+
+test('janela: mais de 24 caracteres entre o primeiro e o último nome não casa', () => {
+  assert.equal(titularNoAssunto('PROJETO GD - MARIA APARECIDA DE DA DOS DAS DO SILVA', 'MARIA APARECIDA SILVA'), false);
+});
+
+test('janela: o defeito inteiro — JOSE MARIA inativo não puxa o JOSE CARLOS ativo', () => {
+  const CARLOS = P({ project_id: 'jc', codigo: 'PRJ-JC', titular: 'JOSE CARLOS SANTOS' });
+  const MARIA = P({ project_id: 'jm', codigo: 'PRJ-JM', titular: 'JOSE MARIA SANTOS', status: 'completed', ativo: false });
+  const id = identificarPorTexto(txt('PROJETO GD - JOSE MARIA SANTOS'), [CARLOS, MARIA]);
+  assert.equal(id.tipo, 'nenhum');
+});
+
+test('janela: o mesmo nome identifica o titular que TEM esse nome do meio', () => {
+  const CARLOS = P({ project_id: 'jc', codigo: 'PRJ-JC', titular: 'JOSE CARLOS SANTOS' });
+  const MARIA = P({ project_id: 'jm', codigo: 'PRJ-JM', titular: 'JOSE MARIA SANTOS' });
+  const id = identificarPorTexto(txt('PROJETO GD - JOSE MARIA SANTOS'), [CARLOS, MARIA]);
+  assert.equal(id.tipo === 'achado' && id.projeto.codigo, 'PRJ-JM');
+  assert.equal(id.tipo === 'achado' && id.por, 'titular');
+});
+
+test('janela: vale a ocorrência compatível mesmo que a primeira traga outro nome do meio', () => {
+  assert.equal(titularNoAssunto('PROJETO GD - JOSE MARIA SANTOS E JOSE C. SANTOS', 'JOSE CARLOS SANTOS'), true);
+});

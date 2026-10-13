@@ -60,20 +60,51 @@ function nomesDe(titular: string): string[] {
   return p;
 }
 
+/** Palavras que podem ficar entre o primeiro e o último nome sem trocar de pessoa. */
+const CONECTORES = new Set(['DA', 'DE', 'DO', 'DAS', 'DOS', 'E']);
+
+/** Palavra entre o primeiro e o último nome: conector, nome do meio do titular, ou a inicial dele. */
+const aceitaNoMeio = (w: string, meio: string[]): boolean =>
+  CONECTORES.has(w) || meio.includes(w) || (w.length === 1 && meio.some(n => n[0] === w));
+
+/**
+ * Forma "janela": primeiro e último nome do titular a até 24 caracteres um do outro,
+ * em QUALQUER ocorrência no assunto. Não basta o primeiro e o último: o que fica no
+ * meio tem de ser aceito por `aceitaNoMeio`. Assim "JOSE MARIA SANTOS" não casa com
+ * "JOSE CARLOS SANTOS" (outra pessoa), e "MARIA A. SILVA" casa com "MARIA APARECIDA SILVA".
+ */
+function janelaCompativel(assunto: string, nomes: string[]): boolean {
+  const primeiro = nomes[0];
+  const ultimo = nomes[nomes.length - 1];
+  const meio = nomes.slice(1, -1);
+  const palavras = assunto.trim().split(' ');
+  for (let i = 0; i < palavras.length; i++) {
+    if (palavras[i] !== primeiro) continue;
+    for (let j = i + 1; j < palavras.length; j++) {
+      if (palavras[j] !== ultimo) continue;
+      const entre = palavras.slice(i + 1, j);
+      // mesma conta da janela de sempre: um espaço de cada lado, ou um só sem palavra no meio
+      const largura = entre.length === 0 ? 1 : entre.join(' ').length + 2;
+      if (largura > 24) break; // cada j seguinte só alarga a janela
+      if (entre.every(w => aceitaNoMeio(w, meio))) return true;
+    }
+  }
+  return false;
+}
+
 /**
  * O assunto cita o titular? Duas formas, ambas estritas:
  *  - o nome inteiro, aceitando palavras curtas no meio ("OSSEL LOCACAO DE SALAS…");
- *  - primeiro e último nome a até 24 caracteres (pessoa com nome do meio abreviado).
+ *  - primeiro e último nome a até 24 caracteres, com o meio compatível (ver `janelaCompativel`).
  * Nome de uma palavra só não identifica ninguém.
  */
 export function titularNoAssunto(assunto: string, titular: string): boolean {
   const nomes = nomesDe(titular);
   if (nomes.length < 2) return false;
-  const t = ` ${semAcento(assunto).toUpperCase().replace(/[^A-Z0-9]+/g, ' ')} `;
+  const normal = semAcento(assunto).toUpperCase().replace(/[^A-Z0-9]+/g, ' ');
   const completo = new RegExp(`\\b${nomes.join('(?: [A-Z0-9]{1,2})* ')}\\b`);
-  if (completo.test(t)) return true;
-  const janela = new RegExp(`\\b${nomes[0]}\\b.{0,24}?\\b${nomes[nomes.length - 1]}\\b`);
-  return janela.test(t);
+  if (completo.test(` ${normal} `)) return true;
+  return janelaCompativel(normal, nomes);
 }
 
 function decidir(porProtocolo: ProjetoEnel[], porUc: ProjetoEnel[], porTitular: ProjetoEnel[]): Identificacao {
