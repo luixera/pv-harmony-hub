@@ -125,5 +125,73 @@ nova continua pedindo o pedaço antigo e recebe **404** — a funcionalidade mor
 sem erro visível. Foi o que derrubou o "Baixar PDF" do diagrama em jul/2026.
 Ver [modules/diagrams](../modules/diagrams/overview.md).
 
+## Armazenamento da VPS no painel
+
+A mesma VPS que serve o estático pelo Nginx hospeda o worker da Ludmilla e a
+importação da BDGD (gigabytes baixados e descompactados). Ficar sem disco no
+meio é falha silenciosa, então o espaço livre é medido e mostrado.
+
+A SPA é estática e não vê o disco. Quem vê é o **worker da Ludmilla**, que já
+roda lá: `reportarDisco()` (`worker/ludmilla/src/fila.ts`) mede com `statfs`
+— a aritmética fica em `medidaDe()` (`src/disco.ts`), separada e testada — e
+grava por RPC. O batimento é de **15 minutos**, mais uma medição ao subir, e
+vive fora do `if` de modo em `index.ts`, porque o batimento que já existia
+(`pulsar`, da estação local) só roda no modo `local` e o ramo da VPS não tinha
+nenhum.
+
+- **`vps_armazenamento`** — host, partição, total/usado/livre em bytes,
+  `origem` (`worker` no batimento, `ingestao` durante uma importação), `etapa`,
+  `medido_em`. RLS: leitura só master por `public.is_master(auth.uid())`;
+  **nenhuma política de escrita para `authenticated`** — só o service role
+  grava, pela RPC. Retenção de 90 dias por `pg_cron` (job
+  `vps_armazenamento_retencao`, às 4h17 para não disputar o `:00`).
+- **`vps_armazenamento_registrar(...)`** — escrita; recusa quem não é service
+  role e tem `EXECUTE` revogado de `anon` e `authenticated`.
+- **`console_vps_armazenamento(p_dias)`** — leitura: última medição + série
+  diária, no padrão das outras `console_*`.
+- **`VpsStorageCard`** (`src/pages/painel/VpsStorageCard.tsx`) — card no topo da
+  aba **Monitoramento** do `/painel`: GB livres, barra de ocupação com as marcas
+  de **80%** (atenção) e **90%** (crítico), e a série de 30 dias. Os limiares
+  são constantes nomeadas no componente, não configuração em tabela — dívida
+  registrada: na terceira configuração de plataforma, vale criar a tabela.
+
+Spec: [capacidade de rede, §5](../superpowers/specs/2026-10-10-capacidade-rede-design.md).
+
+## A ingestão da BDGD na VPS
+
+Terceiro processo na VPS, ao lado do Nginx e do worker da Ludmilla — e
+**separado** dela de propósito: é trabalho de minutos, e não pode travar o robô
+dos portais. Entrada própria: `npm run bdgd -- <sigla>`
+(`worker/ludmilla/src/bdgd/`), reaproveitando de lá o cliente Supabase e o
+`reportarDisco`, para não duplicar o segredo de service role.
+
+Instalada pelo mesmo `deploy/instalar.sh` do robô, que faz três preparos:
+instala o `gdal-bin`, cria o comando **`sudo bdgd <SIGLA>`** em
+`/usr/local/bin`, e aponta o `TMPDIR` para `/var/tmp/bdgd`. O wrapper existe
+porque um `npm run bdgd` cru não funciona lá — as variáveis vivem em
+`/etc/ludmilla/env`, que é 600 e só o systemd lê — e o `TMPDIR` existe porque a
+Paulista descompacta ~6,5 GB: se `/tmp` for tmpfs isso sai da **RAM** e a
+máquina cai em vez de dar erro de disco. Agendamento por `cron` da VPS (dia 5,
+3h11 e 3h41), e não `pg_cron`: a ingestão roda na VPS, não no banco.
+
+Dependência de **sistema**, não de npm: `gdal-bin` (o `ogr2ogr`). É ele que lê
+o Geodatabase da ANEEL e faz a agregação **fora do banco** — 2 milhões de
+unidades consumidoras viram ~54 mil linhas antes de qualquer coisa subir. Por
+isso a carga vai por PostgREST em lotes, sem `COPY` e sem conexão Postgres
+direta: não há volume que justifique nenhum dos dois.
+
+A atomicidade é de uma função: os lotes caem em `rede_stg_*` (que ninguém lê,
+RLS ligada e nenhuma política) e `rede_importacao_promover()` promove tudo numa
+transação, para o mapa nunca ficar meio-carregado. A faxina do staging é feita
+depois, pelo worker — não é invariante, e se falhar o `ON DELETE CASCADE`
+resolve.
+
+Disco: o guard-rail recusa **antes** de baixar, somando zip e extraído com a
+inflação medida de 5,3× (CPFL Paulista exige 10 GB livres; Piratininga, 3,4 GB).
+E cada etapa chama `reportarDisco('ingestao', etapa)`, que é a `origem` que já
+existia na tabela do painel.
+
+Detalhe do módulo: [engineering/overview.md](../modules/engineering/overview.md#a-ingestão-da-bdgd).
+
 Ver também: [tech-stack.md](tech-stack.md) · [security.md](security.md) ·
 [integrations.md](integrations.md).

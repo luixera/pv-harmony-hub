@@ -1,5 +1,7 @@
+import { hostname } from 'node:os';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import type { SituacaoConta } from './erros.js';
+import { lerDisco } from './disco.js';
 import { carregarSessao, guardarSessao, modoAtual, nomeRpc } from './local.js';
 
 /**
@@ -81,6 +83,37 @@ export async function entrarNaEstacao(login?: { email: string; senha: string }):
 export async function pulsar(): Promise<void> {
   if (modoAtual() !== 'local') return;
   await supabase().rpc('ludmilla_estacao_pulsa').then(() => undefined, () => undefined);
+}
+
+/**
+ * Medição de disco da VPS — o painel de monitoramento mostra por ela.
+ *
+ * Espelho de `pulsar`, com o modo invertido: pulsar interessa na estação
+ * local (a página mostra online/offline), o disco interessa na VPS, que é
+ * onde o app é servido e onde as importações grandes rodam.
+ *
+ * Best-effort de propósito: se o banco estiver fora, a medição se perde e o
+ * laço segue. Nenhuma leitura de disco justifica parar a fila.
+ */
+export async function reportarDisco(
+  origem: 'worker' | 'ingestao' = 'worker',
+  etapa: string | null = null,
+): Promise<void> {
+  if (modoAtual() === 'local') return;
+  try {
+    const m = await lerDisco('/');
+    await supabase().rpc('vps_armazenamento_registrar', {
+      p_host: process.env.LUDMILLA_HOST ?? hostname(),
+      p_particao: '/',
+      p_total: m.totalBytes,
+      p_usado: m.usadoBytes,
+      p_livre: m.livreBytes,
+      p_origem: origem,
+      p_etapa: etapa,
+    });
+  } catch {
+    /* medição é best-effort: nunca derruba o laço */
+  }
 }
 
 /** Próximo run da fila, já marcado como `rodando`; null quando não há. */

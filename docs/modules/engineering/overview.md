@@ -71,7 +71,7 @@ qual item do catálogo foi encontrado para o módulo e para o inversor, quantos
 dados técnicos estão preenchidos, **quais faltam**, e dá acesso aos documentos
 (datasheet/INMETRO/AFCI).
 
-## Os 12 grupos
+## Os 13 grupos
 
 | # | group_key | O que controla | Fase |
 |---|---|---|---|
@@ -87,6 +87,129 @@ dados técnicos estão preenchidos, **quais faltam**, e dá acesso aos documento
 | 10 | `norms` | referências normativas (justificam as regras) | **1 ✅** (informativo) |
 | 11 | `alerts` | avisos — nunca bloqueiam (desligar silencia tudo) | **1 ✅** |
 | 12 | `suggestions` | nº mínimo de alternativas apresentadas | **1 ✅** |
+| 13 | `grid_capacity` | capacidade da rede e risco de inversão de fluxo: janela de geração, fator de segurança, limiares de atenção/risco, fator de potência | **A 🟡** (base, cálculo e mapa; ingestão pendente) |
+
+## Grupo 13 — capacidade de rede e inversão de fluxo (Fase A)
+
+Este grupo não dimensiona nada: ele parametriza o **semáforo de risco de
+inversão de fluxo** exibido no console (`/painel` → Capacidade de rede, só
+master). Spec: [docs/superpowers/specs/2026-10-10-capacidade-rede-design.md](../../superpowers/specs/2026-10-10-capacidade-rede-design.md).
+
+**Insumo e veredito são coisas separadas.** A ingestão da BDGD grava só
+insumos nas tabelas `rede_*` — potência nominal, carga mínima diurna
+estimada, GD já conectada. Margem, ocupação e cor são **derivados** por
+`grid_capacity_recalcular()`, que relê as regras deste grupo a cada chamada.
+Consequência prática: mudar `attention_threshold` na tela de Regras custa
+segundos, não uma reimportação de gigabytes. Medido na execução da Fase A —
+baixar o limiar de 60 para 15 levou "folga" de 4 para 1 e "atenção" de 3
+para 6, sem tocar na origem.
+
+**"Sem dado" nunca vira "folga".** Trafo sem carga conhecida (nula ou zero)
+sai como `sem_dado`, em forma e cor próprias. Ausência de informação não é
+ausência de risco, e pintar de verde um ponto sem dado é o jeito mais rápido
+de transformar a ferramenta em passivo.
+
+**A defasagem não é descontada — é rotulada** (opção B da spec). A BDGD é
+anual, com data-base em 31/12, e a GD conectada cresce no meio do ano. Em
+vez de aplicar uma correção inventada sobre o dado, a tela mostra a
+data-base e a idade em meses, à vista, ao lado do semáforo.
+
+**Não é parecer de acesso** e **não cruza com os projetos do GD Manager**
+(decisão de escopo, 10/10/2026). A carga mínima é estimativa derivada da
+curva das unidades consumidoras; só a distribuidora emite parecer, com
+estudo por ponto de conexão — REN 1.000/2021, art. 73.
+
+As tabelas `rede_*` não têm `tenant_id`: dado público, idêntico para todos.
+Ver [ADR 0009](../../adr/0009-rede-publica-sem-tenant.md).
+
+### A ingestão da BDGD
+
+Roda **na VPS**, fora do laço da Ludmilla: **`sudo bdgd CPFL_Piratininga`**.
+O comando é instalado pelo `deploy/instalar.sh` junto com o `gdal-bin`, e
+agendado por `cron` no dia 5 de cada mês — a guarda de data-base faz a execução
+sair sem baixar nada quando a base já está carregada, que é o caminho comum,
+já que a BDGD é anual.
+Plano: [2026-10-13-capacidade-rede-ingestao.md](../../superpowers/plans/2026-10-13-capacidade-rede-ingestao.md).
+
+O caminho é: achar o item da distribuidora no ArcGIS da ANEEL → conferir disco
+→ baixar e extrair o `.gdb` → `ogr2ogr` agregar **fora do banco** → subir os
+agregados para `rede_stg_*` em lotes → `rede_importacao_promover()` promover
+numa transação → recalcular semáforo e células.
+
+**O que nunca entra no banco:** as unidades consumidoras. Na CPFL Piratininga
+são 2.037.215 UCs que o `ogr2ogr` agrega para 49.378 linhas de carga por
+transformador antes de qualquer coisa subir. É por isso que não há `COPY` nem
+conexão Postgres direta: sobem ~54 mil linhas, ~6 MB.
+
+Três armadilhas medidas, que estão no plano com o número de cada uma:
+
+- **`JOIN` entre camadas no dialeto SQLite é proibido.** `UCBT_tab × CRVCRG`
+  não devolveu uma linha em 11 minutos. O caminho é pré-calcular o fator de
+  forma das 68 tipologias de curva e gerar um `CASE`: 12,5 s, mesmo resultado.
+- **A geometria vem no `SELECT`, não por `-lco GEOMETRY=AS_WKT`.** Com
+  `-dialect SQLITE` o `SELECT` não carrega a geometria implícita, e o CSV sai
+  sem coluna de ponto — com a contagem de linhas certa.
+- **`CTMT.TEN_NOM` é código de domínio, não kV.** Tem quatro valores
+  (46/63/49/37); gravá-los em `tensao_kv` inventaria tensões inexistentes.
+  A coluna fica nula.
+
+### A camada de satélite no mapa
+
+O mapa abre em **satélite** (`hybrid`, que traz os rótulos de via — sem eles não
+se sabe onde se está), com um seletor para o mapa liso no cabeçalho da seção.
+O que se quer ver ali é o contexto físico do ponto: galpão, loteamento, área
+rural.
+
+Trocar a camada **não é só trocar `mapTypeId`**. No desenho original, "atenção"
+e "sem dado" eram anéis vazados — ótimos sobre o fundo escuro liso do console, e
+quase invisíveis sobre foto, onde o interior mostra o telhado. Sobre imagem,
+todo marcador ganha miolo opaco e contorno escuro, e "sem dado" passou de anel
+fino a **quadrado**: distinguir dois anéis pela espessura já era frágil e sobre
+imagem não sobrevive.
+
+As cores **não mudam** entre as camadas — são as validadas contra daltonismo
+(ΔE 12,6 em protanopia). O que muda é miolo, contorno e tamanho.
+
+**Limite medido, registrado de propósito.** Contra os tons típicos de imagem, o
+contorno escuro dá 15,9:1 em telhado claro e 9,8:1 em concreto, mas 2,1:1 em
+vegetação e 1,4:1 em asfalto. Contando que a marca se lê quando o contorno
+**ou** o preenchimento separa do fundo, sobram **4 combinações fracas em 24**:
+folga, risco e sem-dado sobre vegetação, e folga sobre asfalto — sempre marca
+escura sobre fundo escuro. Contorno branco foi medido e é pior (7 em 24). O que
+sustenta esses casos é a forma, o marcador maior e a lista lateral, que é o
+equivalente acessível e não depende do mapa. Se incomodar na prática, o próximo
+passo é halo de duas cores com dois marcadores por ponto — viável porque a RPC
+limita a 1500 feições.
+
+**A promoção roda no banco, não pela API.** O PostgREST tem
+`statement_timeout` de 8 s e a promoção da Piratininga levou 11 s. O worker sobe
+o staging e chama `rede_solicitar_promocao()`, que só agenda um job de `pg_cron`
+de uso único; o job faz promoção, data-base e recálculo numa transação, e se
+desagenda quando a fila esvazia. O worker espera o desfecho em `rede_importacao`.
+`ALTER FUNCTION ... SET statement_timeout` foi testado e **não** serve: não
+estende um comando já em curso.
+
+**POT_INST em watts na BDGD.** Parte das unidades de GD de baixa tensão vem com
+`POT_INST` em W, não kW (5000, 10000, 13202…). Como BT não passa de 75 kW, acima
+de 1000 é lido como watt (`POT_INST_KW` em `extrair.ts`); a faixa 75–1000 fica
+como está, que erra para o lado do risco. Sem isso, a Paulista somava 13,7 GW de
+"microgeração" (corrigido: 1.015 MW) e a Piratininga 267,9 MW (corrigido: 179,3).
+
+**Carregado em 13/10/2026** (data-base 31/12/2025):
+
+| | trafos | risco | atenção | folga | sem dado | GD |
+|---|---|---|---|---|---|---|
+| CPFL Piratininga | 52.971 | 11,7% | 4,5% | 76,5% | 7,3% | 179,3 MW |
+| CPFL Paulista | 242.226 | 17,9% | 6,3% | 67,1% | 8,7% | 1.015 MW |
+
+Zero trafos sem carga classificados como folga, nas duas.
+
+A auditoria em `rede_importacao` registra data-base, arquivo, etapa e linhas
+por camada, e é dela que a tela tira o rótulo de idade do dado. O disco da VPS
+é reportado em cada etapa por `reportarDisco('ingestao', etapa)`.
+
+O que desapareceu da BDGD entre duas importações é marcado `ativo = false`,
+nunca apagado em silêncio.
 
 ## Liga/desliga por FUNÇÃO e por regra (Fase 2)
 

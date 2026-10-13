@@ -78,6 +78,53 @@ else
   echo "aviso: o Chrome do agent-browser não abriu no teste de fumaça — a criação na CPFL vai falhar até ajustar LUDMILLA_AB_EXEC/LUDMILLA_AB_ARGS"
 fi
 
+passo "GDAL (ingestão da BDGD)"
+# O ogr2ogr lê o Geodatabase da ANEEL e faz a agregação fora do banco. É
+# dependência de SISTEMA, não de npm. O `apt-get update` antes não é opcional:
+# sem ele o install falha com 404 em libminizip1t64/libmysqlclient21.
+# E o `unzip`: a ANEEL entrega o .gdb zipado. Faltou na 1ª ingestão real
+# (13/10/2026, "spawn unzip ENOENT") — o container de desenvolvimento tinha,
+# a VPS não.
+if command -v ogr2ogr >/dev/null 2>&1 && command -v unzip >/dev/null 2>&1; then
+  echo "ogr2ogr já presente: $(ogr2ogr --version) · unzip presente"
+else
+  apt-get update -qq || echo "aviso: apt-get update falhou"
+  apt-get install -y gdal-bin unzip || falhar "não consegui instalar gdal-bin/unzip (sem eles a ingestão da BDGD não roda)"
+  echo "ogr2ogr: $(ogr2ogr --version) · unzip: $(unzip -v | head -1)"
+fi
+
+passo "comando bdgd (/usr/local/bin/bdgd)"
+# Três armadilhas que este wrapper resolve, e que um `npm run bdgd` cru não:
+#
+# 1. As variáveis vivem em /etc/ludmilla/env, que é 600 e só o systemd lê. Um
+#    `npm run bdgd` num shell qualquer morre com "Falta SUPABASE_URL".
+# 2. TMPDIR=/var/tmp, e não /tmp: a Paulista descompacta ~6,5 GB, e se /tmp for
+#    tmpfs isso sai da RAM — a máquina cai em vez de dar erro de disco. O
+#    os.tmpdir() do Node honra TMPDIR.
+# 3. Roda como o usuário ludmilla, não como root, para o lixo temporário e os
+#    logs não ficarem com dono errado.
+cat > /usr/local/bin/bdgd <<'WRAP'
+#!/usr/bin/env bash
+# Ingestão da BDGD de uma distribuidora.  uso: sudo bdgd CPFL_Piratininga
+set -euo pipefail
+[ "$(id -u)" -eq 0 ] || { echo "rode com sudo: sudo bdgd <SIGLA>" >&2; exit 1; }
+[ $# -ge 1 ] || { echo "uso: sudo bdgd CPFL_Piratininga" >&2; exit 1; }
+[ -r /etc/ludmilla/env ] || { echo "falta /etc/ludmilla/env — rode o deploy do worker primeiro" >&2; exit 1; }
+set -a; . /etc/ludmilla/env; set +a
+: "${SUPABASE_URL:?SUPABASE_URL ausente em /etc/ludmilla/env}"
+: "${SUPABASE_SERVICE_ROLE_KEY:?SUPABASE_SERVICE_ROLE_KEY ausente em /etc/ludmilla/env}"
+mkdir -p /var/tmp/bdgd && chown ludmilla:ludmilla /var/tmp/bdgd
+exec sudo -u ludmilla -H env \
+  SUPABASE_URL="$SUPABASE_URL" \
+  SUPABASE_SERVICE_ROLE_KEY="$SUPABASE_SERVICE_ROLE_KEY" \
+  TMPDIR=/var/tmp/bdgd \
+  PATH=/usr/local/bin:/usr/bin:/bin \
+  node /opt/ludmilla/dist/bdgd/index.js "$@"
+WRAP
+chmod 755 /usr/local/bin/bdgd
+echo "instalado: sudo bdgd <SIGLA>"
+echo "espaço em /var/tmp: $(df -h /var/tmp | awk 'NR==2{print $4}') livre (a Paulista precisa de 10 GB)"
+
 passo "ambiente em $ENV_DIR/env (só root lê)"
 mkdir -p "$ENV_DIR"
 cat > "$ENV_DIR/env" <<EOF

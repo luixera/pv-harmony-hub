@@ -3,7 +3,7 @@ import { classificarErro, ErroLudmilla } from './erros.js';
 import { conector, type CanalCaptcha, type Conector } from './conectores/index.js';
 import {
   anexoEnviado, anexoErro, anexosPendentes, conectorDaConta, credenciais, entrarNaEstacao, fecharCaptcha, finalizarRun,
-  lerCaptcha, pedirCaptcha, pegarRun, protocolosDeInteresse, pulsar, sessaoViva, subirDocumento, subirPrint, subirTexto, temCriacaoPendente, Run,
+  lerCaptcha, pedirCaptcha, pegarRun, protocolosDeInteresse, pulsar, reportarDisco, sessaoViva, subirDocumento, subirPrint, subirTexto, temCriacaoPendente, Run,
 } from './fila.js';
 import { executarCriacao } from './criacao/index.js';
 import { executarVarreduraEmail } from './email/index.js';
@@ -274,6 +274,14 @@ async function principal() {
     navegador = n;
     abrir = () => novoContexto(n);
   }
+
+  // Disco da VPS: uma medição ao subir e outra a cada 15 min, para o painel de
+  // monitoramento. `reportarDisco` não faz nada no modo local, então vale
+  // deixar fora do if de modo — o disco que interessa é o da máquina que serve
+  // o app e onde as importações da BDGD rodam.
+  const batimentoDisco: NodeJS.Timeout = setInterval(() => { void reportarDisco(); }, 15 * 60_000);
+  await reportarDisco();
+
   let parar = false;
   const encerrar = () => { parar = true; log('encerrando'); };
   process.on('SIGTERM', encerrar);
@@ -321,6 +329,7 @@ async function principal() {
     await dormir(5_000);
   }
   if (batimento) clearInterval(batimento);
+  clearInterval(batimentoDisco);
   for (const chave of [...vivas.keys()]) await encerrarViva(chave, 'a estação está parando');
   await navegador?.close();
 }
