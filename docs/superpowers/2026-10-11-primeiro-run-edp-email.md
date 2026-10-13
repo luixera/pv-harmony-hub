@@ -112,6 +112,7 @@ SELECT s.situacao, s.protocolos_lidos, s.mudancas,
        s.resultado->>'bloqueados'         AS bloqueados,
        s.resultado->>'imagens_ignoradas'  AS imagens_ignoradas,
        s.resultado->>'sem_dono'           AS sem_dono,
+       s.resultado->>'anexos_de_outro_protocolo' AS anexos_de_outro_protocolo,
        s.resultado->>'anexos_recusados'   AS anexos_recusados,
        s.resultado->>'anexos_sem_nome'    AS anexos_sem_nome,
        s.resultado->>'a_tentar_de_novo'   AS a_tentar_de_novo,
@@ -142,7 +143,8 @@ SELECT m.protocolo, p.code AS projeto, m.tipo_documento, m.veredito,
 |---|---|
 | **`bloqueados`** | parecer que a robô **recusou** anexar por divergência de nome do titular. É o único bloqueio do fluxo, e **nunca rodou contra um PDF real**. Se vier alto, abra as mensagens e veja se a divergência é real ou se é a IA lendo mal o nome |
 | **`imagens_ignoradas`** | a robô não anexa imagem (é quase sempre logo de assinatura). Se uma concessionária mandar documento **escaneado**, este contador é o único lugar onde isso aparece |
-| **`sem_dono`** | e-mail que cita **mais de um** protocolo e nenhum arquivo traz o número deste no nome: a robô **não anexou nada** e não chamou a IA. Cada linha tem o `motivo` ("confira à mão") — anexe à mão. A tela não mostra este contador; as linhas aparecem em "Terminei, mas com um porém" |
+| **`sem_dono`** | **mensagens** em que nenhum arquivo é seguramente deste protocolo: o e-mail cita **mais de um** protocolo e nenhum nome traz o número deste, **ou** todos os nomes trazem o número de **outro** protocolo. A robô **não anexou nada** e não chamou a IA. Cada linha tem o `motivo` ("confira à mão") — anexe à mão. A tela não mostra este contador; as linhas aparecem em "Terminei, mas com um porém" |
+| **`anexos_de_outro_protocolo`** | **arquivos** (não mensagens) que a robô **não pôs neste card** porque o nome traz o número de um protocolo que o e-mail não serve. Pode ser > 0 sem `sem_dono`: o arquivo genérico do mesmo e-mail foi anexado e só o de outro ficou de fora (o `motivo` da linha cita o nome). Não conta a divisão normal de e-mail com dois protocolos **nossos**. Se vier > 0, abra a linha: o parecer de outro cliente estava na caixa e a robô acertou em não anexá-lo — mas alguém precisa levar o arquivo ao card certo à mão se o protocolo dele for nosso |
 | **`anexos_recusados`** | arquivo que o bucket não aceita (p7s, dwg, zip, acima de 10 MB): ignorado, não é falha. O nome e a razão estão no `motivo` da mensagem. Se vier um PDF legítimo acima de 10 MB, é decisão de produto aumentar o limite do bucket |
 | **`anexos_sem_nome`** | anexo sem nome de arquivo (não dá para identificar nem anexar). Normalmente 0 |
 | **`a_tentar_de_novo`** | mensagens que ficaram para a próxima (IA falhou, anexo não subiu). Normal ser > 0; preocupante é ficar igual run após run |

@@ -799,10 +799,11 @@ linha. Sem isso, corrigir uma regra não serviria para o passado.
 
 ### O que NÃO está provado
 
-**O run nunca rodou.** Toda a verificação é de tipo, teste unitário (193 testes,
-`fail 0`) e SQL executado à mão (em `begin; … rollback;`). O laço de
-`executarVarreduraEmail` não tem teste — a spec §9 manda para o teste manual de
-ponta a ponta. O primeiro run é **manual e acompanhado**, e nele vale olhar:
+**O run nunca rodou.** Toda a verificação é de tipo, teste unitário (225 testes
+num build limpo, `fail 0`) e SQL executado à mão (em `begin; … rollback;`). O laço
+de `executarVarreduraEmail` não tem teste — a spec §9 manda para o teste manual de
+ponta a ponta; só a soma dos contadores e o `resultado` do run (`somarTratamento`,
+`resultadoDoRun`) foram extraídos e têm teste. O primeiro run é **manual e acompanhado**, e nele vale olhar:
 `bloqueados` (o bloqueio por titular nunca rodou contra PDF real),
 `imagens_ignoradas`, `sem_dono` (e-mail em que nenhum arquivo é seguramente deste
 protocolo — mensagens), `anexos_de_outro_protocolo` (arquivos cujo nome traz o
