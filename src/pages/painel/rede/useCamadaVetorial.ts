@@ -27,13 +27,14 @@ export function useCamadaVetorial(o: {
   aoClicar?: (a: Alvo) => void;
   aoPassar?: (a: Alvo | null) => void;
 }): MutableRefObject<google.maps.Data | null> {
+  const { mapa, colecao, visivel, estilo } = o;
   const ref = useRef<google.maps.Data | null>(null);
   const clicar = useRef(o.aoClicar); clicar.current = o.aoClicar;
   const passar = useRef(o.aoPassar); passar.current = o.aoPassar;
 
   useEffect(() => {
-    if (!o.mapa) return;
-    const camada = new google.maps.Data({ map: o.mapa });
+    if (!mapa) return;
+    const camada = new google.maps.Data({ map: mapa });
     ref.current = camada;
     const alvo = (e: google.maps.Data.MouseEvent): Alvo =>
       ({ id: Number(e.feature.getId()), props: propsDe(e.feature), latLng: e.latLng ?? null });
@@ -43,22 +44,22 @@ export function useCamadaVetorial(o: {
       camada.addListener('mouseout', () => passar.current?.(null)),
     ];
     return () => { ls.forEach(l => l.remove()); camada.setMap(null); ref.current = null; };
-  }, [o.mapa]);
+  }, [mapa]);
 
   useEffect(() => {
     const c = ref.current;
     if (!c) return;
     c.forEach(f => c.remove(f));
-    if (o.colecao) c.addGeoJson(o.colecao as object);
-  }, [o.colecao, o.mapa]);
+    if (colecao) c.addGeoJson(colecao as object);
+  }, [colecao, mapa]);
 
   useEffect(() => {
-    ref.current?.setStyle(f => o.estilo(propsDe(f)));
-  }, [o.estilo, o.mapa]);
+    ref.current?.setStyle(f => estilo(propsDe(f)));
+  }, [estilo, mapa]);
 
   useEffect(() => {
-    ref.current?.setMap(o.visivel ? o.mapa : null);
-  }, [o.visivel, o.mapa]);
+    ref.current?.setMap(visivel ? mapa : null);
+  }, [visivel, mapa]);
 
   return ref;
 }
