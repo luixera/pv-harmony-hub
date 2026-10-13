@@ -1325,27 +1325,40 @@ git commit -m "feat(bdgd): orquestracao da ingestao com auditoria e vigilancia d
 > `select sigla, data_base from public.rede_distribuidora;` — só a CPFL deve
 > sobrar.
 
-- [ ] **Step 1: Instalar o GDAL na VPS**
+- [ ] **Step 1: Rodar o deploy do worker**
 
-```bash
-sudo apt-get update && sudo apt-get install -y gdal-bin
-ogr2ogr --version
+O `instalar.sh` passou a fazer os três preparos da ingestão (13/10/2026) — não
+faça à mão:
+
+1. **Instala o `gdal-bin`**, com o `apt-get update` antes, que é obrigatório:
+   sem ele o install falha com 404 em `libminizip1t64` e `libmysqlclient21`.
+2. **Cria `/usr/local/bin/bdgd`**, porque `npm run bdgd` cru não funciona lá:
+   as variáveis vivem em `/etc/ludmilla/env`, que é 600 e só o systemd lê.
+3. **Aponta `TMPDIR` para `/var/tmp/bdgd`.** Esta é a que morde: a Paulista
+   descompacta ~6,5 GB, e se `/tmp` for tmpfs isso sai da **RAM** — a máquina
+   cai em vez de dar erro de disco. O `os.tmpdir()` do Node honra `TMPDIR`.
+
+```
+Actions → "Ludmilla — deploy do robô na VPS" → Run workflow
 ```
 
-O `apt-get update` é obrigatório: sem ele o install falha com 404 em `libminizip1t64` e `libmysqlclient21`. Esperado: `GDAL 3.8.4` ou superior.
+Confirme no log do passo "GDAL (ingestão da BDGD)": `GDAL 3.8.4` ou superior, e
+no passo seguinte o espaço livre em `/var/tmp`.
 
 - [ ] **Step 2: Conferir o disco antes**
 
 ```bash
-df -h /
+df -h /var/tmp
 ```
 
-Precisa de **10,0 GB livres** para a Paulista e **3,4 GB** para a Piratininga — os dois números saem do próprio `cabeNoDisco` com o `content-length` real da ANEEL. Se não houver, o guard-rail da Task 3 recusa antes de baixar — o que é o comportamento certo, não um defeito.
+Precisa de **10,0 GB livres** para a Paulista e **3,4 GB** para a Piratininga — os
+dois números saem do próprio `cabeNoDisco` com o `content-length` real da ANEEL.
+Confira `/var/tmp`, e não `/`: é para lá que o wrapper aponta o `TMPDIR`. Se não houver, o guard-rail da Task 3 recusa antes de baixar — o que é o comportamento certo, não um defeito.
 
 - [ ] **Step 3: Rodar a Piratininga**
 
 ```bash
-cd worker/ludmilla && npm run bdgd -- CPFL_Piratininga
+sudo bdgd CPFL_Piratininga
 ```
 
 Esperado no log, **conferido em 13/10/2026**:
@@ -1384,7 +1397,7 @@ A última consulta tem de devolver **0**.
 - [ ] **Step 6: Rodar a Paulista**
 
 ```bash
-df -h / && cd worker/ludmilla && npm run bdgd -- CPFL_Paulista
+df -h /var/tmp && sudo bdgd CPFL_Paulista
 ```
 
 A Paulista é ~5× a Piratininga. Registre o tempo e o pico de disco — é o que calibra o agendamento.
@@ -1393,22 +1406,28 @@ A Paulista é ~5× a Piratininga. Registre o tempo e o pico de disco — é o qu
 
 A BDGD é anual (data-base 31/12), publicada no meio do ano seguinte. Agendar **mensal** é desperdício; **semanal** é absurdo. Um `pg_cron` não serve — a ingestão roda na VPS, não no banco. Use `cron` da VPS, dia 5 de cada mês às 3h, e deixe o próprio `acharItem` decidir: se a data-base do item for a mesma já registrada em `rede_distribuidora.data_base`, saia sem baixar 1,2 GB.
 
-Acrescente essa guarda no início de `ingerir`, antes do `upsert` da distribuidora:
+Essa guarda **já está** em `ingerir` (implementada em 13/10/2026), logo antes do
+`upsert` da distribuidora: se a data-base do item for a mesma já registrada, sai
+sem baixar 1,2 GB. É o que torna um cron mensal razoável — o caminho comum é não
+fazer nada.
 
-```typescript
-  const { data: atual } = await sb.from('rede_distribuidora')
-    .select('data_base').eq('sigla', item.sigla).maybeSingle();
-  if (atual?.data_base === item.dataBase) {
-    console.log(`[bdgd] ${item.sigla} ja esta na data-base ${item.dataBase}; nada a fazer.`);
-    return;
-  }
+```cron
+# /etc/cron.d/bdgd — dia 5, 3h11 (minuto fora do :00, como as rotinas da casa)
+11 3 5 * * root /usr/local/bin/bdgd CPFL_Piratininga >> /var/log/bdgd.log 2>&1
+41 3 5 * * root /usr/local/bin/bdgd CPFL_Paulista    >> /var/log/bdgd.log 2>&1
 ```
 
-- [ ] **Step 8: Commit**
+Os 30 minutos entre as duas são de propósito: não faz sentido as duas
+descompactarem gigabytes ao mesmo tempo no mesmo disco.
+
+- [ ] **Step 8: Instalar o cron**
 
 ```bash
-git add worker/ludmilla/src/bdgd/index.ts
-git commit -m "feat(bdgd): sai sem baixar quando a data-base ja esta carregada"
+sudo tee /etc/cron.d/bdgd > /dev/null <<'EOF'
+11 3 5 * * root /usr/local/bin/bdgd CPFL_Piratininga >> /var/log/bdgd.log 2>&1
+41 3 5 * * root /usr/local/bin/bdgd CPFL_Paulista    >> /var/log/bdgd.log 2>&1
+EOF
+sudo chmod 644 /etc/cron.d/bdgd
 ```
 
 ---

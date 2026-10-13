@@ -124,9 +124,11 @@ Ver [ADR 0008](../../adr/0008-rede-publica-sem-tenant.md).
 
 ### A ingestão da BDGD
 
-Roda **na VPS**, fora do laço da Ludmilla, com `npm run bdgd -- <sigla>` (por
-exemplo `CPFL_Piratininga`). Depende do `gdal-bin` instalado no sistema —
-e o `apt-get update` antes do install não é opcional, senão falha com 404.
+Roda **na VPS**, fora do laço da Ludmilla: **`sudo bdgd CPFL_Piratininga`**.
+O comando é instalado pelo `deploy/instalar.sh` junto com o `gdal-bin`, e
+agendado por `cron` no dia 5 de cada mês — a guarda de data-base faz a execução
+sair sem baixar nada quando a base já está carregada, que é o caminho comum,
+já que a BDGD é anual.
 Plano: [2026-10-13-capacidade-rede-ingestao.md](../../superpowers/plans/2026-10-13-capacidade-rede-ingestao.md).
 
 O caminho é: achar o item da distribuidora no ArcGIS da ANEEL → conferir disco

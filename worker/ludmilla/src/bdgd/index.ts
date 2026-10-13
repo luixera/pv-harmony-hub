@@ -23,6 +23,17 @@ export async function ingerir(sigla: string): Promise<void> {
   const item = await acharItem(sigla);
   console.log(`[bdgd] ${item.sigla} · data-base ${item.dataBase} · ${(item.bytesZip / 1024 ** 3).toFixed(2)} GB`);
 
+  // A BDGD é ANUAL (data-base 31/12, publicada no meio do ano seguinte). Rodar
+  // isto por cron mensal só faz sentido se o caminho comum for sair sem fazer
+  // nada: baixar 1,2 GB para reimportar o que já está carregado é desperdício
+  // de banda, de disco e de tempo da VPS.
+  const { data: atual } = await sb.from('rede_distribuidora')
+    .select('data_base').eq('sigla', item.sigla).maybeSingle();
+  if (atual?.data_base === item.dataBase) {
+    console.log(`[bdgd] ${item.sigla} ja esta na data-base ${item.dataBase}; nada a fazer.`);
+    return;
+  }
+
   // A distribuidora precisa existir antes da importação apontar para ela.
   const { data: dist, error: eDist } = await sb
     .from('rede_distribuidora')

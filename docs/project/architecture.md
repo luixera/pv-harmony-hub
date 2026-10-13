@@ -165,6 +165,15 @@ dos portais. Entrada própria: `npm run bdgd -- <sigla>`
 (`worker/ludmilla/src/bdgd/`), reaproveitando de lá o cliente Supabase e o
 `reportarDisco`, para não duplicar o segredo de service role.
 
+Instalada pelo mesmo `deploy/instalar.sh` do robô, que faz três preparos:
+instala o `gdal-bin`, cria o comando **`sudo bdgd <SIGLA>`** em
+`/usr/local/bin`, e aponta o `TMPDIR` para `/var/tmp/bdgd`. O wrapper existe
+porque um `npm run bdgd` cru não funciona lá — as variáveis vivem em
+`/etc/ludmilla/env`, que é 600 e só o systemd lê — e o `TMPDIR` existe porque a
+Paulista descompacta ~6,5 GB: se `/tmp` for tmpfs isso sai da **RAM** e a
+máquina cai em vez de dar erro de disco. Agendamento por `cron` da VPS (dia 5,
+3h11 e 3h41), e não `pg_cron`: a ingestão roda na VPS, não no banco.
+
 Dependência de **sistema**, não de npm: `gdal-bin` (o `ogr2ogr`). É ele que lê
 o Geodatabase da ANEEL e faz a agregação **fora do banco** — 2 milhões de
 unidades consumidoras viram ~54 mil linhas antes de qualquer coisa subir. Por
