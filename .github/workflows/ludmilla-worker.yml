@@ -37,6 +37,10 @@ on:
           - ''
           - CPFL_Piratininga
           - CPFL_Paulista
+      bdgd_forcar:
+        description: 'Recarregar mesmo se a data-base já estiver carregada (ex.: depois de corrigir a ingestão)'
+        type: boolean
+        default: false
 
 concurrency:
   group: ludmilla-worker
@@ -128,11 +132,14 @@ jobs:
         timeout-minutes: 30
         env:
           SIGLA: ${{ inputs.bdgd }}
+          FORCAR: ${{ inputs.bdgd_forcar }}
         run: |
           # defesa em profundidade: o choice já restringe, e isto garante que
           # nada além de letras e sublinhado chega ao comando remoto
           [[ "$SIGLA" =~ ^[A-Za-z_]+$ ]] || { echo "sigla inválida: $SIGLA" >&2; exit 1; }
+          # booleano vira um argumento fixo, nunca texto vindo de fora
+          EXTRA=""; [[ "$FORCAR" == "true" ]] && EXTRA=" --forcar"
           ssh -i ~/.ssh/deploy_key -p ${{ secrets.VPS_SSH_PORT }} -o StrictHostKeyChecking=no \
             -o ServerAliveInterval=30 -o ServerAliveCountMax=10 \
             ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} \
-            "df -h /var/tmp && /usr/local/bin/bdgd '$SIGLA'"
+            "df -h /var/tmp && /usr/local/bin/bdgd '$SIGLA'$EXTRA"

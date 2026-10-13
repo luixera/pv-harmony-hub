@@ -19,7 +19,12 @@ import { jaCarregada, desfechoDa, type ImportacaoResumo } from './guarda.js';
  * rótulo de data-base e idade do dado, que é a principal proteção contra a
  * leitura otimista do semáforo (opção B da spec).
  */
-export async function ingerir(sigla: string): Promise<void> {
+/**
+ * `forcar`: recarrega mesmo com importação concluída da mesma data-base. Existe
+ * porque a correção de unidade de POT_INST (13/10/2026) mudou os insumos SEM
+ * mudar a data-base — e a guarda, corretamente, pularia a recarga.
+ */
+export async function ingerir(sigla: string, opcoes: { forcar?: boolean } = {}): Promise<void> {
   const sb = supabase();
   const item = await acharItem(sigla);
   console.log(`[bdgd] ${item.sigla} · data-base ${item.dataBase} · ${(item.bytesZip / 1024 ** 3).toFixed(2)} GB`);
@@ -42,7 +47,7 @@ export async function ingerir(sigla: string): Promise<void> {
     if (error) throw new Error(`Nao consegui ler as importacoes anteriores: ${error.message}`);
     anteriores = (data ?? []) as ImportacaoResumo[];
   }
-  if (jaCarregada(anteriores, item.dataBase)) {
+  if (!opcoes.forcar && jaCarregada(anteriores, item.dataBase)) {
     console.log(`[bdgd] ${item.sigla} ja tem importacao concluida da data-base ${item.dataBase}; nada a fazer.`);
     return;
   }
@@ -160,11 +165,12 @@ export async function ingerir(sigla: string): Promise<void> {
 }
 
 const sigla = process.argv[2];
+const forcar = process.argv.slice(3).includes('--forcar');
 if (!sigla) {
   console.error('uso: npm run bdgd -- CPFL_Piratininga');
   process.exit(1);
 }
-ingerir(sigla).then(
+ingerir(sigla, { forcar }).then(
   () => { console.log('[bdgd] fim'); process.exit(0); },
   e => { console.error('[bdgd] falhou:', e); process.exit(1); },
 );

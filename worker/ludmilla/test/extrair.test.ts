@@ -18,7 +18,7 @@ test('a carga descarta UC sem trafo', () => {
 
 test('a GD soma a potencia instalada por trafo', () => {
   const sql = sqlGdPorTrafo('UGBT_tab');
-  assert.ok(sql.includes('sum(POT_INST)'));
+  assert.ok(/sum\(/.test(sql) && sql.includes('POT_INST'));
   assert.ok(sql.includes('GROUP BY UNI_TR_MT'));
   assert.ok(sql.includes('FROM UGBT_tab'));
 });
@@ -31,4 +31,27 @@ test('o SQL dos trafos traz a geometria no SELECT, nao por -lco', () => {
   assert.ok(/ST_AsText\s*\(\s*SHAPE\s*\)\s+AS\s+Shape/i.test(sql),
     `o SELECT dos trafos precisa de ST_AsText(SHAPE) AS Shape: ${sql}`);
   assert.ok(sql.includes('FROM UNTRMT'));
+});
+
+import { POT_INST_KW, sqlGdPorAlimentador } from '../src/bdgd/extrair.js';
+
+// 13/10/2026: na CPFL Paulista, 815 de 288.154 unidades de GD de baixa tensao
+// vinham com POT_INST em WATTS (5000, 10000, 13202...). Somadas como kW,
+// davam 12.779 MW fantasmas — 13,7 GW de "microgeracao", uma Itaipu. Na
+// Piratininga eram 25 unidades e 88,6 MW (um terco do total).
+
+test('POT_INST acima de 1000 e lido como watt', () => {
+  // BT nao passa de 75 kW: acima de 1000 nao pode ser kW
+  assert.ok(/POT_INST\s*>\s*1000/.test(POT_INST_KW), POT_INST_KW);
+  assert.ok(/POT_INST\s*\/\s*1000/.test(POT_INST_KW), POT_INST_KW);
+});
+
+test('a GD por trafo e por alimentador usam a mesma correcao', () => {
+  assert.ok(sqlGdPorTrafo('UGBT_tab').includes(POT_INST_KW));
+  assert.ok(sqlGdPorAlimentador('UGBT_tab').includes(POT_INST_KW));
+});
+
+test('a soma crua de POT_INST nao pode voltar', () => {
+  assert.ok(!/sum\(\s*POT_INST\s*\)/i.test(sqlGdPorTrafo('UGBT_tab')));
+  assert.ok(!/sum\(\s*POT_INST\s*\)/i.test(sqlGdPorAlimentador('UGBT_tab')));
 });

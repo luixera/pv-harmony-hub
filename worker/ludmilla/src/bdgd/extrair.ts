@@ -43,11 +43,34 @@ export function sqlTrafos(): string {
        FROM UNTRMT`;
 }
 
+/**
+ * POT_INST corrigido para kW.
+ *
+ * Em baixa tensão nenhuma unidade passa de 75 kW, então um POT_INST acima de
+ * 1000 não pode estar em kW: está em WATTS. Medido em 13/10/2026 na CPFL
+ * Paulista: 815 de 288.154 unidades vinham assim (5000, 10000, 13202 — tamanhos
+ * residenciais típicos em W), e somadas como kW davam 12.779 MW fantasmas, 13,7
+ * GW de "microgeração". Na Piratininga eram 25 unidades e 88,6 MW, um terço do
+ * total. Corrigido: Paulista 1.015 MW, Piratininga 179,3 MW.
+ *
+ * A faixa 75–1000 (234 unidades na Paulista, 59 na Piratininga) fica COMO ESTÁ:
+ * é ambígua, e mantê-la em kW erra para o lado seguro — mais GD, mais risco,
+ * nunca uma "folga" otimista.
+ */
+export const POT_INST_KW = 'CASE WHEN POT_INST > 1000 THEN POT_INST / 1000.0 ELSE POT_INST END';
+
 export function sqlGdPorTrafo(camada: 'UGBT_tab' | 'UGMT_tab'): string {
-  return `SELECT UNI_TR_MT AS trafo, count(*) AS unidades, sum(POT_INST) AS gd_kw
+  return `SELECT UNI_TR_MT AS trafo, count(*) AS unidades, sum(${POT_INST_KW}) AS gd_kw
   FROM ${camada}
  WHERE UNI_TR_MT <> ''
  GROUP BY UNI_TR_MT`;
+}
+
+export function sqlGdPorAlimentador(camada: 'UGBT_tab' | 'UGMT_tab'): string {
+  return `SELECT CTMT AS alimentador, sum(${POT_INST_KW}) AS gd_kw
+  FROM ${camada}
+ WHERE CTMT <> ''
+ GROUP BY CTMT`;
 }
 
 async function paraCsv(gdb: string, destino: string, sql: string): Promise<string> {
@@ -111,9 +134,7 @@ export async function extrair(
     `SELECT u.CTMT AS alimentador,
             sum( ((${soma12('u')})/12.0) / (30.4*24.0) * (${caseSql}) ) AS carga_min_diurna_kw
        FROM UCBT_tab u WHERE u.CTMT <> '' GROUP BY u.CTMT`);
-  const gdAlim = await paraCsv(gdb, join(dir, 'gd-alim.csv'),
-    `SELECT CTMT AS alimentador, sum(POT_INST) AS gd_kw
-       FROM UGBT_tab WHERE CTMT <> '' GROUP BY CTMT`);
+  const gdAlim = await paraCsv(gdb, join(dir, 'gd-alim.csv'), sqlGdPorAlimentador('UGBT_tab'));
 
   // SUB e MultiPolygon e rede_subestacao.geom e Point: ponto na superficie.
   const subestacoes = await paraCsv(gdb, join(dir, 'subestacoes.csv'),
