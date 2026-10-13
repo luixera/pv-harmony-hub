@@ -1,6 +1,6 @@
 import { ErroLudmilla } from '../erros.js';
 import { decimalParaDms, parsearCoordenadas } from '../dms.js';
-import type { Agente } from './agente.js';
+import type { Navegador } from './navegador.js';
 import { AUTONOMIA_PADRAO, PERGUNTAS_CONDICIONAIS, type DadosCriacaoCpfl } from './tipos.js';
 import {
   JS_ERROS_VISIVEIS, jsAbrirSanfona, jsFormData, jsMarcarRadio, jsPerguntaVisivel, jsSetValor, jsValor, jsVisivel,
@@ -18,7 +18,7 @@ export type NomePasso = 'login' | 'introducao' | 'dados_uc' | 'dados_projeto' | 
 export type StatusPasso = 'rodando' | 'ok' | 'erro';
 
 export interface ContextoRoteiro {
-  agente: Agente;
+  agente: Navegador;
   dados: DadosCriacaoCpfl;
   /** grava o passo (print, mapa em erro) — implementado pelo worker ou pela validação local */
   registrar: (passo: number, nome: NomePasso, status: StatusPasso, erro?: string) => Promise<void>;
@@ -39,7 +39,7 @@ const GERACAO = '#edit-field-complementary-generation-0-subform-field-';
 
 // ── primitivas do roteiro ────────────────────────────────────────────────────
 
-async function esperarTitulo(ag: Agente, etapa: RegExp, oQue: string, tentativas = 10): Promise<string> {
+async function esperarTitulo(ag: Navegador, etapa: RegExp, oQue: string, tentativas = 10): Promise<string> {
   let titulo = '';
   for (let i = 0; i < tentativas; i++) {
     titulo = await ag.titulo();
@@ -50,7 +50,7 @@ async function esperarTitulo(ag: Agente, etapa: RegExp, oQue: string, tentativas
 }
 
 /** Define valor por JS (+ eventos) e confere que ficou. */
-async function definir(ag: Agente, seletor: string, valor: string, oQue: string, o: { obrigatorio?: boolean } = {}): Promise<boolean> {
+async function definir(ag: Navegador, seletor: string, valor: string, oQue: string, o: { obrigatorio?: boolean } = {}): Promise<boolean> {
   const r = await ag.js<string | null | { erro: string; opcoes: string[] }>(jsSetValor(seletor, valor));
   if (r === null) {
     if (o.obrigatorio ?? true) throw new ErroLudmilla('pagina_mudou', `Campo "${oQue}" (${seletor}) não está na tela.`);
@@ -63,7 +63,7 @@ async function definir(ag: Agente, seletor: string, valor: string, oQue: string,
 }
 
 /** Marca o radio e confere o RÓTULO (Sim/Não trocam de código entre perguntas). */
-async function marcar(ag: Agente, seletor: string, rotulo: RegExp, oQue: string): Promise<void> {
+async function marcar(ag: Navegador, seletor: string, rotulo: RegExp, oQue: string): Promise<void> {
   const r = await ag.js<{ marcado: boolean; rotulo: string } | null>(jsMarcarRadio(seletor));
   if (!r) throw new ErroLudmilla('pagina_mudou', `A opção "${oQue}" (${seletor}) não está na tela — o portal mudou este bloco.`);
   if (!rotulo.test(r.rotulo)) {
@@ -72,17 +72,17 @@ async function marcar(ag: Agente, seletor: string, rotulo: RegExp, oQue: string)
   if (!r.marcado) throw new ErroLudmilla('pagina_mudou', `Cliquei em "${oQue}" (${r.rotulo}) mas o radio não ficou marcado.`);
 }
 
-async function abrirSanfona(ag: Agente, texto: string): Promise<void> {
+async function abrirSanfona(ag: Navegador, texto: string): Promise<void> {
   const r = await ag.js<string>(jsAbrirSanfona(texto));
   if (r === 'abri') await ag.esperar(700);
 }
 
-async function valor(ag: Agente, seletor: string): Promise<string> {
+async function valor(ag: Navegador, seletor: string): Promise<string> {
   return String((await ag.js<string | null>(jsValor(seletor))) ?? '');
 }
 
 /** Espera um campo (cinza) ganhar valor — o que o Buscar/Consultar preenche. */
-async function esperarValor(ag: Agente, seletor: string, segundos: number): Promise<string> {
+async function esperarValor(ag: Navegador, seletor: string, segundos: number): Promise<string> {
   const ate = Date.now() + segundos * 1_000;
   while (Date.now() < ate) {
     const v = await valor(ag, seletor);
@@ -93,7 +93,7 @@ async function esperarValor(ag: Agente, seletor: string, segundos: number): Prom
 }
 
 /** Clica em Avançar e exige a próxima etapa; se não avançou, diz QUAL campo o servidor recusou. */
-async function avancar(ag: Agente, proxima: RegExp, ctx: ContextoRoteiro): Promise<void> {
+async function avancar(ag: Navegador, proxima: RegExp, ctx: ContextoRoteiro): Promise<void> {
   await ag.limparRede();
   await ag.clicar('#edit-next');
   await ag.esperarCarga('load');

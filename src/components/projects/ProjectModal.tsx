@@ -6,6 +6,8 @@ import { formatCurrency, sanitizeFileName } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCompanyDisplay } from '@/hooks/useCompanyDisplay';
 import { useProject, useUpdateProjectStatus, useUpdateProjectData } from '@/hooks/useProjects';
+import { useConcessionaire } from '@/hooks/useEnergyConcessionaires';
+import { tituloQueAcompanhaTitular } from '@/utils/projectTitle';
 import { useComments, useAddComment } from '@/hooks/useComments';
 import { useDocuments, useUploadDocument, useDocumentUrl } from '@/hooks/useDocuments';
 import { useProjectHistory } from '@/hooks/useHistory';
@@ -38,7 +40,7 @@ import {
   Check, ChevronRight, Upload, Download, Send, Paperclip, FileText,
   Image, Loader2, AlertTriangle, Save, Lock, DollarSign, Clock, MapPin, Hash,
   CheckSquare, Plus, Circle, CheckCircle2, Calendar, User as UserIcon, RotateCcw, FlaskConical, Mail,
-  Search, HardHat,
+  Search, HardHat, FileSignature,
 } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -54,6 +56,8 @@ import { useVistoriaStatus, useSolicitarVistoria } from '@/hooks/useVistoria';
 import { BiduPanel } from '@/components/projects/BiduPanel';
 import { useBiduDisponivel } from '@/hooks/useBidu';
 import { CriarNaCpflPanel } from '@/components/projects/CriarNaCpflPanel';
+import { TabAssinaturas } from './TabAssinaturas';
+import { useAssinaturaDisponivel } from '@/hooks/useAssinaturas';
 
 type ProjectStatus = Database['public']['Enums']['project_status'];
 type DocumentType = Database['public']['Enums']['document_type'];
@@ -737,6 +741,8 @@ function TabGeneral({ project, isEditing, onSave, onCancel, onEdit }: {
     });
     setProtocolDialogOpen(false);
   };
+  // Padrão de tensão da concessionária — só uma sugestão: quem manda é a UC.
+  const { data: concessionaria } = useConcessionaire((project as any).concessionaire_id ?? undefined);
   const gd = project.generalData;
   const eq = project.equipment;
 
@@ -748,6 +754,7 @@ function TabGeneral({ project, isEditing, onSave, onCancel, onEdit }: {
     holder_email: gd?.holder_email || '',
     circuit_breaker_current: gd?.circuit_breaker_current || '',
     phase_type: gd?.phase_type || '',
+    grid_voltage: (gd as any)?.grid_voltage || '',
     entry_rule_id: (gd as any)?.entry_rule_id || '',
     address: gd?.address || '',
     address_number: gd?.address_number || '',
@@ -792,6 +799,7 @@ function TabGeneral({ project, isEditing, onSave, onCancel, onEdit }: {
       holder_email: gd?.holder_email || '',
       circuit_breaker_current: gd?.circuit_breaker_current || '',
       phase_type: gd?.phase_type || '',
+      grid_voltage: (gd as any)?.grid_voltage || '',
       entry_rule_id: (gd as any)?.entry_rule_id || '',
       address: gd?.address || '',
       address_number: gd?.address_number || '',
@@ -845,6 +853,49 @@ function TabGeneral({ project, isEditing, onSave, onCancel, onEdit }: {
   const phaseLabel = (raw: string) =>
     PHASE_OPTIONS.find(([v]) => v === raw)?.[1]
     ?? (raw ? raw.charAt(0).toUpperCase() + raw.slice(1) : '');
+
+  // TENSÃO DA REDE da UC — o par fase-neutro/fase-fase da conta de luz. É daqui
+  // que o Motor de Engenharia tira a tensão TRIFÁSICA: em rede 127/220 o
+  // inversor trifásico entrega em 220V, e calcular em 380V afunda a corrente
+  // em 1,73× (disjuntor e bitola subdimensionados). Vazio = o motor cai na
+  // regra `voltage_drop.ac_voltage_tri_v`, como era antes de 05/10/2026.
+  const GRID_VOLTAGE_OPTIONS: [string, string][] = [
+    ['127/220', '127/220 V (trifásico em 220 V)'],
+    ['220/380', '220/380 V (trifásico em 380 V)'],
+  ];
+  const gridVoltageField = () => {
+    const daConcessionaria = (concessionaria as any)?.grid_voltage as string | undefined;
+    return (
+      <div style={{ minWidth: 0 }}>
+        <p style={{ fontSize: 11, color: '#aaa', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>Tensão da rede</p>
+        {isEditing ? (
+          <>
+            <select
+              value={form.grid_voltage}
+              onChange={e => setForm(f => ({ ...f, grid_voltage: e.target.value }))}
+              style={{ width: '100%', padding: '6px 8px', borderRadius: 6, border: '1px solid #E0E0E0', fontSize: 13, color: '#1A1A1A', outline: 'none', boxSizing: 'border-box', background: '#fff' }}
+            >
+              <option value="">Não informado</option>
+              {GRID_VOLTAGE_OPTIONS.map(([val, label]) => <option key={val} value={val}>{label}</option>)}
+            </select>
+            {!form.grid_voltage && daConcessionaria && (
+              <button
+                type="button"
+                onClick={() => setForm(f => ({ ...f, grid_voltage: daConcessionaria }))}
+                style={{ marginTop: 4, padding: 0, border: 'none', background: 'none', color: '#2D7A3A', fontSize: 11, fontWeight: 600, cursor: 'pointer', textAlign: 'left' }}
+              >
+                Usar {daConcessionaria} V, o padrão da concessionária
+              </button>
+            )}
+          </>
+        ) : (
+          form.grid_voltage
+            ? <p style={{ fontSize: 14, fontWeight: 500, color: '#1A1A1A' }}>{form.grid_voltage} V</p>
+            : <em style={{ color: '#ccc', fontSize: 13 }}>{daConcessionaria ? `Não informado (padrão da concessionária: ${daConcessionaria} V)` : 'Não informado'}</em>
+        )}
+      </div>
+    );
+  };
 
   const phaseField = () => (
     <div style={{ minWidth: 0 }}>
@@ -919,6 +970,7 @@ function TabGeneral({ project, isEditing, onSave, onCancel, onEdit }: {
           {field('E-mail', 'holder_email')}
           {field('Disjuntor (A)', 'circuit_breaker_current')}
           {phaseField()}
+          {gridVoltageField()}
           {/* Row 3: UF, Endereço(span2), Número */}
           {field('UF', 'state')}
           <div style={{ gridColumn: 'span 2' }}>
@@ -1194,6 +1246,7 @@ function TabGeneral({ project, isEditing, onSave, onCancel, onEdit }: {
                 holder_email: form.holder_email,
                 circuit_breaker_current: form.circuit_breaker_current,
                 phase_type: form.phase_type || null,
+                grid_voltage: form.grid_voltage || null,
                 entry_rule_id: form.entry_rule_id || null,
                 address: form.address,
                 address_number: form.address_number,
@@ -2096,6 +2149,9 @@ export function ProjectModal({ projectId, onClose, initialTab = 'geral', viewAsC
   const rotuloEtapa = useStatusLabel();
   // Engenheiro Bidu: só no tenant biblioteca (GD Manager), como o motor de diagramas.
   const temBidu = useBiduDisponivel();
+  // Assinatura digital: mesmo recorte do Bidu (admin/staff do tenant biblioteca),
+  // e fechada de vez na visão da empresa (viewAsCompany).
+  const temAssinatura = useAssinaturaDisponivel() && !viewAsCompany;
   const canEdit = isAdmin || isStaff;
 
   // Pedido de vistoria: só faz sentido consultar na visão do cliente.
@@ -2185,7 +2241,12 @@ export function ProjectModal({ projectId, onClose, initialTab = 'geral', viewAsC
 
   const handleSaveData = useCallback(async (generalData: Record<string, any>, equipment: Record<string, any>) => {
     if (!project) return;
-    await updateData.mutateAsync({ projectId: project.id, generalData, equipment });
+    // Trocou o titular? O título do projeto vai junto. Ele nasce como cópia do
+    // nome do titular e, até 12/10/2026, nada o atualizava depois: o PRJ-81492
+    // seguiu meses como "ANTONIO" depois de a titularidade passar ao ROBSON, e
+    // o título é o que aparece no Kanban, na busca e nos documentos.
+    const title = tituloQueAcompanhaTitular(project.title, generalData.holder_name) ?? undefined;
+    await updateData.mutateAsync({ projectId: project.id, generalData, equipment, title });
     setIsEditing(false);
   }, [project, updateData]);
 
@@ -2211,6 +2272,7 @@ export function ProjectModal({ projectId, onClose, initialTab = 'geral', viewAsC
     // e admin da GD Manager (o master, que é admin da GD Manager, já cai aqui).
     ...(hasDiagramEngineAccess ? [{ id: 'unifilar', label: 'Unifilar', icon: <FlaskConical size={13} style={{ marginRight: 5 }} /> }] : []),
     ...(temBidu ? [{ id: 'bidu', label: 'Bidu', icon: <HardHat size={13} style={{ marginRight: 5 }} /> }] : []),
+    ...(temAssinatura ? [{ id: 'assinaturas', label: isMobile ? 'Assin.' : 'Assinaturas', icon: <FileSignature size={13} style={{ marginRight: 5 }} /> }] : []),
   ];
 
   const statusCfg: Record<string, { color: string; bg: string }> = {
@@ -2542,6 +2604,9 @@ export function ProjectModal({ projectId, onClose, initialTab = 'geral', viewAsC
                   <div style={{ padding: '18px 22px' }}>
                     <BiduPanel projectId={project.id} project={project} />
                   </div>
+                )}
+                {activeTab === 'assinaturas' && temAssinatura && (
+                  <TabAssinaturas projectId={project.id} companyId={project.company_id} />
                 )}
                 {activeTab === 'historico' && (
                   <TabHistory projectId={project.id} />

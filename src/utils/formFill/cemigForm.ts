@@ -1,4 +1,5 @@
 import { MapaPlanilha } from './fillXlsx';
+import { tensaoTrifasicaDaRede } from '@/utils/engineering/rulesEngine';
 
 /**
  * FORMULÁRIO MicroGD DA CEMIG — mapa de células e adaptação dos valores.
@@ -116,6 +117,12 @@ export function valoresFormularioCemig(
   const leste = metroInteiro(v.utm_longitude ?? '');
   const norte = metroInteiro(v.utm_latitude ?? '');
 
+  // Tensão da rede da UC. A CEMIG opera em 127/220 — é o padrão quando o
+  // projeto não traz a dele —, mas a UC pode estar em 220/380, e aí a tensão
+  // do inversor muda junto (é a de ENTRE FASES, o último número do par).
+  const redeDaUC = (v.tensao_rede || '').trim() || '127/220';
+  const entreFases = String(tensaoTrifasicaDaRede(redeDaUC) ?? 220);
+
   return {
     ...v,
     cemig_uc: digitos(v.numero_uc || v.uc || ''),
@@ -138,11 +145,13 @@ export function valoresFormularioCemig(
     cemig_tipo_edificacao: 'Edificação Individual',
     cemig_tipo_disjuntor: tipoDisjuntorCemig(v.fase ?? ''),
     cemig_disjuntor: numero(v.disjuntor ?? ''),
-    cemig_tensao: '127/220',
-    // Tensão em que o inversor se conecta. Na rede 127/220 da CEMIG o inversor
-    // entra entre fases, em 220 V — é o que está no formulário aceito. Fica
-    // como constante nomeada: se um dia aparecer projeto em 380, muda aqui.
-    cemig_tensao_inversor: '220',
+    // Tensão da rede: vem do cadastro do projeto ("Tensão da rede", aba Geral),
+    // que também alimenta o Motor de Engenharia. Sem cadastro, 127/220 — a
+    // rede da CEMIG e o que o formulário aceito trazia fixo até 05/10/2026.
+    cemig_tensao: redeDaUC,
+    // Tensão em que o inversor se conecta: a tensão ENTRE FASES da rede (em
+    // 127/220 ele entra entre fases, em 220 V; numa 220/380, em 380 V).
+    cemig_tensao_inversor: entreFases,
     cemig_nao: 'Não',
     cemig_fonte: 'Solar',
     cemig_tipo_geracao: 'Empregando conversor eletrônico/inversor',

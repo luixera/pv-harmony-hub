@@ -19,7 +19,7 @@
 - **Segredo nenhum no repositório.** `SUPABASE_SERVICE_ROLE_KEY` já existe no ambiente do worker; nada de `.env` comitado, nada em `src/`, nada em migração.
 - **GDAL precisa de `apt-get update` antes do install.** Sem isso o `apt-get install gdal-bin` falha com 404 em `libminizip1t64` e `libmysqlclient21`. Verificado em 13/10/2026.
 - **`ativo = false`, nunca `DELETE`.** O que desapareceu da BDGD é marcado, nunca apagado em silêncio (comentário de coluna em `rede_transformador.ativo`).
-- As tabelas `rede_*` **não têm `tenant_id`** (ADR 0008) e **não cruzam com projetos do GD Manager** (decisão de escopo de 10/10/2026).
+- As tabelas `rede_*` **não têm `tenant_id`** (ADR 0009) e **não cruzam com projetos do GD Manager** (decisão de escopo de 10/10/2026).
 - **Só para verificar daqui de dentro:** o `fetch` do Node não lê `HTTPS_PROXY`, então no container de desenvolvimento qualquer teste que chame a ANEEL precisa de `NODE_USE_ENV_PROXY=1` (Node ≥ 22.21) e `NODE_EXTRA_CA_CERTS=/root/.ccr/ca-bundle.crt`. **Na VPS não é preciso nada disso** — ela tem saída direta. Sem a variável o erro é um `fetch failed`/`ENOTFOUND` que não parece ser de proxy.
 
 ## Decisões medidas (não as reabra sem medir de novo)

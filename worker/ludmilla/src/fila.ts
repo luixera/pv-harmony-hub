@@ -16,7 +16,7 @@ export interface Run {
   id: string;
   tenant_id: string;
   account_id: string;
-  tipo: 'reconhecimento' | 'teste_login' | 'descoberta' | 'varredura' | 'criar_projeto';
+  tipo: 'reconhecimento' | 'teste_login' | 'descoberta' | 'varredura' | 'criar_projeto' | 'varredura_email';
   situacao: string;
   dados?: Record<string, unknown>;
 }
@@ -340,4 +340,187 @@ export async function protocolosDeInteresse(accountId: string): Promise<string[]
   const { data, error } = await supabase().rpc(nomeRpc('ludmilla_protocolos_de_interesse'), { p_account_id: accountId });
   if (error) return [];
   return ((data ?? []) as { protocolo: string }[]).map(x => x.protocolo);
+}
+
+// ── Acompanhamento por e-mail ────────────────────────────────────────────────
+//
+// ATENÇÃO: estas RPCs são chamadas pelo nome SIMPLES, nunca por `nomeRpc()`.
+// Elas não têm variante `_local` porque o acompanhamento por e-mail é só da VPS
+// (foi o pedido: "assim não preciso deixar o computador ligado"). Passar por
+// `nomeRpc` faria a estação local procurar `…_local` e quebrar. A guarda que
+// recusa o run na estação está em `email/index.ts`.
+
+import { idArquivoDeEmail, type RegraEmail } from './email/util.js';
+
+export interface ProtocoloDeProjeto {
+  protocolo: string; project_id: string; company_id: string;
+  codigo: string; titular: string | null; endereco: string | null;
+}
+
+export async function credencialDaCaixa(accountId: string): Promise<{ email: string; senha: string }> {
+  const { data, error } = await supabase().rpc('ludmilla_email_credencial' as never, { p_account_id: accountId } as never);
+  if (error) throw new Error(`Não consegui ler o acesso à caixa: ${error.message}`);
+  const linha = ((data ?? []) as { email: string; senha: string }[])[0];
+  if (!linha?.email || !linha?.senha) {
+    throw new Error('O acesso à caixa de e-mail não está configurado para este tenant (agent_config → email_agent).');
+  }
+  return linha;
+}
+
+export async function protocolosDoEmail(accountId: string): Promise<ProtocoloDeProjeto[]> {
+  const { data, error } = await supabase().rpc('ludmilla_email_protocolos' as never, { p_account_id: accountId } as never);
+  if (error) throw new Error(`Não consegui listar os protocolos: ${error.message}`);
+  return (data ?? []) as ProtocoloDeProjeto[];
+}
+
+export async function regrasDoEmail(accountId: string): Promise<RegraEmail[]> {
+  const { data, error } = await supabase().rpc('ludmilla_email_regras' as never, { p_account_id: accountId } as never);
+  if (error) throw new Error(`Não consegui listar as regras de e-mail: ${error.message}`);
+  return (data ?? []) as RegraEmail[];
+}
+
+/**
+ * Preciso TRATAR esta mensagem neste protocolo?
+ *
+ * A pergunta mudou de "é nova?" para "está pendente?" de propósito: a antiga
+ * (`ludmilla_email_mensagem_nova`, que não existe mais no banco) respondia
+ * "já vi" e queimava a mensagem para sempre — IA que falhou por motivo
+ * passageiro, regra mal configurada ou anexo que não subiu faziam o documento
+ * desaparecer em silêncio. Agora o banco responde TRUE quando não há linha, ou
+ * quando a linha existe e não foi concluída (com tentativa sobrando no teto).
+ *
+ * O protocolo entra na chave: assunto que cita dois protocolos precisa chegar
+ * aos DOIS projetos, e com a chave antiga o segundo ouvia "já tratei".
+ *
+ * Falha de banco LANÇA em vez de virar `false`: tratar erro como "já conheço
+ * esta mensagem" faria a robô pular a caixa inteira em silêncio.
+ */
+export async function mensagemPendente(accountId: string, messageId: string, protocolo: string): Promise<boolean> {
+  const { data, error } = await supabase().rpc('ludmilla_email_mensagem_pendente' as never,
+    { p_account_id: accountId, p_message_id: messageId, p_protocolo: protocolo } as never);
+  if (error) throw new Error(`Não consegui conferir se a mensagem já foi tratada: ${error.message}`);
+  return data === true;
+}
+
+/**
+ * O que o banco respondeu ao pedido de abrir um anexo. As três respostas são
+ * diferentes de propósito: eram duas (vazio e linha), e o vazio misturava
+ * "já resolvido no card" com "o projeto não existe" — o log dizia a primeira
+ * para as duas.
+ */
+export type AberturaDeAnexo =
+  /** a linha está (ou voltou a ficar) `pendente`: é para subir o arquivo */
+  | { situacao: 'aberto'; anexo: AnexoPendente }
+  /** a linha já está `enviado` ou `bloqueado` NESTE projeto: nada a refazer */
+  | { situacao: 'ja_resolvido' }
+  /** o projeto não existe (apagado entre a listagem e o registro) ou não é da conta */
+  | { situacao: 'projeto_inexistente' };
+
+/**
+ * Abre a linha do anexo e devolve o que `subirDocumento` precisa.
+ *
+ * A RPC devolve a linha DE NOVO quando ela tinha ficado `pendente` (run que
+ * morreu antes de subir o arquivo) ou `erro` (storage recusou) — sem isso a
+ * retentativa da mensagem não serviria para nada, porque o arquivo nunca
+ * subiria. `enviado`/`bloqueado` voltam como `ja_resolvido`.
+ *
+ * O PROTOCOLO entra na chave do arquivo (`idArquivoDeEmail`): sem ele, um
+ * e-mail que serve dois projetos colidia na UNIQUE e o documento ia para o card
+ * do cliente errado. E a RPC devolve o `projeto_id` da linha justamente para
+ * esta conferência: se não for o projeto que pedimos, isto estoura aqui, antes
+ * de qualquer arquivo subir.
+ *
+ * `ocorrencia` desambigua arquivos de MESMO nome na mesma mensagem (1 = o
+ * primeiro): sem ela o segundo colidia com o primeiro e sumia como "resolvido".
+ */
+export async function anexoDeEmail(
+  accountId: string, protocolo: string, projectId: string, messageId: string, nomeArquivo: string, conferidoPor: string,
+  ocorrencia = 1,
+): Promise<AberturaDeAnexo> {
+  const { data, error } = await supabase().rpc('ludmilla_email_anexo_novo' as never, {
+    p_account_id: accountId, p_protocolo: protocolo, p_project_id: projectId,
+    p_message_id: messageId, p_nome_arquivo: nomeArquivo, p_conferido_por: conferidoPor,
+    p_ocorrencia: ocorrencia,
+  } as never);
+  if (error) throw new Error(`Não consegui abrir o anexo: ${error.message}`);
+  const l = ((data ?? []) as {
+    abertura: string; anexo_id: string | null; projeto_id: string | null; company_id: string | null; codigo: string | null;
+  }[])[0];
+  // A RPC responde SEMPRE uma linha. Vazio é função antiga no banco (de antes do
+  // `abertura`): melhor estourar do que tratar o desconhecido como "resolvido".
+  if (!l) throw new Error('o banco não respondeu ao pedido de abrir o anexo (a função ludmilla_email_anexo_novo está desatualizada?)');
+  if (l.abertura === 'projeto_inexistente') return { situacao: 'projeto_inexistente' };
+  if (l.projeto_id !== projectId) {
+    // Nunca deve acontecer (a RPC já recusa), e é exatamente por isso que está
+    // escrito: a alternativa é gravar documento no card de outro cliente.
+    throw new Error(`a linha do anexo devolvida pelo banco é do projeto ${l.projeto_id}, e eu pedi ${projectId}`);
+  }
+  if (l.abertura === 'ja_resolvido') return { situacao: 'ja_resolvido' };
+  if (l.abertura !== 'aberto' || !l.anexo_id || !l.company_id) {
+    throw new Error(`resposta inesperada do banco ao abrir o anexo: ${l.abertura}`);
+  }
+  return {
+    situacao: 'aberto',
+    anexo: {
+      id: l.anexo_id, project_id: l.projeto_id, company_id: l.company_id, protocolo,
+      id_arquivo: idArquivoDeEmail(messageId, protocolo, nomeArquivo, ocorrencia),
+      nome_arquivo: nomeArquivo, codigo: l.codigo ?? '',
+    },
+  };
+}
+
+export interface TentativaEmail {
+  runId: string; accountId: string; messageId: string; protocolo: string;
+  projectId: string | null; assunto: string; remetente: string; recebidoEm: string | null;
+}
+
+/**
+ * Conta a tentativa ASSIM QUE a mensagem é aceita para tratamento — antes de
+ * gastar a IA.
+ *
+ * Sem isto o teto de 5 tentativas só valia se o tratamento chegasse vivo até
+ * `registrarEmailLido`: estourando antes (anexo com erro permanente, projeto
+ * apagado entre a listagem e o registro), não existia linha, `tentativas` nunca
+ * incrementava, e todo run seguinte baixava o corpo e **chamava a IA de novo** —
+ * pagando o parecer indefinidamente, sem nada avisar.
+ *
+ * A linha nasce `concluida = false` (é o que faz o run seguinte tentar de novo,
+ * correção C1) e os dados do tratamento são completados depois, por
+ * `registrarEmailLido`. Devolve o número da tentativa.
+ */
+export async function abrirTentativaEmail(p: TentativaEmail): Promise<number> {
+  const { data, error } = await supabase().rpc('ludmilla_email_tentativa' as never, {
+    p_run_id: p.runId, p_account_id: p.accountId, p_message_id: p.messageId, p_protocolo: p.protocolo,
+    p_project_id: p.projectId, p_assunto: p.assunto, p_remetente: p.remetente, p_recebido_em: p.recebidoEm,
+  } as never);
+  if (error) throw new Error(`Não consegui contar a tentativa desta mensagem: ${error.message}`);
+  return Number(data ?? 0);
+}
+
+export interface EmailLido {
+  runId: string; accountId: string; messageId: string; protocolo: string;
+  projectId: string | null; assunto: string; remetente: string; recebidoEm: string | null;
+  tipoDocumento: string | null; veredito: string | null; resumo: string | null;
+  anexos: number; motivo: string | null; recomendacao: string | null;
+  /**
+   * `false` = houve falha passageira (a IA não respondeu, um anexo não subiu) e
+   * um run futuro TEM de tentar de novo. `true` = não há mais nada a fazer com
+   * esta mensagem. Quem CONTA a tentativa é `abrirTentativaEmail`, no começo do
+   * tratamento (teto de 5); aqui a contagem não é mexida, senão a mesma
+   * tentativa contaria duas vezes e o teto cairia para 2 e meia.
+   */
+  concluida: boolean;
+  /** Qual anexo a IA leu (o PDF maior). Null quando não houve leitura. */
+  arquivoLido: string | null;
+}
+
+export async function registrarEmailLido(p: EmailLido): Promise<void> {
+  const { error } = await supabase().rpc('ludmilla_email_registrar' as never, {
+    p_run_id: p.runId, p_account_id: p.accountId, p_message_id: p.messageId, p_protocolo: p.protocolo,
+    p_project_id: p.projectId, p_assunto: p.assunto, p_remetente: p.remetente, p_recebido_em: p.recebidoEm,
+    p_tipo_documento: p.tipoDocumento, p_veredito: p.veredito, p_resumo: p.resumo,
+    p_anexos: p.anexos, p_motivo: p.motivo, p_recomendacao: p.recomendacao,
+    p_concluida: p.concluida, p_arquivo_lido: p.arquivoLido,
+  } as never);
+  if (error) throw new Error(`Não consegui registrar o e-mail lido: ${error.message}`);
 }

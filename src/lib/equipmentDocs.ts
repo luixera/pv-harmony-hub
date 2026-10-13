@@ -9,6 +9,21 @@ const KIND_LABEL: Record<DocKind, string> = {
 };
 
 /**
+ * O certificado AFCI pode ser COMPARTILHADO: um inversor sem certificado
+ * próprio herda o de outro modelo da mesma marca (ver `afciDaMarca`), e os
+ * dois passam a apontar para o mesmo arquivo. Datasheet e INMETRO são sempre
+ * do modelo, com arquivo exclusivo.
+ *
+ * Quem compartilha não pode ser MOVIDO: mover o arquivo quebra o link de todo
+ * mundo que aponta para ele (ver `renameDocIfNeeded`). É só para isso que esta
+ * distinção existe — o caminho e o nome continuam iguais para os três tipos,
+ * porque o arquivo pertence ao equipamento que o anexou.
+ */
+export function ehDocumentoCompartilhavel(kind: DocKind): boolean {
+  return kind === 'afci';
+}
+
+/**
  * Nome padronizado do documento: "DATASHEET MARCA MODELO.pdf" (tudo em caixa alta).
  * Independe do nome original do arquivo enviado.
  */

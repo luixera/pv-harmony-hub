@@ -275,7 +275,8 @@ export const FERRAMENTAS_DIRETAS: DefinicaoFerramenta[] = [
   },
   {
     name: 'resolver_pendencia',
-    description: 'O gestor disse sim ou não para uma ação pendente (mover etapa). Só chame com a palavra dele.',
+    description: 'O gestor disse sim ou não para uma ação pendente: mover etapa de um card OU liberar uma assinatura digital. ' +
+      'Só chame com a palavra dele, dita DEPOIS da pergunta. O banco recusa a liberação de assinatura se ele não falou depois do "Libero?".',
     input_schema: {
       type: 'object',
       properties: { pendencia_id: { type: 'string' }, confirmar: { type: 'boolean' } },
@@ -655,7 +656,17 @@ async function executarEscritaDireta(ctx: Contexto, nome: string, args: Record<s
       })
       if (error) return `erro: ${error.message}`
       const r = data as Record<string, any> | null
-      if (r?.ok === true) return r.acao === 'confirmada' ? 'feito — a etapa mudou e o histórico registra você como autor' : 'cancelada'
+      if (r?.ok === true) {
+        if (r.acao !== 'confirmada') {
+          return r.tipo === 'liberar_assinatura'
+            ? 'assinatura NÃO liberada: o pedido foi recusado e o card registra a recusa'
+            : 'cancelada'
+        }
+        return r.tipo === 'liberar_assinatura'
+          ? 'feito — a assinatura foi liberada e entra na fila do assinador; o card registra a liberação'
+          : 'feito — a etapa mudou e o histórico registra você como autor'
+      }
+      // `motivo` vem do banco (ex.: o gestor ainda não respondeu depois da pergunta).
       return `não deu: ${r?.motivo ?? 'falhou'}`
     }
 

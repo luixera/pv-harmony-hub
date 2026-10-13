@@ -3,7 +3,7 @@
 -- Spec:  docs/superpowers/specs/2026-10-10-capacidade-rede-design.md §3
 -- Plano: docs/superpowers/plans/2026-10-12-capacidade-rede-fase-a.md
 --
--- ADR 0008: estas tabelas NÃO têm tenant_id. Dado público, idêntico para todos,
+-- ADR 0009: estas tabelas NÃO têm tenant_id. Dado público, idêntico para todos,
 -- no tenant biblioteca, com leitura restrita a master por controle de produto —
 -- não por confidencialidade (o dado é aberto na ANEEL).
 --

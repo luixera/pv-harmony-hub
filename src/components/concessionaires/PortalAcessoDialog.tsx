@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { ChavesDaApi } from '@/components/concessionaires/ChavesDaApi';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -266,10 +267,27 @@ export function PortalAcessoDialog({
               >
                 Só reconhecer a tela
               </Button>
+              {/* DESCOBERTA — o run que ENTRA no portal e guarda as telas (HTML,
+                  print, rede) no bucket. É o passo obrigatório antes de existir
+                  roteiro de leitura para um portal novo: sem as telas reais, o
+                  "varrer" seria chute, e chute em portal custou um mês na CPFL.
+                  Faltava botão: até 13/10/2026 só dava para pedir pelo banco. */}
+              <Button
+                variant="ghost" className="gap-2"
+                disabled={!conta?.login || pedir.isPending || emAndamento}
+                onClick={() => conta && pedir.mutate({ accountId: conta.id, tipo: 'descoberta' })}
+                title="Entra no portal e guarda as telas (HTML, print e rede) para escrever o roteiro de leitura"
+              >
+                Descobrir as telas
+              </Button>
             </div>
 
             {/* Onde roda: VPS ou estação local (Elektro) */}
             {conta && <OndeRoda conta={conta} isAdmin={isAdmin} />}
+
+            {/* API de status: a porta por onde a pessoa entrega o que leu num
+                portal que a Ludmilla não consegue abrir sozinha (Elektro) */}
+            {conta && isAdmin && <ChavesDaApi concessionaria={concessionaire?.name ?? ""} />}
 
             {/* Runs */}
             {conta && (

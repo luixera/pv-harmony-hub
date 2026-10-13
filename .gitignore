@@ -39,3 +39,7 @@ Thumbs.db
 *.sw?
 .claude/worktrees/
 preview.html
+
+# Certificados digitais A1 - NUNCA no git, em pasta nenhuma
+*.pfx
+*.p12

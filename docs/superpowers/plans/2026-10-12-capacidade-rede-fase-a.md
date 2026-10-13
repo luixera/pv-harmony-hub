@@ -4,12 +4,12 @@
 
 **Goal:** Pôr no ar a seção **Capacidade de rede** do console `/painel` — mapa exploratório com semáforo de risco de inversão de fluxo por transformador e alimentador — funcionando de ponta a ponta sobre dados de amostra, antes de a ingestão da BDGD existir.
 
-**Architecture:** Seis tabelas `rede_*` no tenant biblioteca, sem `tenant_id` (ADR 0008), com PostGIS. A ingestão (Plano 3) trará apenas **insumos**; tudo que é **veredito** — o semáforo e as células de zoom — é derivado em SQL por RPC recalculável. Isso é o que permite construir e validar a Fase A inteira com amostra, e o que fará o semáforo responder em segundos quando um limiar mudar, sem reimportar gigabytes.
+**Architecture:** Seis tabelas `rede_*` no tenant biblioteca, sem `tenant_id` (ADR 0009), com PostGIS. A ingestão (Plano 3) trará apenas **insumos**; tudo que é **veredito** — o semáforo e as células de zoom — é derivado em SQL por RPC recalculável. Isso é o que permite construir e validar a Fase A inteira com amostra, e o que fará o semáforo responder em segundos quando um limiar mudar, sem reimportar gigabytes.
 
 **Tech Stack:** Postgres/Supabase (PostGIS 3.3.7, RLS, `SECURITY DEFINER`) · React + React Query + `@react-google-maps/api` · Recharts já presente.
 
 **Spec:** [docs/superpowers/specs/2026-10-10-capacidade-rede-design.md](../specs/2026-10-10-capacidade-rede-design.md)
-**ADR:** [0008 — base pública de rede sem `tenant_id`](../../adr/0008-rede-publica-sem-tenant.md)
+**ADR:** [0009 — base pública de rede sem `tenant_id`](../../adr/0009-rede-publica-sem-tenant.md)
 **Plano anterior:** [painel de armazenamento da VPS](2026-10-10-painel-armazenamento-vps.md) — concluído
 
 ## Por que este plano para na porta da ingestão
@@ -64,7 +64,7 @@ As **tabelas de destino são nosso schema**; só o mapeamento origem→destino d
 -- Base de rede elétrica (BDGD/ANEEL) — Fase A: só o schema de destino.
 --
 -- Spec: docs/superpowers/specs/2026-10-10-capacidade-rede-design.md §3
--- ADR 0008: estas tabelas NÃO têm tenant_id. Dado público, idêntico para todos,
+-- ADR 0009: estas tabelas NÃO têm tenant_id. Dado público, idêntico para todos,
 -- no tenant biblioteca, com leitura restrita a master por controle de produto —
 -- não por confidencialidade (o dado é aberto na ANEEL).
 

@@ -13,3 +13,15 @@ verify_jwt = false
 
 [functions.ze-brain]
 verify_jwt = false
+
+# Ludmilla — quem chama é o worker da VPS, com a service role: ora o JWT legado,
+# ora a chave nova (sb_secret_...), que o gateway não entende como JWT. A função
+# confere o chamador por conta própria (chamadorEhServico) e vale com qualquer
+# flag de deploy.
+[functions.ludmilla-parecer]
+verify_jwt = false
+
+# Triagem de assinatura — quem chama é o assinador na VPS, com service role.
+# A função confere o portador por conta própria (só o robô passa).
+[functions.assinatura-triagem]
+verify_jwt = false

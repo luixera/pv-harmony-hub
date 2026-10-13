@@ -1,14 +1,16 @@
-import { writeFileSync } from 'node:fs';
 import { readFile, unlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { classificarErro, ErroLudmilla } from '../erros.js';
 import { credenciais, dadosCriacaoCpfl, finalizarRun, subirTexto, supabase, type Run } from '../fila.js';
-import { Agente } from './agente.js';
-import { JS_MAPA, jsInitNavegador } from './js.js';
-import { entrarNaCpfl } from './login.js';
+import type { BrowserContext } from 'playwright';
+import type { Navegador } from './navegador.js';
+import { logarNaCpfl } from '../conectores/cpfl.js';
+import { AgentePlaywright } from './navegador.js';
+import { JS_MAPA } from './js.js';
+
 import { roteiroCpfl60, type NomePasso, type StatusPasso } from './roteiro-cpfl60.js';
-import { USER_AGENT_LUDMILLA, type DadosCriacaoCpfl } from './tipos.js';
+import { type DadosCriacaoCpfl } from './tipos.js';
 
 /**
  * Run `criar_projeto`: da fila até o projeto salvo na CPFL, pela CLI
@@ -24,23 +26,24 @@ import { USER_AGENT_LUDMILLA, type DadosCriacaoCpfl } from './tipos.js';
 const log = (msg: string, extra: Record<string, unknown> = {}) =>
   console.log(JSON.stringify({ t: new Date().toISOString(), msg, ...extra }));
 
+/** Entrada do portal: o B2C devolve em /Internet/Projeto, onde fica o cartão de perfil. */
+const LOGIN_URL = 'https://www.cpfl.com.br/cpfl-auth/redirect-arame?redirect_uri=/Internet/Projeto';
 
-export function agenteDoAmbiente(sessao: string): Agente {
-  // init script da sessão: corrige navigator.userAgent/webdriver/language antes da página
-  const initScript = join(tmpdir(), 'ludmilla-init-navegador.js');
-  try { writeFileSync(initScript, jsInitNavegador(USER_AGENT_LUDMILLA)); } catch { /* sem init script: segue assim mesmo */ }
-  return new Agente({
-    sessao,
-    headed: process.env.LUDMILLA_AB_HEADED === '1',
-    perfil: process.env.LUDMILLA_AB_PERFIL || undefined,
-    executavel: process.env.LUDMILLA_AB_EXEC || undefined,
-    argsChrome: process.env.LUDMILLA_AB_ARGS || undefined,
-    env: { AGENT_BROWSER_INIT_SCRIPTS: initScript },
-  });
-}
+/**
+ * Prova de sessão DENTRO do app de projetos: o menu "GERENCIE SEUS PROJETOS"
+ * ou o link "Sair". Sem esta checagem, "Olá Usuário" + "Você não tem acesso a
+ * essa página" passava por login bem-sucedido (incidente de 18/09 a 12/10).
+ */
+const JS_AUTENTICADO = `(() => {
+  const t = (document.body.textContent || '');
+  if (/Access denied|Acesso negado/i.test(document.title)) return false;
+  return /GERENCIE SEUS PROJETOS/i.test(t) || !!Array.from(document.querySelectorAll('a')).find(a => /^\\s*Sair\\s*$/i.test(a.textContent || ''));
+})()`;
+
+
 
 /** Print da tela → bucket (pasta do run) → caminho. */
-async function printParaBucket(ag: Agente, caminho: string, nomeTmp: string): Promise<string | undefined> {
+async function printParaBucket(ag: Navegador, caminho: string, nomeTmp: string): Promise<string | undefined> {
   const tmp = join(tmpdir(), nomeTmp);
   try {
     await ag.screenshot(tmp);
@@ -55,7 +58,7 @@ async function printParaBucket(ag: Agente, caminho: string, nomeTmp: string): Pr
 }
 
 /** Grava cada passo em portal_criacao_passos com print; em erro, sobe também o mapa da tela. */
-function registradorDePassos(ag: Agente, dados: DadosCriacaoCpfl) {
+function registradorDePassos(ag: Navegador, dados: DadosCriacaoCpfl) {
   return async (passo: number, nome: NomePasso, status: StatusPasso, erro?: string, printPronto?: string): Promise<void> => {
     // "rodando" = a tela ANTES do passo; ok/erro = a tela DEPOIS. Os dois ficam no bucket.
     const sufixo = status === 'rodando' ? '-inicio' : '';
@@ -75,10 +78,19 @@ function registradorDePassos(ag: Agente, dados: DadosCriacaoCpfl) {
   };
 }
 
-export async function executarCriacao(run: Run): Promise<void> {
-  const curto = run.id.slice(0, 8);
-  const ag = agenteDoAmbiente(`criacao-${curto}`);
-  const nomeCofre = `cpfl-${curto}`;
+/**
+ * Run `criar_projeto` — roda no MESMO navegador da varredura.
+ *
+ * Até 13/10/2026 a criação abria a CLI `agent-browser`. O portal recusa essa
+ * CLI a partir da VPS: a navegação para `gestao-projetos` volta vazia
+ * (`ERR_HTTP_RESPONSE_CODE_FAILURE`) mesmo com os 21 cookies da sessão da
+ * varredura dentro do navegador — e a varredura, no mesmo IP e com a mesma
+ * conta, entra sem tropeço 2×/dia. O roteiro não mudou: ele fala com a
+ * interface `Navegador` (ver navegador.ts), e quem a cumpre agora é o
+ * Playwright.
+ */
+export async function executarCriacao(run: Run, contexto: BrowserContext): Promise<void> {
+  const ag = await AgentePlaywright.noContexto(contexto);
   log('criação iniciada', { run: run.id });
   try {
     const projectId = run.dados?.['project_id'] as string | undefined;
@@ -103,7 +115,15 @@ export async function executarCriacao(run: Run): Promise<void> {
     };
     await registrar(0, 'login', 'rodando');
     try {
-      await entrarNaCpfl(ag, creds, nomeCofre, log, printExtra);
+      // O MESMO login da varredura, na mesma aba: se quebrar, quebra para os
+      // dois e a correção é num lugar só.
+      await logarNaCpfl(ag.page, creds, LOGIN_URL);
+      await printExtra('login-1-portal');
+      const autenticado = await ag.js<boolean>(JS_AUTENTICADO).catch(() => false);
+      if (!autenticado) {
+        throw new ErroLudmilla('sessao_expirada',
+          `Entrei na CPFL mas o portal não reconheceu a sessão ("${await ag.titulo()}").`);
+      }
     } catch (e) {
       const msg = e instanceof ErroLudmilla ? e.message : `Login falhou: ${(e as Error).message.split('\n')[0].slice(0, 300)}`;
       // o print útil é o último estágio antes da falha (chegada do B2C / tela de perfil), não o "Access denied"
@@ -131,7 +151,7 @@ export async function executarCriacao(run: Run): Promise<void> {
     }).catch(err => log('não consegui fechar o run', { erro: (err as Error).message }));
     log('criação com erro', { run: run.id, classe: erro.classe, mensagem: erro.mensagem });
   } finally {
-    await ag.authApagar(nomeCofre).catch(() => undefined);
+    // fecha só a ABA; o contexto é do laço da varredura e segue vivo
     await ag.fechar().catch(() => undefined);
   }
 }

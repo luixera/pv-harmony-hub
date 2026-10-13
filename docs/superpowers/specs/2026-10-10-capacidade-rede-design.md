@@ -76,7 +76,7 @@ Ver §6.
 
 Schema `public`, prefixo `rede_`, pertencentes ao **tenant biblioteca**
 (`tenants.is_library`), **sem `tenant_id`** — dado público idêntico para todos.
-A exceção à regra de isolamento está registrada no **ADR 0008**.
+A exceção à regra de isolamento está registrada no **ADR 0009**.
 
 | Tabela | Conteúdo | Volume esperado |
 |---|---|---|

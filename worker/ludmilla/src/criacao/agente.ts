@@ -104,19 +104,60 @@ export class Agente {
     return d.result as T;
   }
 
-  /** Cofre da CLI: a senha entra por stdin, nunca por argumento. */
-  authSalvar(nome: string, c: { url: string; usuario: string; senha: string; selUsuario: string; selSenha: string; selEnviar: string }) {
-    return this.cmd(['auth', 'save', nome, '--url', c.url, '--username', c.usuario, '--password-stdin',
-      '--username-selector', c.selUsuario, '--password-selector', c.selSenha, '--submit-selector', c.selEnviar], { stdin: c.senha + '\n' });
-  }
-  /** `semNavegar` + `origem`: usa a página já aberta (o B2C redireciona para outra origem). */
-  authEntrar(nome: string, o: { semNavegar?: boolean; origem?: string } = {}) {
-    const args = ['auth', 'login', nome];
-    if (o.semNavegar) args.push('--no-navigate');
-    if (o.origem) args.push('--url', o.origem);
-    return this.cmd(args, { timeoutMs: 120_000 });
-  }
+  /**
+   * Apaga um cofre da CLI. **Nenhuma senha chega mais aqui**: desde 12/10/2026
+   * quem entra na CPFL é o Playwright da varredura e a CLI só recebe cookies
+   * (ver `sessao-herdada.ts`). Isto fica como faxina dos cofres que os runs
+   * antigos possam ter deixado na VPS.
+   */
   authApagar(nome: string) { return this.cmd(['auth', 'delete', nome], { tolerar: true }); }
+
+  /**
+   * Injeta na sessão da CLI os cookies que o Playwright trouxe do login da
+   * varredura (ver `sessao-herdada.ts`). Tenta o arquivo de uma vez; se a CLI
+   * não aceitar o formato, cai para cookie a cookie, que é o caminho
+   * documentado em `cookies set <nome> <valor> --domain …`.
+   *
+   * O arquivo é credencial de sessão: quem chama escreve com 0600 e apaga.
+   */
+  /** Nomes dos cookies que a sessão da CLI tem agora. */
+  async cookiesAtuais(): Promise<string[]> {
+    const d = await this.cmd(['cookies', 'get'], { tolerar: true });
+    const lista = (d.cookies ?? []) as { name?: string }[];
+    return Array.isArray(lista) ? lista.map(c => String(c?.name ?? '')).filter(Boolean) : [];
+  }
+
+  /**
+   * Injeta os cookies e **confere** quantos entraram — `cmd(..., tolerar)`
+   * devolve `{}` quando o comando falha, então acreditar na ausência de erro
+   * era acreditar em nada: a primeira versão disto dava "sucesso" com zero
+   * cookie dentro e o portal recusava a navegação três linhas depois.
+   *
+   * Devolve quantos dos cookies esperados a CLI confirma ter.
+   */
+  async cookiesDeArquivo(
+    arquivo: string,
+    cookies: { name: string; value: string; domain: string; path: string; expires?: number; httpOnly?: boolean; secure?: boolean; sameSite?: string }[],
+  ): Promise<number> {
+    const esperados = new Set(cookies.map(c => c.name));
+    const quantos = async () => (await this.cookiesAtuais()).filter(n => esperados.has(n)).length;
+
+    await this.cmd(['cookies', 'set', '--curl', arquivo], { tolerar: true });
+    let dentro = await quantos();
+    if (dentro > 0) return dentro;
+
+    // o arquivo não pegou: cookie a cookie, pelo caminho documentado
+    for (const c of cookies) {
+      const args = ['cookies', 'set', c.name, c.value, '--domain', c.domain, '--path', c.path || '/'];
+      if (c.httpOnly) args.push('--httpOnly');
+      if (c.secure) args.push('--secure');
+      if (c.sameSite) args.push('--sameSite', c.sameSite);
+      if (typeof c.expires === 'number' && c.expires > 0) args.push('--expires', String(Math.floor(c.expires)));
+      await this.cmd(args, { tolerar: true });
+    }
+    dentro = await quantos();
+    return dentro;
+  }
 
   /** Última resposta de documento POST (o HTML que o servidor devolveu ao Avançar). */
   async ultimoPostHtml(): Promise<string> {

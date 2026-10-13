@@ -19,13 +19,22 @@ import { toast } from 'sonner';
 export const LUDMILLA_USER_ID = '00000000-10d1-4000-8000-000000000002';
 
 export type SituacaoConta = 'nao_configurado' | 'ok' | 'sessao_expirada' | 'erro';
-export type TipoRun = 'reconhecimento' | 'teste_login' | 'descoberta' | 'varredura' | 'criar_projeto';
+export type TipoRun = 'reconhecimento' | 'teste_login' | 'descoberta' | 'varredura' | 'criar_projeto' | 'varredura_email';
 export type SituacaoRun = 'na_fila' | 'rodando' | 'ok' | 'erro';
 
 export type ModoConta = 'vps' | 'local';
 
+/**
+ * COMO a concessionária é acompanhada — ortogonal a `modo`, que diz ONDE o robô
+ * roda. `portal` = ela entra no site; `email` = ela lê a caixa e interpreta as
+ * mensagens. Não existe conta com os dois (coluna `acompanhamento`, CHECK no
+ * banco): a tela escolhe os campos de um meio ou do outro.
+ */
+export type AcompanhamentoConta = 'portal' | 'email';
+
 export interface PortalAccount {
   id: string;
+  tenant_id: string;
   concessionaire_id: string;
   connector: string;
   login: string | null;
@@ -42,6 +51,8 @@ export interface PortalAccount {
   estacao_vista_em: string | null;
   /** desde quando a estação está logada no portal sem precisar de login (sessão viva) */
   sessao_viva_desde: string | null;
+  /** portal = ela entra no site; email = ela lê a caixa (EDP) */
+  acompanhamento: AcompanhamentoConta;
 }
 
 // ── Código da imagem respondido pela equipe (de longe) ───────────────────────
@@ -514,4 +525,220 @@ export function useRegistroLudmilla(limite = 120, ator?: AtorLudmilla) {
     enabled: disponivel,
     staleTime: 30_000,
   });
+}
+
+// ── Acompanhamento por e-mail: as regras de leitura ──────────────────────────
+
+export type TipoDocumentoEmail = 'parecer' | 'carta_obras' | 'nota' | 'outro';
+
+/**
+ * Uma linha = "e-mail com este trecho no assunto (e deste remetente, quando a
+ * regra informa um) é um documento deste tipo". Mora no banco, nunca no código:
+ * é o usuário quem ensina a robô a reconhecer os e-mails da concessionária.
+ * Sem nenhuma regra ativa, o run de e-mail se recusa a rodar.
+ */
+export interface RegraEmail {
+  id: string;
+  account_id: string;
+  remetente: string | null;
+  assunto: string;
+  tipo_documento: TipoDocumentoEmail;
+  anexar: boolean;
+  ler_pdf: boolean;
+  ativo: boolean;
+  ordem: number;
+  created_at: string;
+}
+
+export function useRegrasEmail(accountId: string | null) {
+  return useQuery({
+    queryKey: ['regras-email', accountId],
+    queryFn: async (): Promise<RegraEmail[]> => {
+      if (!accountId) return [];
+      const { data, error } = await supabase
+        .from('portal_email_regras' as never)
+        .select('*')
+        .eq('account_id', accountId as string)
+        .order('ordem', { ascending: true })
+        .order('created_at', { ascending: true });
+      if (error) throw error;
+      return (data ?? []) as RegraEmail[];
+    },
+    enabled: !!accountId,
+    staleTime: 60_000,
+  });
+}
+
+/** Cria ou altera uma regra. Só `admin` grava (RLS); staff lê. */
+export function useSalvarRegraEmail() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (
+      r: Partial<RegraEmail> & { account_id: string; tenant_id: string },
+    ) => {
+      const { id, ...campos } = r;
+      const { error } = id
+        ? await supabase.from('portal_email_regras' as never).update(campos as never).eq('id', id)
+        : await supabase.from('portal_email_regras' as never).insert(campos as never);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['regras-email'], exact: false });
+      toast.success('Regra salva. Vale a partir da próxima leitura da caixa.');
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+}
+
+export function useApagarRegraEmail() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from('portal_email_regras' as never).delete().eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['regras-email'], exact: false });
+      toast.success('Regra apagada. Os e-mails já lidos continuam no histórico.');
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+}
+
+// ── Acompanhamento por e-mail: o que ela já leu ──────────────────────────────
+
+export interface MensagemEmail {
+  id: string;
+  account_id: string;
+  run_id: string | null;
+  message_id: string;
+  protocolo: string;
+  project_id: string | null;
+  assunto: string | null;
+  remetente: string | null;
+  recebido_em: string | null;
+  tipo_documento: TipoDocumentoEmail | null;
+  veredito: 'favoravel' | 'pendencia' | 'inconclusivo' | null;
+  resumo: string | null;
+  /** arquivos que chegaram ao card por causa desta mensagem */
+  anexos: number;
+  /** a ressalva da robô sobre esta mensagem, quando há uma */
+  motivo: string | null;
+  /** true = não há mais nada a fazer; false = um run futuro tenta de novo */
+  concluida: boolean;
+  /** a partir de 5 o robô desiste — e nada avisa ninguém: é esta tela que avisa */
+  tentativas: number;
+  /** qual anexo a IA leu (o PDF maior do e-mail), para conferir se foi o certo */
+  arquivo_lido: string | null;
+  update_id: string | null;
+  created_at: string;
+  project?: { id: string; code: string; status: string; title: string | null } | null;
+}
+
+/**
+ * O QUE PEDE ATENÇÃO nesta mensagem. Existe porque o robô, sozinho, não avisa:
+ * quem passou de 5 tentativas foi abandonado em silêncio, e o e-mail que
+ * nenhuma regra reconheceu é marcado como concluído de propósito (é
+ * configuração, não falha passageira). A recuperação dos dois é humana e só
+ * acontece aqui, pela ação "ler de novo".
+ *
+ * - `desistiu`       — passou do teto de tentativas; não volta mais sozinho.
+ * - `a_tentar`       — ficou para o próximo run (IA ou anexo falharam).
+ * - `nao_reconheci`  — nenhuma regra casou, então não chegou a projeto nenhum.
+ * - `ressalva`       — terminou, mas com um porém registrado (anexo bloqueado
+ *                      por titular divergente, imagem não anexada, PDF ausente).
+ */
+export type AtencaoEmail = 'desistiu' | 'a_tentar' | 'nao_reconheci' | 'ressalva' | null;
+
+export function atencaoDaMensagem(m: MensagemEmail): AtencaoEmail {
+  if (!m.concluida) return m.tentativas >= 5 ? 'desistiu' : 'a_tentar';
+  if (!m.project_id) return 'nao_reconheci';
+  if (m.motivo) return 'ressalva';
+  return null;
+}
+
+export function useMensagensEmail(accountId: string | null, limite = 200) {
+  return useQuery({
+    queryKey: ['mensagens-email', accountId, limite],
+    queryFn: async (): Promise<MensagemEmail[]> => {
+      if (!accountId) return [];
+      const { data, error } = await supabase
+        .from('portal_email_mensagens' as never)
+        .select('*, project:projects(id, code, status, title)')
+        .eq('account_id', accountId as string)
+        .order('created_at', { ascending: false })
+        .limit(limite);
+      if (error) throw error;
+      return (data ?? []) as MensagemEmail[];
+    },
+    enabled: !!accountId,
+    staleTime: 30_000,
+  });
+}
+
+/**
+ * "Ler de novo": zera as tentativas e tira a mensagem de concluída, para o
+ * próximo run tratá-la outra vez. É a ÚNICA recuperação de uma mensagem que
+ * travou — e é o que faz a correção de uma regra valer para os e-mails antigos.
+ * Não mexe no card do projeto: só manda a robô olhar aquela mensagem de novo.
+ */
+export function useRelerEmail() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (mensagemId: string) => {
+      const { error } = await supabase.rpc('ludmilla_email_reler' as never, {
+        p_mensagem_id: mensagemId,
+      } as never);
+      if (!error) return;
+      // A RPC ainda não existe no banco (nenhuma migração a criou, e
+      // `portal_email_mensagens` não tem política de UPDATE para o app). Dizer
+      // isso é melhor do que um erro cru do PostgREST — ou, pior, um silêncio
+      // que faria o usuário acreditar que a mensagem voltou para a fila.
+      const cod = (error as { code?: string }).code;
+      if (cod === 'PGRST202' || cod === '42883') {
+        throw new Error(
+          'A ação "ler de novo" ainda não está no banco (falta a função ludmilla_email_reler). '
+          + 'Nada foi alterado: a mensagem continua como está.',
+        );
+      }
+      throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['mensagens-email'], exact: false });
+      toast.success('Marcada para ser lida de novo. A robô volta nela na próxima leitura da caixa — o card do projeto não mudou agora.');
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+}
+
+/**
+ * A última leitura da caixa desta conta. É de onde saem os contadores do
+ * cartão: eles são a rede de segurança do automático (imagem descartada,
+ * anexo bloqueado, mensagem que ficou para a próxima).
+ */
+export function useUltimoRunEmail(accountId: string | null) {
+  return useQuery({
+    queryKey: ['ultimo-run-email', accountId],
+    queryFn: async (): Promise<PortalRun | null> => {
+      if (!accountId) return null;
+      const { data, error } = await supabase
+        .from('portal_sync_runs' as never)
+        .select('*')
+        .eq('account_id', accountId as string)
+        .eq('tipo', 'varredura_email')
+        .order('pedido_em', { ascending: false })
+        .limit(1);
+      if (error) throw error;
+      return ((data ?? []) as PortalRun[])[0] ?? null;
+    },
+    enabled: !!accountId,
+    // o run leva de segundos a minutos: a tela acompanha sozinha enquanto roda
+    refetchInterval: (q) => (q.state.data?.situacao === 'na_fila' || q.state.data?.situacao === 'rodando' ? 5_000 : false),
+  });
+}
+
+/** Um contador do JSON `resultado` do run, ou null quando o run não o gravou. */
+export function contadorDoRun(run: PortalRun | null | undefined, chave: string): number | null {
+  const v = run?.resultado?.[chave];
+  return typeof v === 'number' ? v : null;
 }

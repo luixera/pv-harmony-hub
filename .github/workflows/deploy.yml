@@ -31,6 +31,15 @@ jobs:
             --project-ref yqsqrdndvsnhbsoaoilf \
             --no-verify-jwt
 
+      # API de status da Ludmilla: a chave gdm_ é a credencial, não o JWT
+      - name: Deploy ludmilla-status
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          supabase functions deploy ludmilla-status \
+            --project-ref yqsqrdndvsnhbsoaoilf \
+            --no-verify-jwt
+
       - name: Deploy test-gmail
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
@@ -127,6 +136,61 @@ jobs:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: |
           supabase functions deploy ze-brain \
+            --project-ref yqsqrdndvsnhbsoaoilf \
+            --no-verify-jwt
+
+      # A chave que a ludmilla-parecer aceita, vinda do MESMO segredo que o
+      # worker da Ludmilla usa (ludmilla-worker.yml a passa como
+      # SUPABASE_SERVICE_ROLE_KEY). Assim as duas pontas casam por construção:
+      # no ambiente das functions a variável SUPABASE_SERVICE_ROLE_KEY guarda a
+      # chave NOVA (sb_secret_…), enquanto o worker pode estar mandando o JWT
+      # legado — e o portão da função compara string inteira, sem rede.
+      #
+      # Por env-file, nunca por argumento: `secrets set CHAVE=valor` deixa o
+      # segredo visível na lista de processos do runner (o GitHub mascara o log,
+      # não a linha de comando). O arquivo nasce com umask 077 e morre no trap.
+      # O prefixo SUPABASE_ é reservado pela plataforma, por isso o nome próprio.
+      - name: Segredo do robô para a ludmilla-parecer
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          CHAVE_DO_WORKER: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          if [ -z "$CHAVE_DO_WORKER" ]; then
+            echo "SUPABASE_SERVICE_ROLE_KEY ausente — a ludmilla-parecer vai recusar o worker com 401."
+            exit 0
+          fi
+          umask 077
+          ARQ=$(mktemp)
+          trap 'rm -f "$ARQ"' EXIT
+          # printf '%s', não echo: echo acrescenta \n, e o portão compara a
+          # string inteira — um \n no fim daria 401 para sempre.
+          # A quebra final termina a LINHA do env-file e não entra no valor. Se
+          # o próprio segredo tiver espaço nas pontas, quem limpa é a função:
+          # ela compara a string inteira e faz trim nos dois lados.
+          printf 'LUDMILLA_WORKER_KEY=%s\n' "$CHAVE_DO_WORKER" > "$ARQ"
+          printf 'ASSINADOR_WORKER_KEY=%s\n' "$CHAVE_DO_WORKER" >> "$ARQ"
+          supabase secrets set --env-file "$ARQ" \
+            --project-ref yqsqrdndvsnhbsoaoilf
+
+      # Lê o PDF do parecer de acesso com IA. Só o worker da Ludmilla chama, com
+      # service role; a checagem é feita dentro da função (por isso o
+      # --no-verify-jwt, como as irmãs).
+      - name: Deploy ludmilla-parecer
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          supabase functions deploy ludmilla-parecer \
+            --project-ref yqsqrdndvsnhbsoaoilf \
+            --no-verify-jwt
+
+      # Triagem das assinaturas (Claudinho). Só o assinador chama, com a chave
+      # ASSINADOR_WORKER_KEY gravada no passo "Segredo do robô…" acima; a
+      # checagem é feita dentro da função (por isso o --no-verify-jwt).
+      - name: Deploy assinatura-triagem
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          supabase functions deploy assinatura-triagem \
             --project-ref yqsqrdndvsnhbsoaoilf \
             --no-verify-jwt
 

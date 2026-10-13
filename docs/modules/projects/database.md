@@ -5,12 +5,24 @@
   concessionaire_id, kanban_model_id, form_config_id, created_by, created_at,
   updated_at, is_deleted, deleted_by, last_status_change, source, …`.
   `source`: `public_form | company_login | admin`.
+  ⚠️ **`title` é cópia do nome do titular**, gravada na criação
+  (`NewProject`/`PublicProjectForm`: `holderName.toUpperCase()`). Não há
+  gatilho ligando-o a `project_general_data.holder_name`: até 12/10/2026,
+  trocar o titular deixava o título com o nome antigo para sempre — o PRJ-81492
+  seguiu meses como "ANTONIO" depois de a titularidade passar ao ROBSON, e 12
+  dos 256 projetos estavam assim (metade por troca de titular, metade por erro
+  de digitação corrigido só no titular). Desde então o **modal** atualiza o
+  título ao salvar a aba Geral quando o titular muda
+  (`tituloQueAcompanhaTitular` em `src/utils/projectTitle.ts`). Decisão do
+  usuário: a correção fica no modal, não no banco, e os projetos que já estavam
+  divergentes ficam como estão. **Outros caminhos que alterem o titular
+  (revisão, importação, automação) continuam deixando o título para trás.**
 
 ## Satélites 1:1
 - **`project_general_data`** (26 col.) — titular (`holder_name`,
   `holder_cpf_cnpj`, `holder_email`, `holder_phone`), endereço quebrado
   (`address, address_number, address_complement, neighborhood, cep, city,
-  state`), `uc_number`, `utility_company`, `phase_type`,
+  state`), `uc_number`, `utility_company`, `phase_type`, `grid_voltage`,
   `circuit_breaker_current`, `coordinates`, `is_rural`, `has_beneficiaries`,
   flags do Claudinho.
   ⚠️ `utility_company` é texto livre gravado como `'A definir'` na criação

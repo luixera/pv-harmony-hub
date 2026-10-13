@@ -1,4 +1,4 @@
-# ADR 0008 — Base pública de rede elétrica sem `tenant_id`
+# ADR 0009 — Base pública de rede elétrica sem `tenant_id`
 
 **Status**: aceito · **Data**: out/2026
 

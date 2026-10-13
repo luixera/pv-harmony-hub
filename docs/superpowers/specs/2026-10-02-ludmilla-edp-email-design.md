@@ -122,6 +122,19 @@ forte que `protocolo`). Se aparecer e **divergir**, ela **não anexa**: grava o
 anexo como bloqueado com o motivo e levanta a mão na `/ludmilla`. Se não
 aparecer nenhum dos dois, segue só pelo protocolo, que é único.
 
+**Emenda (rodada 3, 12/10/2026) — e-mail que cita mais de um protocolo.** A frase
+da §5 ("cada PDF vira linha em `portal_anexos`") supunha que o mesmo anexo serve
+todos os projetos citados, e o código nunca verificou isso. Com mais de um dos
+NOSSOS protocolos no assunto, só o arquivo cujo **nome** traz o número daquele
+protocolo é anexado (e é o PDF que a IA lê); sem nenhum arquivo casando, nada é
+anexado, a linha fecha `concluida = true` com o motivo e a pessoa decide. Com um
+protocolo só, nada muda. Detalhe na doc do módulo.
+
+**Emenda (rodada 3) — o que sobe.** Só o que o bucket `project-documents` aceita
+(pdf, xls, xlsx, docx; até 10 MiB). O resto é ignorado e contado
+(`anexos_recusados`), não tentado: tentar fazia a mensagem ficar pendente e a IA
+reler o mesmo PDF a cada run.
+
 ## 7. Leitura do parecer (edge function `ludmilla-parecer`)
 
 Recebe `{ pdf_base64, nome_arquivo, protocolo }` e devolve

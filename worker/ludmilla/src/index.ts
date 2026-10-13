@@ -6,6 +6,7 @@ import {
   lerCaptcha, pedirCaptcha, pegarRun, protocolosDeInteresse, pulsar, reportarDisco, sessaoViva, subirDocumento, subirPrint, subirTexto, temCriacaoPendente, Run,
 } from './fila.js';
 import { executarCriacao } from './criacao/index.js';
+import { executarVarreduraEmail } from './email/index.js';
 import { avisar, carregarEnvDaEstacao, dirPerfilChrome, modoAtual, pedirLoginNoTerminal } from './local.js';
 
 /**
@@ -300,9 +301,25 @@ async function principal() {
       await dormir(criacao ? 5_000 : POLL_SEGUNDOS * 1_000);
       continue;
     }
+    if (run.tipo === 'varredura_email') {
+      // acompanhamento por e-mail: lê a caixa por IMAP, não abre navegador —
+      // fica fora do laço do Playwright. O caminho do portal segue intocado.
+      await executarVarreduraEmail(run);
+      await dormir(5_000);
+      continue;
+    }
     if (run.tipo === 'criar_projeto') {
-      // criação de projeto: navegador próprio (agent-browser), fora do laço do Playwright
-      await executarCriacao(run);
+      // criação de projeto: o MESMO navegador da varredura. O portal recusa a
+      // CLI agent-browser a partir da VPS (13/10/2026 — ver criacao/navegador.ts).
+      // Na estação, aproveita a sessão viva; na VPS, contexto do run, fechado
+      // aqui como a varredura faz em destino().
+      const vivaCpfl = vivas.get('cpfl')?.contexto;
+      const ctxCriacao = vivaCpfl ?? await abrir('cpfl');
+      try {
+        await executarCriacao(run, ctxCriacao);
+      } finally {
+        if (!vivaCpfl) await ctxCriacao.close().catch(() => undefined);
+      }
       await dormir(5_000);
       continue;
     }

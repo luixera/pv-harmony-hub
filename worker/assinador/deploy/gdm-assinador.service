@@ -1,0 +1,42 @@
+[Unit]
+Description=Assinador — prepara e assina documentos de projeto (GD Manager)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=gdmassinador
+Group=gdmassinador
+WorkingDirectory=/opt/gdm-assinador
+EnvironmentFile=/etc/gdm-assinador/env
+Environment=HOME=/home/gdmassinador
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+ExecStart=/usr/bin/node dist/index.js
+Restart=always
+RestartSec=10
+# uma conversão do LibreOffice tem teto de 2 min no próprio worker; se o
+# processo travar de vez, o systemd derruba em 30 s depois do SIGTERM
+TimeoutStopSec=30
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=gdm-assinador
+
+# endurecimento: o assinador não precisa de mais nada da máquina.
+# PrivateTmp: o LibreOffice (perfil e arquivos de conversão, em mkdtemp no
+# /tmp) trabalha num /tmp só do serviço, invisível para outros processos da
+# VPS — e continua gravável. O .pfx e a senha do certificado ficam só na
+# memória do worker; não são gravados em disco.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=read-only
+ReadWritePaths=/home/gdmassinador
+# O código é só leitura em execução: um worker comprometido não reescreve o
+# próprio código. ProtectSystem=full NÃO cobre /opt, então o que protege de
+# verdade é o instalador deixar /opt/gdm-assinador com dono root (o usuário do
+# serviço não consegue gravar) + este ReadOnlyPaths. Se um dia o worker
+# precisar gravar algo em /opt/gdm-assinador, o lugar é /home/gdmassinador.
+ReadOnlyPaths=/opt/gdm-assinador
+
+[Install]
+WantedBy=multi-user.target

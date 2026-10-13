@@ -1,20 +1,29 @@
-# Ludmilla — acompanhamento dos portais das concessionárias
+# Ludmilla — acompanhamento das concessionárias
 
-> Estado: 🟡 CPFL funcionando ponta a ponta (set/2026): robô na VPS lê os
+> Estado: 🟡 Dois meios de acompanhar, e cada conta diz qual usa
+> (`portal_accounts.acompanhamento`).
+> **CPFL — por portal**, funcionando ponta a ponta (set/2026): robô na VPS lê os
 > protocolos, o banco gera recomendações, a página /ludmilla aplica/ignora,
-> agendamento 2×/dia. Elektro: **estação local** (PC do coworking) construída
-> e testada com portal de mentira — aguarda o aceite na máquina de verdade.
-> Só tenant GD Manager (`is_library`).
+> agendamento 2×/dia.
+> **EDP — por e-mail** (out/2026): ela lê a caixa, acha pelo protocolo, anexa o
+> parecer no card e recomenda a etapa. Código e banco prontos e revisados; **o
+> run ainda não rodou** — o primeiro é manual e acompanhado.
+> **Elektro — estação local** (PC do coworking) construída e testada com portal
+> de mentira; aguarda o aceite na máquina de verdade.
+> Só tenant GD Manager (`is_library`). Ela nunca move card sozinha, nunca
+> escreve no portal nem na caixa, e nunca resolve CAPTCHA.
 > Specs: [2026-09-14-ludmilla-design.md](../../superpowers/specs/2026-09-14-ludmilla-design.md) ·
-> [2026-09-15-ludmilla-elektro-local-design.md](../../superpowers/specs/2026-09-15-ludmilla-elektro-local-design.md)
+> [2026-09-15-ludmilla-elektro-local-design.md](../../superpowers/specs/2026-09-15-ludmilla-elektro-local-design.md) ·
+> [2026-10-02-ludmilla-edp-email-design.md](../../superpowers/specs/2026-10-02-ludmilla-edp-email-design.md)
 
 ## O que é
 
 Funcionária como o Bidu (usuária `staff`, sem senha, id
-`00000000-10d1-4000-8000-000000000002`). Entra nos portais de projetos das
-concessionárias, **lê** o status dos protocolos e devolve **recomendações**
-numa página de relatório; uma pessoa aplica ou ignora. Nunca escreve no
-portal, nunca move card sozinha, nunca resolve CAPTCHA.
+`00000000-10d1-4000-8000-000000000002`). Acompanha os projetos nas
+concessionárias por um de dois meios — **entrando no portal** ou **lendo a caixa
+de e-mail** —, **lê** o status dos protocolos e devolve **recomendações** numa
+página de relatório; uma pessoa aplica ou ignora. Nunca escreve no portal nem na
+caixa, nunca move card sozinha, nunca resolve CAPTCHA.
 
 ## Banco (`20260914120000_ludmilla.sql`)
 
@@ -298,8 +307,8 @@ Conexão MMGD". Validado ponta a ponta: projeto **node 546581** criado à mão
 (PRJ-14848) e o roteiro automático repetiu tudo até a revisão em 1 min 15 s.
 
 Código: `worker/ludmilla/src/criacao/` — `agente.ts` (invólucro da CLI, sem
-shell, valores só por `eval --stdin`), `login.ts` (cofre `auth save
---password-stdin` com a senha do Vault → `auth login` → `auth delete`),
+shell, valores só por `eval --stdin`), `navegador.ts` (interface `Navegador` + `AgentePlaywright`, o navegador da
+varredura vestido para o roteiro),
 `roteiro-cpfl60.ts` (as 6 etapas), `js.ts` (trechos que rodam na página),
 `util.ts` (puro, testado), `index.ts` (run: dados → login → roteiro → node →
 finalizarRun). Validação local sem banco e sem salvar:
@@ -309,9 +318,94 @@ Chrome no HOME do `ludmilla`, unit libera `~/.agent-browser`,
 `LUDMILLA_AB_ARGS` leva `--no-sandbox,--disable-crashpad,…`
 (`LUDMILLA_AB_EXEC` aponta outro Chromium se o completo cair).
 
+### API de status (13/10/2026) — a porta nossa
+
+**Por que existe.** O Portal GD da Elektro (Neoenergia) bloqueia navegador
+automatizado pela Akamai **antes da tela de login** — provado na estação local,
+no PC de pessoa, em 13/10/2026 (`Access Denied / errors.edgesuite.net`, 319
+bytes). Não é IP, é detecção de automação, e a casa não disfarça automação.
+Então a pessoa entra (é o que a distribuidora exige), lê a lista de
+solicitações e entrega aqui o que viu. Daí em diante é o **mesmo trilho da
+varredura**: `ludmilla_registrar_varredura` casa com o projeto, sugere a etapa
+e o cartão aparece na /ludmilla para confirmar. Ninguém move card sem confirmar.
+
+**Endpoint.** `POST {SUPABASE_URL}/functions/v1/ludmilla-status`, deployada com
+`--no-verify-jwt`: a credencial é a **chave da API**, não o JWT.
+
+- `Authorization: Bearer gdm_<40 hex>` (ou `x-api-key`).
+- Corpo: `{ "concessionaria": "ELEKTRO", "protocolos": [ { "protocolo", "status",
+  "titular"?, "observacao"? } ] }` — até 500 itens; o mesmo protocolo repetido,
+  a última linha vence. `connector` (`cpfl|elektro|edp`) vale no lugar de
+  `concessionaria`.
+- Resposta: `{ ok, run_id, protocolos, recomendacoes }`. Erros: 401
+  `chave_ausente|chave_invalida|chave_revogada`, 404 `conta_nao_encontrada`,
+  400 `corpo_invalido|concessionaria_invalida|protocolos_invalidos` (sempre com
+  `detalhe` dizendo qual item).
+
+**Chaves.** `ludmilla_api_keys`: `gdm_` + 40 hex, guardada **só como SHA-256**;
+a chave em claro aparece uma vez, na criação. Criar/revogar = RPCs
+`ludmilla_api_key_criar`/`_revogar`, só admin do tenant; a tela fica no
+diálogo de acesso ao portal da concessionária (`ChavesDaApi`). A RPC
+`ludmilla_api_status_registrar` só aceita `service_role` (quem a chama é a
+edge function) e grava o run com `dados.origem = 'api'` e `pedido_por` = quem
+criou a chave — no Registro aparece como visita da API.
+
+**O que ainda falta para a Elektro recomendar etapa.** A recomendação vem de
+`portal_status_map (tenant, connector, status_portal → project_status)`, e a
+Elektro **não tem linhas**: "Aprovado" normaliza para `APROVADO`, não acha
+mapeamento, e o status é guardado **sem** sugestão. Preencher o vocabulário
+exige as palavras exatas do Portal GD — por isso ninguém chutou.
+
+**Fora de escopo, de propósito:** qualquer coisa que leia a página do portal
+por programa (bookmarklet, extrator). O trabalho fica do lado de cá.
+
+Validador puro em `supabase/functions/_shared/ludmillaStatus.ts` (9 testes no
+vitest); a RPC foi testada em transação com rollback (criação de chave, registro
+ok, chave inválida, lista vazia).
+
+#### A criação roda no navegador da varredura (13/10/2026)
+
+Três tentativas, nesta ordem, e o que cada uma ensinou:
+
+1. **Login próprio na CLI `agent-browser`** (17/09 a 12/10): falhou 4×, sempre
+   no passo 0. O print guardado conta: **"Olá Usuário"** + **"Você não tem
+   acesso a essa página"** — o B2C autenticava, mas a seleção de perfil
+   ("Serviços para projetistas") não acontecia, e sem ela o Drupal nega tudo.
+2. **Herdar a sessão da varredura por cookies** (12/10): o Playwright logava, os
+   **21 cookies** iam para a CLI e eram **confirmados lá dentro** — e o portal
+   recusou assim mesmo, com a navegação voltando **vazia**
+   (`ERR_HTTP_RESPONSE_CODE_FAILURE`). Medição que fechou o diagnóstico: fora da
+   VPS, a mesma CLI **sem sessão nenhuma** abre `meus-projetos` normalmente e
+   recebe a página "Access denied". Resposta vazia só acontece na VPS → é
+   **bloqueio no caminho contra aquele navegador naquele IP**, não falta de
+   credencial.
+3. **Rodar no navegador da varredura** (13/10, atual, PROVADO: simulacao do
+   PRJ-05626 passou inteira em 72 s, todos os passos ok): o que o portal aceita, no
+   mesmo IP, duas vezes por dia, há um mês.
+
+O roteiro das 6 etapas **não foi reescrito**. Ele passou a falar com a interface
+`Navegador` (`criacao/navegador.ts`) — `abrir`, `clicar`, `js`, `titulo`,
+`url`, `esperar`, `esperarCarga`, `screenshot`, `limparRede`,
+`ultimoPostHtml`, `definirCabecalhos`, `fechar`. Quem a cumpre agora é o
+`AgentePlaywright`, que abre uma **aba** no contexto da varredura; a CLI
+(`Agente`) continua cumprindo a mesma interface e um teste trava as duas lado a
+lado, para nenhuma ficar para trás.
+
+Consequências:
+- **O login é o `logarNaCpfl` do conector** — o mesmo da varredura. Quebrou?
+  Quebra para os dois, e conserta num lugar só.
+- Depois do login, a criação **prova** a sessão (`JS_AUTENTICADO`: menu
+  "GERENCIE SEUS PROJETOS" ou link "Sair") antes de começar o formulário.
+- Nenhuma senha passa por CLI nenhuma; o cofre do agent-browser saiu do caminho.
+- O **contexto é do laço**: na estação reaproveita a sessão viva; na VPS é do
+  run e o laço fecha ao fim, como `destino()` faz com a varredura. A criação
+  fecha só a **aba**.
+- `ultimoPostHtml` virou escuta de respostas de documento POST — é o que diz
+  **qual campo** o servidor recusou quando o Avançar não avança.
+
 | Passo | Nome | O que faz | Seletores-chave (mapa de 17/09) |
 |---|---|---|---|
-| 1 | `introducao` | login pelo cofre → `gestao-projetos/criar-projeto` → link 60 → Introdução → "Conexão de microgeração" e **confere** `flux_type = conexão`. Nunca abre `node/add/project_60` direto (retoma formulário velho) | `a[href$="node/add/project_60"]`, `#edit-next-new-connection`, `#edit-field-flux-type-conexo` |
+| 1 | `introducao` | login da varredura na mesma aba → `gestao-projetos/criar-projeto` → link 60 → Introdução → "Conexão de microgeração" e **confere** `flux_type = conexão`. Nunca abre `node/add/project_60` direto (retoma formulário velho) | `a[href$="node/add/project_60"]`, `#edit-next-new-connection`, `#edit-field-flux-type-conexo` |
 | 2 | `dados_uc` | **Orçamento de Conexão** (rótulo conferido), 3 × Não (`-0`), UC + Buscar, espera Nome do Cliente, Empresa = CPFL, Lat/Long DMS, 2 × Não (`-1`!), perguntas condicionais, FormData, Avançar | `#edit-field-quotation-options-60-connection`, `#edit-field-consumer-unit-0-consumer-unit-code`, `…-send-uc-code`, `[id^="edit-field-consumer-unit-0-latitude"]`, `#edit-next` |
 | 3 | `dados_projeto` | título, Não, ENERGIA SOLAR (2721), data +30 (JS), Geração Local (2771), categoria (regra do front), GED 13 (2761), aéreo (2866), fases (2751), **Cabos = nº de fases**, caixa, carga = Demanda, disjuntor da regra, geração (651, módulos kWp, área, inversores); **FormData dos totais conferido**; Avançar | ids `edit-field-*` e `#edit-field-complementary-generation-0-subform-field-*` |
 | 4 | `dados_cliente` | Pessoa Física, Consultar CPF (espera Nome), celular/e-mail só se vazios, endereços = instalação, 2 × Sim (`-1`!) | `[id^="edit-field-physicalperson-0-*"]`, `[id^="edit-field-address-type-mesmo"]`, `…authorize-pay-connec-costs-1`, `…solicitacao-de-vistoria-1` |
@@ -348,6 +442,21 @@ menor disjuntor da classe que comporta o do projeto > maior da classe).
 
 ## Próximos
 
+0. **Primeiro run da EDP por e-mail** — manual e acompanhado, antes de
+   qualquer agendamento. O que olhar está em "O que NÃO está provado", no fim
+   deste documento. Pendências pequenas que ficaram para depois dele:
+   - o `motivo` mostra "o robô começou a tratar esta mensagem" enquanto o
+     tratamento corre, e **permanentemente** se o robô morrer no meio — trocar
+     por um texto que diga que começou e **não terminou**;
+   - guarda em `(p_resultado->>'falhas')::int` dentro de
+     `ludmilla_finalizar_run_impl`: valor não numérico levanta exceção e o run
+     não fecha (hoje só o nosso worker escreve ali, então é latente);
+   - os contadores do cartão são só do **último** run, então um documento
+     bloqueado há três runs sai do número (continua no histórico);
+   - não há "Ler de novo" em lote: regra errada por uma semana faz clicar
+     linha por linha;
+   - o grupo "não reconheci" não oferece **criar a regra a partir do assunto**
+     daquele e-mail, que é o gesto óbvio ali.
 1. **Aceite da estação** no PC do coworking: instalar, "Verificar agora" na
    Elektro (descoberta), responder o código pela /ludmilla (celular) ou no
    PC, telas no bucket, e observar por quanto tempo a sessão fica viva. Risco
@@ -436,3 +545,337 @@ aparece desde o primeiro dia):
 filtra por isso ("Tudo · Ela fez · A equipe fez"), mostra 60 e tem "Ver mais"
 (até 400). Só equipe do tenant GD Manager — outro tenant e empresa recebem
 "Sem acesso à Ludmilla" (testado: 6 checagens de isolamento).
+
+## Acompanhamento por E-MAIL — a EDP (out/2026)
+
+Spec [2026-10-02-ludmilla-edp-email-design.md](../../superpowers/specs/2026-10-02-ludmilla-edp-email-design.md) ·
+plano [2026-10-02-ludmilla-edp-email.md](../../superpowers/plans/2026-10-02-ludmilla-edp-email.md)
+
+Até aqui a Ludmilla só sabia **entrar no portal**. A EDP ganhou um segundo meio:
+ela **lê a caixa de e-mail** e interpreta as mensagens da concessionária. Pedido
+do usuário: "a princípio eu gostaria que ela interpretasse os e-mails para a
+gente saber se já foi aprovado ou não" — portal e pedido de vistoria da EDP
+ficaram para depois, de propósito.
+
+Cada conta passou a dizer **como** é acompanhada: `portal_accounts.acompanhamento`
+é `portal` ou `email`. A CPFL continua `portal`, a EDP é `email`. Não existe
+conta com os dois.
+
+### Por que no robô, e não numa edge function
+
+IMAP precisa de `imapflow` + `mailparser`, bibliotecas Node — não rodam em Deno.
+Então o acompanhamento por e-mail é um tipo de run novo no worker,
+`varredura_email`, desviado antes do laço do Playwright (não abre navegador).
+Só na VPS: as RPCs de e-mail não têm variante `_local`, e o run se recusa a
+rodar em modo estação, com mensagem clara. Era exatamente o pedido do usuário —
+"assim não preciso deixar o computador ligado".
+
+### Parte dos PROJETOS, não dos remetentes
+
+Aqui está a diferença essencial em relação ao Claudinho (`scan-emails`), que
+varre por remetente nos últimos dias e nunca toca em anexo:
+
+A Ludmilla parte de **cada protocolo em andamento** e procura **o número** na
+caixa. Para a EDP, o protocolo do sistema é a nota com **um zero à esquerda**
+(`045006443920` equivale a `45006443920`) — confirmado contra três pares reais
+de projeto/e-mail. Toda comparação é por dígitos, com zeros à esquerda removidos
+e mínimo de 8 dígitos (`chaveProtocolo` / `casaProtocolo`).
+
+Fluxo de um run: credencial da caixa → protocolos em andamento (até 80) → regras
+do banco → para cada protocolo, busca no IMAP → **triagem pelo envelope** (sem
+baixar o corpo) → baixa só o que sobrou → confere → anexa → lê o parecer com IA →
+recomenda. **Nunca move card e nunca escreve na caixa.**
+
+### A conferência: o que barra e o que só confirma
+
+O protocolo é **chave única**: se ele casa, o documento é daquele projeto. Então:
+
+| Sinal | O que faz |
+|---|---|
+| protocolo no **assunto** | obrigatório. Sem ele, a mensagem é descartada |
+| **titular** do PDF diverge do cadastro | **BARRA** o anexo. É o único bloqueio do fluxo |
+| **endereço** do PDF diverge | **não barra** — registra o motivo e segue |
+
+Endereço divergente quase sempre é cadastro nosso desatualizado ou formato
+diferente ("RUA X 120 APTO 45" contra "Rua X, 120"); barrar por isso faria o
+parecer certo não chegar ao card. Nome de **outra pessoa** num parecer do nosso
+protocolo, esse sim é alarme.
+
+Titular e endereço conferem **só contra o que a IA extraiu do PDF**, nunca contra
+o corpo do e-mail. Comparar com o corpo inteiro casava por acidente: "JOSÉ …
+SANTOS" casa com um e-mail que diga "Av. São José" e "Santos/SP", e saía o selo
+mais forte sem nada conferido. Nome de uma palavra só (dos dois lados) é **falta
+de dado**, não divergência: cai para o critério seguinte.
+
+### "Já vi" não é "já terminei" — a máquina de retentativa
+
+O defeito mais caro que a revisão pegou: a mensagem era marcada como vista antes
+de se saber se algo útil saiu dela. Falha passageira da IA, regra mal
+configurada ou anexo que não subiu faziam o documento **desaparecer em
+silêncio**, recuperável só com `DELETE` à mão.
+
+`portal_email_mensagens` tem `concluida` e `tentativas`:
+
+- `concluida = true` → terminei, não mexo mais;
+- `concluida = false` e `tentativas < 5` → tento de novo no próximo run;
+- `concluida = false` e `tentativas >= 5` → desisti; **a tela mostra em destaque**.
+
+`concluida = true` só quando a regra casou **e** o parecer foi lido com `ok:true`
+(ou não havia PDF) **e** todo anexo que devia subir subiu. Caso especial:
+**nenhuma regra reconheceu → `concluida = true`** de propósito; é configuração,
+não falha passageira, e insistir faria a robô rebaixar o mesmo e-mail duas vezes
+por dia para sempre. Bloqueio por titular também fecha: é decisão, não falha.
+O mesmo vale para o e-mail de vários protocolos sem arquivo que diga de quem é
+(próxima seção) e para o arquivo que o bucket não aceita (mais abaixo): descarte
+conhecido, nunca falha.
+
+A recomendação de etapa **nunca é rebaixada**: tentativa 1 leu o parecer
+favorável e deixou o cartão com `approved`; tentativa 2, com a IA falhando,
+chega com recomendação nula e `ludmilla_email_registrar` mantém a que já existia
+(`coalesce(p_recomendacao, u.recomendacao)`). Recomendação **nova** (não nula)
+substitui a velha. Sem isso, a IA falhando até o teto de 5 deixava o cartão sem
+etapa tendo tido uma.
+
+### E-mail que cita VÁRIOS protocolos (rodada 3, 12/10/2026)
+
+O laço do run trata **um protocolo por vez**. Um assunto como
+`NOTAS 45006443920 e 45006443921` roda `tratarMensagem` duas vezes para a mesma
+mensagem. O código antigo, para cada vez, anexava **todos** os arquivos e lia o
+**maior** PDF — de qualquer um dos dois. O parecer de um cliente aparecia no card
+do outro (de outra integradora, até) com o comentário "titular conferido", e o
+outro projeto era bloqueado por divergir do PDF errado. A premissa "o mesmo anexo
+serve os dois projetos" estava escrita num brief e nunca foi verificada.
+
+Agora:
+
+1. **Conta quantos dos NOSSOS protocolos o assunto cita** (`protocolosNoAssunto`,
+   por dígitos, sem zero à esquerda, piso de 8). Número de pedido, CEP ou
+   protocolo de atendimento no assunto não conta: só os da lista do run.
+2. **Com mais de um, só vai para o card o arquivo cujo NOME traz o número daquele
+   protocolo** (`PARECER_45006441002.pdf`; `separarPorProtocolo`). Arquivo que
+   traz os **dois** números é ambíguo e não vai para nenhum card. A IA lê o PDF
+   **desse protocolo**, não o maior do e-mail — então o titular confere contra o
+   documento certo.
+3. **Se nenhum arquivo casar pelo nome, não anexa nada**: a IA nem é chamada, a
+   linha fica `concluida = true` com `motivo` ("o e-mail cita N protocolos e não
+   consegui dizer qual documento é de qual … confira à mão"), e cai no grupo
+   "Terminei, mas com um porém" da tela. No `resultado` do run vai em
+   `sem_dono` — **não** em `bloqueados`, que a tela rotula como "titular
+   divergiu".
+
+**Com UM protocolo citado e nomes de arquivo genéricos** (`parecer.pdf`,
+`documento.pdf`, `image001.png`) nada muda: anexa todos os não-imagem e lê o
+maior PDF. Regra que não anexa nem lê PDF não depende de arquivo e não é afetada.
+
+### Nome de arquivo com o número de OUTRO protocolo (E1b, 12/10/2026)
+
+A rodada 3 só olhava o nome do arquivo quando o assunto citava **vários**
+protocolos **nossos**. Sobravam duas lacunas, que levavam ao mesmo resultado do
+E1 (documento de um cliente no card de outro): (1) o assunto cita dois protocolos
+e só um é nosso — o outro é de projeto concluído, de outra conta ou fora do teto
+de 80 —, então a contagem dá 1 e anexava tudo; (2) com um protocolo só, um
+arquivo com o número de **outro projeto nosso** no nome também era anexado.
+
+A regra agora vale **sempre** (com um protocolo ou vários), para regra que anexa
+ou lê PDF: **arquivo cujo nome carrega um número de protocolo DIFERENTE do que
+está sendo tratado não vai para este projeto** (`tirarDeOutroProtocolo`). Não se
+compara com a lista de projetos: "é diferente do que estou tratando" vale mesmo
+que o outro número não seja de projeto nenhum nosso.
+
+| Nome do arquivo | Resultado |
+|---|---|
+| sem número de protocolo reconhecível | como sempre: não é sinal, não barra |
+| traz o número do protocolo em tratamento (com ou sem zero à esquerda) | anexa |
+| traz um número de protocolo **diferente** | não anexa a este projeto |
+| traz o deste **e** o de outro (ambíguo) | não anexa |
+
+**"Número de protocolo reconhecível" no nome** = sequência **contígua** de **11 ou
+12 dígitos**, contados depois de tirar os zeros à esquerda
+(`DIGITOS_DE_PROTOCOLO_NO_NOME` em `util.ts`); compara-se como `casaProtocolo`:
+por dígitos. É estreita de propósito, porque a regra **barra** arquivo e o erro
+caro é o falso positivo (documento legítimo que não chega ao card). Ficam de
+fora, por forma: data (8 dígitos), UC e telefone com DDD (10), epoch em ms (13),
+carimbo `AAAAMMDDhhmmss` e CNPJ (14), linha digitável de boleto (44+) e CPF/CNPJ
+pontuado. O custo do outro lado: protocolo de outra concessionária fora de 11–12
+dígitos não é visto (e o nome sem número reconhecível segue valendo como antes).
+Limite conhecido: CPF **sem pontuação** (11 dígitos) é indistinguível de
+protocolo pela forma.
+
+Quando barra, o arquivo **não abre linha** em `portal_anexos`, a IA **não lê** o
+PDF dele, e o `motivo` diz `N arquivo(s) não anexado(s): o nome traz o número de
+outro protocolo, diferente do deste projeto (nomes…)`. Os nomes vão para o banco,
+nunca para o log (que leva só a contagem). Se **todos** os arquivos forem de
+outro, a mensagem vira `sem_dono` (concluída, IA fora, "confira à mão"); se sobra
+algum arquivo, segue `tratado` com a ressalva.
+
+**Dois contadores, duas unidades.** `sem_dono` conta **mensagens** (o
+tratamento em que nada ficou seguramente deste protocolo). `anexos_de_outro_protocolo`
+conta **arquivos** barrados por esta regra, e pode ser > 0 sem `sem_dono` (o
+genérico do mesmo e-mail foi anexado). **Não conta a divisão normal** de um e-mail
+com dois protocolos **nossos**: ao tratar o A, o arquivo do B é barrado, mas é o
+fluxo do E1 funcionando — contar subiria o aviso justamente quando está tudo certo.
+Só conta o arquivo cujo nome traz um número que o e-mail **não serve**.
+
+### O que o bucket de documentos aceita (rodada 3)
+
+O bucket `project-documents` aceita **pdf, xls, xlsx, docx, jpeg, png e webp, até
+10 MiB (10485760 bytes)** — lido de `storage.buckets` em 12/10/2026, e o worker
+espelha isso em `util.ts` (`LIMITE_BUCKET_BYTES`, `destinoNoBucket`). Mudar o
+bucket sem mudar o worker reabre o defeito abaixo.
+
+O worker mandava tudo o que não era imagem e o storage recusava o resto. Cenário:
+`parecer.pdf` + `parecer.p7s` (assinatura digital, comum). O `.p7s` era recusado
+→ falha → a mensagem ficava pendente → a cada run a IA **relia o mesmo PDF** (até
+5 leituras pagas) antes de a mensagem ser abandonada no teto. Um PDF acima de
+10 MB caía no mesmo caminho. Agora o arquivo que o bucket não aceita é
+**ignorado, não falhado**: não abre linha em `portal_anexos`, conta em
+`anexos_recusados` no `resultado`, e entra no `motivo` com o nome e a razão
+(`tipo` ou `tamanho`). O nome vai para o banco, nunca para o log. Cliente de
+e-mail que declara `application/octet-stream` para um PDF sobe com o mime da
+extensão (o storage confere o mime declarado). Um PDF recusado por tamanho **ainda
+é lido** pela IA: a recusa é de anexar.
+
+Anexo **sem nome de arquivo** também deixa rastro: era filtrado em silêncio. Agora
+conta em `anexos_sem_nome`, entra no `motivo` e vai para o log (só uid e
+quantidade). Imagem sem nome (logo inline de assinatura) não conta.
+
+A tentativa é contada **antes de a IA ser chamada** (`ludmilla_email_tentativa`).
+Sem isso, um tratamento que morresse antes do registro não contava — e todo run
+seguinte baixava o e-mail **e pagava a IA de novo**, indefinidamente, sem avisar.
+
+### A chave do anexo CARREGA o protocolo
+
+`id_arquivo` é `mensagem#protocolo#arquivo`, montado por uma expressão única nas
+duas pontas (`idArquivoDeEmail` no worker, `ludmilla_email_id_arquivo` no banco)
+— divergir entre elas faria a robô re-anexar o que já anexou. Dois anexos de
+**mesmo nome** na mesma mensagem ganham a ocorrência a partir do segundo
+(`…#parecer.pdf#2`); o primeiro mantém a chave de sempre. O índice é contado na
+mensagem **inteira**, antes de qualquer filtro, para ser o mesmo em todo run.
+
+Sem o protocolo na chave, um e-mail que cita **dois** protocolos colidia, e num
+dos ramos **o documento ia para o card do cliente errado**. Além da chave, o
+`ON CONFLICT` exige que a linha existente seja do **mesmo projeto**, e o worker
+confere o `projeto_id` devolvido antes de subir arquivo: chave certa **e** guarda.
+Linha parada em `pendente` ou `erro` volta para a fila. `ludmilla_email_anexo_novo`
+responde **sempre uma linha**, com `abertura` = `aberto` (suba o arquivo),
+`ja_resolvido` (`enviado`/`bloqueado` neste projeto) ou `projeto_inexistente` —
+eram duas respostas misturadas num conjunto vazio, e o log dizia "já resolvido no
+card" até para projeto que nem existia.
+
+A UNIQUE `portal_anexos (account_id, id_arquivo)` **não** foi alterada: com o
+protocolo dentro da chave ela já discrimina, e `project_id` é nulável, então
+`NULLS DISTINCT` abriria duplicata e mudaria a semântica de conflito do caminho
+da CPFL. Provado que a CPFL não re-anexa: `ludmilla_registrar_varredura` grava
+`id_arquivo` com o id do arquivo do site e não foi tocada (md5 do corpo
+idêntico), a reinserção do `ON CONFLICT` do portal sobre as 79 linhas de produção
+criou 0 linhas, e `portal_anexos` tinha **zero** linhas com `#` — o caminho de
+e-mail nunca havia gravado nada.
+
+### A leitura do parecer: `ludmilla-parecer`
+
+Edge function Deno que recebe o PDF em base64 e devolve
+`{ ok, veredito, resumo, pendencias, titular, endereco }`, com `veredito` em
+{`favoravel`, `pendencia`, `inconclusivo`}.
+
+- **Só o robô chama.** Igualdade de string contra `SUPABASE_SERVICE_ROLE_KEY` ou
+  `LUDMILLA_WORKER_KEY`, **sem chamada de rede**, negando por omissão, com a
+  mesma frase de 401 para todas as causas. A primeira versão sondava uma rota do
+  Auth e usava o **404** como sinal de aceite — *fail-open*: se a rota mudasse,
+  qualquer token passaria, inclusive a chave publicável do front.
+  `LUDMILLA_WORKER_KEY` existe porque, no ambiente das functions,
+  `SUPABASE_SERVICE_ROLE_KEY` guarda a chave **nova** (`sb_secret_…`) enquanto o
+  worker pode mandar o JWT legado; o `deploy.yml` define o segredo a partir do
+  **mesmo** segredo do GitHub que o worker usa, por `--env-file`.
+- **Falha de IA não cobra.** A reserva no extrato é desfeita em rede caída, erro
+  da Anthropic e tempo esgotado (`AbortController`, `TETO_MS = 110_000`); os
+  tokens lançados são os **reais** da resposta. `ai_call_cost_usd` estima
+  US$ 0,10 para o `kind` `ludmilla_parecer`. Exige `tenant_id` no corpo, senão o
+  gasto fica fora do extrato do console.
+- `ok:false` (a IA não respondeu) e `veredito:'inconclusivo'` legítimo (a IA leu
+  e não concluiu) chegam **os dois** como HTTP 200; quem separa é o campo `ok`.
+  Em `ok:false` o **anexo sobe de todo jeito** e nenhuma recomendação sai.
+- O veredito é normalizado (minúsculas, sem acento) antes da lista branca:
+  "favorável" com acento cairia em `inconclusivo` e a recomendação não sairia.
+  Marcadores que não são nome ("nao consta", "a definir", "ilegivel"…) viram
+  `null`, senão bloqueariam o anexo por falsa divergência de titular. Em
+  **titular e endereço** o marcador vale em qualquer ponto da frase, como palavra
+  inteira ("Não consta.", "Não identificado no documento", "Titular não
+  identificado"); errar para o lado de casar demais é seguro (só faz a conferência
+  cair para o protocolo). No **resumo** segue igualdade exata: "Não consta
+  restrição; conexão aprovada." é um resumo legítimo. O teste
+  `parecer-marcadores.test.ts` carrega o arquivo real da função, sem Deno.
+
+### Banco
+
+| Objeto | Para que |
+|---|---|
+| `portal_accounts.acompanhamento` | `portal` ou `email` |
+| `portal_email_regras` | assunto/remetente → tipo de documento, anexar, ler PDF. **Editável na tela** |
+| `portal_email_mensagens` | o que foi lido: veredito, resumo, motivo, `concluida`, `tentativas`, `arquivo_lido`, `update_id` |
+| `ludmilla_email_credencial` · `_protocolos` · `_regras` | o que o run precisa (só service role) |
+| `ludmilla_email_mensagem_pendente` | "preciso tratar?" — chave `(conta, mensagem, protocolo)` |
+| `ludmilla_email_tentativa` | conta a tentativa ANTES do gasto de IA |
+| `ludmilla_email_anexo_novo` · `ludmilla_email_id_arquivo` | abre o anexo com a chave que carrega o protocolo (e a ocorrência, nos de mesmo nome); responde `aberto` / `ja_resolvido` / `projeto_inexistente` |
+| `ludmilla_email_registrar` | fecha a mensagem e levanta a recomendação (nunca a rebaixa para nula) |
+| `ludmilla_email_reler` | a tela reabre uma mensagem travada (zera `tentativas`) |
+| `ludmilla_anexo_frase` | o comentário no card diz a concessionária **da conta** e o que de fato foi conferido |
+
+RLS: tenant **e** `ludmilla_equipe_ok()`, como as irmãs `portal_*`. Tenant por
+`get_user_tenant_id(auth.uid())`, não por claim do JWT — 11 dos 19 usuários
+(inclusive o único admin) não têm `tenant_id` em `raw_app_meta_data`, e a
+política viraria `tenant_id = NULL`, negando tudo sem erro.
+
+### A tela
+
+`/ludmilla`: cada cartão diz "Acompanho por", e o corpo se bifurca pelo meio. O
+cartão de e-mail traz a caixa em uso, os contadores da última leitura, as
+**regras editáveis** (escrita só para `admin`, espelhando a RLS) e o histórico.
+
+Três contadores estão ali porque são **rede de segurança**, não enfeite:
+`imagens_ignoradas` (a robô não anexa imagem — é quase sempre logo de assinatura;
+se uma concessionária mandar documento escaneado, é o único lugar onde aparece),
+`a_tentar_de_novo`, e `bloqueados` (parecer recusado por divergência de titular —
+o número a olhar antes de confiar no automático). `mudancas`, no cartão de
+e-mail, são **documentos anexados**, não recomendações como no portal; por isso o
+rótulo é explícito.
+
+As linhas que pedem atenção aparecem **em destaque**, com "Ler de novo" por
+linha. Sem isso, corrigir uma regra não serviria para o passado.
+
+### O que NÃO está provado
+
+**O run nunca rodou.** Toda a verificação é de tipo, teste unitário (225 testes
+num build limpo, `fail 0`) e SQL executado à mão (em `begin; … rollback;`). O laço
+de `executarVarreduraEmail` não tem teste — a spec §9 manda para o teste manual de
+ponta a ponta; só a soma dos contadores e o `resultado` do run (`somarTratamento`,
+`resultadoDoRun`) foram extraídos e têm teste. O primeiro run é **manual e acompanhado**, e nele vale olhar:
+`bloqueados` (o bloqueio por titular nunca rodou contra PDF real),
+`imagens_ignoradas`, `sem_dono` (e-mail em que nenhum arquivo é seguramente deste
+protocolo — mensagens), `anexos_de_outro_protocolo` (arquivos cujo nome traz o
+número de outro protocolo — arquivos), `anexos_recusados` (p7s, dwg, zip, acima de
+10 MB), `anexos_sem_nome`,
+`nao_lidas`, `a_tentar_de_novo`, o tempo do run, e se aparece algum `imap-uid-` no
+log (envelope sem `Message-ID`: aí o uid vira o id do dedupe, e se a caixa for
+recriada a mensagem é tratada de novo). Só depois disso se fala em agendamento.
+
+A tela **ainda não mostra** `sem_dono`, `anexos_de_outro_protocolo`,
+`anexos_recusados` e `anexos_sem_nome` como contadores (a rodada 3 não tocou em `src/`): leia-os do `resultado` do run
+(SQL no roteiro do primeiro run). As linhas com ressalva já aparecem no grupo
+"Terminei, mas com um porém".
+
+**Lacunas do E1 — fechadas pelo E1b** (12/10/2026): o assunto com dois
+protocolos de que só um é nosso, e o arquivo com o número de outro projeto nosso
+no nome com um protocolo só. Ver "Nome de arquivo com o número de OUTRO
+protocolo". **O que ainda sobra desta família**: arquivo de nome **genérico**
+(`parecer.pdf`, `documento.pdf`) num e-mail cujo assunto cita um protocolo nosso e
+outro que não é nosso — o nome não diz de quem é, e vale "nome sem número não é
+sinal". O que protege é o titular do PDF, conferido pela IA contra o do projeto;
+sem IA (fora do ar), o protocolo é a única barreira. Também não é visto: número de
+protocolo no nome com menos de 11 ou mais de 12 dígitos, ou com pontuação.
+
+**Dois projetos ativos da EDP estão sem número de protocolo** — não há o que
+buscar, e eles ficam fora da automação até ganharem protocolo.
+
+Risco latente conhecido: se uma conta algum dia fizer portal **e** e-mail,
+`ludmilla_anexos_pendentes` entregaria uma chave de e-mail ao `baixarAnexo` do
+portal. Hoje não ocorre.

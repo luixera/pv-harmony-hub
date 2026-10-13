@@ -280,6 +280,7 @@ export type Database = {
           created_by: string | null
           id: string
           is_active: boolean
+          grid_voltage?: string | null
           name: string
           updated_at: string
         }
@@ -288,6 +289,7 @@ export type Database = {
           created_by?: string | null
           id?: string
           is_active?: boolean
+          grid_voltage?: string | null
           name: string
           updated_at?: string
         }
@@ -296,6 +298,7 @@ export type Database = {
           created_by?: string | null
           id?: string
           is_active?: boolean
+          grid_voltage?: string | null
           name?: string
           updated_at?: string
         }
@@ -960,6 +963,7 @@ export type Database = {
           is_rural: boolean
           observations: string | null
           phase_type: string | null
+          grid_voltage?: string | null
           project_id: string
           state: string
           uc_number: string
@@ -984,6 +988,7 @@ export type Database = {
           is_rural?: boolean
           observations?: string | null
           phase_type?: string | null
+          grid_voltage?: string | null
           project_id: string
           state: string
           uc_number: string
@@ -1008,6 +1013,7 @@ export type Database = {
           is_rural?: boolean
           observations?: string | null
           phase_type?: string | null
+          grid_voltage?: string | null
           project_id?: string
           state?: string
           uc_number?: string
@@ -1350,6 +1356,7 @@ export type Database = {
           id: string
           is_rural: boolean | null
           phase_type: string | null
+          grid_voltage?: string | null
           revision_id: string
           state: string | null
           uc_number: string | null
@@ -1372,6 +1379,7 @@ export type Database = {
           id?: string
           is_rural?: boolean | null
           phase_type?: string | null
+          grid_voltage?: string | null
           revision_id: string
           state?: string | null
           uc_number?: string | null
@@ -1394,6 +1402,7 @@ export type Database = {
           id?: string
           is_rural?: boolean | null
           phase_type?: string | null
+          grid_voltage?: string | null
           revision_id?: string
           state?: string | null
           uc_number?: string | null

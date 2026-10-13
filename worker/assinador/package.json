@@ -1,0 +1,27 @@
+{
+  "name": "gdm-assinador",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Assinador — prepara (converte + estampa) e assina documentos de projeto com o certificado A1 do responsável técnico.",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "tsc -p tsconfig.test.json && node scripts/testes.mjs",
+    "start": "node dist/index.js"
+  },
+  "engines": { "node": ">=22" },
+  "dependencies": {
+    "@signpdf/placeholder-plain": "^3.3.0",
+    "@signpdf/signer-p12": "^3.3.0",
+    "@signpdf/signpdf": "^3.3.0",
+    "@supabase/supabase-js": "^2.45.0",
+    "node-forge": "^1.4.0",
+    "pdf-lib": "^1.17.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/node-forge": "^1.3.11",
+    "typescript": "^5.5.0"
+  }
+}

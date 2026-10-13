@@ -144,8 +144,28 @@ interface StringWindow {
   mppts: number;
   perMppt: number;
   approximate: boolean; // true = calculado por fallback (sem datasheet)
+  /** true = o nº de ENTRADAS de string (MPPTs × strings/MPPT) é palpite das
+   *  regras, não veio do datasheet. É hardware: errar aqui gera arranjo que
+   *  não cabe fisicamente no inversor. */
+  capacityGuessed: boolean;
   /** Motivo do teto de módulos por string, quando um limite das regras mandou. */
   capReason: string | null;
+}
+
+/**
+ * O inversor tem quantas ENTRADAS de string? Só sabe quem leu o datasheet.
+ *
+ * MPPTs e strings por MPPT são HARDWARE: sem os dois no catálogo, o motor
+ * completa com `strings.default_mppt_count` × `strings.default_strings_per_mppt`
+ * (2 × 2 = 4 entradas por padrão) e pode propor um arranjo que não cabe no
+ * equipamento. Foi o caso do SOFAR 10KTLM-G3 (PRJ-84285, 05/10/2026): a tela
+ * ofereceu "4 string(s) × 8 módulos" num inversor que não tem 4 entradas.
+ *
+ * Quem chama usa isto para TRAVAR a geração até alguém confirmar, como já se
+ * faz com a fase de saída (`resolveInverterPhase`).
+ */
+export function capacidadeDeStringsConhecida(inv: InverterSpecs): boolean {
+  return inv.mpptCount !== undefined && inv.stringsPerMppt !== undefined;
 }
 
 /** Janela válida de módulos por string + capacidade de strings do inversor. */
@@ -189,10 +209,10 @@ function stringWindow(inv: InverterSpecs, mod: ModuleSpecs, rules: RuleMap): Str
     capReason = `limite de ${smallMax} módulos por string para inversores de até ${smallKw} kW`;
   }
 
-  const approximate = !hasVoltageData
-    || inv.mpptCount === undefined || inv.stringsPerMppt === undefined
+  const capacityGuessed = !capacidadeDeStringsConhecida(inv);
+  const approximate = !hasVoltageData || capacityGuessed
     || inv.mpptVminV === undefined || inv.mpptVmaxV === undefined || inv.maxDcVoltageV === undefined;
-  return { minN: Math.max(1, minN), maxN: Math.max(1, maxN), mppts, perMppt, approximate, capReason };
+  return { minN: Math.max(1, minN), maxN: Math.max(1, maxN), mppts, perMppt, approximate, capacityGuessed, capReason };
 }
 
 /** Distribui `count` strings entre `mppts` MPPTs, o mais equilibrado possível. */
@@ -222,6 +242,19 @@ export function suggestStringArrangements(
   const tolerance = ruleValue(rules, 'strings.balance_tolerance_modules', 1);
   const maxStrings = w.mppts * w.perMppt;
   const wanted = Math.max(2, ruleValue(rules, 'suggestions.num_suggestions', 2));
+
+  // O nº de entradas de string é HARDWARE: chutar gera arranjo que não existe
+  // no equipamento. Por isso este alerta é WARNING e a tela trava o "Usar esta"
+  // até alguém confirmar — mesmo tratamento da fase de saída (PRJ-66266).
+  if (w.capacityGuessed && ruleValue(rules, 'alerts.warn_on_incomplete_datasheet', 1) === 1) {
+    alerts.push({
+      severity: 'warning',
+      code: 'string_capacity_estimated',
+      message: `O nº de entradas de string deste inversor NÃO veio do datasheet — as opções abaixo supõem ${w.mppts} MPPT${w.mppts > 1 ? 's' : ''} × ${w.perMppt} string${w.perMppt > 1 ? 's' : ''} (${maxStrings} entradas), valor-padrão das Regras de Engenharia. Se o inversor tiver menos entradas, o arranjo não cabe nele.`,
+      suggestion: 'Confirme quantos MPPTs e quantas strings por MPPT o inversor tem — ou leia o datasheet anexado para preencher o Catálogo.',
+      source: ruleSource(rules, 'strings.default_strings_per_mppt'),
+    });
+  }
 
   if (w.approximate && ruleValue(rules, 'alerts.warn_on_incomplete_datasheet', 1) === 1) {
     alerts.push({
@@ -482,6 +515,29 @@ export interface ResolvedPhase {
 }
 
 /**
+ * A tensão TRIFÁSICA da rede da UC, lida do par que vem no cadastro do projeto
+ * ("127/220", "220/380" — fase-neutro/fase-fase, como aparece na conta de luz).
+ *
+ * O trifásico usa a tensão ENTRE FASES, que é o último número do par: em rede
+ * 127/220 o inversor trifásico entrega em 220 V, não em 380 V. Era o buraco do
+ * motor até 05/10/2026 — a tensão trifásica era uma constante única (regra
+ * `voltage_drop.ac_voltage_tri_v`, 380 V) e, em toda a área da CEMIG, a
+ * corrente saía 1,73× menor que a real, com disjuntor e bitola subdimensionados.
+ *
+ * Mono e bifásico não entram aqui: nos dois pares usados no Brasil eles ficam
+ * em 220 V (entre fases na rede 127/220, fase-neutro na 220/380), que é o valor
+ * da regra `ac_voltage_mono_v`.
+ *
+ * Devolve null no que não dá para ler — chutar aqui vira disjuntor errado.
+ */
+export function tensaoTrifasicaDaRede(gridVoltage?: string | null): number | null {
+  const numeros = String(gridVoltage ?? '').match(/\d+/g);
+  if (!numeros || numeros.length === 0) return null;
+  const entreFases = Number(numeros[numeros.length - 1]);
+  return Number.isFinite(entreFases) && entreFases > 0 ? entreFases : null;
+}
+
+/**
  * A fase da SAÍDA DO INVERSOR — que não é a mesma coisa que a fase do padrão
  * de entrada da UC.
  *
@@ -490,6 +546,11 @@ export interface ResolvedPhase {
  * dos 13,6 A reais — o disjuntor saiu 10 A onde precisava de 20 A. A fase da
  * ENTRADA da unidade consumidora não determina como o inversor entrega energia;
  * um inversor monofásico continua monofásico num padrão trifásico.
+ *
+ * A TENSÃO segue a mesma hierarquia: datasheet do catálogo, depois a tensão da
+ * rede da UC (`project_general_data.grid_voltage`), e só então a regra. Quando
+ * o datasheet e a rede discordam, o motor fica com o datasheet e levanta a
+ * incompatibilidade — inversor de 380 V não liga em rede 127/220.
  *
  * Ordem: datasheet do catálogo manda; sem ele, deduz pela potência (regra
  * `protections.single_phase_max_kw`) e AVISA que deduziu. A dedução nunca
@@ -505,10 +566,13 @@ export function resolveInverterPhase(input: {
   supplyPhaseType?: PhaseType;
   /** Override explícito, quando quem chama já sabe a fase. */
   phaseType?: PhaseType;
+  /** Tensão da rede da UC ("127/220", "220/380") — manda na tensão trifásica. */
+  gridVoltage?: string | null;
 }, rules: RuleMap): ResolvedPhase {
   const alerts: EngineAlert[] = [];
   const monoV = ruleValue(rules, 'voltage_drop.ac_voltage_mono_v', 220);
-  const triV = ruleValue(rules, 'voltage_drop.ac_voltage_tri_v', 380);
+  const triDaRede = tensaoTrifasicaDaRede(input.gridVoltage);
+  const triV = triDaRede ?? ruleValue(rules, 'voltage_drop.ac_voltage_tri_v', 380);
   const limiteMonoKw = ruleValue(rules, 'protections.single_phase_max_kw', 6);
   const potencia = input.powerKw ?? input.specs?.powerKw;
   const supply = input.supplyPhaseType;
@@ -518,6 +582,17 @@ export function resolveInverterPhase(input: {
 
   const doDatasheet = input.phaseType ?? porFases(input.specs?.acPhases);
   const tensaoDatasheet = input.specs?.acVoltageV;
+
+  // Datasheet e rede discordando na tensão: fica com o datasheet (é o
+  // equipamento real) e DIZ, porque inversor de 380V não liga em rede 127/220 —
+  // é problema de especificação, não de arredondamento.
+  if (tensaoDatasheet && triDaRede && doDatasheet === 'trifasico' && tensaoDatasheet !== triDaRede) {
+    alerts.push({
+      severity: 'warning', code: 'inverter_voltage_vs_grid',
+      message: `O inversor é de ${tensaoDatasheet}V na saída CA, mas a rede da UC está cadastrada como ${input.gridVoltage} (trifásico em ${triDaRede}V).`,
+      suggestion: 'Confira a tensão da rede no cadastro do projeto ou o inversor escolhido — nesta rede ele não liga como está.',
+    });
+  }
 
   if (doDatasheet) {
     const phaseType = doDatasheet;
@@ -559,6 +634,7 @@ export function resolveInverterPhase(input: {
     message: `A fase de saída deste inversor NÃO veio do datasheet — foi deduzida como ${phaseType} em ${voltageV}V`
       + (potencia ? ` só pela potência (${potencia}kW ${potencia > limiteMonoKw ? 'acima' : 'até'} do limite de ${limiteMonoKw}kW da regra)` : '')
       + (limitadoPelaUC ? `, limitada ao padrão de entrada ${supply} da UC` : '')
+      + (phaseType === 'trifasico' && triDaRede ? ` (tensão da rede do projeto: ${input.gridVoltage})` : '')
       + '. O disjuntor e a bitola saem daí: se a fase estiver errada, a corrente erra na mesma proporção.',
     suggestion: 'Confirme a fase antes de gerar o diagrama — ou leia o datasheet do inversor para preencher "Fases na saída CA" no catálogo.',
     source: ruleSource(rules, 'protections.single_phase_max_kw'),
@@ -580,6 +656,8 @@ export function suggestElectricalSizing(input: {
   inverterSpecs?: InverterSpecs | null;
   /** Fases do padrão de entrada da UC — só limita a dedução, não a define. */
   supplyPhaseType?: PhaseType;
+  /** Tensão da rede da UC ("127/220", "220/380") — vem do cadastro do projeto. */
+  gridVoltage?: string | null;
   dcLengthM?: number;
   acLengthM?: number;
   dcVoltageV?: number;              // tensão de operação da string (do arranjo escolhido)
@@ -627,6 +705,7 @@ export function suggestElectricalSizing(input: {
     const fase = resolveInverterPhase({
       specs: input.inverterSpecs, powerKw: input.inverterPowerKw,
       supplyPhaseType: input.supplyPhaseType, phaseType: input.phaseType,
+      gridVoltage: input.gridVoltage,
     }, rules);
     const threePhase = fase.phaseType === 'trifasico';
     const acV = fase.voltageV;
@@ -721,6 +800,8 @@ export function suggestBreakerPlan(input: {
   inverterSpecs?: InverterSpecs | null;
   /** Fases do padrão de entrada da UC — só limita a dedução. */
   supplyPhaseType?: PhaseType;
+  /** Tensão da rede da UC ("127/220", "220/380") — vem do cadastro do projeto. */
+  gridVoltage?: string | null;
   includeGeneral?: boolean;
 }, rules: RuleMap): BreakerPlan {
   const alerts: EngineAlert[] = [];
@@ -729,6 +810,7 @@ export function suggestBreakerPlan(input: {
     powerKw: input.inverters[0]?.powerKw,
     supplyPhaseType: input.supplyPhaseType,
     phaseType: input.phaseType,
+    gridVoltage: input.gridVoltage,
   }, rules);
   const threePhase = fase.phaseType === 'trifasico';
   const acV = fase.voltageV;
@@ -942,6 +1024,8 @@ export function suggestMicroinverterPlan(input: {
   phaseType?: PhaseType;
   /** Fases do padrão de entrada da UC — só limita a dedução. */
   supplyPhaseType?: PhaseType;
+  /** Tensão da rede da UC ("127/220", "220/380") — vem do cadastro do projeto. */
+  gridVoltage?: string | null;
   includeGeneral?: boolean;
   /** Teto de micros por ramal escolhido pelo projetista (vence o padrão). */
   forceMaxPerBranch?: number;
@@ -956,6 +1040,7 @@ export function suggestMicroinverterPlan(input: {
     powerKw: input.micro.powerKw,
     supplyPhaseType: input.supplyPhaseType,
     phaseType: input.phaseType,
+    gridVoltage: input.gridVoltage,
   }, rules);
   const threePhase = fase.phaseType === 'trifasico';
   const acV = fase.voltageV;

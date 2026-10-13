@@ -22,6 +22,8 @@ export interface EngineeringTemplateInput {
   inverterPowerKw?: number | null;
   inverterCount?: number | null;
   phaseType?: string | null;
+  /** Tensão da rede da UC ("127/220", "220/380") — manda na tensão trifásica. */
+  gridVoltage?: string | null;
 }
 
 export function engineeringTemplateValues(input: EngineeringTemplateInput, rules: RuleMap): Record<string, string> {
@@ -67,7 +69,7 @@ export function engineeringTemplateValues(input: EngineeringTemplateInput, rules
   }
 
   // ── Dimensionamento elétrico: por inversor (disjuntor de cada) ────────────
-  const perInv = suggestElectricalSizing({ inverterPowerKw: powerKw, phaseType, dcVoltageV }, rules);
+  const perInv = suggestElectricalSizing({ inverterPowerKw: powerKw, phaseType, dcVoltageV, gridVoltage: input.gridVoltage }, rules);
   if (perInv.dc) {
     values.bitola_cc = `${perInv.dc.sectionMm2} mm²`;
     values.queda_tensao_cc = fmtPct(perInv.dc.voltageDropPct);
@@ -81,7 +83,7 @@ export function engineeringTemplateValues(input: EngineeringTemplateInput, rules
 
   // disjuntor geral = dimensionado pra potência TOTAL (junção dos arranjos)
   if (powerKw && n > 1) {
-    const total = suggestElectricalSizing({ inverterPowerKw: powerKw * n, phaseType }, rules);
+    const total = suggestElectricalSizing({ inverterPowerKw: powerKw * n, phaseType, gridVoltage: input.gridVoltage }, rules);
     if (total.breakerA != null) values.disjuntor_geral_ca = `${total.breakerA}A`;
   } else if (perInv.breakerA != null) {
     values.disjuntor_geral_ca = `${perInv.breakerA}A`; // 1 inversor: geral = o próprio

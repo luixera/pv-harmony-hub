@@ -1,7 +1,8 @@
 # Assinatura digital dentro do GD Manager
 
 > Decidido com o usuário em 02/10/2026. Certificado **A1** (`.pfx`) guardado no
-> sistema, assinatura **PAdES** feita por um worker na VPS (abordagem **A**),
+> sistema, assinatura CMS embutida no PDF (`adbe.pkcs7.detached` — ver §5)
+> feita por um worker na VPS (abordagem **A**),
 > quem assina são **staff e admin** com registro, e o **Zé** avisa toda
 > assinatura e autoriza as exceções pelo WhatsApp.
 >
@@ -9,6 +10,15 @@
 > (ver §5): a estampa passou para o passo que a pessoa confere, a assinatura
 > virou *append* puro sobre os bytes aprovados, e as telas saíram de `/painel`
 > (master da plataforma) para uma rota própria `/assinaturas`.
+>
+> Revisada em 12/10/2026 depois da revisão final, **onde a spec estava errada e
+> o código certo**: (a) a marca "por template" (§2) não é implementável como
+> descrita — `concessionaire_templates` está vazia e nada a usa; (b) o assinado
+> nasce **sem** `assinavel_id` (§5, passo 6); (c) `certificado_cadastrar` tem 4
+> parâmetros e a função que fecha o passo é `assinatura_passo` (§3, §5); (d) o
+> aviso de vencimento inclui o dia 0 e o cron `ze-expirar` roda de hora em hora
+> (§3, §7). Também ficou registrado que `formulario_concessionaria` exige
+> triagem enquanto o canal "documento gerado" não existir (§2, §6).
 
 ## Por que
 
@@ -63,7 +73,7 @@ Três condições, todas verificadas no banco pela RPC (não na tela):
 | `nome` | como aparece na tela |
 | `origem` | `gerado` · `enviado` · `ambos` — de onde o arquivo pode vir |
 | `ativo` | desligar um tipo sem apagar histórico |
-| `exige_triagem` | se passa pela peneira do Claudinho (padrão: `true` para `enviado`, `false` para `gerado`) |
+| `exige_triagem` | se passa pela peneira do Claudinho. **Hoje é `true` em todos os tipos**, inclusive `formulario_concessionaria` (origem `ambos`): a isenção só se justifica quando o **sistema** produziu o arquivo, e esse canal não existe — o tipo aparece no seletor de upload, e quem envia `contrato.pdf` escolhendo-o chegaria ao e-CPF sem triagem. Só volta a `false` quando o canal "documento gerado" existir (corrigido em 12/10/2026) |
 | `created_at`, `updated_at` | padrão da casa |
 
 Semeado na migração com os tipos acima para o tenant `is_library` (GD Manager).
@@ -76,14 +86,21 @@ ALTER TABLE public.documents
   ADD COLUMN assinavel_id UUID REFERENCES public.documentos_assinaveis(id) ON DELETE SET NULL;
 ```
 
-Preenchida em dois casos, e só neles:
+Hoje é preenchida em **um** caso: a pessoa subiu o arquivo **pelo fluxo de
+assinatura**, escolhendo o tipo (`documento_para_assinar`, que valida o caminho
+do arquivo contra a pasta do projeto).
 
-- a pessoa subiu o arquivo **pelo fluxo de assinatura**, escolhendo o tipo;
-- o documento foi gerado de um template marcado como assinável
-  (`concessionaire_templates.assinavel_id`, coluna nova análoga) — é o caminho
-  do formulário da CEMIG/ENEL e do memorial. `bidu_anexar_documento(...)` ganha
-  um parâmetro `p_assinavel_id` (opcional, `NULL` por padrão) e só o aceita se
-  o template de origem tiver a marca.
+> **O segundo caminho — "documento gerado de template marcado como assinável" —
+> NÃO é implementável como esta spec o descrevia, e não foi construído.** A ideia
+> era uma marca em `concessionaire_templates.assinavel_id` mais um parâmetro
+> `p_assinavel_id` em `bidu_anexar_documento`. Mas `concessionaire_templates`
+> tem **0 linhas e nenhum código do repositório a usa**: os modelos de verdade
+> moram no bucket `concessionaire-templates`, indexados por `concessionaire_id`.
+> Logo `concessionaire_templates.assinavel_id` é **coluna morta em tabela
+> morta**. Quando o canal do documento gerado for desenhado (feature futura),
+> a marca terá de morar onde o modelo realmente mora — não aqui. Até lá, quem
+> quer assinar o que o Bidu gerou baixa o arquivo e o envia pela aba
+> Assinaturas.
 
 Todo o resto fica `null`. O enum `document_type` não muda.
 
@@ -128,7 +145,10 @@ RLS: `tenant_isolation` RESTRICTIVE nas quatro tabelas; leitura para
 ## 3. O certificado
 
 **Cadastro (só admin):** a tela manda o `.pfx` para o bucket privado
-`certificados` e chama `certificado_cadastrar(path, senha, titular_cpf)`. A
+`certificados` e chama `certificado_cadastrar(path, senha, titular_nome,
+titular_cpf)` (4 parâmetros). O nome digitado vale só até a conferência: o robô
+grava por cima o nome **lido do certificado** (`certificado_conferido`), porque
+é ele que a assinatura usa. A
 RPC grava a senha com `vault.create_secret(...)` — exatamente o padrão de
 `set_portal_credentials`. **A senha nunca é devolvida por nenhuma RPC para
 `authenticated`**; só `certificado_do_robo(id)`, com `GRANT` apenas para
@@ -145,7 +165,8 @@ corrompido) ou `vencido`. Até sair de `conferindo`, a tela mostra "conferindo�
 e nenhuma assinatura é aceita.
 
 **Vencimento:** job diário `certificados_avisar_vencimento()` (pg_cron) cria
-notificação e manda recado do Zé em 30, 15, 7 e 1 dia antes de `validade_fim`.
+notificação e manda recado do Zé em 30, 15, 7 e 1 dia antes de `validade_fim`
+**e no próprio dia 0** ("vence hoje"), às 07:00 de Brasília.
 Certificado vencido = assinatura recusada com motivo claro, nunca assinatura
 silenciosamente inválida.
 
@@ -186,7 +207,10 @@ silenciosamente inválida.
 
 Laço: certificado em `conferindo` primeiro (§3), depois
 `assinatura_claim()` (RPC só para `service_role`, `FOR UPDATE SKIP LOCKED`,
-marca `assinando`) → trabalha → `assinatura_finalizar(...)`.
+reclama a linha) → trabalha → `assinatura_passo(...)`, que a cada passo grava a
+nova situação e, ao chegar em `assinado`, registra o documento, o comentário e o
+histórico. (O worker vai de `pendente` direto a `assinado`: não grava
+`assinando`.)
 
 Por assinatura:
 
@@ -195,12 +219,23 @@ Por assinatura:
 2. baixa o `.pfx` do bucket `certificados` e lê a senha por
    `certificado_do_robo` — **em memória, nunca em disco**;
 3. valida o certificado: validade e CPF do titular;
-4. anexa a assinatura **PAdES** com `plainAddPlaceholder` +
-   `@signpdf/signer-p12` — *append* puro, sem reescrever o PDF;
+4. anexa a assinatura com `plainAddPlaceholder` + `@signpdf/signer-p12` —
+   *append* puro, sem reescrever o PDF;
+
+   > **Precisão do termo (corrigido em 07/10/2026).** O que sai é
+   > `adbe.pkcs7.detached`: assinatura CMS embutida no PDF, **sem carimbo de
+   > tempo e sem política AD-RB**. Isso **não** é PAdES-Baseline. O passo 6 do
+   > aceite (validar em `validar.iti.gov.br`) é o que diz se o ITI aceita essa
+   > forma; se não aceitar, o caminho é carimbo do tempo de uma ACT, que esta
+   > spec já põe fora de escopo. A doc do módulo usa o termo exato, não "PAdES".
 5. confere que os bytes aprovados são prefixo do assinado e que o resultado
    abre com a mesma contagem de páginas;
 6. sobe `<<nome>>_assinado.pdf`, registra o documento novo com o mesmo
-   `project_id` e o `assinavel_id` do pedido, e fecha a linha.
+   `project_id` e **sem `assinavel_id`** (decisão registrada: com a marca o
+   assinado seria, ele próprio, assinável — assinatura sobre assinatura, e
+   cosign está fora de escopo; o vínculo com o tipo mora em
+   `assinaturas.assinavel_id` e o rastro em `documento_assinado_id`), e fecha a
+   linha.
 
 Erro em qualquer passo: `situacao = 'erro'`, mensagem legível na tela, até 3
 tentativas; o original nunca é tocado.
@@ -239,7 +274,11 @@ Duas regras que importam:
   pedido vai para `aguardando_ze`, nunca para `pendente`.
 
 Documento gerado pelo próprio sistema a partir de template (`origem: 'gerado'`)
-não passa por triagem — nós o produzimos.
+não passaria por triagem — nós o produzimos. **Esse canal não existe ainda** (ver
+§2), então hoje **nenhum** tipo do catálogo é isento: todos passam pela peneira.
+O `formulario_concessionaria` (origem `ambos`) chegou a ser semeado sem triagem
+e abria exatamente a porta que a peneira existe para fechar; a isenção só volta
+junto com o canal do documento gerado.
 
 ## 7. O Zé
 
@@ -249,7 +288,8 @@ terceiros, e já sabe pedir confirmação antes de escrever
 
 **Avisa sempre.** Modo novo `modo: 'recado'` na edge function `ze-brain`: envia
 um texto pronto, **sem chamar o modelo** (custo zero de IA, texto
-determinístico). Chamado pelo worker ao fechar cada assinatura:
+determinístico). Enfileirado ao fechar cada assinatura (além do **sino dos admins**,
+gravado no mesmo commit, que não depende do WhatsApp estar de pé):
 
 > Assinei o Memorial do PRJ-78930 (Eliana de Freitas) com o e-CPF do João,
 > 14:32. Código AX7F2.
@@ -264,7 +304,10 @@ determinístico). Chamado pelo worker ao fechar cada assinatura:
 "pode" → `ze_resolver_pendencia(id, true)` chama
 `assinatura_liberar(assinatura_id, autor)`, que grava `liberada_por` e manda
 para a fila. "não" → `recusado`, com o motivo no card. Expira em 24 h pelo
-`ze_expirar_pendentes()` que já existe; **expirado = recusado**.
+`ze_expirar_pendentes()` que já existe (cron `ze-expirar`, **de hora em hora**,
+`0 * * * *`); **expirado = recusado**. A mesma faxina **reabre a pergunta** de
+quem ficou em `aguardando_ze` há mais de 15 min sem pendência aberta (o pedido
+ao Zé falhou depois de a linha mudar de situação).
 
 O Zé não assina por iniciativa própria, não libera sozinho, e não fala com
 ninguém além do gestor.
