@@ -5,6 +5,8 @@ import { useCompanies } from '@/hooks/useCompanies';
 import { ProjectModal } from '@/components/projects/ProjectModal';
 import { FinancialReportModal } from '@/components/financial/FinancialReportModal';
 import { BatchSettleDialog } from '@/components/financial/BatchSettleDialog';
+import { RecebimentoDialog } from '@/components/financial/RecebimentoDialog';
+import { RecebimentosBloco } from '@/components/financial/RecebimentosBloco';
 import { BarChart, Bar, Tooltip, ResponsiveContainer, Cell, XAxis } from 'recharts';
 import { Loader2, FileText, TrendingUp, Wallet, AlertCircle, DollarSign, CheckCircle2, RotateCcw, CalendarClock } from 'lucide-react';
 import { useWindowSize } from '@/hooks/useWindowSize';
@@ -207,6 +209,8 @@ export default function Financial() {
   const [showReport, setShowReport] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [batchMode, setBatchMode] = useState<'settle' | 'reverse' | null>(null);
+  // Recebimento em lote: a empresa manda um valor redondo e ele é distribuído
+  const [showRecebimento, setShowRecebimento] = useState(false);
 
   const projetos = data?.projetos || [];
   const kpis = data?.kpis;
@@ -259,9 +263,21 @@ export default function Financial() {
       <div style={{ padding: isMobile ? '0 4px' : '0 2px' }}>
 
         {/* ── Header ── */}
-        <div style={{ marginBottom: 24 }}>
-          <h1 style={{ fontSize: isMobile ? 20 : 26, fontWeight: 700, color: '#1A1A1A', margin: 0 }}>Financeiro</h1>
-          <p style={{ fontSize: 13, color: '#999', margin: '4px 0 0' }}>Controle de faturamento e recebíveis</p>
+        <div style={{ marginBottom: 24, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+          <div>
+            <h1 style={{ fontSize: isMobile ? 20 : 26, fontWeight: 700, color: '#1A1A1A', margin: 0 }}>Financeiro</h1>
+            <p style={{ fontSize: 13, color: '#999', margin: '4px 0 0' }}>Controle de faturamento e recebíveis</p>
+          </div>
+          {/* Valor redondo que a empresa manda: lança uma vez e distribui */}
+          <button
+            onClick={() => setShowRecebimento(true)}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 14px', borderRadius: 8,
+              border: 'none', background: '#F5A800', color: '#1A1A1A', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+            }}
+          >
+            <Wallet size={14} /> Registrar recebimento
+          </button>
         </div>
 
         {/* ── Hero KPI ── */}
@@ -373,6 +389,13 @@ export default function Financial() {
 
             {/* Card Assinaturas mensais */}
             <SubscriptionsCard assinaturas={data?.assinaturas ?? []} />
+
+            {/* O valor que entrou e o que ele quitou. Segue o filtro de empresa
+                da tela: com "todas", mostra de quem é cada depósito. */}
+            <RecebimentosBloco
+              companyId={companyFilter === 'all' ? null : companyFilter}
+              podeEstornar
+            />
 
             {/* Card Extrato PDF */}
             <div style={{ background: 'linear-gradient(135deg, #1A1A1A 0%, #2D2D2D 100%)', borderRadius: 12, padding: '20px 20px' }}>
@@ -565,6 +588,15 @@ export default function Financial() {
       {/* Report Modal */}
       {showReport && (
         <FinancialReportModal onClose={() => setShowReport(false)} />
+      )}
+
+      {/* Recebimento em lote: valor redondo distribuído pelos projetos */}
+      {showRecebimento && (
+        <RecebimentoDialog
+          companies={companies.map(c => ({ id: c.id, name: c.name }))}
+          companyIdInicial={companyFilter === 'all' ? null : companyFilter}
+          onClose={() => setShowRecebimento(false)}
+        />
       )}
 
       {/* Batch settle / reverse */}

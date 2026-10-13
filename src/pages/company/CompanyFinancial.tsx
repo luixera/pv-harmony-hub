@@ -5,6 +5,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useAuth } from "@/contexts/AuthContext";
 import { useFinancialsByCompany } from "@/hooks/useFinancials";
 import { useCompanySubscriptionStatement } from "@/hooks/useSubscriptionCharges";
+import { RecebimentosBloco } from "@/components/financial/RecebimentosBloco";
 import { useNavigate } from "react-router-dom";
 import { DollarSign, TrendingUp, Clock, Loader2, Repeat, FileSignature } from "lucide-react";
 import { motion } from "framer-motion";
@@ -244,6 +245,11 @@ export default function CompanyFinancial() {
             </CardContent>
           </Card>
         )}
+
+        {/* O que foi pago e o que cada pagamento quitou. Vem antes dos projetos
+            porque é a pergunta que a empresa faz primeiro: "o que o meu
+            dinheiro abateu?". Só leitura — quem lança é a equipe. */}
+        <RecebimentosBloco companyId={user?.companyId ?? null} titulo="Meus pagamentos" />
 
         {/* ARTs / projetos */}
         <Card>
