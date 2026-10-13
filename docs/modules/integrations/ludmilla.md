@@ -334,7 +334,8 @@ Três tentativas, nesta ordem, e o que cada uma ensinou:
    recebe a página "Access denied". Resposta vazia só acontece na VPS → é
    **bloqueio no caminho contra aquele navegador naquele IP**, não falta de
    credencial.
-3. **Rodar no navegador da varredura** (13/10, atual): o que o portal aceita, no
+3. **Rodar no navegador da varredura** (13/10, atual, PROVADO: simulacao do
+   PRJ-05626 passou inteira em 72 s, todos os passos ok): o que o portal aceita, no
    mesmo IP, duas vezes por dia, há um mês.
 
 O roteiro das 6 etapas **não foi reescrito**. Ele passou a falar com a interface
