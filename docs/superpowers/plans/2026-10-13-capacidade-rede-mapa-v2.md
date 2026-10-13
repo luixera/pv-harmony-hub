@@ -2078,5 +2078,7 @@ Esperado: Piratininga ≈ 550/553 com traçado; Paulista a maioria; < 400 ms cad
 | Agregação da SSDMT no ogr2ogr (Piratininga) | 3,25 s · 5,4 MB · 550 linhas · máx. 69 KB · mediana 6,4 KB | `ST_SimplifyPreserveTopology(ST_LineMerge(ST_Collect(SHAPE)), 0.00005)`; lotes de 100 |
 | `ST_Simplify` sem `ST_LineMerge` | 8.582 → 8.582 pontos (nada) | LineMerge obrigatório (→ 2.210) |
 | RPC v1 zoom 12 Campinas | 624 ms · 432 KB · 12.274 candidatos, 1.500 devolvidos | níveis 3 e 4; pontos só do 14; teto 4.000 |
-| RPC v2 (Task 1, Step 5) | _preencher_ | |
+| RPC v2 (Task 1, Step 5) | células n3 Campinas: 397 ms frio / **18 ms** quente, 192 feições, 79 KB · células n4 (zoom 13): 17 ms · pontos z14 centro de Campinas: **272 ms**, 2.183 feições, 934 KB · resumo n3: 18 ms · busca `%3410%` com trgm: 241 ms (9.387 candidatos) | teto 4.000 aguenta; resposta do zoom 14 é o maior peso (gzip do PostgREST ajuda) |
+| Células por nível depois do recálculo | 1: 292 · 2: 3.542 · 3: 32.348 · 4: 83.945 | o CHECK `nivel IN (1,2)` da Fase A barrou a 1ª recarga; trocado por `BETWEEN 1 AND 4` |
+| Contagens por alimentador | 2.068 de 2.330 com trafos; soma 295.197 (= trafos ativos); 49.444 em risco | — |
 | Alimentadores por vista (Task 7, Step 3) | _preencher_ | |

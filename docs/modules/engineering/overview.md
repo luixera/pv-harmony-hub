@@ -181,6 +181,50 @@ equivalente acessível e não depende do mapa. Se incomodar na prática, o próx
 passo é halo de duas cores com dois marcadores por ponto — viável porque a RPC
 limita a 1500 feições.
 
+### Mapa v2 (13/10/2026): camada vetorial, busca, alimentadores
+
+Depois da carga real, o mapa travava e ficou aquém do mockup. Diagnóstico
+medido (spec §11; plano `2026-10-13-capacidade-rede-mapa-v2.md`):
+
+- **Travava** porque cada trafo era um `<Marker>` React e a biblioteca
+  compara `icon`/`position` por identidade — todo arrasto refazia até 1.500
+  marcadores. Agora cada tipo de feição é **uma** `google.maps.Data`
+  (`src/pages/painel/rede/useCamadaVetorial.ts`): um `addGeoJson` por
+  resposta, um `setStyle` por mudança de estilo, listeners registrados uma vez.
+- **"Aproxime" na cidade inteira** porque as células paravam no zoom 11 e no
+  zoom 12 Campinas tem 12.274 trafos (a v1 devolvia 1.500 em 624 ms / 432 KB).
+  Agora há quatro níveis de célula (0,2° · 0,05° · 0,0125° · 0,005°) e os
+  pontos só entram do **zoom 14**, com teto de 4.000. Medido: células no zoom
+  12 em 18 ms (quente), 2.183 pontos no centro de Campinas em 272 ms / 934 KB.
+- **Cache enganoso**: a chave arredondava a caixa a 2 casas, e arrastar 500 m
+  reaproveitava dado que não cobria a área. Agora a consulta cobre uma caixa
+  20% maior que a vista e só volta ao servidor quando a vista sai dela.
+
+O servidor devolve **GeoJSON pronto** por camada em `rede_no_mapa_v2(bbox,
+zoom, so_risco, camadas[])`: pontos ou células (pelo zoom), alimentadores
+(recortados à caixa e simplificados por zoom; abaixo do zoom 9 só
+risco/atenção; teto 600) e subestações. Vai junto um `resumo` da área toda
+(nunca do teto) e as `regras` em vigor, que a legenda mostra ("Atenção — entre
+60% e 100% da margem").
+
+**Traçado dos alimentadores.** `rede_alimentador.geom` já era
+`MultiLineString`, mas a `SSDMT` nunca tinha sido extraída. A ingestão passou
+a agregá-la por `CTMT` no `ogr2ogr`:
+`ST_SimplifyPreserveTopology(ST_LineMerge(ST_Collect(SHAPE)), 0.00005)` —
+3,3 s e 5,4 MB para os 550 alimentadores da Piratininga. **`ST_LineMerge`
+antes é obrigatório**: cada trecho tem 2 pontos e sem o merge o simplify não
+remove nada (8.582 → 8.582; com merge, → 2.210). Sobre satélite a linha ganha
+um contorno escuro (segunda camada com as mesmas feições, por baixo), e o
+traço varia por estado além da cor. A carga das duas CPFL foi refeita com
+`--forcar` para trazer o traçado.
+
+**Busca** num campo só: Places do Google (município, bairro, endereço; país
+BR, viés para a vista) em paralelo com `rede_buscar(texto)` (código de trafo
+e de alimentador, nome/código de subestação, `pg_trgm`). Escolher um lugar
+enquadra; escolher um item da rede enquadra e abre o detalhe. O detalhe do
+trafo traz a barra de ocupação com a marca dos 100% e o contexto do
+alimentador ("212 trafos · 37 em risco", via `rede_alimentador_detalhe`).
+
 **A promoção roda no banco, não pela API.** O PostgREST tem
 `statement_timeout` de 8 s e a promoção da Piratininga levou 11 s. O worker sobe
 o staging e chama `rede_solicitar_promocao()`, que só agenda um job de `pg_cron`
