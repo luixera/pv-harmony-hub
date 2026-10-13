@@ -730,6 +730,18 @@ export function sqlCargaPorTrafo(caseSql: string, camada: 'UCBT_tab' | 'UCMT_tab
  GROUP BY u.UNI_TR_MT`;
 }
 
+/**
+ * A geometria vem NO SELECT, via `ST_AsText`. Com `-dialect SQLITE` o SELECT
+ * não carrega a geometria implícita, então `-lco GEOMETRY=AS_WKT` não emite
+ * coluna nenhuma — e o CSV sai sem ponto, com a contagem de linhas certa.
+ * `ST_AsText` dá 6 casas decimais, ~11 cm: de sobra para um trafo num mapa.
+ */
+export function sqlTrafos(): string {
+  return `SELECT ST_AsText(SHAPE) AS Shape, COD_ID, POT_NOM, CTMT, SUB,
+            FAS_CON_P, FAS_CON_S, TEN_LIN_SE, SIT_ATIV
+       FROM UNTRMT`;
+}
+
 export function sqlGdPorTrafo(camada: 'UGBT_tab' | 'UGMT_tab'): string {
   return `SELECT UNI_TR_MT AS trafo, count(*) AS unidades, sum(POT_INST) AS gd_kw
   FROM ${camada}
@@ -737,11 +749,15 @@ export function sqlGdPorTrafo(camada: 'UGBT_tab' | 'UGMT_tab'): string {
  GROUP BY UNI_TR_MT`;
 }
 
-async function paraCsv(gdb: string, destino: string, sql: string, comGeom = false): Promise<string> {
-  const args = ['-f', 'CSV', destino, gdb, '-dialect', 'SQLITE', '-sql', sql,
-                '-lco', 'SEPARATOR=COMMA'];
-  if (comGeom) args.push('-lco', 'GEOMETRY=AS_WKT');
-  await exec('ogr2ogr', args, { maxBuffer: 1 << 26 });
+async function paraCsv(gdb: string, destino: string, sql: string): Promise<string> {
+  // A geometria vem no proprio SELECT, via ST_AsText — NAO por
+  // `-lco GEOMETRY=AS_WKT`. Com `-dialect SQLITE` o SELECT nao carrega a
+  // geometria implicita, entao aquela opcao nao emite nada e o CSV sai sem
+  // coluna de ponto. Pego em 13/10/2026: a contagem de linhas ficava certa
+  // (52.976) e TODOS os trafos seriam descartados por falta de geometria.
+  await exec('ogr2ogr', ['-f', 'CSV', destino, gdb, '-dialect', 'SQLITE',
+                         '-sql', sql, '-lco', 'SEPARATOR=COMMA'],
+             { maxBuffer: 1 << 26 });
   return destino;
 }
 
@@ -774,9 +790,7 @@ export async function extrair(
   const caseSql = gerarCaseSql(await lerCurvas(gdb), janela.inicio, janela.fim);
 
   // 0,46 s na Piratininga (52.976 pontos).
-  const trafos = await paraCsv(gdb, join(dir, 'trafos.csv'),
-    `SELECT COD_ID, POT_NOM, CTMT, SUB, FAS_CON_P, FAS_CON_S, TEN_LIN_SE, SIT_ATIV
-       FROM UNTRMT`, true);
+  const trafos = await paraCsv(gdb, join(dir, 'trafos.csv'), sqlTrafos());
 
   // 12,5 s na Piratininga (2.037.215 UCs -> 49.378 trafos).
   const carga = await paraCsv(gdb, join(dir, 'carga.csv'), sqlCargaPorTrafo(caseSql, 'UCBT_tab'));
@@ -843,7 +857,19 @@ Esperado, conferido em 13/10/2026 — **compare linha por linha, é o teste mais
 
 Os dois últimos são menores que os 553 alimentadores de propósito: **79 alimentadores não têm nenhuma UC de baixa tensão** e 113 não têm GD. `rede_aplicar_alimentadores` manda esses para `sem_dado`, que é a resposta correta — não é perda de linha.
 
-Tempo total esperado: **menos de 20 s**. Se passar de um minuto, um `JOIN` voltou para o SQL.
+Tempo total esperado, medido em 13/10/2026: **~27 s com cache quente, ~1 min 10 s na
+primeira passada** (a primeira leitura do `.gdb` é fria). Os ~20 s que este plano
+estimava antes vinham de somar as consultas isoladas e ignoravam a leitura do
+disco e as duas agregações por alimentador.
+
+Se passar de **3 minutos**, suspeite de `JOIN` entre camadas — o número de
+referência é que, com `JOIN`, a consulta da carga não devolveu **uma linha em 11
+minutos**.
+
+**Confira o cabeçalho de `trafos.csv`, não só a contagem:** tem de começar com
+`Shape,COD_ID,...`. Um `.csv` com 52.976 linhas e sem a coluna `Shape` passa em
+qualquer verificação de contagem e faz `montarTrafos` descartar **todos** os
+transformadores. Foi exatamente o defeito encontrado em 13/10/2026.
 
 - [ ] **Step 6: Commit**
 
