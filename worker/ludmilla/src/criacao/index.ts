@@ -6,7 +6,7 @@ import { classificarErro, ErroLudmilla } from '../erros.js';
 import { credenciais, dadosCriacaoCpfl, finalizarRun, subirTexto, supabase, type Run } from '../fila.js';
 import { Agente } from './agente.js';
 import { JS_MAPA, jsInitNavegador } from './js.js';
-import { entrarNaCpfl } from './login.js';
+import { entrarNaCpflPelaVarredura } from './sessao-herdada.js';
 import { roteiroCpfl60, type NomePasso, type StatusPasso } from './roteiro-cpfl60.js';
 import { USER_AGENT_LUDMILLA, type DadosCriacaoCpfl } from './tipos.js';
 
@@ -78,6 +78,8 @@ function registradorDePassos(ag: Agente, dados: DadosCriacaoCpfl) {
 export async function executarCriacao(run: Run): Promise<void> {
   const curto = run.id.slice(0, 8);
   const ag = agenteDoAmbiente(`criacao-${curto}`);
+  // Nome do cofre que as versões antigas criavam; hoje nada é salvo (a CLI não
+  // vê senha), e isto serve só para limpar sobra de run interrompido.
   const nomeCofre = `cpfl-${curto}`;
   log('criação iniciada', { run: run.id });
   try {
@@ -103,7 +105,11 @@ export async function executarCriacao(run: Run): Promise<void> {
     };
     await registrar(0, 'login', 'rodando');
     try {
-      await entrarNaCpfl(ag, creds, nomeCofre, log, printExtra);
+      // Quem entra na CPFL é o MESMO código da varredura (Playwright): o login
+      // próprio da CLI falhou 4× entre 18/09 e 12/10/2026, sempre aqui, com a
+      // sessão sem perfil de projetista ("Olá Usuário" + "Você não tem acesso a
+      // essa página"). Ver sessao-herdada.ts.
+      await entrarNaCpflPelaVarredura(ag, creds, log, printExtra);
     } catch (e) {
       const msg = e instanceof ErroLudmilla ? e.message : `Login falhou: ${(e as Error).message.split('\n')[0].slice(0, 300)}`;
       // o print útil é o último estágio antes da falha (chegada do B2C / tela de perfil), não o "Access denied"

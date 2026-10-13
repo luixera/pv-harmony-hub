@@ -307,8 +307,8 @@ Conexão MMGD". Validado ponta a ponta: projeto **node 546581** criado à mão
 (PRJ-14848) e o roteiro automático repetiu tudo até a revisão em 1 min 15 s.
 
 Código: `worker/ludmilla/src/criacao/` — `agente.ts` (invólucro da CLI, sem
-shell, valores só por `eval --stdin`), `login.ts` (cofre `auth save
---password-stdin` com a senha do Vault → `auth login` → `auth delete`),
+shell, valores só por `eval --stdin`), `sessao-herdada.ts` (entra pelo
+Playwright da varredura e passa os cookies para a CLI — ver abaixo),
 `roteiro-cpfl60.ts` (as 6 etapas), `js.ts` (trechos que rodam na página),
 `util.ts` (puro, testado), `index.ts` (run: dados → login → roteiro → node →
 finalizarRun). Validação local sem banco e sem salvar:
@@ -318,9 +318,39 @@ Chrome no HOME do `ludmilla`, unit libera `~/.agent-browser`,
 `LUDMILLA_AB_ARGS` leva `--no-sandbox,--disable-crashpad,…`
 (`LUDMILLA_AB_EXEC` aponta outro Chromium se o completo cair).
 
+#### A criação não tem login próprio (12/10/2026)
+
+O login da CLI falhou nas **4 tentativas** entre 18/09 e 12/10/2026, sempre no
+passo 0. O print guardado no bucket conta o que acontecia: **"Olá Usuário"** e
+**"Você não tem acesso a essa página"** — o B2C autenticava, mas a seleção de
+perfil ("Serviços para projetistas" / "Projetos Particulares") não acontecia, e
+sem ela o Drupal do `gestao-projetos` nega tudo. Enquanto isso a **varredura
+entra no mesmo portal, com a mesma conta, na mesma VPS, 2×/dia, sem falhar**.
+
+Então a criação parou de tentar um segundo login e passou a **herdar a sessão
+da varredura**: `sessao-herdada.ts` abre um contexto Playwright, chama o
+**mesmo `logarNaCpfl`** do conector, pega `context.cookies()` e injeta na
+sessão da CLI (`cookies set --curl <arquivo>`, com fallback cookie a cookie).
+Depois **prova** a sessão: tem de estar em `gestao-projetos` **e** passar no
+`JS_AUTENTICADO` (menu "GERENCIE SEUS PROJETOS" ou link "Sair") — sem a prova,
+o robô seguia com sessão meia-boca e só descobria três telas depois.
+
+Consequências que valem como regra:
+- **Nenhuma senha chega à CLI.** O cofre (`auth save/login`) saiu do caminho;
+  só restou `auth delete`, como faxina de sobra de run interrompido.
+- **Mesmo User-Agent dos dois lados** (`USER_AGENT_LUDMILLA`): cookie herdado
+  com navegador "diferente" é convite para o portal derrubar a sessão.
+- O arquivo de cookies é **credencial de sessão**: tmp com `0600` e apagado no
+  `finally`.
+- A CLI **não preserva `httpOnly` nem `expires`** na importação (o cookie entra
+  como de sessão). Não atrapalha — a sessão vive o run —, mas não conte com
+  esses campos do outro lado.
+- Se um dia o portal prender a sessão ao navegador que a criou, o erro já diz o
+  que fazer: rodar a criação dentro do mesmo Playwright da varredura.
+
 | Passo | Nome | O que faz | Seletores-chave (mapa de 17/09) |
 |---|---|---|---|
-| 1 | `introducao` | login pelo cofre → `gestao-projetos/criar-projeto` → link 60 → Introdução → "Conexão de microgeração" e **confere** `flux_type = conexão`. Nunca abre `node/add/project_60` direto (retoma formulário velho) | `a[href$="node/add/project_60"]`, `#edit-next-new-connection`, `#edit-field-flux-type-conexo` |
+| 1 | `introducao` | sessão herdada da varredura → `gestao-projetos/criar-projeto` → link 60 → Introdução → "Conexão de microgeração" e **confere** `flux_type = conexão`. Nunca abre `node/add/project_60` direto (retoma formulário velho) | `a[href$="node/add/project_60"]`, `#edit-next-new-connection`, `#edit-field-flux-type-conexo` |
 | 2 | `dados_uc` | **Orçamento de Conexão** (rótulo conferido), 3 × Não (`-0`), UC + Buscar, espera Nome do Cliente, Empresa = CPFL, Lat/Long DMS, 2 × Não (`-1`!), perguntas condicionais, FormData, Avançar | `#edit-field-quotation-options-60-connection`, `#edit-field-consumer-unit-0-consumer-unit-code`, `…-send-uc-code`, `[id^="edit-field-consumer-unit-0-latitude"]`, `#edit-next` |
 | 3 | `dados_projeto` | título, Não, ENERGIA SOLAR (2721), data +30 (JS), Geração Local (2771), categoria (regra do front), GED 13 (2761), aéreo (2866), fases (2751), **Cabos = nº de fases**, caixa, carga = Demanda, disjuntor da regra, geração (651, módulos kWp, área, inversores); **FormData dos totais conferido**; Avançar | ids `edit-field-*` e `#edit-field-complementary-generation-0-subform-field-*` |
 | 4 | `dados_cliente` | Pessoa Física, Consultar CPF (espera Nome), celular/e-mail só se vazios, endereços = instalação, 2 × Sim (`-1`!) | `[id^="edit-field-physicalperson-0-*"]`, `[id^="edit-field-address-type-mesmo"]`, `…authorize-pay-connec-costs-1`, `…solicitacao-de-vistoria-1` |
