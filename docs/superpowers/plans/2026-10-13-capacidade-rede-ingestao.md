@@ -287,13 +287,24 @@ test('curva plana tem fator 1', () => {
 });
 
 test('a janela e [inicio, fim) em quartos de hora', () => {
-  // POT_01 = 00:00-00:15, logo a hora h comeca no indice h*4.
-  const v = [...PLANA];
-  v[36] = 1;              // 09:00 — dentro
-  assert.equal(fatorDeForma(v, 9, 15), 0.25);
-  const w = [...PLANA];
-  w[60] = 1;              // 15:00 — JA FORA
-  assert.equal(fatorDeForma(w, 9, 15), 1);
+  // POT_01 = 00:00-00:15, logo a hora h comeca no indice h*4. Afirmamos a
+  // FRONTEIRA, nao um numero: baixar um quarto de hora tambem baixa a media,
+  // entao a constante exata nao e o que este teste quer provar.
+  const dentro = [...PLANA];
+  dentro[36] = 1;         // 09:00 — o primeiro quarto DA janela
+  const f = fatorDeForma(dentro, 9, 15);
+  assert.ok(f !== null && f < 0.3, `09:00 tem de contar; veio ${f}`);
+
+  const fora = [...PLANA];
+  fora[60] = 1;           // 15:00 — o primeiro quarto FORA da janela
+  // Nao puxa o fator para baixo. (Fica um fio ACIMA de 1, porque o vale das
+  // 15:00 baixa a media sem baixar o minimo da janela — e exatamente o que
+  // "fora da janela" significa.)
+  assert.ok((fatorDeForma(fora, 9, 15) ?? 0) >= 1, '15:00 nao pode contar');
+
+  const ultimo = [...PLANA];
+  ultimo[59] = 1;         // 14:45 — ainda dentro
+  assert.ok((fatorDeForma(ultimo, 9, 15) ?? 1) < 0.3, '14:45 tem de contar');
 });
 
 test('minimo diurno zero devolve zero, nao nulo', () => {
