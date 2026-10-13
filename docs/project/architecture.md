@@ -127,9 +127,9 @@ Ver [modules/diagrams](../modules/diagrams/overview.md).
 
 ## Armazenamento da VPS no painel
 
-A mesma VPS que serve o estático pelo Nginx hospeda o worker da Ludmilla e vai
-hospedar a importação da BDGD (gigabytes baixados e descompactados). Ficar sem
-disco no meio é falha silenciosa, então o espaço livre é medido e mostrado.
+A mesma VPS que serve o estático pelo Nginx hospeda o worker da Ludmilla e a
+importação da BDGD (gigabytes baixados e descompactados). Ficar sem disco no
+meio é falha silenciosa, então o espaço livre é medido e mostrado.
 
 A SPA é estática e não vê o disco. Quem vê é o **worker da Ludmilla**, que já
 roda lá: `reportarDisco()` (`worker/ludmilla/src/fila.ts`) mede com `statfs`
@@ -156,6 +156,33 @@ nenhum.
   registrada: na terceira configuração de plataforma, vale criar a tabela.
 
 Spec: [capacidade de rede, §5](../superpowers/specs/2026-10-10-capacidade-rede-design.md).
+
+## A ingestão da BDGD na VPS
+
+Terceiro processo na VPS, ao lado do Nginx e do worker da Ludmilla — e
+**separado** dela de propósito: é trabalho de minutos, e não pode travar o robô
+dos portais. Entrada própria: `npm run bdgd -- <sigla>`
+(`worker/ludmilla/src/bdgd/`), reaproveitando de lá o cliente Supabase e o
+`reportarDisco`, para não duplicar o segredo de service role.
+
+Dependência de **sistema**, não de npm: `gdal-bin` (o `ogr2ogr`). É ele que lê
+o Geodatabase da ANEEL e faz a agregação **fora do banco** — 2 milhões de
+unidades consumidoras viram ~54 mil linhas antes de qualquer coisa subir. Por
+isso a carga vai por PostgREST em lotes, sem `COPY` e sem conexão Postgres
+direta: não há volume que justifique nenhum dos dois.
+
+A atomicidade é de uma função: os lotes caem em `rede_stg_*` (que ninguém lê,
+RLS ligada e nenhuma política) e `rede_importacao_promover()` promove tudo numa
+transação, para o mapa nunca ficar meio-carregado. A faxina do staging é feita
+depois, pelo worker — não é invariante, e se falhar o `ON DELETE CASCADE`
+resolve.
+
+Disco: o guard-rail recusa **antes** de baixar, somando zip e extraído com a
+inflação medida de 5,3× (CPFL Paulista exige 10 GB livres; Piratininga, 3,4 GB).
+E cada etapa chama `reportarDisco('ingestao', etapa)`, que é a `origem` que já
+existia na tabela do painel.
+
+Detalhe do módulo: [engineering/overview.md](../modules/engineering/overview.md#a-ingestão-da-bdgd).
 
 Ver também: [tech-stack.md](tech-stack.md) · [security.md](security.md) ·
 [integrations.md](integrations.md).

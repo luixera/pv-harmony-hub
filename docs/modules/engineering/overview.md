@@ -122,6 +122,42 @@ estudo por ponto de conexão — REN 1.000/2021, art. 73.
 As tabelas `rede_*` não têm `tenant_id`: dado público, idêntico para todos.
 Ver [ADR 0008](../../adr/0008-rede-publica-sem-tenant.md).
 
+### A ingestão da BDGD
+
+Roda **na VPS**, fora do laço da Ludmilla, com `npm run bdgd -- <sigla>` (por
+exemplo `CPFL_Piratininga`). Depende do `gdal-bin` instalado no sistema —
+e o `apt-get update` antes do install não é opcional, senão falha com 404.
+Plano: [2026-10-13-capacidade-rede-ingestao.md](../../superpowers/plans/2026-10-13-capacidade-rede-ingestao.md).
+
+O caminho é: achar o item da distribuidora no ArcGIS da ANEEL → conferir disco
+→ baixar e extrair o `.gdb` → `ogr2ogr` agregar **fora do banco** → subir os
+agregados para `rede_stg_*` em lotes → `rede_importacao_promover()` promover
+numa transação → recalcular semáforo e células.
+
+**O que nunca entra no banco:** as unidades consumidoras. Na CPFL Piratininga
+são 2.037.215 UCs que o `ogr2ogr` agrega para 49.378 linhas de carga por
+transformador antes de qualquer coisa subir. É por isso que não há `COPY` nem
+conexão Postgres direta: sobem ~54 mil linhas, ~6 MB.
+
+Três armadilhas medidas, que estão no plano com o número de cada uma:
+
+- **`JOIN` entre camadas no dialeto SQLite é proibido.** `UCBT_tab × CRVCRG`
+  não devolveu uma linha em 11 minutos. O caminho é pré-calcular o fator de
+  forma das 68 tipologias de curva e gerar um `CASE`: 12,5 s, mesmo resultado.
+- **A geometria vem no `SELECT`, não por `-lco GEOMETRY=AS_WKT`.** Com
+  `-dialect SQLITE` o `SELECT` não carrega a geometria implícita, e o CSV sai
+  sem coluna de ponto — com a contagem de linhas certa.
+- **`CTMT.TEN_NOM` é código de domínio, não kV.** Tem quatro valores
+  (46/63/49/37); gravá-los em `tensao_kv` inventaria tensões inexistentes.
+  A coluna fica nula.
+
+A auditoria em `rede_importacao` registra data-base, arquivo, etapa e linhas
+por camada, e é dela que a tela tira o rótulo de idade do dado. O disco da VPS
+é reportado em cada etapa por `reportarDisco('ingestao', etapa)`.
+
+O que desapareceu da BDGD entre duas importações é marcado `ativo = false`,
+nunca apagado em silêncio.
+
 ## Liga/desliga por FUNÇÃO e por regra (Fase 2)
 
 Cada grupo tem a regra especial **`group_enabled`**, que a tela mostra como

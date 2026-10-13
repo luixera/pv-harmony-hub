@@ -69,7 +69,7 @@ Detalhes: [docs/project/tech-stack.md](docs/project/tech-stack.md).
 | Geração compartilhada | 🟡 Parcial | [modules/shared-generation](docs/modules/shared-generation/overview.md) |
 | Diagramas (unifilar) | 🟡 Alpha — só master/GD Manager | [modules/diagrams](docs/modules/diagrams/overview.md) |
 | Motor de Engenharia (regras) | 🟡 Fase 1 — só GD Manager | [modules/engineering](docs/modules/engineering/overview.md) |
-| Capacidade de rede (BDGD) | 🟡 Fase A — base, cálculo e mapa; ingestão pendente; só GD Manager | [modules/engineering](docs/modules/engineering/overview.md) |
+| Capacidade de rede (BDGD) | 🟡 Base, cálculo, mapa e ingestão prontos e verificados; falta rodar a carga na VPS; só GD Manager | [modules/engineering](docs/modules/engineering/overview.md) |
 | Marketplace | ⛔ Planejado | [modules/marketplace](docs/modules/marketplace/overview.md) |
 | BESS (armazenamento) | ⛔ Planejado | [modules/bess](docs/modules/bess/overview.md) |
 | Mercado Livre de energia | ⛔ Planejado | [modules/market-free](docs/modules/market-free/overview.md) |
