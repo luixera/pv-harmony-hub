@@ -96,7 +96,7 @@ export async function herdarSessaoDaVarredura(
   loginUrl: string,
   log: (msg: string, extra?: Record<string, unknown>) => void,
   print?: (nome: string) => Promise<void>,
-): Promise<{ cookies: number }> {
+): Promise<{ cookies: number; trazidos: number }> {
   let navegador: Browser | undefined;
   let contexto: BrowserContext | undefined;
   const arquivo = join(tmpdir(), `ludmilla-cookies-${process.pid}-${Date.now()}.json`);
@@ -125,10 +125,15 @@ export async function herdarSessaoDaVarredura(
     // A CLI precisa de uma página antes de receber cookies de domínio.
     await ag.definirCabecalhos({ 'Accept-Language': 'pt-BR,pt;q=0.9' }).catch(() => undefined);
     await ag.abrir('https://www.cpfl.com.br/');
-    await ag.cookiesDeArquivo(arquivo, doPortal);
-    log('sessão passada para a CLI', { cookies: doPortal.length });
+    const dentro = await ag.cookiesDeArquivo(arquivo, doPortal);
+    log('sessão passada para a CLI', { trazidos: doPortal.length, aceitos: dentro });
     await print?.('login-1-sessao-herdada');
-    return { cookies: doPortal.length };
+    if (dentro === 0) {
+      throw new ErroLudmilla('falhou',
+        `Trouxe ${doPortal.length} cookies da varredura mas a CLI não ficou com nenhum `
+        + '— nem pelo arquivo nem um a um. Sem sessão não adianta seguir.');
+    }
+    return { cookies: dentro, trazidos: doPortal.length };
   } finally {
     await unlink(arquivo).catch(() => undefined);
     await contexto?.close().catch(() => undefined);
@@ -150,9 +155,23 @@ export async function entrarNaCpflPelaVarredura(
   log: (msg: string, extra?: Record<string, unknown>) => void,
   print?: (nome: string) => Promise<void>,
 ): Promise<void> {
-  const { cookies } = await herdarSessaoDaVarredura(ag, creds, LOGIN_URL, log, print);
+  const { cookies, trazidos } = await herdarSessaoDaVarredura(ag, creds, LOGIN_URL, log, print);
 
-  await ag.abrir(URL_MEUS_PROJETOS);
+  // Navegar pode falhar com ERR_HTTP_RESPONSE_CODE_FAILURE, que é como o Chrome
+  // conta "o servidor respondeu erro (403) e não há página". Sem tratar, isso
+  // chegava ao usuário como um erro de CLI sem significado nenhum.
+  try {
+    await ag.abrir(URL_MEUS_PROJETOS);
+  } catch (e) {
+    await print?.('login-2-recusado');
+    const bruto = (e as Error).message;
+    const recusado = /ERR_HTTP_RESPONSE_CODE_FAILURE|ERR_ABORTED|403/i.test(bruto);
+    throw new ErroLudmilla('sessao_expirada',
+      recusado
+        ? `O portal RECUSOU a navegação para Meus Projetos (${cookies} de ${trazidos} cookies herdados chegaram à CLI). `
+          + 'A sessão da varredura não vale neste navegador: o caminho é rodar a criação dentro do mesmo Playwright da varredura.'
+        : `Não consegui abrir Meus Projetos depois de herdar a sessão: ${bruto.slice(0, 200)}`);
+  }
   await ag.esperarCarga('networkidle');
   await ag.esperar(1_000);
   await print?.('login-2-portal');
@@ -160,12 +179,12 @@ export async function entrarNaCpflPelaVarredura(
   const url = await ag.url();
   if (!/gestao-projetos/.test(url)) {
     throw new ErroLudmilla('sessao_expirada',
-      `Herdei a sessão da varredura (${cookies} cookies) mas a CLI não ficou em gestao-projetos (parou em ${url.replace(/\?.*$/, '')}).`);
+      `Herdei a sessão da varredura (${cookies} de ${trazidos} cookies) mas a CLI não ficou em gestao-projetos (parou em ${url.replace(/\?.*$/, '')}).`);
   }
   const autenticado = await ag.js<boolean>(JS_AUTENTICADO).catch(() => false);
   if (!autenticado) {
     throw new ErroLudmilla('sessao_expirada',
-      `Herdei ${cookies} cookies da varredura, mas o portal não reconheceu a sessão na CLI ("${await ag.titulo()}"). `
+      `Herdei ${cookies} de ${trazidos} cookies da varredura, mas o portal não reconheceu a sessão na CLI ("${await ag.titulo()}"). `
       + 'Se o portal passou a prender a sessão ao navegador, a criação precisa rodar no mesmo Playwright da varredura.');
   }
   log('sessão herdada reconhecida pelo portal', { cookies });
