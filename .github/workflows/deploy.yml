@@ -31,6 +31,15 @@ jobs:
             --project-ref yqsqrdndvsnhbsoaoilf \
             --no-verify-jwt
 
+      # API de status da Ludmilla: a chave gdm_ é a credencial, não o JWT
+      - name: Deploy ludmilla-status
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          supabase functions deploy ludmilla-status \
+            --project-ref yqsqrdndvsnhbsoaoilf \
+            --no-verify-jwt
+
       - name: Deploy test-gmail
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}

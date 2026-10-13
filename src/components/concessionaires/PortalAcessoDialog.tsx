@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { ChavesDaApi } from '@/components/concessionaires/ChavesDaApi';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -283,6 +284,10 @@ export function PortalAcessoDialog({
 
             {/* Onde roda: VPS ou estação local (Elektro) */}
             {conta && <OndeRoda conta={conta} isAdmin={isAdmin} />}
+
+            {/* API de status: a porta por onde a pessoa entrega o que leu num
+                portal que a Ludmilla não consegue abrir sozinha (Elektro) */}
+            {conta && isAdmin && <ChavesDaApi concessionaria={concessionaire?.name ?? ""} />}
 
             {/* Runs */}
             {conta && (

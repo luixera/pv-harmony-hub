@@ -318,6 +318,51 @@ Chrome no HOME do `ludmilla`, unit libera `~/.agent-browser`,
 `LUDMILLA_AB_ARGS` leva `--no-sandbox,--disable-crashpad,…`
 (`LUDMILLA_AB_EXEC` aponta outro Chromium se o completo cair).
 
+### API de status (13/10/2026) — a porta nossa
+
+**Por que existe.** O Portal GD da Elektro (Neoenergia) bloqueia navegador
+automatizado pela Akamai **antes da tela de login** — provado na estação local,
+no PC de pessoa, em 13/10/2026 (`Access Denied / errors.edgesuite.net`, 319
+bytes). Não é IP, é detecção de automação, e a casa não disfarça automação.
+Então a pessoa entra (é o que a distribuidora exige), lê a lista de
+solicitações e entrega aqui o que viu. Daí em diante é o **mesmo trilho da
+varredura**: `ludmilla_registrar_varredura` casa com o projeto, sugere a etapa
+e o cartão aparece na /ludmilla para confirmar. Ninguém move card sem confirmar.
+
+**Endpoint.** `POST {SUPABASE_URL}/functions/v1/ludmilla-status`, deployada com
+`--no-verify-jwt`: a credencial é a **chave da API**, não o JWT.
+
+- `Authorization: Bearer gdm_<40 hex>` (ou `x-api-key`).
+- Corpo: `{ "concessionaria": "ELEKTRO", "protocolos": [ { "protocolo", "status",
+  "titular"?, "observacao"? } ] }` — até 500 itens; o mesmo protocolo repetido,
+  a última linha vence. `connector` (`cpfl|elektro|edp`) vale no lugar de
+  `concessionaria`.
+- Resposta: `{ ok, run_id, protocolos, recomendacoes }`. Erros: 401
+  `chave_ausente|chave_invalida|chave_revogada`, 404 `conta_nao_encontrada`,
+  400 `corpo_invalido|concessionaria_invalida|protocolos_invalidos` (sempre com
+  `detalhe` dizendo qual item).
+
+**Chaves.** `ludmilla_api_keys`: `gdm_` + 40 hex, guardada **só como SHA-256**;
+a chave em claro aparece uma vez, na criação. Criar/revogar = RPCs
+`ludmilla_api_key_criar`/`_revogar`, só admin do tenant; a tela fica no
+diálogo de acesso ao portal da concessionária (`ChavesDaApi`). A RPC
+`ludmilla_api_status_registrar` só aceita `service_role` (quem a chama é a
+edge function) e grava o run com `dados.origem = 'api'` e `pedido_por` = quem
+criou a chave — no Registro aparece como visita da API.
+
+**O que ainda falta para a Elektro recomendar etapa.** A recomendação vem de
+`portal_status_map (tenant, connector, status_portal → project_status)`, e a
+Elektro **não tem linhas**: "Aprovado" normaliza para `APROVADO`, não acha
+mapeamento, e o status é guardado **sem** sugestão. Preencher o vocabulário
+exige as palavras exatas do Portal GD — por isso ninguém chutou.
+
+**Fora de escopo, de propósito:** qualquer coisa que leia a página do portal
+por programa (bookmarklet, extrator). O trabalho fica do lado de cá.
+
+Validador puro em `supabase/functions/_shared/ludmillaStatus.ts` (9 testes no
+vitest); a RPC foi testada em transação com rollback (criação de chave, registro
+ok, chave inválida, lista vazia).
+
 #### A criação roda no navegador da varredura (13/10/2026)
 
 Três tentativas, nesta ordem, e o que cada uma ensinou:
