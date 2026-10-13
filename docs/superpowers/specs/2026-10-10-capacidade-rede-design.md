@@ -306,6 +306,11 @@ armazenamento fica na aba Monitoramento do mesmo console.
 
 Mockup do design: `https://claude.ai/artifact/7rjbfTtf6NJVdpMow1V8Lc` (privado).
 
+> **Revisado em 13/10/2026 — ver §11.** A primeira entrega travava e ficou
+> aquém do mockup (sem busca, sem camadas, sem traçado de alimentador). O §11
+> registra o diagnóstico medido e o desenho novo; o que está abaixo neste §7
+> continua válido como princípio (lista acessível, cor nunca sozinha, estados).
+
 ### Consulta
 
 Uma RPC `rede_no_mapa(bbox, zoom)` que decide a camada pelo zoom: distante lê
@@ -409,7 +414,7 @@ A BDGD tem **43 camadas**. As que o módulo usa, com o papel de cada uma:
 | `UNTRMT` | 52.976 (Point) | → `rede_transformador` | `COD_ID`, `POT_NOM`, `CTMT`, `SUB`, `FAS_CON_P/S/T`, `TEN_LIN_SE`, `SIT_ATIV`, `DIST` |
 | `CTMT` | 553 (sem geom) | → `rede_alimentador` | `COD_ID`, `NOME`, `SUB`, `TEN_NOM`, `ENE_01..12`, `PNTMT_01..12` |
 | `SUB` | 139 (**MultiPolygon**) | → `rede_subestacao` | `COD_ID`, `NOME` |
-| `SSDMT` | 396.983 (MultiLineString) | traçado do alimentador | geometria por `CTMT` |
+| `SSDMT` | 396.983 (MultiLineString) | → `rede_alimentador.geom` (agregada por `CTMT` no `ogr2ogr`, §11) | `CTMT`, `Shape` |
 | `UCBT_tab` / `UCMT_tab` | 2.037.215 / 7.581 | consumo → carga mínima | `UNI_TR_MT`, `TIP_CC`, `ENE_01..12` |
 | `UGBT_tab` / `UGMT_tab` | 49.771 / 569 | GD já conectada | `UNI_TR_MT`, `POT_INST`, `CEG_GD`, `DAT_CON` |
 | `CRVCRG` | 204 | curvas de carga | `COD_ID`, `TIP_DIA`, `POT_01..POT_96` |
@@ -485,6 +490,111 @@ para `sem_dado`, nunca para `folga`.
   curto-circuito presumida, que a REN 1.000/2021 obriga a informar **quando
   solicitada** — caminho para dado atual, por ponto, que a Ludmilla já poderia
   pedir no portal CPFL que ela automatiza.
+
+## 11. Revisão de UX e desempenho (13/10/2026)
+
+Depois da carga real das duas CPFL, o usuário relatou: mapa travando, sem
+busca de cidade ou região, sem escolha de camadas, e sem a capacidade da
+linha de distribuição que o mockup mostrava. Pediu que a apresentação fosse
+feita "com extremos aspectos de UX". Esta seção é o resultado do diagnóstico
+e o desenho da segunda entrega. Plano:
+`docs/superpowers/plans/2026-10-13-capacidade-rede-mapa-v2.md`.
+
+### 11.1 Diagnóstico, medido
+
+| Sintoma | Causa, com a evidência | Decisão |
+|---|---|---|
+| Trava ao arrastar | Cada trafo era um `<Marker>` React. A biblioteca compara `icon`/`position` por **identidade** e a tela criava objetos novos a cada render; todo `onIdle` disparava `setIcon`+`setPosition`+`setTitle` em até 1.500 marcadores legados (`@react-google-maps/api/dist/esm.js:2141-2184`). | **Uma camada vetorial** (`google.maps.Data`) por tipo de feição: um `addGeoJson` por resposta, um `setStyle` por mudança de estilo, zero recriação ao arrastar. Mesma biblioteca, sem dependência nova. |
+| "Aproxime para ver cada um" na cidade inteira | As células agregadas paravam no zoom 11 (nível 2 = 0,05° ≈ 5,5 km). No zoom 12 Campinas tem **12.274** trafos; a RPC devolvia os 1.500 piores por ocupação em **624 ms / 432 KB** — recorte enviesado e lento. Zoom 13: 4.672; zoom 14 (centro): 2.183. | Dois níveis novos de célula: **3 = 0,0125°** (≈1,4 km, zooms 11–12) e **4 = 0,005°** (≈550 m, zoom 13). Pontos só do **zoom 14** em diante, teto **4.000** (a camada vetorial aguenta). |
+| Cache enganoso | A chave da consulta arredondava a caixa a 2 casas: arrastar 500 m reaproveitava dado que **não cobria** a área nova. | Caixa de consulta **20% maior** que a vista e chave com 3 casas (≈55 m no zoom 14). |
+| Mapa pequeno | 460 px de altura numa coluna de 1.180 px. O mockup era tela cheia. | Seção ocupa a altura do console; legenda e busca flutuam sobre o mapa; gaveta de detalhe à direita. |
+| Sem traçado de alimentador | `rede_alimentador.geom` já era `geometry(MultiLineString,4326)`, mas a `SSDMT` nunca foi extraída. O risco por alimentador **existe** (600 risco · 466 atenção · 992 folga · 272 sem dado) e não aparecia. | Extrair a `SSDMT` **agregada por `CTMT` no `ogr2ogr`**. Medido na Piratininga: `ST_SimplifyPreserveTopology(ST_LineMerge(ST_Collect(SHAPE)), 0.00005)` → **3,3 s, 5,4 MB, 550 linhas** (máx. 69 KB, mediana 6,4 KB). `ST_LineMerge` antes é obrigatório: sem ele o simplify não remove nada (cada trecho tem 2 pontos: 8.582 → 8.582; com merge, → 2.210). Exige **reingestão** das duas CPFL (`--forcar`). |
+
+Dois achados de passagem: a seção não passava `libraries: ['places']` ao
+loader enquanto outras telas passavam, o que a biblioteca rejeita quando as
+duas são abertas na mesma sessão; e `pg_trgm` não estava instalado (a busca
+precisa dele).
+
+### 11.2 O desenho
+
+**Camadas** (ligáveis em conjunto): Transformadores · Alimentadores ·
+Subestações, mais o filtro "só o que não está com folga". O servidor decide o
+que devolver pelo zoom:
+
+| Zoom | Trafos | Alimentadores (se ligados) | Subestações (se ligadas) |
+|---|---|---|---|
+| < 9 | células nível 1 (0,2°) | só risco/atenção, tolerância 0,004° | pontos |
+| 9–10 | células nível 2 (0,05°) | tolerância 0,001° | pontos |
+| 11–12 | células nível 3 (0,0125°) | tolerância 0,0003° | pontos |
+| 13 | células nível 4 (0,005°) | tolerância 0,0003° | pontos |
+| ≥ 14 | pontos, teto 4.000 | resolução guardada (0,00005°) | pontos |
+
+Alimentadores vêm **recortados** à caixa de consulta e **simplificados** no
+servidor por zoom; teto de 600 por vista, os mais ocupados primeiro. Sobre
+satélite, a linha ganha um **contorno escuro** (segunda camada vetorial com as
+mesmas feições, traço largo escuro por baixo), pelo mesmo motivo dos marcadores.
+Traço distinto por estado: risco contínuo e grosso, atenção médio, folga fino e
+mais transparente, sem dado cinza fino — além da cor.
+
+**Busca**: um campo só, no topo do mapa. O texto vai em paralelo ao Places do
+Google (município, bairro, endereço; país BR, viés para a vista atual) e à RPC
+`rede_buscar` (código de trafo, de alimentador, nome ou código de subestação).
+Uma lista só, navegável por teclado (`combobox`/`listbox`). Escolher um lugar
+enquadra a vista; escolher um item da rede enquadra **e** abre o detalhe.
+
+**Painel lateral** (continua o equivalente acessível do mapa):
+
+- **Resumo da área visível**: quatro tiles (folga, atenção, risco, sem dado)
+  com percentual e contagem, sempre sobre o total da área e não sobre o teto.
+- **Lista contextual**: em zoom de pontos, "Transformadores nesta vista" por
+  ocupação; com alimentadores ligados, "Alimentadores mais saturados na vista".
+- **Detalhe do trafo**: veredito em texto, números, **barra de ocupação com a
+  marca dos 100%**, contexto do alimentador ("212 trafos · 37 em risco", via
+  `rede_alimentador_detalhe`), procedência (fonte, data-base, importada em,
+  idade).
+- **Detalhe do alimentador**: números, trafos por estado, subestação, botão
+  "enquadrar este alimentador".
+
+**Micro-interações**: faixa de carregamento fina sobre o mapa (nada pisca; o
+dado anterior fica até o novo chegar); passar o mouse mostra código e estado
+numa faixa fixa no canto do mapa (sem balão flutuante que esconde o ponto);
+clicar destaca com halo via `overrideStyle`; a vista (centro, zoom, camadas,
+satélite) fica em `sessionStorage` para voltar onde parou. Legenda com os
+limiares reais lidos de `rede_regras()` ("Atenção — entre 60% e 100% da margem").
+
+### 11.3 Contratos
+
+`rede_no_mapa_v2(p_oeste, p_sul, p_leste, p_norte, p_zoom, p_so_risco,
+p_camadas text[])` → jsonb:
+
+```json
+{ "base": {…}, "regras": { "fator": 0.8, "atencao": 60, "risco": 100 },
+  "zoom": 13, "camada": "celula", "nivel": 4,
+  "resumo": { "total": 1234, "risco": 100, "atencao": 50, "folga": 1000, "sem_dado": 84 },
+  "pontos": null, "celulas": { "type": "FeatureCollection", "features": [...] },
+  "alimentadores": {…} | null, "subestacoes": {…} | null,
+  "teto": 4000, "excedeu": false }
+```
+
+Toda feição é GeoJSON com `id` no topo (a camada vetorial usa para
+`overrideStyle`) e as propriedades que a tela precisa, já calculadas no
+servidor. `rede_buscar(p_texto, p_limite)` → lista de
+`{tipo, id, codigo, nome, risco, lng, lat, oeste, sul, leste, norte}`.
+`rede_alimentador_detalhe(p_id)` → números, contagens de trafos por estado,
+subestação e caixa envolvente. As três são `SECURITY DEFINER` com portão
+`is_master`, e a varredura de privilégios cobre **todo** objeto novo (§8).
+
+`rede_alimentador` ganha as contagens de trafos por estado, recalculadas junto
+com o semáforo (`rede_contar_trafos_alimentador()`), e `rede_stg_alimentador`
+ganha `geom_wkt`. A RPC v1 (`rede_no_mapa`) fica no banco sem chamador; o
+`DROP` depende do portão do MCP e vai numa limpeza posterior.
+
+### 11.4 O que continua fora
+
+Agrupamento de pontos no cliente (`supercluster`), `deck.gl` ou MapLibre:
+descartados porque a camada vetorial nativa resolve o volume medido (≤ 4.000
+pontos, ≤ 600 linhas) sem dependência nova. Se uma distribuidora futura
+estourar isso, o caminho é mais um nível de célula, não outra biblioteca.
 
 ## Fontes
 
