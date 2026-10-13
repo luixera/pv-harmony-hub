@@ -82,3 +82,56 @@ vazia e o bloco não aparece: a tela não inventa mensalidade.
   (`company_id = get_user_company_id(auth.uid())`). A RPC
   `company_subscription_statement` repete a checagem e recusa `_company_id` de
   outra empresa.
+
+## Recebimento em lote — o valor redondo (out/2026)
+
+O problema real (trazido pelo usuário em out/2026): **a empresa manda um valor
+redondo**, tipo R$ 5.000, que não corresponde à soma de projetos nenhum. Com a
+quitação total/em lote que já existia não dava para lançar isso: ou sobrava
+dinheiro sem destino, ou era preciso inventar um abatimento projeto por
+projeto. O que a operação faz na mão é **quitar os mais antigos e abater
+parcialmente o que ficar no caminho** — e depois precisa conseguir responder
+"o que aquele depósito pagou?".
+
+A resposta é o **recebimento**: um lançamento do dinheiro que entrou (data,
+valor, empresa) com as **parcelas** que ele abateu penduradas nele.
+
+- **RN-FIN-07 — o sistema sugere, a pessoa ajusta.** `recebimento_sugerir`
+  distribui o valor de forma gulosa e **só calcula** (não grava nada). A tela
+  mostra linha por linha com "quita"/"abate" e deixa desmarcar e mudar
+  qualquer valor. Quem grava é `recebimento_registrar`, com as linhas que a
+  pessoa confirmou — o servidor **nunca redistribui** o que ela ajustou.
+  Trocar o valor recebido refaz a sugestão do zero: é dinheiro diferente.
+- **RN-FIN-08 — a ordem é ART mais antiga primeiro, mensalidade depois.**
+  Decisão do usuário (out/2026): as ARTs vêm antes porque são a dívida do
+  projeto que está parado esperando, e dentro delas vence a mais antiga
+  (`due_date` com `NULLS LAST`, empate por `created_at`); as mensalidades
+  entram por último, por competência. É só a sugestão — a pessoa pode
+  inverter.
+- **RN-FIN-09 — a sobra fica como crédito da empresa, e com confirmação
+  explícita.** Se o valor aplicado for menor que o recebido, a diferença fica
+  em `financial_receipts.credit` e **aparece no recebimento seguinte** como
+  aviso ("esta empresa tem R$ X de crédito"). O crédito **não entra sozinho**
+  na conta: quem lança soma ele ao valor se quiser usar. Para gravar com
+  sobra a pessoa clica em confirmar **duas vezes** — dinheiro parado tem de
+  ser escolha, não descuido.
+- **RN-FIN-10 — nenhuma linha passa do que está em aberto, nem do recebido.**
+  `recebimento_registrar` recusa: soma das linhas maior que o valor recebido,
+  linha maior que o saldo em aberto do item, alvo que não é da empresa
+  informada, data no futuro e valor ≤ 0. A tela bloqueia antes, mas a
+  validação que vale é a do banco.
+- **RN-FIN-11 — estorno é de admin e é do recebimento inteiro.** Não existe
+  "desfazer uma linha": `recebimento_estornar` lança as contrapartidas
+  **negativas** de todas as parcelas, recalcula os status e marca o
+  recebimento como estornado com motivo e autor. O histórico fica — nada é
+  apagado.
+- **RN-FIN-12 — a empresa vê, mas não lança.** Em `/company/financial` o bloco
+  "Meus pagamentos" mostra os recebimentos dela com o que cada um quitou
+  (QUITOU) ou abateu (ABATEU) — é a primeira pergunta que ela faz. Só
+  leitura: quem lança e quem estorna é a equipe do tenant
+  (`financeiro_equipe_ok()`), e o estorno só o admin.
+
+A mensalidade não tinha histórico de pagamento nenhum antes disso — só
+`amount_paid` na cobrança. O recebimento trouxe
+`subscription_payment_history`, que é o espelho de `payment_history` para a
+assinatura (inclusive as linhas negativas do estorno).
