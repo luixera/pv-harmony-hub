@@ -1,5 +1,5 @@
 // worker/ludmilla/src/email/enel/identificar.ts
-import { casaTitular, comparavelTitular, semAcento } from '../util.js';
+import { comparavelTitular, semAcento } from '../util.js';
 
 /**
  * De qual projeto é este e-mail da ENEL?
@@ -107,6 +107,16 @@ export function titularNoAssunto(assunto: string, titular: string): boolean {
   return janelaCompativel(normal, nomes);
 }
 
+/**
+ * O nome do documento (extraído pela IA) é o mesmo titular do cadastro? A mesma regra
+ * estrita do assunto: `titularNoAssunto` lê o documento como se fosse o assunto.
+ * Não usa `casaTitular` (util.ts, da EDP): ele compara só primeiro e último nome, em
+ * qualquer posição, e aceitava JOSE MARIA SANTOS como JOSE CARLOS SANTOS.
+ */
+export function mesmoTitular(doSistema: string, doDocumento: string): boolean {
+  return titularNoAssunto(doDocumento, doSistema);
+}
+
 function decidir(porProtocolo: ProjetoEnel[], porUc: ProjetoEnel[], porTitular: ProjetoEnel[]): Identificacao {
   const fortes = new Map<string, ProjetoEnel>();
   for (const p of [...porProtocolo, ...porUc]) fortes.set(p.project_id, p);
@@ -163,7 +173,7 @@ export function identificarPorDocumento(
   const porUc = projetos.filter(p => algumEm(numerosDoTexto(p.uc), nums));
   const titular = doc.titular;
   const porTitular = titular && comparavelTitular(titular)
-    ? projetos.filter(p => p.titular !== null && comparavelTitular(p.titular) && casaTitular(p.titular, titular))
+    ? projetos.filter(p => p.titular !== null && comparavelTitular(p.titular) && mesmoTitular(p.titular, titular))
     : [];
   return decidir(porProtocolo, porUc, porTitular);
 }

@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   combinar, identificarPorDocumento, identificarPorTexto, nomeTrazOutroProjeto, numerosDoTexto,
-  referenciaDoProjeto, titularNoAssunto, type ProjetoEnel,
+  referenciaDoProjeto, titularNoAssunto, mesmoTitular, type ProjetoEnel,
 } from '../src/email/enel/identificar.js';
 
 const P = (o: Partial<ProjetoEnel>): ProjetoEnel => ({
@@ -176,4 +176,55 @@ test('janela: o mesmo nome identifica o titular que TEM esse nome do meio', () =
 
 test('janela: vale a ocorrência compatível mesmo que a primeira traga outro nome do meio', () => {
   assert.equal(titularNoAssunto('PROJETO GD - JOSE MARIA SANTOS E JOSE C. SANTOS', 'JOSE CARLOS SANTOS'), true);
+});
+
+// ── Correção pré-revisão 2: o caminho do DOCUMENTO usa a mesma regra estrita ──
+
+test('documento: titular JOSE MARIA SANTOS não é achado do JOSE CARLOS (nome do meio diferente)', () => {
+  const CARLOS = P({ project_id: 'jc', codigo: 'PRJ-JC', titular: 'JOSE CARLOS SANTOS' });
+  const MARIA = P({ project_id: 'jm', codigo: 'PRJ-JM', titular: 'JOSE MARIA SANTOS', status: 'completed', ativo: false });
+  const id = identificarPorDocumento({ nt: null, uc: null, titular: 'JOSE MARIA SANTOS' }, [CARLOS, MARIA]);
+  assert.equal(id.tipo, 'nenhum');
+});
+
+test('documento: inicial do nome do meio (JOSE C. SANTOS) identifica JOSE CARLOS SANTOS', () => {
+  const id = identificarPorDocumento({ nt: null, uc: null, titular: 'JOSE C. SANTOS' }, TODOS);
+  assert.equal(id.tipo === 'achado' && id.projeto.codigo, 'PRJ-B');
+  assert.equal(id.tipo === 'achado' && id.por, 'titular');
+});
+
+test('documento: nome do meio omitido (JOSE SANTOS) identifica JOSE CARLOS SANTOS', () => {
+  const id = identificarPorDocumento({ nt: null, uc: null, titular: 'JOSE SANTOS' }, TODOS);
+  assert.equal(id.tipo === 'achado' && id.projeto.codigo, 'PRJ-B');
+});
+
+// ── mesmoTitular(cadastro, documento): a regra estrita, direto ──
+
+test('mesmoTitular: mesmo nome, sem acento e sem caixa', () => {
+  assert.equal(mesmoTitular('JOSE CARLOS SANTOS', 'José Carlos Santos'), true);
+});
+
+test('mesmoTitular: inicial de nome do meio', () => {
+  assert.equal(mesmoTitular('JOSE CARLOS SANTOS', 'JOSE C. SANTOS'), true);
+});
+
+test('mesmoTitular: nome do meio omitido', () => {
+  assert.equal(mesmoTitular('JOSE CARLOS SANTOS', 'JOSE SANTOS'), true);
+});
+
+test('mesmoTitular: conector entre o primeiro e o último nome', () => {
+  assert.equal(mesmoTitular('MARIA APARECIDA SILVA', 'MARIA DA SILVA'), true);
+});
+
+test('mesmoTitular: nome do meio diferente não é o mesmo titular', () => {
+  assert.equal(mesmoTitular('JOSE CARLOS SANTOS', 'JOSE MARIA SANTOS'), false);
+});
+
+test('mesmoTitular: uma palavra só nunca é o mesmo titular', () => {
+  assert.equal(mesmoTitular('IVANILDO', 'IVANILDO'), false);
+  assert.equal(mesmoTitular('JOSE CARLOS SANTOS', 'IVANILDO'), false);
+});
+
+test('mesmoTitular: razão social com LTDA no cadastro casa com o nome sem LTDA no documento', () => {
+  assert.equal(mesmoTitular('OSSEL LOCACAO DE SALAS PARA VELORIOS LTDA', 'OSSEL LOCACAO DE SALAS PARA VELORIOS'), true);
 });
