@@ -366,6 +366,33 @@ A tarefa toca RLS, política, RPC nova e segredo — gatilho do `security-review
 pelo §2 do `desenvolveLuiz`. O checklist entra antes do
 `verification-before-completion`.
 
+### Duas brechas encontradas depois (13/10/2026)
+
+O `security-review` acima **não bastou**. Quem achou foi o linter de segurança
+do Supabase, rodado sobre o schema já aplicado. Vale registrar as duas, porque
+nenhuma era erro de desenho — eram erros de aplicação:
+
+1. **View sem `security_invoker` ignora a RLS.** As quatro views `rede_*`
+   rodavam com os direitos do owner das tabelas, que não passa pela RLS.
+   Qualquer um, inclusive anônimo, lia a base inteira por
+   `rede_ponto_no_mapa` na API REST — a RLS "só master" ficava decorativa.
+   Reproduzido antes de corrigir (`set local role anon` → 12 linhas) e
+   corrigido com `security_invoker = true` mais `REVOKE` nas quatro.
+2. **Os `REVOKE` do cálculo nunca rodaram.** O bloco final de
+   `20261012120000_rede_calculo.sql` ficou para trás quando as funções foram
+   aplicadas em pedaços durante a instabilidade do servidor MCP. `anon` podia
+   chamar `rede_celula_limpar()` (DELETE sem gate) e `rede_aplicar_trafos()`
+   (UPDATE sem gate). Nota: revogar do `PUBLIC` não resolve — o Supabase
+   concede EXECUTE a `anon`/`authenticated` **nominalmente**, por
+   `ALTER DEFAULT PRIVILEGES`; tem de revogar dos papéis pelo nome.
+
+Lição de método, mais útil que as duas correções: **verificar permissão por
+varredura, não por memória.** Eu confirmei os GRANTs só das funções que
+lembrava ter revogado. A regra passa a ser consultar `has_function_privilege`
+e `has_table_privilege` para **todo** objeto novo do schema, e rodar o linter
+antes de dar a fase por pronta. Correção em
+`supabase/migrations/20261013093000_rede_fechamento_views.sql`.
+
 ## 9. Pendências de verificação — não são fatos
 
 A política de rede deste ambiente negou **todos** os hosts das fontes:
