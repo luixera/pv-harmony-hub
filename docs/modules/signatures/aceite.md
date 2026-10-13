@@ -399,23 +399,24 @@ para o endurecimento não quebrar o LibreOffice só na primeira conversão real.
 | `aviso: fora do sandbox a conversão FUNCIONA — o endurecimento da unit é que está atrapalhando o LibreOffice` | Ajustar a unit (`worker/assinador/deploy/gdm-assinador.service`). Planilha e `.docx` **não** convertem até lá. |
 | `aviso: a conversão de fumaça falhou …` | LibreOffice ou fontes com problema. PDF já pronto continua assinável; `.docx` e planilha não. |
 
-### 3.2 Os 4 testes de conversão no CI
+### 3.2 Os 3 testes de conversão no CI
 
-No passo **"Testes do assinador"** os 4 testes de conversão têm de aparecer
+No passo **"Testes do assinador"** os 3 testes de conversão têm de aparecer
 **passando — não "skipped"**: converte `.docx`, converte planilha (o caminho da
-CEMIG), duas conversões simultâneas, e recusa `.docx` corrompido. Na sua máquina
+CEMIG) e duas conversões simultâneas. Na sua máquina
 (Windows, sem LibreOffice) eles são pulados; **no CI eles falham de propósito**
 se o LibreOffice não estiver instalado, com a mensagem *"CI sem LibreOffice:
 instale libreoffice-calc e libreoffice-writer no pipeline…"*. Pulá-los em
 silêncio deixaria o CI verde sem nunca exercitar a conversão.
 
-### 3.3 O teste do `.docx` corrompido
+### 3.3 Não há teste do `.docx` corrompido — e por quê
 
-É o mais frágil dos quatro. Ele fabrica um zip sem nenhuma entrada legível e
-espera que o sistema **recuse com mensagem em português que cita "corrompido" e
-o nome do arquivo**. Se falhar com **"Missing expected rejection"**, o
-LibreOffice **converteu o lixo** e a validação do PDF não pegou: **não é problema
-de ambiente, é defeito a corrigir**. Traga o log.
+Houve três tentativas de testar que um arquivo corrompido é recusado, e o CI
+derrubou todas (13/10/2026): o LibreOffice converte até um arquivo de `PK` + 512
+bytes de lixo, sai com código 0 e entrega um PDF plausível que passa no
+`validarPdf`. O teste foi removido: ele só fixaria um comportamento do
+LibreOffice que não controlamos. **A proteção contra isso é você olhar o PDF no
+passo 4** ("Confira antes de assinar").
 
 ### 3.4 E mais duas coisas
 
@@ -457,6 +458,11 @@ de ambiente, é defeito a corrigir**. Traga o log.
   libere ou recuse por lá.
 - **O passo 4 depende de você olhar.** Nada impede você de clicar "Está certo"
   sem conferir; o sistema registra *quem* deu, mas não *se leu*.
+- **Arquivo corrompido (ou que não é de verdade um `.docx`/`.xlsx`) pode gerar um
+  PDF de aparência normal** — página em branco ou com lixo — sem erro nenhum. O
+  LibreOffice não recusa; o sistema não tem como detectar. É por isso que o passo
+  "Confira antes de assinar" existe: **olhe o PDF, não só clique.** Observado no
+  CI em 13/10/2026.
 - **NÃO assine diagrama unifilar por enquanto.** A estampa é um retângulo
   **opaco** de largura fixa (290 pt) no canto inferior direito, e não trata
   `/Rotate`, `CropBox` nem `MediaBox` com origem diferente de zero. Unifilar é
@@ -519,7 +525,7 @@ O módulo está aceito quando **todos** estes itens forem verdadeiros:
   o sino de notificações avisou da assinatura (passo 5).
 - [ ] Cancelar um pedido em "Preparando"/"Na fila" o deixou **"Recusado"** (passo 7c).
 - [ ] O log do instalador mostrou **`conversão ok — sob o sandbox da unit`** e os
-  4 testes de conversão **passaram** no CI.
+  3 testes de conversão **passaram** no CI.
 
 Depois do aceite, atualize o "Estado" em [overview.md](overview.md) e a linha do
 módulo no `CLAUDE.md`.

@@ -222,8 +222,14 @@ Números estáveis (`RN-ASS-NN`): outras docs e comentários apontam para eles.
   `.xlsx`, `.xls`, `.docx`, `.doc` (CSV é recusado: separador `;` e Latin-1 geram
   uma coluna única com lixo que passaria pela rede de detecção). A extensão manda
   sobre o MIME. O resultado só vale se for PDF de verdade (`%PDF-` no início,
-  `%%EOF` no fim, tamanho mínimo) — documento corrompido gera erro **em
-  português, com orientação**. `soffice` roda sem shell, em perfil e pasta
+  `%%EOF` no fim, tamanho mínimo, ≥ 1 página) — arquivo ausente, vazio, truncado
+  ou ilegível gera erro **em português, com orientação**. **Isto NÃO é uma
+  tranca contra arquivo corrompido:** o CI de 13/10/2026 provou que o LibreOffice
+  converte até lixo (`PK` + bytes aleatórios num `.docx`), sai com código 0 e
+  entrega um PDF plausível que passa em todas essas checagens. A garantia contra
+  esse caso é **humana** — o passo "Confira antes de assinar" (ver RN-ASS-08:
+  ninguém assina uma conversão que não foi olhada); por isso não há teste
+  automatizado de recusa de `.docx` corrompido. `soffice` roda sem shell, em perfil e pasta
   próprios, em grupo de processos próprio; o **timeout e o SIGTERM matam o
   grupo** (o wrapper `soffice` deixa o `soffice.bin` vivo, e conversões travadas
   esgotariam a RAM da VPS, que também hospeda a Ludmilla). Uma conversão por

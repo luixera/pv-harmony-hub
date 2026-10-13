@@ -135,7 +135,15 @@ function mensagemArquivoRuim(nomeOriginal: string): string {
   return `Não consegui converter "${nomeOriginal}" para PDF. O arquivo pode estar corrompido, protegido por senha ou em formato antigo. Abra no Excel/Word, salve de novo, ou exporte para PDF e suba o PDF.`;
 }
 
-/** PDF só vale se abre no pdf-lib, tem página e termina como PDF (não foi cortado). */
+/**
+ * PDF só vale se abre no pdf-lib, tem página e termina como PDF (não foi cortado).
+ *
+ * ATENÇÃO — isto NÃO é uma tranca. Pega arquivo ausente, vazio, truncado e
+ * ilegível. NÃO pega "PDF plausível gerado a partir de lixo": o CI de 13/10/2026
+ * provou que o LibreOffice converte um .docx corrompido (até 'PK' + bytes
+ * aleatórios), sai com código 0 e entrega um PDF que passa por todas as checagens
+ * abaixo. Nesse caso a garantia é humana: o passo "Confira antes de assinar".
+ */
 async function validarPdf(pdf: Buffer, nomeOriginal: string): Promise<void> {
   const cauda = pdf.subarray(Math.max(0, pdf.length - JANELA_EOF)).toString('latin1');
   if (pdf.length < TAMANHO_MINIMO_PDF || pdf.subarray(0, 5).toString() !== '%PDF-' || !cauda.includes('%%EOF')) {
