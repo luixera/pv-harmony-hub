@@ -7,6 +7,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useCompanyDisplay } from '@/hooks/useCompanyDisplay';
 import { useProject, useUpdateProjectStatus, useUpdateProjectData } from '@/hooks/useProjects';
 import { useConcessionaire } from '@/hooks/useEnergyConcessionaires';
+import { tituloQueAcompanhaTitular } from '@/utils/projectTitle';
 import { useComments, useAddComment } from '@/hooks/useComments';
 import { useDocuments, useUploadDocument, useDocumentUrl } from '@/hooks/useDocuments';
 import { useProjectHistory } from '@/hooks/useHistory';
@@ -2240,7 +2241,12 @@ export function ProjectModal({ projectId, onClose, initialTab = 'geral', viewAsC
 
   const handleSaveData = useCallback(async (generalData: Record<string, any>, equipment: Record<string, any>) => {
     if (!project) return;
-    await updateData.mutateAsync({ projectId: project.id, generalData, equipment });
+    // Trocou o titular? O título do projeto vai junto. Ele nasce como cópia do
+    // nome do titular e, até 12/10/2026, nada o atualizava depois: o PRJ-81492
+    // seguiu meses como "ANTONIO" depois de a titularidade passar ao ROBSON, e
+    // o título é o que aparece no Kanban, na busca e nos documentos.
+    const title = tituloQueAcompanhaTitular(project.title, generalData.holder_name) ?? undefined;
+    await updateData.mutateAsync({ projectId: project.id, generalData, equipment, title });
     setIsEditing(false);
   }, [project, updateData]);
 

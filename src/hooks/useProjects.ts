@@ -386,12 +386,25 @@ export function useUpdateProjectData() {
       projectId,
       generalData,
       equipment,
+      title,
     }: {
       projectId: string;
       generalData?: Partial<Omit<ProjectGeneralData, 'id' | 'project_id' | 'created_at' | 'updated_at'>>;
       equipment?: Partial<Omit<ProjectEquipment, 'id' | 'project_id' | 'created_at' | 'updated_at'>>;
+      /** Título novo quando o titular mudou — ver `tituloQueAcompanhaTitular`. */
+      title?: string;
     }) => {
       const updates: Promise<void>[] = [];
+
+      // O título do projeto é cópia do nome do titular feita na criação; sem
+      // isto aqui, trocar o titular deixava o título com o nome antigo para
+      // sempre (PRJ-81492, 12/10/2026 — quase foi assim para a CPFL).
+      if (title) {
+        updates.push((async () => {
+          const { error } = await supabase.from('projects').update({ title }).eq('id', projectId);
+          if (error) throw error;
+        })());
+      }
 
       if (generalData && Object.keys(generalData).length > 0) {
         updates.push(
