@@ -307,8 +307,8 @@ Conexão MMGD". Validado ponta a ponta: projeto **node 546581** criado à mão
 (PRJ-14848) e o roteiro automático repetiu tudo até a revisão em 1 min 15 s.
 
 Código: `worker/ludmilla/src/criacao/` — `agente.ts` (invólucro da CLI, sem
-shell, valores só por `eval --stdin`), `sessao-herdada.ts` (entra pelo
-Playwright da varredura e passa os cookies para a CLI — ver abaixo),
+shell, valores só por `eval --stdin`), `navegador.ts` (interface `Navegador` + `AgentePlaywright`, o navegador da
+varredura vestido para o roteiro),
 `roteiro-cpfl60.ts` (as 6 etapas), `js.ts` (trechos que rodam na página),
 `util.ts` (puro, testado), `index.ts` (run: dados → login → roteiro → node →
 finalizarRun). Validação local sem banco e sem salvar:
@@ -318,39 +318,48 @@ Chrome no HOME do `ludmilla`, unit libera `~/.agent-browser`,
 `LUDMILLA_AB_ARGS` leva `--no-sandbox,--disable-crashpad,…`
 (`LUDMILLA_AB_EXEC` aponta outro Chromium se o completo cair).
 
-#### A criação não tem login próprio (12/10/2026)
+#### A criação roda no navegador da varredura (13/10/2026)
 
-O login da CLI falhou nas **4 tentativas** entre 18/09 e 12/10/2026, sempre no
-passo 0. O print guardado no bucket conta o que acontecia: **"Olá Usuário"** e
-**"Você não tem acesso a essa página"** — o B2C autenticava, mas a seleção de
-perfil ("Serviços para projetistas" / "Projetos Particulares") não acontecia, e
-sem ela o Drupal do `gestao-projetos` nega tudo. Enquanto isso a **varredura
-entra no mesmo portal, com a mesma conta, na mesma VPS, 2×/dia, sem falhar**.
+Três tentativas, nesta ordem, e o que cada uma ensinou:
 
-Então a criação parou de tentar um segundo login e passou a **herdar a sessão
-da varredura**: `sessao-herdada.ts` abre um contexto Playwright, chama o
-**mesmo `logarNaCpfl`** do conector, pega `context.cookies()` e injeta na
-sessão da CLI (`cookies set --curl <arquivo>`, com fallback cookie a cookie).
-Depois **prova** a sessão: tem de estar em `gestao-projetos` **e** passar no
-`JS_AUTENTICADO` (menu "GERENCIE SEUS PROJETOS" ou link "Sair") — sem a prova,
-o robô seguia com sessão meia-boca e só descobria três telas depois.
+1. **Login próprio na CLI `agent-browser`** (17/09 a 12/10): falhou 4×, sempre
+   no passo 0. O print guardado conta: **"Olá Usuário"** + **"Você não tem
+   acesso a essa página"** — o B2C autenticava, mas a seleção de perfil
+   ("Serviços para projetistas") não acontecia, e sem ela o Drupal nega tudo.
+2. **Herdar a sessão da varredura por cookies** (12/10): o Playwright logava, os
+   **21 cookies** iam para a CLI e eram **confirmados lá dentro** — e o portal
+   recusou assim mesmo, com a navegação voltando **vazia**
+   (`ERR_HTTP_RESPONSE_CODE_FAILURE`). Medição que fechou o diagnóstico: fora da
+   VPS, a mesma CLI **sem sessão nenhuma** abre `meus-projetos` normalmente e
+   recebe a página "Access denied". Resposta vazia só acontece na VPS → é
+   **bloqueio no caminho contra aquele navegador naquele IP**, não falta de
+   credencial.
+3. **Rodar no navegador da varredura** (13/10, atual): o que o portal aceita, no
+   mesmo IP, duas vezes por dia, há um mês.
 
-Consequências que valem como regra:
-- **Nenhuma senha chega à CLI.** O cofre (`auth save/login`) saiu do caminho;
-  só restou `auth delete`, como faxina de sobra de run interrompido.
-- **Mesmo User-Agent dos dois lados** (`USER_AGENT_LUDMILLA`): cookie herdado
-  com navegador "diferente" é convite para o portal derrubar a sessão.
-- O arquivo de cookies é **credencial de sessão**: tmp com `0600` e apagado no
-  `finally`.
-- A CLI **não preserva `httpOnly` nem `expires`** na importação (o cookie entra
-  como de sessão). Não atrapalha — a sessão vive o run —, mas não conte com
-  esses campos do outro lado.
-- Se um dia o portal prender a sessão ao navegador que a criou, o erro já diz o
-  que fazer: rodar a criação dentro do mesmo Playwright da varredura.
+O roteiro das 6 etapas **não foi reescrito**. Ele passou a falar com a interface
+`Navegador` (`criacao/navegador.ts`) — `abrir`, `clicar`, `js`, `titulo`,
+`url`, `esperar`, `esperarCarga`, `screenshot`, `limparRede`,
+`ultimoPostHtml`, `definirCabecalhos`, `fechar`. Quem a cumpre agora é o
+`AgentePlaywright`, que abre uma **aba** no contexto da varredura; a CLI
+(`Agente`) continua cumprindo a mesma interface e um teste trava as duas lado a
+lado, para nenhuma ficar para trás.
+
+Consequências:
+- **O login é o `logarNaCpfl` do conector** — o mesmo da varredura. Quebrou?
+  Quebra para os dois, e conserta num lugar só.
+- Depois do login, a criação **prova** a sessão (`JS_AUTENTICADO`: menu
+  "GERENCIE SEUS PROJETOS" ou link "Sair") antes de começar o formulário.
+- Nenhuma senha passa por CLI nenhuma; o cofre do agent-browser saiu do caminho.
+- O **contexto é do laço**: na estação reaproveita a sessão viva; na VPS é do
+  run e o laço fecha ao fim, como `destino()` faz com a varredura. A criação
+  fecha só a **aba**.
+- `ultimoPostHtml` virou escuta de respostas de documento POST — é o que diz
+  **qual campo** o servidor recusou quando o Avançar não avança.
 
 | Passo | Nome | O que faz | Seletores-chave (mapa de 17/09) |
 |---|---|---|---|
-| 1 | `introducao` | sessão herdada da varredura → `gestao-projetos/criar-projeto` → link 60 → Introdução → "Conexão de microgeração" e **confere** `flux_type = conexão`. Nunca abre `node/add/project_60` direto (retoma formulário velho) | `a[href$="node/add/project_60"]`, `#edit-next-new-connection`, `#edit-field-flux-type-conexo` |
+| 1 | `introducao` | login da varredura na mesma aba → `gestao-projetos/criar-projeto` → link 60 → Introdução → "Conexão de microgeração" e **confere** `flux_type = conexão`. Nunca abre `node/add/project_60` direto (retoma formulário velho) | `a[href$="node/add/project_60"]`, `#edit-next-new-connection`, `#edit-field-flux-type-conexo` |
 | 2 | `dados_uc` | **Orçamento de Conexão** (rótulo conferido), 3 × Não (`-0`), UC + Buscar, espera Nome do Cliente, Empresa = CPFL, Lat/Long DMS, 2 × Não (`-1`!), perguntas condicionais, FormData, Avançar | `#edit-field-quotation-options-60-connection`, `#edit-field-consumer-unit-0-consumer-unit-code`, `…-send-uc-code`, `[id^="edit-field-consumer-unit-0-latitude"]`, `#edit-next` |
 | 3 | `dados_projeto` | título, Não, ENERGIA SOLAR (2721), data +30 (JS), Geração Local (2771), categoria (regra do front), GED 13 (2761), aéreo (2866), fases (2751), **Cabos = nº de fases**, caixa, carga = Demanda, disjuntor da regra, geração (651, módulos kWp, área, inversores); **FormData dos totais conferido**; Avançar | ids `edit-field-*` e `#edit-field-complementary-generation-0-subform-field-*` |
 | 4 | `dados_cliente` | Pessoa Física, Consultar CPF (espera Nome), celular/e-mail só se vazios, endereços = instalação, 2 × Sim (`-1`!) | `[id^="edit-field-physicalperson-0-*"]`, `[id^="edit-field-address-type-mesmo"]`, `…authorize-pay-connec-costs-1`, `…solicitacao-de-vistoria-1` |
@@ -608,8 +617,58 @@ Agora:
    `sem_dono` — **não** em `bloqueados`, que a tela rotula como "titular
    divergiu".
 
-**Com UM protocolo citado nada muda**: anexa todos os não-imagem e lê o maior PDF.
-Regra que não anexa nem lê PDF não depende de arquivo e não é afetada.
+**Com UM protocolo citado e nomes de arquivo genéricos** (`parecer.pdf`,
+`documento.pdf`, `image001.png`) nada muda: anexa todos os não-imagem e lê o
+maior PDF. Regra que não anexa nem lê PDF não depende de arquivo e não é afetada.
+
+### Nome de arquivo com o número de OUTRO protocolo (E1b, 12/10/2026)
+
+A rodada 3 só olhava o nome do arquivo quando o assunto citava **vários**
+protocolos **nossos**. Sobravam duas lacunas, que levavam ao mesmo resultado do
+E1 (documento de um cliente no card de outro): (1) o assunto cita dois protocolos
+e só um é nosso — o outro é de projeto concluído, de outra conta ou fora do teto
+de 80 —, então a contagem dá 1 e anexava tudo; (2) com um protocolo só, um
+arquivo com o número de **outro projeto nosso** no nome também era anexado.
+
+A regra agora vale **sempre** (com um protocolo ou vários), para regra que anexa
+ou lê PDF: **arquivo cujo nome carrega um número de protocolo DIFERENTE do que
+está sendo tratado não vai para este projeto** (`tirarDeOutroProtocolo`). Não se
+compara com a lista de projetos: "é diferente do que estou tratando" vale mesmo
+que o outro número não seja de projeto nenhum nosso.
+
+| Nome do arquivo | Resultado |
+|---|---|
+| sem número de protocolo reconhecível | como sempre: não é sinal, não barra |
+| traz o número do protocolo em tratamento (com ou sem zero à esquerda) | anexa |
+| traz um número de protocolo **diferente** | não anexa a este projeto |
+| traz o deste **e** o de outro (ambíguo) | não anexa |
+
+**"Número de protocolo reconhecível" no nome** = sequência **contígua** de **11 ou
+12 dígitos**, contados depois de tirar os zeros à esquerda
+(`DIGITOS_DE_PROTOCOLO_NO_NOME` em `util.ts`); compara-se como `casaProtocolo`:
+por dígitos. É estreita de propósito, porque a regra **barra** arquivo e o erro
+caro é o falso positivo (documento legítimo que não chega ao card). Ficam de
+fora, por forma: data (8 dígitos), UC e telefone com DDD (10), epoch em ms (13),
+carimbo `AAAAMMDDhhmmss` e CNPJ (14), linha digitável de boleto (44+) e CPF/CNPJ
+pontuado. O custo do outro lado: protocolo de outra concessionária fora de 11–12
+dígitos não é visto (e o nome sem número reconhecível segue valendo como antes).
+Limite conhecido: CPF **sem pontuação** (11 dígitos) é indistinguível de
+protocolo pela forma.
+
+Quando barra, o arquivo **não abre linha** em `portal_anexos`, a IA **não lê** o
+PDF dele, e o `motivo` diz `N arquivo(s) não anexado(s): o nome traz o número de
+outro protocolo, diferente do deste projeto (nomes…)`. Os nomes vão para o banco,
+nunca para o log (que leva só a contagem). Se **todos** os arquivos forem de
+outro, a mensagem vira `sem_dono` (concluída, IA fora, "confira à mão"); se sobra
+algum arquivo, segue `tratado` com a ressalva.
+
+**Dois contadores, duas unidades.** `sem_dono` conta **mensagens** (o
+tratamento em que nada ficou seguramente deste protocolo). `anexos_de_outro_protocolo`
+conta **arquivos** barrados por esta regra, e pode ser > 0 sem `sem_dono` (o
+genérico do mesmo e-mail foi anexado). **Não conta a divisão normal** de um e-mail
+com dois protocolos **nossos**: ao tratar o A, o arquivo do B é barrado, mas é o
+fluxo do E1 funcionando — contar subiria o aviso justamente quando está tudo certo.
+Só conta o arquivo cujo nome traz um número que o e-mail **não serve**.
 
 ### O que o bucket de documentos aceita (rodada 3)
 
@@ -744,24 +803,28 @@ linha. Sem isso, corrigir uma regra não serviria para o passado.
 `executarVarreduraEmail` não tem teste — a spec §9 manda para o teste manual de
 ponta a ponta. O primeiro run é **manual e acompanhado**, e nele vale olhar:
 `bloqueados` (o bloqueio por titular nunca rodou contra PDF real),
-`imagens_ignoradas`, `sem_dono` (e-mail de vários protocolos sem arquivo que diga
-de quem é), `anexos_recusados` (p7s, dwg, zip, acima de 10 MB), `anexos_sem_nome`,
+`imagens_ignoradas`, `sem_dono` (e-mail em que nenhum arquivo é seguramente deste
+protocolo — mensagens), `anexos_de_outro_protocolo` (arquivos cujo nome traz o
+número de outro protocolo — arquivos), `anexos_recusados` (p7s, dwg, zip, acima de
+10 MB), `anexos_sem_nome`,
 `nao_lidas`, `a_tentar_de_novo`, o tempo do run, e se aparece algum `imap-uid-` no
 log (envelope sem `Message-ID`: aí o uid vira o id do dedupe, e se a caixa for
 recriada a mensagem é tratada de novo). Só depois disso se fala em agendamento.
 
-A tela **ainda não mostra** `sem_dono`, `anexos_recusados` e `anexos_sem_nome`
-como contadores (a rodada 3 não tocou em `src/`): leia-os do `resultado` do run
+A tela **ainda não mostra** `sem_dono`, `anexos_de_outro_protocolo`,
+`anexos_recusados` e `anexos_sem_nome` como contadores (a rodada 3 não tocou em `src/`): leia-os do `resultado` do run
 (SQL no roteiro do primeiro run). As linhas com ressalva já aparecem no grupo
 "Terminei, mas com um porém".
 
-**Lacunas conhecidas do E1** (decididas, não esquecidas): se o assunto cita dois
-protocolos mas **só um é nosso** (o outro é de projeto concluído, de outra conta,
-ou ficou fora do teto de 80), a contagem dá 1 e vale o caso normal — anexa tudo.
-E, com um protocolo só no assunto, um arquivo cujo nome traz o número de **outro**
-projeto nosso também é anexado: a regra do usuário é "com um protocolo nada
-muda". Se o primeiro run mostrar um desses casos, a correção é contar também os
-números do nome dos arquivos.
+**Lacunas do E1 — fechadas pelo E1b** (12/10/2026): o assunto com dois
+protocolos de que só um é nosso, e o arquivo com o número de outro projeto nosso
+no nome com um protocolo só. Ver "Nome de arquivo com o número de OUTRO
+protocolo". **O que ainda sobra desta família**: arquivo de nome **genérico**
+(`parecer.pdf`, `documento.pdf`) num e-mail cujo assunto cita um protocolo nosso e
+outro que não é nosso — o nome não diz de quem é, e vale "nome sem número não é
+sinal". O que protege é o titular do PDF, conferido pela IA contra o do projeto;
+sem IA (fora do ar), o protocolo é a única barreira. Também não é visto: número de
+protocolo no nome com menos de 11 ou mais de 12 dígitos, ou com pontuação.
 
 **Dois projetos ativos da EDP estão sem número de protocolo** — não há o que
 buscar, e eles ficam fora da automação até ganharem protocolo.

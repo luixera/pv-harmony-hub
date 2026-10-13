@@ -2,8 +2,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   casaEndereco, casaProtocolo, casaTitular, chaveProtocolo, comparavelTitular, destinoNoBucket, ehImagem,
-  ehPdf, idArquivoDeEmail, LIMITE_BUCKET_BYTES, nomeCitaProtocolo, ocorrenciasPorNome, pdfDoParecer,
-  protocoloDoAssunto, protocolosNoAssunto, recomendacaoDoVeredito, regraQueCasa, separarPorProtocolo,
+  ehPdf, idArquivoDeEmail, LIMITE_BUCKET_BYTES, nomeCitaProtocolo, nomeTrazOutroProtocolo, ocorrenciasPorNome, pdfDoParecer,
+  protocoloDoAssunto, protocolosNoAssunto, protocolosNoNome, recomendacaoDoVeredito, regraQueCasa, separarPorProtocolo,
+  tirarDeOutroProtocolo,
   type RegraEmail,
 } from '../src/email/util.js';
 
@@ -235,6 +236,100 @@ test('separarPorProtocolo: arquivo que cita OS DOIS protocolos é ambíguo e nã
   const citados = ['045006443920', '045006443921'];
   assert.deepEqual(separarPorProtocolo([juntos], '045006443920', citados).meus, []);
   assert.deepEqual(separarPorProtocolo([juntos], '045006443921', citados).meus, []);
+});
+
+// ── E1b: nome com o número de OUTRO protocolo (vale com UM protocolo só) ─────
+// A regra: nunca anexar arquivo cujo nome carregue um número de protocolo
+// DIFERENTE do que está sendo tratado — haja ou não outro projeto nosso com esse
+// número. "Reconhecível" é conservador: 11 ou 12 dígitos CONTÍGUOS (já sem zero
+// à esquerda). Falso positivo aqui faz documento legítimo deixar de ser anexado.
+
+test('protocolosNoNome: reconhece o número que a EDP usa e devolve só a chave', () => {
+  assert.deepEqual(protocolosNoNome('PARECER_45006443920.pdf'), ['45006443920']);
+  assert.deepEqual(protocolosNoNome('045006443920.pdf'), ['45006443920'], 'zero à esquerda sai, como em casaProtocolo');
+  assert.deepEqual(protocolosNoNome('0045006443920_final.PDF'), ['45006443920']);
+  assert.deepEqual(protocolosNoNome('parecer 45006443920 (1).pdf'), ['45006443920']);
+  assert.deepEqual(protocolosNoNome('NOTA450064439201.pdf'), ['450064439201'], '12 dígitos também é protocolo');
+});
+
+test('protocolosNoNome: dois números diferentes saem os dois; o mesmo duas vezes sai uma', () => {
+  assert.deepEqual(protocolosNoNome('PARECER_45006443920_45006443921.pdf'), ['45006443920', '45006443921']);
+  assert.deepEqual(protocolosNoNome('45006443920_45006443920.pdf'), ['45006443920']);
+  assert.deepEqual(protocolosNoNome('45006443920_045006443920.pdf'), ['45006443920'], 'mesma chave, grafias diferentes');
+});
+
+test('protocolosNoNome: nome genérico, data, hora, CPF/CNPJ pontuado e telefone NÃO são protocolo', () => {
+  for (const nome of [
+    'parecer.pdf', 'documento.pdf', 'image001.png', 'anexo-tecnico.pdf', 'Planilha (2).xlsx', '',
+    'NF_12345678.pdf',                 // 8 dígitos
+    'parecer_20261012.pdf',            // data AAAAMMDD
+    'UC_4001234567.pdf',               // 10 dígitos (UC)
+    'Scan_20261012153045.pdf',         // carimbo de 14 dígitos
+    'WhatsApp_1697123456789.pdf',      // epoch em ms, 13 dígitos
+    'CPF 123.456.789-01.pdf',          // pontuado: não é uma sequência contígua
+    'CNPJ_12.345.678-0001-90.pdf',
+    'boleto_34191790010104351004791020150008291070026000.pdf', // linha digitável: longa demais
+  ]) {
+    assert.deepEqual(protocolosNoNome(nome), [], `"${nome}" não pode contar como protocolo`);
+  }
+});
+
+test('nomeTrazOutroProtocolo: nome genérico ou sem número reconhecível NÃO é sinal', () => {
+  for (const nome of ['parecer.pdf', 'documento.pdf', 'image001.png', 'carta.pdf', 'parecer_20261012.pdf']) {
+    assert.equal(nomeTrazOutroProtocolo(nome, '045006443920'), false, nome);
+  }
+});
+
+test('nomeTrazOutroProtocolo: o número do próprio protocolo (com ou sem zero) não barra', () => {
+  assert.equal(nomeTrazOutroProtocolo('PARECER_45006443920.pdf', '045006443920'), false);
+  assert.equal(nomeTrazOutroProtocolo('045006443920.pdf', '45006443920'), false);
+  assert.equal(nomeTrazOutroProtocolo('45006443920_045006443920.pdf', '045006443920'), false, 'o mesmo número duas vezes');
+});
+
+test('nomeTrazOutroProtocolo: número DIFERENTE barra — seja ou não de um projeto nosso', () => {
+  assert.equal(nomeTrazOutroProtocolo('PARECER_45006443921.pdf', '045006443920'), true);
+  assert.equal(nomeTrazOutroProtocolo('PARECER_99999999999.pdf', '045006443920'), true, 'não se compara com a lista de projetos');
+  assert.equal(nomeTrazOutroProtocolo('0000045006443921.pdf', '045006443920'), true, 'zeros à esquerda não escondem o outro número');
+  assert.equal(nomeTrazOutroProtocolo('PARECER_450064439201.pdf', '045006443920'), true, '12 dígitos não é o de 11: nada de casar por prefixo');
+});
+
+test('nomeTrazOutroProtocolo: o do protocolo MAIS outro é ambíguo e também barra', () => {
+  assert.equal(nomeTrazOutroProtocolo('PARECER_45006443920_45006443921.pdf', '045006443920'), true);
+  assert.equal(nomeTrazOutroProtocolo('PARECER_45006443920_45006443921.pdf', '045006443921'), true);
+});
+
+test('nomeTrazOutroProtocolo: número do protocolo + data/hora no nome não barra', () => {
+  assert.equal(nomeTrazOutroProtocolo('PARECER_45006443920_20261012.pdf', '045006443920'), false);
+  assert.equal(nomeTrazOutroProtocolo('45006443920_Scan_20261012153045.pdf', '045006443920'), false);
+});
+
+test('tirarDeOutroProtocolo: "inesperado" é o arquivo com algum número que o e-mail NÃO serve', () => {
+  const A = '045006443920';
+  const citados = [A, '045006443921']; // o e-mail serve A e B
+  const so = (nome: string) => tirarDeOutroProtocolo([comTamanho(nome)], A, citados);
+
+  // só o número de B (que o e-mail serve): é a divisão normal — barrado, sem alarme
+  assert.deepEqual(so(NOME_B).deOutro.map(a => a.nome), [NOME_B]);
+  assert.deepEqual(so(NOME_B).inesperados, []);
+  // só um número que ninguém serve: barrado, com alarme
+  assert.equal(so('PARECER_99999999999.pdf').inesperados.length, 1);
+  // o de B MAIS um número que ninguém serve: basta UM estranho para valer o alarme
+  assert.equal(so('PARECER_45006443921_99999999999.pdf').inesperados.length, 1);
+  // o de A (nosso) MAIS um estranho: ambíguo, barrado, com alarme
+  assert.equal(so('PARECER_45006443920_99999999999.pdf').inesperados.length, 1);
+  // sem lista de citados, o número de B já é "estranho"
+  assert.equal(tirarDeOutroProtocolo([comTamanho(NOME_B)], A).inesperados.length, 1);
+  // quem fica não é barrado nem é alarme
+  const fica = tirarDeOutroProtocolo([comTamanho('parecer.pdf'), comTamanho(NOME_A)], A, citados);
+  assert.equal(fica.ficam.length, 2);
+  assert.deepEqual([fica.deOutro, fica.inesperados], [[], []]);
+});
+
+test('tirarDeOutroProtocolo: separa quem fica de quem é de outro, sem reordenar', () => {
+  const anexos = [comTamanho('a.pdf'), comTamanho(NOME_B), comTamanho(NOME_A), comTamanho('image001.png')];
+  const r = tirarDeOutroProtocolo(anexos, '045006443920');
+  assert.deepEqual(r.ficam.map(a => a.nome), ['a.pdf', NOME_A, 'image001.png']);
+  assert.deepEqual(r.deOutro.map(a => a.nome), [NOME_B]);
 });
 
 // ── E2: o que o bucket project-documents de fato aceita ─────────────────────

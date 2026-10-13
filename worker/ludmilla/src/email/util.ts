@@ -216,6 +216,85 @@ const numerosDoNome = (nome: string): string[] => ((nome ?? '').match(/\d+/g) ??
 export const nomeCitaProtocolo = (nome: string, protocolo: string): boolean =>
   numerosDoNome(nome).some(n => casaProtocolo(protocolo, n));
 
+// ── Nome com o número de OUTRO protocolo (E1b) ───────────────────────────────
+
+/**
+ * Quantos dígitos (já SEM zero à esquerda) uma sequência precisa ter para valer
+ * como "número de protocolo" dentro do NOME de um arquivo: 11 ou 12 — o que a EDP
+ * usa (`PARECER_45006443920.pdf`).
+ *
+ * É estreita de propósito. Esta regra BARRA arquivo, então o erro dela que custa
+ * caro é o falso positivo: um documento legítimo que deixa de chegar ao card. Por
+ * isso fica de fora tudo o que costuma aparecer em nome de arquivo e não é
+ * protocolo: data (8), UC e telefone com DDD (10), carimbo de hora (14), epoch em
+ * ms (13), CNPJ (14), linha digitável de boleto (44+), e qualquer CPF/CNPJ
+ * pontuado (não é uma sequência contígua). O custo é o lado oposto: protocolo de
+ * outra concessionária fora de 11–12 dígitos não é visto — e um nome sem número
+ * reconhecível continua valendo como antes (não é sinal, não barra).
+ *
+ * Limite conhecido: um CPF sem pontuação (11 dígitos) é indistinguível, pela
+ * forma, de um protocolo.
+ */
+export const DIGITOS_DE_PROTOCOLO_NO_NOME = { min: 11, max: 12 } as const;
+
+/**
+ * Os números de protocolo que o NOME do arquivo traz, como chave (só dígitos, sem
+ * zero à esquerda) e sem repetir: o mesmo número duas vezes, ou em duas grafias
+ * (`045006443920` e `45006443920`), é um número só. Só contam sequências
+ * CONTÍGUAS de dígitos dentro da faixa de `DIGITOS_DE_PROTOCOLO_NO_NOME`.
+ */
+export function protocolosNoNome(nome: string): string[] {
+  const { min, max } = DIGITOS_DE_PROTOCOLO_NO_NOME;
+  const achados = new Set<string>();
+  for (const corrida of (nome ?? '').match(/\d+/g) ?? []) {
+    const chave = chaveProtocolo(corrida);
+    if (chave.length >= min && chave.length <= max) achados.add(chave);
+  }
+  return [...achados];
+}
+
+/**
+ * O nome do arquivo carrega um número de protocolo DIFERENTE do que está sendo
+ * tratado? Compara como `casaProtocolo`: por dígitos, zeros à esquerda removidos.
+ *
+ * NÃO compara com a lista de projetos: a pergunta é "é diferente do que estou
+ * tratando", e vale mesmo que o outro número não seja de projeto nenhum nosso
+ * (de projeto concluído, de outra conta, fora do teto de 80). Nome que traz o
+ * número deste protocolo MAIS o de outro também conta: é ambíguo, e anexar seria
+ * apostar. Nome sem número reconhecível não é sinal.
+ */
+export function nomeTrazOutroProtocolo(nome: string, protocolo: string): boolean {
+  const alvo = chaveProtocolo(protocolo);
+  return protocolosNoNome(nome).some(k => k !== alvo);
+}
+
+/**
+ * Tira dos anexos os que o nome diz serem de OUTRO protocolo — a regra do E1b,
+ * que vale com UM protocolo no assunto ou com vários.
+ *
+ * `deOutro` é todo arquivo barrado. `inesperados` é o subconjunto que merece
+ * aviso: o que traz algum número que o e-mail NÃO serve. `citados` são os
+ * protocolos NOSSOS que o assunto cita; num e-mail de dois protocolos nossos o
+ * arquivo do B é barrado quando se trata o A, e isso é a divisão normal do E1 —
+ * contar como anomalia faria o aviso soar justamente no fluxo que funciona.
+ */
+export function tirarDeOutroProtocolo<T extends { nome: string }>(
+  anexos: T[], protocolo: string, citados: string[] = [],
+): { ficam: T[]; deOutro: T[]; inesperados: T[] } {
+  const alvo = chaveProtocolo(protocolo);
+  const esperados = new Set(citados.map(chaveProtocolo));
+  const ficam: T[] = [];
+  const deOutro: T[] = [];
+  const inesperados: T[] = [];
+  for (const a of anexos) {
+    if (!nomeTrazOutroProtocolo(a.nome, protocolo)) { ficam.push(a); continue; }
+    deOutro.push(a);
+    const estranhos = protocolosNoNome(a.nome).filter(k => k !== alvo);
+    if (estranhos.some(k => !esperados.has(k))) inesperados.push(a);
+  }
+  return { ficam, deOutro, inesperados };
+}
+
 /**
  * Num e-mail que cita VÁRIOS protocolos, separa o que é DESTE protocolo do resto.
  *

@@ -9,8 +9,8 @@ import { modoAtual } from '../local.js';
 import { abrirCaixa, type Caixa, type EnvelopeLido, type MensagemLida } from './caixa.js';
 import {
   casaEndereco, casaTitular, comparavelTitular, destinoNoBucket, ehImagem, ocorrenciasPorNome, pdfDoParecer,
-  protocoloDoAssunto, protocolosNoAssunto, recomendacaoDoVeredito, regraQueCasa, separarPorProtocolo,
-  type RegraEmail, type Veredito,
+  ehPdf, protocoloDoAssunto, protocolosNoAssunto, recomendacaoDoVeredito, regraQueCasa, separarPorProtocolo,
+  tirarDeOutroProtocolo, type RegraEmail, type Veredito,
 } from './util.js';
 
 /**
@@ -161,8 +161,10 @@ export interface Tratamento {
    *  · `ignorado`  — nenhuma regra casou;
    *  · `bloqueado` — o titular do parecer não é o do projeto (a ÚNICA razão: é o
    *                  que a tela rotula como "não anexei: titular divergiu");
-   *  · `sem_dono`  — o e-mail cita vários protocolos e nenhum arquivo traz o
-   *                  número deste: não dá para dizer qual documento é de qual.
+   *  · `sem_dono`  — o e-mail tem arquivos e nenhum é seguramente DESTE protocolo:
+   *                  ou cita vários protocolos e nenhum nome traz o número
+   *                  deste, ou todos os nomes trazem o número de OUTRO protocolo.
+   *                  Não dá para dizer de quem é o documento.
    */
   situacao: 'tratado' | 'ignorado' | 'bloqueado' | 'sem_dono';
   /** arquivos que chegaram ao card de verdade NESTE run */
@@ -173,6 +175,15 @@ export interface Tratamento {
   recusados: number;
   /** anexos sem nome de arquivo, que não dá para identificar nem anexar */
   semNome: number;
+  /**
+   * ARQUIVOS (não mensagens) que não foram para este projeto porque o nome traz o
+   * número de um protocolo que o e-mail não serve (E1b). É contagem de arquivo, ao
+   * contrário de `sem_dono`, que é de mensagem: uma mensagem `tratado` que anexou
+   * o genérico e barrou o de outro conta 1 aqui e nada em `sem_dono`. Não conta a
+   * divisão normal de um e-mail de vários protocolos NOSSOS (o arquivo do B visto
+   * ao tratar o A).
+   */
+  deOutroProtocolo: number;
   /**
    * false = falha passageira; a mensagem fica pendente e um run futuro tenta de
    * novo. O que conta como concluído está logo abaixo, no corpo da função.
@@ -240,7 +251,7 @@ export async function tratarMensagem(
       anexos: 0, motivo: 'nenhuma regra casa com este assunto/remetente', recomendacao: null,
       concluida: true, arquivoLido: null,
     });
-    return { situacao: 'ignorado', anexados: 0, imagensIgnoradas: 0, recusados: 0, semNome: 0, concluida: true };
+    return { situacao: 'ignorado', anexados: 0, imagensIgnoradas: 0, recusados: 0, semNome: 0, deOutroProtocolo: 0, concluida: true };
   }
 
   // O índice de "este é o 2º arquivo de mesmo nome" sai da mensagem INTEIRA,
@@ -263,33 +274,64 @@ export async function tratarMensagem(
   const citados = protocolosNoAssunto(m.assunto, protocolosDaConta);
   const varios = citados.length > 1;
   const dependeDeArquivo = regra.anexar || regra.ler_pdf;
+
+  // E1b — o NOME do arquivo é olhado SEMPRE, não só quando o assunto cita vários:
+  // arquivo cujo nome traz o número de um protocolo DIFERENTE do que se trata não
+  // vai para este projeto. Cobre o que a contagem do assunto não vê — o outro
+  // protocolo do assunto não é nosso (concluído, de outra conta, fora do teto de
+  // 80: a contagem dá 1) ou o assunto cita um só e o arquivo é de OUTRO projeto
+  // nosso. Nome sem número reconhecível não é sinal e segue como sempre.
+  const { ficam, deOutro, inesperados } = dependeDeArquivo
+    ? tirarDeOutroProtocolo(semImagem, p.protocolo, citados)
+    : { ficam: semImagem, deOutro: [], inesperados: [] };
   const doProtocolo = varios && dependeDeArquivo
-    ? separarPorProtocolo(semImagem, p.protocolo, citados).meus
-    : semImagem;
+    ? separarPorProtocolo(ficam, p.protocolo, citados).meus
+    : ficam;
 
   const ressalvaImagens = imagensIgnoradas > 0
     ? [`${imagensIgnoradas} imagem(ns) do e-mail não foram anexadas (assinatura)`] : [];
   const ressalvaSemNome = semNome > 0
     ? [`${semNome} anexo(s) sem nome de arquivo não foram anexados`] : [];
+  // os nomes vão para o banco (de onde a tela lê); no log só a contagem
+  const ressalvaDeOutro = inesperados.length > 0
+    ? [`${inesperados.length} arquivo(s) não anexado(s): o nome traz o número de outro protocolo, diferente do deste projeto (${descreverNomes(inesperados.map(a => a.nome))})`] : [];
 
-  if (varios && dependeDeArquivo && semImagem.length > 0 && doProtocolo.length === 0) {
-    // Nenhum arquivo traz o número deste protocolo: não há como dizer de quem é o
-    // documento, e anexar "por via das dúvidas" é entregar o de um cliente no card
-    // de outro. Não é falha passageira (insistir dá o mesmo): concluída, com o
-    // motivo na tela. A IA nem é chamada — pagaria para ler o PDF talvez errado.
+  if (dependeDeArquivo && semImagem.length > 0 && doProtocolo.length === 0) {
+    // Nenhum arquivo é seguramente DESTE protocolo — ou o e-mail cita vários e
+    // nenhum nome traz o número deste, ou todos os nomes trazem o de outro. Não há
+    // como dizer de quem é o documento, e anexar "por via das dúvidas" é entregar o
+    // de um cliente no card de outro. Não é falha passageira (insistir dá o mesmo):
+    // concluída, com o motivo na tela. A IA nem é chamada — pagaria para ler o PDF
+    // talvez errado.
+    const explicacao = varios
+      ? `o e-mail cita ${citados.length} protocolos e não consegui dizer qual documento é de qual (nenhum arquivo traz o número deste protocolo no nome) — confira à mão`
+      : `nenhum arquivo do e-mail é deste protocolo: todos trazem no nome o número de outro protocolo (${descreverNomes(deOutro.map(a => a.nome))}) — confira à mão`;
     await deps.registrarEmailLido({
       ...comum, projectId: p.project_id, tipoDocumento: regra.tipo_documento,
       veredito: null, resumo: null, anexos: 0,
       motivo: [
-        'não anexei',
-        `o e-mail cita ${citados.length} protocolos e não consegui dizer qual documento é de qual (nenhum arquivo traz o número deste protocolo no nome) — confira à mão`,
-        ...ressalvaImagens, ...ressalvaSemNome,
+        'não anexei', explicacao,
+        // no caso de um protocolo só a explicação já nomeia os arquivos
+        ...(varios ? ressalvaDeOutro : []), ...ressalvaImagens, ...ressalvaSemNome,
       ].join(' · '),
       recomendacao: null, concluida: true, arquivoLido: null,
     });
-    log('nada anexado: o e-mail cita mais de um protocolo e nenhum arquivo traz o número deste',
-      { nivel: 'aviso', projeto: p.codigo, protocolo: p.protocolo, protocolos_no_assunto: citados.length, arquivos: semImagem.length });
-    return { situacao: 'sem_dono', anexados: 0, imagensIgnoradas, recusados: 0, semNome, concluida: true };
+    log(varios
+      ? 'nada anexado: o e-mail cita mais de um protocolo e nenhum arquivo traz o número deste'
+      : 'nada anexado: todos os arquivos do e-mail trazem no nome o número de outro protocolo',
+    { nivel: 'aviso', projeto: p.codigo, protocolo: p.protocolo, protocolos_no_assunto: citados.length,
+      arquivos: semImagem.length, de_outro_protocolo: inesperados.length });
+    return {
+      situacao: 'sem_dono', anexados: 0, imagensIgnoradas, recusados: 0, semNome,
+      deOutroProtocolo: inesperados.length, concluida: true,
+    };
+  }
+
+  if (inesperados.length > 0) {
+    // Só a contagem: o nome do arquivo e o número do outro protocolo são dado de
+    // outro cliente e ficam no banco (`motivo`), nunca no journald.
+    log('arquivo não anexado: o nome traz o número de outro protocolo, diferente do deste projeto',
+      { nivel: 'aviso', projeto: p.codigo, protocolo: p.protocolo, de_outro_protocolo: inesperados.length });
   }
 
   // O que o bucket de fato aceita (E2). Só vale quando a regra anexa: arquivo
@@ -322,10 +364,14 @@ export async function tratarMensagem(
     ressalvas.push(`o e-mail cita ${citados.length} protocolos: usei só ${doProtocolo.length} de ${semImagem.length} arquivo(s), os que trazem o número deste protocolo no nome`);
   }
   if (regra.ler_pdf && !pdf) {
+    // dizer "não trouxe PDF" de e-mail que trouxe PDF de outro protocolo seria mentira
     ressalvas.push(varios && semImagem.length > 0
       ? 'a regra pede a leitura do parecer, mas nenhum PDF traz o número deste protocolo no nome'
-      : 'a regra pede a leitura do parecer, mas o e-mail não trouxe PDF');
+      : semImagem.some(ehPdf)
+        ? 'a regra pede a leitura do parecer, mas nenhum PDF do e-mail é deste protocolo (o nome traz o número de outro)'
+        : 'a regra pede a leitura do parecer, mas o e-mail não trouxe PDF');
   }
+  ressalvas.push(...ressalvaDeOutro);
   if (parecer.erro) ressalvas.push(`não consegui ler o parecer: ${parecer.erro}`);
   ressalvas.push(...ressalvaImagens, ...ressalvaSemNome);
 
@@ -343,7 +389,7 @@ export async function tratarMensagem(
     });
     log('anexo bloqueado: o titular do parecer não é o do projeto',
       { nivel: 'aviso', projeto: p.codigo, protocolo: p.protocolo, por: c.por });
-    return { situacao: 'bloqueado', anexados: 0, imagensIgnoradas, recusados: 0, semNome, concluida: true };
+    return { situacao: 'bloqueado', anexados: 0, imagensIgnoradas, recusados: 0, semNome, deOutroProtocolo: inesperados.length, concluida: true };
   }
 
   if (recusados.length > 0) {
@@ -414,15 +460,22 @@ export async function tratarMensagem(
     projeto: p.codigo, protocolo: p.protocolo, tipo: regra.tipo_documento,
     veredito: parecer.veredito, conferido_por: c.por, anexados,
     imagens_ignoradas: imagensIgnoradas, recusados: recusados.length, sem_nome: semNome,
+    de_outro_protocolo: inesperados.length,
     protocolos_no_assunto: citados.length, recomendacao, concluida, tentativa,
   });
-  return { situacao: 'tratado', anexados, imagensIgnoradas, recusados: recusados.length, semNome, concluida };
+  return { situacao: 'tratado', anexados, imagensIgnoradas, recusados: recusados.length, semNome, deOutroProtocolo: inesperados.length, concluida };
 }
 
 /** Até três nomes, com o motivo de cada um; o resto vira "e mais N". Vai para o banco, nunca para o log. */
 function descreverRecusados(r: { nome: string; motivo: 'tipo' | 'tamanho' }[]): string {
   const nomes = r.slice(0, 3).map(x => `${x.nome} [${x.motivo}]`).join(', ');
   return r.length > 3 ? `${nomes} e mais ${r.length - 3}` : nomes;
+}
+
+/** Até três nomes; o resto vira "e mais N". Vai para o banco, nunca para o log. */
+function descreverNomes(nomes: string[]): string {
+  const mostrados = nomes.slice(0, 3).join(', ');
+  return nomes.length > 3 ? `${mostrados} e mais ${nomes.length - 3}` : mostrados;
 }
 
 /** O que a triagem decidiu, com as contagens que entram no `resultado`. */
@@ -490,12 +543,14 @@ export async function triar(
 }
 
 /** As contas do run, para o `resultado` e para o log do fim. */
-interface Conta {
+export interface Conta {
   lidos: number; tratados: number; anexados: number; ignorados: number; bloqueados: number;
   /** e-mails de vários protocolos em que nenhum arquivo dizia de quem era (E1) */
   semDono: number;
   /** arquivos que o bucket não aceita (E2) · anexos sem nome de arquivo (E6) */
   recusados: number; semNome: number;
+  /** ARQUIVOS barrados porque o nome traz o número de outro protocolo (E1b) */
+  deOutroProtocolo: number;
   pulados: number; descartados: number; imagens: number; a_tentar_de_novo: number;
   /** mensagens cujo CORPO o parser não conseguiu interpretar (descarte visível) */
   naoLidas: number;
@@ -505,6 +560,54 @@ interface Conta {
   falhasBusca: number;
   /** o TRATAMENTO falhou (banco, storage, leitura do parecer) */
   falhasTratamento: number;
+}
+
+export const contaZerada = (): Conta => ({
+  lidos: 0, tratados: 0, anexados: 0, ignorados: 0, bloqueados: 0, semDono: 0, recusados: 0, semNome: 0, deOutroProtocolo: 0,
+  pulados: 0, descartados: 0, imagens: 0, a_tentar_de_novo: 0, naoLidas: 0,
+  limpos: 0, falhasBusca: 0, falhasTratamento: 0,
+});
+
+/**
+ * Soma o que UMA mensagem tratada rendeu às contas do run. Pura e à parte do laço
+ * (que precisa de IMAP e banco) para o caminho de cada contador até o `resultado`
+ * ter teste: um contador que o tratamento calcula e ninguém soma não aparece em lugar nenhum.
+ */
+export function somarTratamento(n: Conta, r: Tratamento): void {
+  n.anexados += r.anexados;
+  n.imagens += r.imagensIgnoradas;
+  n.recusados += r.recusados;
+  n.semNome += r.semNome;
+  n.deOutroProtocolo += r.deOutroProtocolo;
+  if (!r.concluida) n.a_tentar_de_novo++;
+  if (r.situacao === 'tratado') n.tratados++;
+  else if (r.situacao === 'ignorado') n.ignorados++;
+  else if (r.situacao === 'bloqueado') n.bloqueados++;
+  else n.semDono++;
+}
+
+/** O `resultado` que o histórico do run guarda. `falhas` é o total (busca + tratamento). */
+export function resultadoDoRun(n: Conta, protocolos: number, falhas: number): Record<string, number> {
+  return {
+    protocolos, lidos: n.lidos, tratados: n.tratados,
+    anexados: n.anexados, ignorados: n.ignorados, bloqueados: n.bloqueados,
+    pulados: n.pulados, descartados: n.descartados,
+    // se um dia uma imagem legítima for descartada, é por aqui que aparece
+    imagens_ignoradas: n.imagens,
+    // `bloqueados` é SÓ divergência de titular (é como a tela o rotula). O e-mail
+    // em que nenhum arquivo é seguramente deste protocolo vem aqui, à parte —
+    // conta MENSAGENS (tratamentos).
+    sem_dono: n.semDono,
+    // conta ARQUIVOS: o nome traz o número de um protocolo que o e-mail não
+    // serve (E1b) — o parecer de outro cliente que a robô não pôs neste card.
+    // Pode ser > 0 sem `sem_dono`: o genérico do mesmo e-mail foi anexado.
+    anexos_de_outro_protocolo: n.deOutroProtocolo,
+    // arquivos que o bucket não aceita (p7s, dwg, zip, acima de 10 MB) e anexos
+    // sem nome: descartes conhecidos, que não são falha — mas não somem
+    anexos_recusados: n.recusados, anexos_sem_nome: n.semNome,
+    a_tentar_de_novo: n.a_tentar_de_novo, nao_lidas: n.naoLidas,
+    falhas, falhas_busca: n.falhasBusca, falhas_tratamento: n.falhasTratamento,
+  };
 }
 
 export async function executarVarreduraEmail(run: Run): Promise<void> {
@@ -533,11 +636,7 @@ export async function executarVarreduraEmail(run: Run): Promise<void> {
     // com ela se sabe quantos projetos um e-mail serve (E1)
     const todosOsProtocolos = protocolos.map(x => x.protocolo);
 
-    const n: Conta = {
-      lidos: 0, tratados: 0, anexados: 0, ignorados: 0, bloqueados: 0, semDono: 0, recusados: 0, semNome: 0,
-      pulados: 0, descartados: 0, imagens: 0, a_tentar_de_novo: 0, naoLidas: 0,
-      limpos: 0, falhasBusca: 0, falhasTratamento: 0,
-    };
+    const n = contaZerada();
 
     for (const p of protocolos) {
       // ── 1. a busca na caixa ────────────────────────────────────────────────
@@ -584,15 +683,7 @@ export async function executarVarreduraEmail(run: Run): Promise<void> {
           try {
             n.lidos++;
             const r = await tratarMensagem(run, p, m, regras, DEPS_REAIS, todosOsProtocolos);
-            n.anexados += r.anexados;
-            n.imagens += r.imagensIgnoradas;
-            n.recusados += r.recusados;
-            n.semNome += r.semNome;
-            if (!r.concluida) n.a_tentar_de_novo++;
-            if (r.situacao === 'tratado') n.tratados++;
-            else if (r.situacao === 'ignorado') n.ignorados++;
-            else if (r.situacao === 'bloqueado') n.bloqueados++;
-            else n.semDono++;
+            somarTratamento(n, r);
           } catch (e) {
             // Banco, storage ou leitura do parecer estourando NÃO é falha da
             // caixa, e o log não pode dizer que é. A mensagem fica sem linha no
@@ -633,21 +724,7 @@ export async function executarVarreduraEmail(run: Run): Promise<void> {
       // `protocolos` = projetos conferidos · `mudancas` = documentos que
       // chegaram ao card (é o que o registro da tela mostra)
       protocolos: protocolos.length, mudancas: n.anexados,
-      resultado: {
-        protocolos: protocolos.length, lidos: n.lidos, tratados: n.tratados,
-        anexados: n.anexados, ignorados: n.ignorados, bloqueados: n.bloqueados,
-        pulados: n.pulados, descartados: n.descartados,
-        // se um dia uma imagem legítima for descartada, é por aqui que aparece
-        imagens_ignoradas: n.imagens,
-        // `bloqueados` é SÓ divergência de titular (é como a tela o rotula). O e-mail
-        // de vários protocolos sem arquivo que diga de quem é vem aqui, à parte.
-        sem_dono: n.semDono,
-        // arquivos que o bucket não aceita (p7s, dwg, zip, acima de 10 MB) e anexos
-        // sem nome: descartes conhecidos, que não são falha — mas não somem
-        anexos_recusados: n.recusados, anexos_sem_nome: n.semNome,
-        a_tentar_de_novo: n.a_tentar_de_novo, nao_lidas: n.naoLidas,
-        falhas, falhas_busca: n.falhasBusca, falhas_tratamento: n.falhasTratamento,
-      },
+      resultado: resultadoDoRun(n, protocolos.length, falhas),
     });
     log('varredura por e-mail ok', { run: run.id, protocolos: protocolos.length, ...n, falhas });
   } catch (e) {

@@ -301,8 +301,17 @@ async function principal() {
       continue;
     }
     if (run.tipo === 'criar_projeto') {
-      // criação de projeto: navegador próprio (agent-browser), fora do laço do Playwright
-      await executarCriacao(run);
+      // criação de projeto: o MESMO navegador da varredura. O portal recusa a
+      // CLI agent-browser a partir da VPS (13/10/2026 — ver criacao/navegador.ts).
+      // Na estação, aproveita a sessão viva; na VPS, contexto do run, fechado
+      // aqui como a varredura faz em destino().
+      const vivaCpfl = vivas.get('cpfl')?.contexto;
+      const ctxCriacao = vivaCpfl ?? await abrir('cpfl');
+      try {
+        await executarCriacao(run, ctxCriacao);
+      } finally {
+        if (!vivaCpfl) await ctxCriacao.close().catch(() => undefined);
+      }
       await dormir(5_000);
       continue;
     }
