@@ -181,6 +181,29 @@ equivalente acessível e não depende do mapa. Se incomodar na prática, o próx
 passo é halo de duas cores com dois marcadores por ponto — viável porque a RPC
 limita a 1500 feições.
 
+**A promoção roda no banco, não pela API.** O PostgREST tem
+`statement_timeout` de 8 s e a promoção da Piratininga levou 11 s. O worker sobe
+o staging e chama `rede_solicitar_promocao()`, que só agenda um job de `pg_cron`
+de uso único; o job faz promoção, data-base e recálculo numa transação, e se
+desagenda quando a fila esvazia. O worker espera o desfecho em `rede_importacao`.
+`ALTER FUNCTION ... SET statement_timeout` foi testado e **não** serve: não
+estende um comando já em curso.
+
+**POT_INST em watts na BDGD.** Parte das unidades de GD de baixa tensão vem com
+`POT_INST` em W, não kW (5000, 10000, 13202…). Como BT não passa de 75 kW, acima
+de 1000 é lido como watt (`POT_INST_KW` em `extrair.ts`); a faixa 75–1000 fica
+como está, que erra para o lado do risco. Sem isso, a Paulista somava 13,7 GW de
+"microgeração" (corrigido: 1.015 MW) e a Piratininga 267,9 MW (corrigido: 179,3).
+
+**Carregado em 13/10/2026** (data-base 31/12/2025):
+
+| | trafos | risco | atenção | folga | sem dado | GD |
+|---|---|---|---|---|---|---|
+| CPFL Piratininga | 52.971 | 11,7% | 4,5% | 76,5% | 7,3% | 179,3 MW |
+| CPFL Paulista | 242.226 | 17,9% | 6,3% | 67,1% | 8,7% | 1.015 MW |
+
+Zero trafos sem carga classificados como folga, nas duas.
+
 A auditoria em `rede_importacao` registra data-base, arquivo, etapa e linhas
 por camada, e é dela que a tela tira o rótulo de idade do dado. O disco da VPS
 é reportado em cada etapa por `reportarDisco('ingestao', etapa)`.
