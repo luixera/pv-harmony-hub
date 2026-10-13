@@ -1342,8 +1342,22 @@ faça à mão:
 Actions → "Ludmilla — deploy do robô na VPS" → Run workflow
 ```
 
-Confirme no log do passo "GDAL (ingestão da BDGD)": `GDAL 3.8.4` ou superior, e
-no passo seguinte o espaço livre em `/var/tmp`.
+Confirme no log do passo "GDAL (ingestão da BDGD)" a versão do `ogr2ogr`, e no
+passo seguinte o espaço livre em `/var/tmp`.
+
+> **Medido no deploy de 13/10/2026 (run 57):** a VPS é Ubuntu 22.04 e recebeu o
+> **GDAL 3.4.1**, não o 3.8.4 em que todos os comandos deste plano foram
+> testados. As funções usadas no dialeto SQLite (`ST_AsText`,
+> `ST_PointOnSurface`, `ST_X`, `ST_Y`) dependem do GDAL ter sido compilado com
+> SpatiaLite, o que o pacote do Ubuntu normalmente tem — mas não foi provado
+> na VPS. É por isso que a Piratininga roda primeiro: se uma função faltar, o
+> erro aparece depois de um download de 7 s, e não de 1,2 GB. `/var/tmp` estava
+> com 80 GB livres.
+>
+> Nota do mesmo deploy: o `apt-get install` acionou o `needrestart`, que
+> reiniciou serviços da VPS (nginx e ssh entre eles) — um piscar no site, sem
+> queda. E a VPS já tinha um **reboot pendente** de kernel (roda 6.8.0-136,
+> instalado 6.8.0-138), anterior a este trabalho.
 
 - [ ] **Step 2: Conferir o disco antes**
 
