@@ -55,3 +55,18 @@ test('a soma crua de POT_INST nao pode voltar', () => {
   assert.ok(!/sum\(\s*POT_INST\s*\)/i.test(sqlGdPorTrafo('UGBT_tab')));
   assert.ok(!/sum\(\s*POT_INST\s*\)/i.test(sqlGdPorAlimentador('UGBT_tab')));
 });
+
+import { sqlTracadoAlimentadores, TOLERANCIA_TRACADO } from '../src/bdgd/extrair.js';
+
+// 13/10/2026, Piratininga: 396.983 trechos da SSDMT -> 550 linhas, 3,3 s, 5,4 MB.
+// ST_LineMerge ANTES do simplify e obrigatorio: cada trecho tem 2 pontos, e
+// sem o merge o simplify nao tira nada (8.582 -> 8.582; com merge, -> 2.210).
+test('o tracado agrega a SSDMT por alimentador com LineMerge antes do Simplify', () => {
+  const sql = sqlTracadoAlimentadores();
+  assert.ok(/ST_SimplifyPreserveTopology\(\s*ST_LineMerge\(\s*ST_Collect\(\s*SHAPE\s*\)\s*\)/i.test(sql), sql);
+  assert.ok(sql.includes('FROM SSDMT'));
+  assert.ok(sql.includes('GROUP BY CTMT'));
+  assert.ok(/ST_AsText\(/.test(sql), 'a geometria vem no SELECT, como nos trafos');
+  assert.ok(!/\bJOIN\b/i.test(sql));
+  assert.equal(TOLERANCIA_TRACADO, 0.00005);
+});
