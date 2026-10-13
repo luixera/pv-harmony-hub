@@ -158,6 +158,59 @@ do GD Manager os documentos do projeto (conversar antes). Hoje: parar e mostrar.
 - Valores lidos da UC/CPF (classe, faseamento, categoria, telefone) entram no
   `resultado` do run para comparação com o GD Manager (divergência = aviso, não erro).
 
+## 7-A. Execução de 12/10/2026 — PRJ-81492 → node **598536** (o que o roteiro não previa)
+
+Segunda criação ponta a ponta, feita à mão pela extensão Claude in Chrome na
+sessão do projetista (a Ludmilla tinha falhado 4× no LOGIN: "cheguei em
+gestao-projetos mas a página não está autenticada — Access denied | Acquia CMS";
+o cartão "Serviços para projetistas" não foi acionado). Com a sessão já aberta,
+o roteiro das etapas 1–5 valeu inteiro. Cinco correções:
+
+1. **O link do 60 é RELATIVO.** O menu traz `href="node/add/project_60"`, sem
+   barra inicial — o seletor `a[href$="/node/add/project_60"]` do §1.3 NÃO acha.
+   Usar `a[href$="node/add/project_60"]` (ou casar pelo texto "60 - Microgeração").
+2. **O portal PRÉ-PREENCHE título e nome da usina com o PRIMEIRO NOME do titular
+   da UC** depois do Avançar da etapa 1 (aqui: "ROBSON"). Escrever o título cedo
+   não adianta — o valor é sobrescrito. Escrever DEPOIS dos cálculos da geração e
+   conferir no FormData; `#edit-title-0-value` tem `maxlength=30`.
+3. **Na etapa de Revisão todos os campos vêm `disabled`**, então `new FormData(form)`
+   sai VAZIO e a conferência do §0 não funciona ali. Na revisão, conferir pelos
+   elementos (`[...form.elements].find(e => e.name === …).value`), não pelo FormData.
+4. **As mensagens de erro do portal moram no DOM mesmo sem erro nenhum** (templates
+   ocultos, inclusive contraditórios: "UC não está ativa" junto de "UC está ativa").
+   Só valem as VISÍVEIS (`offsetParent` ou `getClientRects().length`); ler
+   `.messages` sem filtrar faz o robô inventar erro que não houve.
+5. **O Salvar não aceita clique sintético** (`element.click()` / clique por
+   referência de acessibilidade): a página fica na Revisão, sem erro e sem navegar.
+   Só o clique real na coordenada do botão submeteu. Depois disso a URL virou
+   `/gestao-projetos/node/598536/edit?new=true&step=6` e o título voltou a
+   "Introdução" — o bug do portal que o §6 já descrevia.
+
+Confirmado nesta execução (continua valendo): `flux_type=conexão` após o segundo
+Iniciar · rótulos invertidos (`-0`=Não nas três primeiras perguntas da etapa 1,
+`-1`=Não em ponto de entrega/extensão de fase, `-1`=Sim nas duas da etapa 3) ·
+lat/long em DMS aceitos com a máscara `S`/`W` · Cabos = nº de fases · totais da
+geração só calculam com eventos `input/keyup/change` (saíram 4.96 e 4.500 certos) ·
+Consultar do CPF traz telefone/celular/e-mail do cadastro CPFL (não sobrescrever).
+
+**Dados que a UC devolveu** (auditoria): Classe Residencial · Faseamento **VBN** ·
+Categoria cadastrada **B1** (igual à regra do GD Manager) · Carga Atual 12.76 ·
+Demanda Atual 12.11 · **Tensão de fornecimento 127V** · Possui GD: NÃO · UC antiga
+4001303897. A tensão de fornecimento confirma rede 127/220 nesta área da CPFL
+(ver o campo `grid_voltage` do Motor de Engenharia).
+
+**Divergência de cadastro que apareceu**: `projects.title` estava "ANTONIO CARLOS
+ALEIXO" e o titular era "ROBSON CARLOS ALEIXO" — houve troca de titularidade e o
+título do projeto ficou com o nome antigo. O usuário decidiu na hora: vale ROBSON.
+Regra para o robô: **título divergente do titular da UC não é erro de preenchimento,
+é pergunta** — parar e perguntar, como já se faz com pergunta fora do roteiro.
+
+**Autorização de custos**: a pergunta "Autoriza a distribuidora a entregar junto com
+o orçamento de conexão, os contratos e, se houver, o documento para pagamento dos
+custos de conexão?" é cláusula contratual. Resposta usada: **Sim** (mesma do
+PRJ-14848), com autorização explícita do usuário no chat. Mantém-se na autonomia,
+mas o robô registra que respondeu.
+
 ## 8. Checklist "onde não pode estar errado"
 
 1. Começar sempre em `criar-projeto` → 60 → Introdução (formulário limpo).
@@ -170,3 +223,8 @@ do GD Manager os documentos do projeto (conversar antes). Hoje: parar e mostrar.
 8. Nunca sobrescrever telefone/celular/e-mail vindos do Consultar.
 9. Salvar uma vez; node gravado; parar em Envio de documentos.
 10. Sessão própria, cofre limpo ao fim, prints sem sair do bucket privado.
+11. Link do 60 é relativo (`node/add/project_60`) — não casar com barra inicial.
+12. Título só DEPOIS dos cálculos (o portal o sobrescreve com o 1º nome do titular).
+13. Na Revisão, conferir pelos elementos: lá tudo vem `disabled` e o FormData é vazio.
+14. Só mensagem VISÍVEL é erro; o DOM carrega todos os textos de erro o tempo todo.
+15. Salvar exige clique REAL na coordenada — clique sintético não submete.
