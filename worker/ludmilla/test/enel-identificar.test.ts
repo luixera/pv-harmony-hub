@@ -303,3 +303,33 @@ test('combinar: inativo de um projeto e achado de OUTRO → conflito', () => {
   const achado = identificarPorDocumento({ nt: '987654321', uc: null, titular: null }, TODOS);
   assert.equal(combinar(inativo, achado).tipo, 'conflito');
 });
+
+// ── Rodada de correção 2 ──
+
+test('numeral no nome do titular (POSTO 7, SUPERMERCADO 3) casa com o próprio cadastro', () => {
+  assert.equal(titularNoAssunto('PROJETO POSTO 7 DE SETEMBRO', 'POSTO 7 DE SETEMBRO LTDA'), true);
+  assert.equal(titularNoAssunto('SUPERMERCADO 3 IRMAOS LTDA', 'SUPERMERCADO 3 IRMAOS LTDA'), true);
+});
+
+test('numeral no nome do titular: POSTO 8 não casa com POSTO 7 DE SETEMBRO', () => {
+  assert.equal(titularNoAssunto('PROJETO POSTO 8 DE SETEMBRO', 'POSTO 7 DE SETEMBRO LTDA'), false);
+});
+
+test('inicial D não é inicial de DE (conector): MARIA D SILVA não casa com MARIA DE FATIMA SILVA', () => {
+  assert.equal(titularNoAssunto('PROJETO GD - MARIA D SILVA', 'MARIA DE FATIMA SILVA'), false);
+});
+
+test('inicial D não é inicial de DOS (conector): JOSE D SANTOS não casa com JOSE DOS SANTOS', () => {
+  assert.equal(titularNoAssunto('PROJETO GD - JOSE D SANTOS', 'JOSE DOS SANTOS'), false);
+});
+
+test('inicial F de um nome do meio (FATIMA) continua casando', () => {
+  assert.equal(titularNoAssunto('PROJETO GD - MARIA F SILVA', 'MARIA DE FATIMA SILVA'), true);
+});
+
+test('sufixo JR no cadastro é exigido no texto, e JR e JUNIOR são equivalentes', () => {
+  assert.equal(titularNoAssunto('PROJETO GD - JOSE CARLOS SANTOS', 'JOSE CARLOS SANTOS JR'), false);
+  assert.equal(titularNoAssunto('PROJETO GD - JOSE CARLOS SANTOS JUNIOR', 'JOSE CARLOS SANTOS JR'), true);
+  assert.equal(titularNoAssunto('PROJETO GD - JOSE CARLOS SANTOS JR', 'JOSE CARLOS SANTOS JR'), true);
+  assert.equal(titularNoAssunto('PROJETO GD - JOSE CARLOS SANTOS JR', 'JOSE CARLOS SANTOS JUNIOR'), true);
+});

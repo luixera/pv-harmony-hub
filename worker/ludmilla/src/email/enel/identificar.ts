@@ -56,7 +56,7 @@ const SUFIXOS_PJ = new Set(['LTDA', 'EPP', 'EIRELI', 'MEI']);
 
 /** Todas as palavras do titular, sem sufixo de empresa no fim. Palavras curtas ficam (LU, DE). */
 function palavrasDo(titular: string): string[] {
-  const p = semAcento(titular).toUpperCase().split(/[^A-Z]+/).filter(x => x.length > 0);
+  const p = semAcento(titular).toUpperCase().split(/[^A-Z0-9]+/).filter(x => x.length > 0);
   while (p.length > 2 && SUFIXOS_PJ.has(p[p.length - 1])) p.pop();
   return p;
 }
@@ -105,21 +105,30 @@ function casaSequencia(
  *  - o nome completo: todos os nomes do titular, em ordem, sem limite de caracteres;
  *  - primeiro e último nome, com até 24 caracteres entre eles (o nome do meio pode faltar).
  * Entre dois nomes só cabe: conector (DA, DE, DO, DAS, DOS, E), palavra do PRÓPRIO titular
- * (inclusive as curtas, como LU), ou a inicial de um nome do meio do titular. Sufixo de
- * geração logo depois do último nome (JUNIOR, FILHO…) só casa se o titular também o tiver.
+ * (inclusive as curtas, como LU), ou a inicial de um nome do meio que não seja conector
+ * ("D" não é inicial de DE). Sufixo de geração no fim do cadastro (JUNIOR, JR, FILHO…) tem de
+ * vir logo depois do último nome, qualquer que seja o tamanho; JR e JUNIOR são o mesmo sufixo.
+ * Cadastro sem sufixo não casa com texto que traga um.
  * Nome de uma palavra só não identifica ninguém.
  */
 export function titularNoAssunto(assunto: string, titular: string): boolean {
   const todas = palavrasDo(titular);
-  const nomes = todas.filter(p => p.length > 2);
+  const canonico = (w: string): string => (w === 'JR' ? 'JUNIOR' : w);
+  const ultima = todas[todas.length - 1];
+  const sufixo = todas.length > 1 && SUFIXOS_GERACAO.has(ultima) ? canonico(ultima) : undefined;
+  const sobrenome = sufixo ? todas.slice(0, -1) : todas;
+  const nomes = sobrenome.filter(p => p.length > 2);
   if (nomes.length < 2) return false;
   const primeiro = nomes[0];
   const ultimo = nomes[nomes.length - 1];
-  const meio = todas.filter(p => p !== primeiro && p !== ultimo);
+  const meio = sobrenome.filter(p => p !== primeiro && p !== ultimo);
+  const iniciais = meio.filter(n => !CONECTORES.has(n));
   const permitida = (w: string): boolean =>
-    CONECTORES.has(w) || todas.includes(w) || (w.length === 1 && meio.some(n => n[0] === w));
+    CONECTORES.has(w) || todas.includes(w) || (w.length === 1 && iniciais.some(n => n[0] === w));
   const aceitaDepoisDoUltimo = (proxima: string | undefined): boolean =>
-    proxima === undefined || !SUFIXOS_GERACAO.has(proxima) || todas.includes(proxima);
+    sufixo !== undefined
+      ? proxima !== undefined && canonico(proxima) === sufixo
+      : proxima === undefined || !SUFIXOS_GERACAO.has(proxima) || todas.includes(proxima);
   const palavras = semAcento(assunto).toUpperCase().split(/[^A-Z0-9]+/).filter(p => p.length > 0);
   return casaSequencia(palavras, nomes, permitida, Infinity, aceitaDepoisDoUltimo)
     || casaSequencia(palavras, [primeiro, ultimo], permitida, 24, aceitaDepoisDoUltimo);
