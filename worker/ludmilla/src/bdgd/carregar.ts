@@ -106,6 +106,44 @@ export function montarTrafos(
   return saida;
 }
 
+export interface LinhaAlimentador {
+  codigo: string;
+  subestacao_codigo: string | null;
+  tensao_kv: null;                  // TEN_NOM e codigo de dominio, nao kV
+  carga_min_diurna_kw: number | null;
+  gd_conectada_kw: number;
+  geom_wkt: string | null;
+}
+
+/** Só linhas entram em `rede_alimentador.geom` (MultiLineString); o resto vira nulo. */
+export function wktDeLinhas(wkt: string | undefined): string | null {
+  const w = (wkt ?? '').trim();
+  return /^(MULTI)?LINESTRING\s*\(/i.test(w) ? w : null;
+}
+
+export function montarAlimentadores(
+  alims: Record<string, string>[],
+  cargaAlim: Record<string, string>[],
+  gdAlim: Record<string, string>[],
+  tracado: Record<string, string>[],
+): LinhaAlimentador[] {
+  const porCarga = new Map(cargaAlim.map(c => [c.alimentador, num(c.carga_min_diurna_kw)]));
+  const porGd = new Map(gdAlim.map(g => [g.alimentador, num(g.gd_kw)]));
+  const porWkt = new Map(tracado.map(t => [t.alimentador, wktDeLinhas(t.wkt)]));
+  const saida: LinhaAlimentador[] = alims.map(a => ({
+    codigo: a.COD_ID,
+    subestacao_codigo: a.SUB || null,
+    tensao_kv: null,
+    carga_min_diurna_kw: duasCasas(porCarga.get(a.COD_ID) ?? null),
+    // GD ausente E zero de verdade: ninguem conectou nada neste alimentador.
+    gd_conectada_kw: duasCasas(porGd.get(a.COD_ID) ?? 0) ?? 0,
+    geom_wkt: porWkt.get(a.COD_ID) ?? null,
+  }));
+  const semTracado = saida.filter(s => s.geom_wkt === null).length;
+  if (semTracado > 0) console.warn(`[bdgd] ${semTracado} de ${saida.length} alimentadores sem tracado na SSDMT`);
+  return saida;
+}
+
 /**
  * Lotes de 2000: ~27 requisições para a Piratininga. Cada `insert` é aguardado,
  * porque `supabase-js` é lazy e um builder sem `await` nunca sai do lugar.

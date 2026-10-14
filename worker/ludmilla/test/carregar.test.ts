@@ -83,3 +83,32 @@ test('trafo desativado na BDGD nao entra', () => {
     [], []);
   assert.equal(r.length, 0);
 });
+
+import { wktDeLinhas, montarAlimentadores } from '../src/bdgd/carregar.js';
+
+test('wktDeLinhas aceita LINESTRING e MULTILINESTRING e rejeita o resto', () => {
+  assert.equal(wktDeLinhas(' MULTILINESTRING((-47.7 -23.2, -47.8 -23.3)) '), 'MULTILINESTRING((-47.7 -23.2, -47.8 -23.3))');
+  assert.equal(wktDeLinhas('LINESTRING(-47.7 -23.2, -47.8 -23.3)'), 'LINESTRING(-47.7 -23.2, -47.8 -23.3)');
+  assert.equal(wktDeLinhas('POINT(1 2)'), null);
+  assert.equal(wktDeLinhas(''), null);
+  assert.equal(wktDeLinhas(undefined), null);
+});
+
+test('montarAlimentadores junta carga, GD e tracado pelo codigo', () => {
+  const saida = montarAlimentadores(
+    [{ COD_ID: 'TAQ06', NOME: 'Taquaral 6', SUB: 'SE1' }, { COD_ID: 'BBS12', NOME: '', SUB: '' }],
+    [{ alimentador: 'TAQ06', carga_min_diurna_kw: '1234.567' }],
+    [{ alimentador: 'TAQ06', gd_kw: '99.999' }],
+    [{ alimentador: 'TAQ06', wkt: 'MULTILINESTRING((1 2, 3 4))' }, { alimentador: 'BBS12', wkt: 'POINT(1 1)' }],
+  );
+  assert.equal(saida.length, 2);
+  assert.deepEqual(saida[0], {
+    codigo: 'TAQ06', subestacao_codigo: 'SE1', tensao_kv: null,
+    carga_min_diurna_kw: 1234.57, gd_conectada_kw: 100, geom_wkt: 'MULTILINESTRING((1 2, 3 4))',
+  });
+  // sem carga = nulo (nao sei); sem GD = zero (sei que e zero); WKT invalido = nulo
+  assert.deepEqual(saida[1], {
+    codigo: 'BBS12', subestacao_codigo: null, tensao_kv: null,
+    carga_min_diurna_kw: null, gd_conectada_kw: 0, geom_wkt: null,
+  });
+});

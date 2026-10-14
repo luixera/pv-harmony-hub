@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { supabase, reportarDisco } from '../fila.js';
 import { acharItem, baixarEExtrair } from './catalogo.js';
 import { extrair } from './extrair.js';
-import { lerCsv, montarTrafos, enviarEmLotes } from './carregar.js';
+import { lerCsv, montarTrafos, montarAlimentadores, enviarEmLotes } from './carregar.js';
 import { jaCarregada, desfechoDa, type ImportacaoResumo } from './guarda.js';
 
 /**
@@ -92,23 +92,13 @@ export async function ingerir(sigla: string, opcoes: { forcar?: boolean } = {}):
       importacao_id: imp.id, codigo: s.COD_ID, nome: s.NOME || null,
       lng: Number(s.lng), lat: Number(s.lat),
     }));
-    const cargaPorAlim = new Map(lerCsv(await readFile(csv.cargaAlim, 'utf8'))
-      .map(x => [x.alimentador, x.carga_min_diurna_kw]));
-    const gdPorAlim = new Map(lerCsv(await readFile(csv.gdAlim, 'utf8'))
-      .map(x => [x.alimentador, x.gd_kw]));
-    const n2 = (v: string | undefined) => {
-      if (v === undefined || v.trim() === '') return null;
-      const n = Number(v);
-      return Number.isFinite(n) ? Math.round(n * 100) / 100 : null;
-    };
-    const alims = lerCsv(await readFile(csv.alimentadores, 'utf8')).map(a => ({
-      importacao_id: imp.id, codigo: a.COD_ID, subestacao_codigo: a.SUB || null,
-      // tensao_kv fica nula de proposito: TEN_NOM e codigo de dominio, nao kV.
-      tensao_kv: null,
-      carga_min_diurna_kw: n2(cargaPorAlim.get(a.COD_ID)),
-      // GD ausente e zero de verdade: ninguem conectou nada neste alimentador.
-      gd_conectada_kw: n2(gdPorAlim.get(a.COD_ID)) ?? 0,
-    }));
+    // Carga, GD e TRACADO (SSDMT agregada) por alimentador, pelo codigo.
+    const alims = montarAlimentadores(
+      lerCsv(await readFile(csv.alimentadores, 'utf8')),
+      lerCsv(await readFile(csv.cargaAlim, 'utf8')),
+      lerCsv(await readFile(csv.gdAlim, 'utf8')),
+      lerCsv(await readFile(csv.tracado, 'utf8')),
+    ).map(a => ({ importacao_id: imp.id, ...a }));
     const trafos = montarTrafos(
       lerCsv(await readFile(csv.trafos, 'utf8')),
       lerCsv(await readFile(csv.carga, 'utf8')),
@@ -117,7 +107,8 @@ export async function ingerir(sigla: string, opcoes: { forcar?: boolean } = {}):
 
     console.log(`[bdgd] ${subs.length} subestacoes · ${alims.length} alimentadores · ${trafos.length} trafos`);
     await enviarEmLotes('rede_stg_subestacao', subs);
-    await enviarEmLotes('rede_stg_alimentador', alims);
+    // Com o WKT (mediana 6 KB, max. 69 KB), 100 linhas sao ~1 MB por requisicao.
+    await enviarEmLotes('rede_stg_alimentador', alims, 100);
     await enviarEmLotes('rede_stg_transformador', trafos);
 
     // A promoção NÃO roda aqui. A API tem 8 s de statement_timeout e a da

@@ -73,6 +73,26 @@ export function sqlGdPorAlimentador(camada: 'UGBT_tab' | 'UGMT_tab'): string {
  GROUP BY CTMT`;
 }
 
+/**
+ * Traçado dos alimentadores: a SSDMT (trechos de média tensão) agregada por
+ * CTMT, UMA linha por alimentador. Medido na Piratininga em 13/10/2026:
+ * 396.983 trechos → 550 linhas em 3,3 s, 5,4 MB (máx. 69 KB, mediana 6,4 KB).
+ *
+ * `ST_LineMerge` ANTES do simplify é obrigatório. Cada trecho tem 2 pontos;
+ * sem o merge o simplify não remove nada (8.582 → 8.582 pontos num CTMT); com
+ * o merge, 8.582 → 2.210. `PreserveTopology` para a linha não se cruzar.
+ * 0,00005° ≈ 5 m: a resolução guardada; o servidor simplifica mais por zoom.
+ */
+export const TOLERANCIA_TRACADO = 0.00005;
+
+export function sqlTracadoAlimentadores(): string {
+  return `SELECT CTMT AS alimentador,
+       ST_AsText(ST_SimplifyPreserveTopology(ST_LineMerge(ST_Collect(SHAPE)), ${TOLERANCIA_TRACADO})) AS wkt
+  FROM SSDMT
+ WHERE CTMT <> ''
+ GROUP BY CTMT`;
+}
+
 async function paraCsv(gdb: string, destino: string, sql: string): Promise<string> {
   // A geometria vem no proprio SELECT, via ST_AsText — NAO por
   // `-lco GEOMETRY=AS_WKT`. Com `-dialect SQLITE` o SELECT nao carrega a
@@ -109,7 +129,7 @@ export async function lerCurvas(gdb: string): Promise<Curva[]> {
 export async function extrair(
   gdb: string, dir: string, janela: { inicio: number; fim: number },
 ): Promise<{ trafos: string; carga: string; gd: string; alimentadores: string;
-             cargaAlim: string; gdAlim: string; subestacoes: string }> {
+             cargaAlim: string; gdAlim: string; subestacoes: string; tracado: string }> {
   await mkdir(dir, { recursive: true });
   const caseSql = gerarCaseSql(await lerCurvas(gdb), janela.inicio, janela.fim);
 
@@ -141,5 +161,8 @@ export async function extrair(
     `SELECT COD_ID, NOME, ST_X(ST_PointOnSurface(SHAPE)) AS lng,
             ST_Y(ST_PointOnSurface(SHAPE)) AS lat FROM SUB`);
 
-  return { trafos, carga, gd, alimentadores, cargaAlim, gdAlim, subestacoes };
+  // 3,3 s na Piratininga (396.983 trechos -> 550 alimentadores, 5,4 MB).
+  const tracado = await paraCsv(gdb, join(dir, 'tracado-alim.csv'), sqlTracadoAlimentadores());
+
+  return { trafos, carga, gd, alimentadores, cargaAlim, gdAlim, subestacoes, tracado };
 }
