@@ -240,7 +240,7 @@ export function PainelLateral({ resposta, carregando, selecao, aoSelecionar, aoE
 
         {!selecao && resposta?.camada === 'celula' && alims.length === 0 && (
           <p style={{ fontSize: 12, color: '#8A8A96', margin: 0, lineHeight: 1.5 }}>
-            Aproxime até o zoom 14 para listar os transformadores, ou ligue a camada de alimentadores para ver os mais saturados.
+            Aproxime até o zoom 14 para listar os transformadores. Os alimentadores aparecem a partir do zoom 9 (ligue a camada): até o 10, só os em risco ou atenção.
           </p>
         )}
 

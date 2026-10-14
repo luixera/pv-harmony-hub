@@ -68,8 +68,16 @@ export function NetworkSection() {
   // trafo escolhido na busca: o detalhe abre quando a resposta com ele chegar
   const pendente = useRef<number | null>(null);
 
-  const q = useRedeNoMapa({ caixa, zoom, soRisco, camadas });
-  const r = q.data;
+  // Duas consultas, não uma: a camada principal (pontos/células, resumo) volta
+  // em dezenas de ms e nunca espera os alimentadores, que custam mais e são
+  // secundários. As duas chegam em paralelo; o mapa monta o que chegou.
+  const camadasBase = useMemo(() => camadas.filter(c => c !== 'alimentadores'), [camadas]);
+  const q = useRedeNoMapa({ caixa, zoom, soRisco, camadas: camadasBase });
+  const qAlim = useRedeNoMapa({ caixa: camadas.includes('alimentadores') ? caixa : null, zoom, soRisco, camadas: ['alimentadores'] });
+  const r = useMemo(() => q.data
+    ? { ...q.data, alimentadores: qAlim.data?.alimentadores ?? null }
+    : undefined, [q.data, qAlim.data]);
+  const carregando = q.isFetching || qAlim.isFetching;
 
   // ── vista → consulta: só quando sai da caixa carregada ou o zoom muda ──────
   const onIdle = useCallback(() => {
@@ -240,7 +248,7 @@ export function NetworkSection() {
               options={opcoesMapa} />
           )}
           {/* faixa de carregamento: fina, sem esconder o mapa */}
-          {q.isFetching && <div aria-hidden style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg, transparent, ${GOLD}, transparent)` }} />}
+          {carregando && <div aria-hidden style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg, transparent, ${GOLD}, transparent)` }} />}
           {/* busca flutuante */}
           <div style={{ position: 'absolute', top: 12, left: 12, right: 60, display: 'flex', gap: 8, flexWrap: 'wrap', pointerEvents: 'none' }}>
             <div style={{ pointerEvents: 'auto', flex: '0 1 360px', minWidth: 220 }}><Busca mapa={mapa} aoEscolherRede={escolherDaBusca} /></div>
@@ -273,7 +281,7 @@ export function NetworkSection() {
 
         {/* painel lateral: o equivalente acessível */}
         <div style={{ flex: '1 1 320px', maxWidth: 380, minHeight: 420, ...card, padding: 14 }}>
-          <PainelLateral resposta={r} carregando={q.isFetching} selecao={selecao} aoSelecionar={setSelecao}
+          <PainelLateral resposta={r} carregando={carregando} selecao={selecao} aoSelecionar={setSelecao}
                          aoEnquadrar={enquadrar} aoCentrar={centrar} />
         </div>
       </div>

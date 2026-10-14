@@ -523,14 +523,23 @@ que devolver pelo zoom:
 
 | Zoom | Trafos | Alimentadores (se ligados) | Subestações (se ligadas) |
 |---|---|---|---|
-| < 9 | células nível 1 (0,2°) | só risco/atenção, tolerância 0,004° | pontos |
-| 9–10 | células nível 2 (0,05°) | tolerância 0,001° | pontos |
-| 11–12 | células nível 3 (0,0125°) | tolerância 0,0003° | pontos |
-| 13 | células nível 4 (0,005°) | tolerância 0,0003° | pontos |
-| ≥ 14 | pontos, teto 4.000 | resolução guardada (0,00005°) | pontos |
+| < 9 | células nível 1 (0,2°) | **não vêm** (1 px por linha; a célula já diz o risco) | pontos |
+| 9–10 | células nível 2 (0,05°) | só risco/atenção, nível 1 (0,003°), teto 300 | pontos |
+| 11–12 | células nível 3 (0,0125°) | nível 2 (0,001°), teto 600 | pontos |
+| 13 | células nível 4 (0,005°) | nível 3 (0,0003°) | pontos |
+| 14 | pontos, teto 4.000 | nível 3 | pontos |
+| ≥ 15 | pontos, teto 4.000 | resolução guardada (0,00005°) | pontos |
 
-Alimentadores vêm **recortados** à caixa de consulta e **simplificados** no
-servidor por zoom; teto de 600 por vista, os mais ocupados primeiro. Sobre
+Os níveis dos alimentadores são **pré-calculados na promoção**
+(`rede_alimentador_simplificar`), não na hora: `ST_SnapToGrid` +
+`ST_UnaryUnion` costuram os trechos (que a ANEEL entrega sem nó comum exato),
+`ST_LineMerge` devolve ramos longos, `ST_Simplify` reduz e ramos menores que a
+tolerância somem. Sem a costura, 73% dos alimentadores sumiam no zoom baixo
+(um de 30 km chegava em 383 partes de ≤ 500 m). O recorte à caixa é
+`ST_ClipByBox2D`, não `ST_Intersection` (overlay GEOS que custava 1,6 s), e o
+filtro espacial é `&&` (índice), porque o `ST_Intersects` exato sobre mil
+árvores de 600 pontos custava 0,7 s sozinho. Medido ao final: zoom 12 em
+Campinas 219 linhas em ~210 ms; os números por faixa estão no plano. Sobre
 satélite, a linha ganha um **contorno escuro** (segunda camada vetorial com as
 mesmas feições, traço largo escuro por baixo), pelo mesmo motivo dos marcadores.
 Traço distinto por estado: risco contínuo e grosso, atenção médio, folga fino e

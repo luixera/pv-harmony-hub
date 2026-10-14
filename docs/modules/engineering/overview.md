@@ -202,8 +202,13 @@ medido (spec §11; plano `2026-10-13-capacidade-rede-mapa-v2.md`):
 
 O servidor devolve **GeoJSON pronto** por camada em `rede_no_mapa_v2(bbox,
 zoom, so_risco, camadas[])`: pontos ou células (pelo zoom), alimentadores
-(recortados à caixa e simplificados por zoom; abaixo do zoom 9 só
-risco/atenção; teto 600) e subestações. Vai junto um `resumo` da área toda
+(a partir do zoom 9; até o 10 só risco/atenção, teto 300; depois teto 600,
+em três níveis de simplificação **pré-calculados na promoção** por
+`rede_alimentador_simplificar`, recortados à caixa com `ST_ClipByBox2D`) e
+subestações. A costura dos trechos (`ST_SnapToGrid` + `ST_UnaryUnion` antes
+do `ST_LineMerge`) é o que faz a simplificação funcionar: sem ela um
+alimentador de 30 km vinha em 383 partes de ≤ 500 m e sumia inteiro no zoom
+baixo. Vai junto um `resumo` da área toda
 (nunca do teto) e as `regras` em vigor, que a legenda mostra ("Atenção — entre
 60% e 100% da margem").
 
