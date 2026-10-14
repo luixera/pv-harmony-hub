@@ -8,8 +8,29 @@ import { formatCurrency } from '@/lib/utils';
 import { X, Download, Printer, Loader2, SlidersHorizontal } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { calcularCortesDePagina } from '@/utils/pdfPaginacao';
 
 const fmt = formatCurrency;
+
+// Largura da folha do PDF em px CSS: A4 (210 mm) a 96 dpi. O extrato é
+// fotografado nessa largura, independente do tamanho da tela.
+const LARGURA_FOLHA_PX = 794;
+
+/**
+ * Clona a pré-visualização já pronta pra virar folha (PDF/impressão):
+ * sem cantos/sombra de cartão, tabela sem rolagem (é ela que cortava a
+ * coluna da direita) e os cards do resumo sempre em 3 colunas — no celular
+ * a tela os empilha, mas a folha tem largura fixa.
+ */
+function prepararFolhaDoExtrato(preview: HTMLElement): HTMLElement {
+  const clone = preview.cloneNode(true) as HTMLElement;
+  clone.style.borderRadius = '0';
+  clone.style.boxShadow = 'none';
+  clone.style.width = '100%';
+  clone.querySelectorAll<HTMLElement>('[data-pdf="rolagem"]').forEach(el => { el.style.overflow = 'visible'; });
+  clone.querySelectorAll<HTMLElement>('[data-pdf="resumo"]').forEach(el => { el.style.gridTemplateColumns = '1fr 1fr 1fr'; });
+  return clone;
+}
 
 // Etapas: usa a lista canônica do projeto (statusMapping) — antes esta tela
 // tinha uma cópia própria SEM "Pendência" e "Vistoria Solicitada", então esses
@@ -102,32 +123,59 @@ export function FinancialReportModal({ onClose }: FinancialReportModalProps) {
   const handleDownloadPDF = useCallback(async () => {
     if (!previewRef.current) return;
     setIsGenerating(true);
+    // A foto é tirada de um CLONE em folha de largura fixa, fora do modal.
+    // Fotografar a pré-visualização no lugar cortava a coluna "Saldo": o
+    // painel tem ~550 px, a tabela pede 560 e o overflowX:auto rola na tela
+    // mas corta na foto (bug set/2026). No celular cortava ainda mais.
+    const folha = document.createElement('div');
+    folha.style.cssText = `position:fixed;top:0;left:0;width:${LARGURA_FOLHA_PX}px;z-index:-1;background:#fff;pointer-events:none;`;
+    const clone = prepararFolhaDoExtrato(previewRef.current);
+    folha.appendChild(clone);
+    document.body.appendChild(folha);
     try {
       const { default: jsPDF } = await import('jspdf');
       const { default: html2canvas } = await import('html2canvas');
 
-      const canvas = await html2canvas(previewRef.current, {
+      const canvas = await html2canvas(clone, {
         scale: 2,
         useCORS: true,
         backgroundColor: '#fff',
+        windowWidth: Math.max(window.innerWidth, LARGURA_FOLHA_PX),
       });
 
       const imgData = canvas.toDataURL('image/png');
       const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
       const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
       const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
 
-      // If content is taller than one A4 page, add pages
-      const pageHeight = pdf.internal.pageSize.getHeight();
-      let yOffset = 0;
-      while (yOffset < pdfHeight) {
-        if (yOffset > 0) pdf.addPage();
-        pdf.addImage(imgData, 'PNG', 0, -yOffset, pdfWidth, pdfHeight);
-        yOffset += pageHeight;
-      }
+      // Quebra de página só entre linhas da tabela (ou antes dela), nunca no
+      // meio de uma linha — antes o corte era cego a cada altura de página.
+      const mmPorPx = pdfWidth / LARGURA_FOLHA_PX;
+      const origem = clone.getBoundingClientRect().top;
+      const limites: number[] = [];
+      const tabela = clone.querySelector('table');
+      if (tabela) limites.push((tabela.getBoundingClientRect().top - origem) * mmPorPx);
+      clone.querySelectorAll('tbody tr').forEach(tr => {
+        limites.push((tr.getBoundingClientRect().bottom - origem) * mmPorPx);
+      });
+      const cortes = calcularCortesDePagina(limites, pdfHeight, pageHeight);
+
+      cortes.forEach((topo, i) => {
+        if (i > 0) pdf.addPage();
+        pdf.addImage(imgData, 'PNG', 0, -topo, pdfWidth, pdfHeight);
+        const fim = cortes[i + 1];
+        if (fim !== undefined) {
+          // a foto inteira foi desenhada; o que passou do corte fica em branco
+          const visivel = fim - topo;
+          pdf.setFillColor(255, 255, 255);
+          pdf.rect(0, visivel, pdfWidth, pageHeight - visivel, 'F');
+        }
+      });
 
       pdf.save(fileName);
     } finally {
+      folha.remove();
       setIsGenerating(false);
     }
   }, [fileName]);
@@ -139,7 +187,7 @@ export function FinancialReportModal({ onClose }: FinancialReportModalProps) {
     win.document.write(`
       <html><head><title>Extrato Financeiro</title>
       <style>body{margin:0;font-family:sans-serif;} @media print{*{-webkit-print-color-adjust:exact !important;}}</style>
-      </head><body>${previewRef.current.outerHTML}</body></html>
+      </head><body>${prepararFolhaDoExtrato(previewRef.current).outerHTML}</body></html>
     `);
     win.document.close();
     win.focus();
@@ -337,7 +385,7 @@ export function FinancialReportModal({ onClose }: FinancialReportModalProps) {
                     )}
 
                     {/* Summary cards */}
-                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr', gap: 10, marginBottom: 14 }}>
+                    <div data-pdf="resumo" style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr', gap: 10, marginBottom: 14 }}>
                       <div style={{ background: '#F8F8F8', borderRadius: 7, padding: '10px 12px', border: '0.5px solid #EFEFEF' }}>
                         <p style={{ fontSize: 9, color: '#999', margin: '0 0 4px' }}>Total dos Projetos</p>
                         <p style={{ fontSize: 14, fontWeight: 700, color: '#1A1A1A', margin: 0 }}>{fmt(summary.totalValue)}</p>
@@ -353,7 +401,7 @@ export function FinancialReportModal({ onClose }: FinancialReportModalProps) {
                     </div>
 
                     {/* Table */}
-                    <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' as React.CSSProperties['WebkitOverflowScrolling'] }}>
+                    <div data-pdf="rolagem" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' as React.CSSProperties['WebkitOverflowScrolling'] }}>
                     <table style={{ width: '100%', minWidth: 560, borderCollapse: 'collapse', fontSize: 10 }}>
                       <thead>
                         <tr style={{ background: '#F8F8F8' }}>

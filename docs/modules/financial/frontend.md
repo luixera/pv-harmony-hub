@@ -37,5 +37,29 @@ O predicado do filtro é a função pura `matchesReportFilters` em
 `useFinancialReport.ts` (testável fora do React; os filtros se combinam com E
 lógico).
 
+## Extrato: geração do PDF e impressão
+
+O PDF é uma **foto** da pré-visualização (`html2canvas` → `jsPDF`), não um
+PDF desenhado. Duas regras vieram de um bug real (set/2026 — a coluna
+"Saldo" saía cortada e uma linha era partida ao meio na troca de página):
+
+- **A foto é tirada de um clone em folha de largura fixa** (`LARGURA_FOLHA_PX`
+  = 794 px, A4 a 96 dpi), montado fora do modal (`position: fixed`, atrás do
+  overlay) e removido no `finally`. Fotografar a pré-visualização no lugar
+  dependia do tamanho da tela: o painel tem ~550 px, a tabela pede 560 e o
+  invólucro `overflowX: auto` rola na tela mas **corta na foto**. O clone é
+  preparado por `prepararFolhaDoExtrato` — tabela sem rolagem
+  (`data-pdf="rolagem"`), cards do resumo sempre em 3 colunas
+  (`data-pdf="resumo"`), sem cantos/sombra de cartão. A impressão usa o mesmo
+  clone. **Não tirar os marcadores `data-pdf`**: é por eles que o clone é
+  normalizado.
+- **A quebra de página cai entre linhas da tabela** (ou logo antes dela),
+  nunca no meio de uma linha. `calcularCortesDePagina`
+  (`src/utils/pdfPaginacao.ts`, com teste) recebe o fim de cada `<tr>` em mm e
+  devolve o topo de cada página; a foto inteira é desenhada em cada página com
+  deslocamento negativo e o que passa do corte é coberto com um retângulo
+  branco. Linha mais alta que a página (não acontece na prática) cai no corte
+  cego, pra não travar.
+
 ## Dashboards
 - Recharts para séries mensais e agregações.
