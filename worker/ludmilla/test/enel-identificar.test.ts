@@ -156,7 +156,8 @@ test('janela: nome do meio omitido, com ou sem conector, casa', () => {
 });
 
 test('janela: mais de 24 caracteres entre o primeiro e o último nome não casa', () => {
-  assert.equal(titularNoAssunto('PROJETO GD - MARIA APARECIDA DE DA DOS DAS DO SILVA', 'MARIA APARECIDA SILVA'), false);
+  // sem APARECIDA no assunto, a forma completa não casa; a janela passa de 24 caracteres
+  assert.equal(titularNoAssunto('PROJETO GD - MARIA DE DA DOS DAS DO DE DA DOS DAS SILVA', 'MARIA APARECIDA SILVA'), false);
 });
 
 test('janela: o defeito inteiro — JOSE MARIA inativo não puxa o JOSE CARLOS ativo', () => {
@@ -227,4 +228,78 @@ test('mesmoTitular: uma palavra só nunca é o mesmo titular', () => {
 
 test('mesmoTitular: razão social com LTDA no cadastro casa com o nome sem LTDA no documento', () => {
   assert.equal(mesmoTitular('OSSEL LOCACAO DE SALAS PARA VELORIOS LTDA', 'OSSEL LOCACAO DE SALAS PARA VELORIOS'), true);
+});
+
+// ── Rodada de correção 1 ──
+
+test('nome do meio curto de outra pessoa (M, MA, 12) não casa pelo nome completo', () => {
+  assert.equal(titularNoAssunto('PROJETO GD - JOSE M. SANTOS', 'JOSE SANTOS'), false);
+  assert.equal(titularNoAssunto('PROJETO GD - JOSE MA SANTOS', 'JOSE SANTOS'), false);
+  assert.equal(titularNoAssunto('PROJETO GD - JOSE 12 SANTOS', 'JOSE SANTOS'), false);
+});
+
+test('nome completo: palavra curta de outra pessoa entre os nomes não casa (JOSE CARLOS M SANTOS)', () => {
+  assert.equal(titularNoAssunto('JOSE CARLOS M SANTOS', 'JOSE CARLOS SANTOS'), false);
+});
+
+test('palavra curta do PRÓPRIO titular (LU) casa; outra palavra curta (LI) não', () => {
+  assert.equal(titularNoAssunto('PROJETO GD - ANA LU SOUZA', 'ANA LU SOUZA'), true);
+  assert.equal(titularNoAssunto('PROJETO GD - ANA LI SOUZA', 'ANA LU SOUZA'), false);
+});
+
+test('mesmoTitular: JOSE M. SANTOS não é JOSE SANTOS (inicial que não é de nome do meio)', () => {
+  assert.equal(mesmoTitular('JOSE SANTOS', 'JOSE M. SANTOS'), false);
+});
+
+test('sufixo de geração depois do último nome não casa com o cadastro sem sufixo', () => {
+  for (const sufixo of ['JUNIOR', 'JR', 'FILHO', 'NETO', 'SOBRINHO']) {
+    assert.equal(titularNoAssunto(`PROJETO GD - JOSE CARLOS SANTOS ${sufixo}`, 'JOSE CARLOS SANTOS'), false, sufixo);
+  }
+});
+
+test('pai ativo e filho concluído: o assunto do filho não vai para o card do pai', () => {
+  const PAI = P({ project_id: 'pai', codigo: 'PRJ-PAI', titular: 'JOSE CARLOS SANTOS' });
+  const FILHO = P({ project_id: 'filho', codigo: 'PRJ-FILHO', titular: 'JOSE CARLOS SANTOS FILHO', status: 'completed', ativo: false });
+  const id = identificarPorTexto(txt('PROJETO GD - JOSE CARLOS SANTOS FILHO'), [PAI, FILHO]);
+  assert.equal(id.tipo, 'nenhum');
+});
+
+test('sufixo no titular: "… SANTOS JUNIOR" exige JUNIOR no texto', () => {
+  assert.equal(titularNoAssunto('PROJETO GD - JOSE CARLOS SANTOS JUNIOR', 'JOSE CARLOS SANTOS JUNIOR'), true);
+  assert.equal(titularNoAssunto('PROJETO GD - JOSE CARLOS SANTOS', 'JOSE CARLOS SANTOS JUNIOR'), false);
+});
+
+test('nome do arquivo com a UC de OUTRO projeto (ativo) não vai para este card', () => {
+  assert.equal(nomeTrazOutroProjeto('CARTA_2222222222.pdf', A, TODOS), true);
+});
+
+test('combinar: texto (protocolo) e documento (UC) do MESMO projeto ficam com o sinal do texto', () => {
+  const t = identificarPorTexto(txt('NT 123456789'), TODOS);
+  const d = identificarPorDocumento({ nt: null, uc: '1111111111', titular: null }, TODOS);
+  const r = combinar(t, d);
+  assert.equal(r.tipo === 'achado' && r.projeto.codigo, 'PRJ-A');
+  assert.equal(r.tipo === 'achado' && r.por, 'protocolo');
+});
+
+test('número de projeto INATIVO no texto + nome do titular de um ATIVO diferente → conflito', () => {
+  const id = identificarPorTexto(txt('VISTORIA GD 555555555 - JOSE CARLOS SANTOS'), TODOS);
+  assert.equal(id.tipo, 'conflito');
+});
+
+test('conflito no caminho do DOCUMENTO: NT de A e titular de B → conflito', () => {
+  const id = identificarPorDocumento({ nt: '123456789', uc: null, titular: 'JOSE CARLOS SANTOS' }, TODOS);
+  assert.equal(id.tipo, 'conflito');
+});
+
+test('combinar: inativo de um lado e nenhum do outro → inativo, nos dois sentidos', () => {
+  const inativo = identificarPorTexto(txt('VISTORIA GD 555555555'), TODOS);
+  const nada = identificarPorDocumento({ nt: null, uc: null, titular: null }, TODOS);
+  assert.equal(combinar(inativo, nada).tipo, 'inativo');
+  assert.equal(combinar(nada, inativo).tipo, 'inativo');
+});
+
+test('combinar: inativo de um projeto e achado de OUTRO → conflito', () => {
+  const inativo = identificarPorTexto(txt('VISTORIA GD 555555555'), TODOS);
+  const achado = identificarPorDocumento({ nt: '987654321', uc: null, titular: null }, TODOS);
+  assert.equal(combinar(inativo, achado).tipo, 'conflito');
 });

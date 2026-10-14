@@ -54,57 +54,75 @@ const algumEm = (a: Set<string>, b: Set<string>): boolean => {
 /** Sufixo de empresa no fim do nome não é sobrenome. */
 const SUFIXOS_PJ = new Set(['LTDA', 'EPP', 'EIRELI', 'MEI']);
 
-function nomesDe(titular: string): string[] {
-  const p = semAcento(titular).toUpperCase().split(/[^A-Z]+/).filter(x => x.length > 2);
+/** Todas as palavras do titular, sem sufixo de empresa no fim. Palavras curtas ficam (LU, DE). */
+function palavrasDo(titular: string): string[] {
+  const p = semAcento(titular).toUpperCase().split(/[^A-Z]+/).filter(x => x.length > 0);
   while (p.length > 2 && SUFIXOS_PJ.has(p[p.length - 1])) p.pop();
   return p;
 }
 
-/** Palavras que podem ficar entre o primeiro e o último nome sem trocar de pessoa. */
+/** Sufixo de geração logo depois do último nome: "JOSE CARLOS SANTOS JUNIOR" não é "JOSE CARLOS SANTOS". */
+const SUFIXOS_GERACAO = new Set(['JUNIOR', 'JR', 'FILHO', 'NETO', 'SOBRINHO']);
+
+/** Palavras que podem ficar entre dois nomes do titular sem trocar de pessoa. */
 const CONECTORES = new Set(['DA', 'DE', 'DO', 'DAS', 'DOS', 'E']);
 
-/** Palavra entre o primeiro e o último nome: conector, nome do meio do titular, ou a inicial dele. */
-const aceitaNoMeio = (w: string, meio: string[]): boolean =>
-  CONECTORES.has(w) || meio.includes(w) || (w.length === 1 && meio.some(n => n[0] === w));
-
 /**
- * Forma "janela": primeiro e último nome do titular a até 24 caracteres um do outro,
- * em QUALQUER ocorrência no assunto. Não basta o primeiro e o último: o que fica no
- * meio tem de ser aceito por `aceitaNoMeio`. Assim "JOSE MARIA SANTOS" não casa com
- * "JOSE CARLOS SANTOS" (outra pessoa), e "MARIA A. SILVA" casa com "MARIA APARECIDA SILVA".
+ * Os nomes aparecem no assunto, na ordem, com só palavras permitidas entre um e outro
+ * (ver `titularNoAssunto`). `larguraMax` limita os caracteres de cada trecho entre dois
+ * nomes. `aceitaDepoisDoUltimo` decide pela palavra logo depois do último nome.
  */
-function janelaCompativel(assunto: string, nomes: string[]): boolean {
-  const primeiro = nomes[0];
-  const ultimo = nomes[nomes.length - 1];
-  const meio = nomes.slice(1, -1);
-  const palavras = assunto.trim().split(' ');
-  for (let i = 0; i < palavras.length; i++) {
-    if (palavras[i] !== primeiro) continue;
-    for (let j = i + 1; j < palavras.length; j++) {
-      if (palavras[j] !== ultimo) continue;
-      const entre = palavras.slice(i + 1, j);
-      // mesma conta da janela de sempre: um espaço de cada lado, ou um só sem palavra no meio
-      const largura = entre.length === 0 ? 1 : entre.join(' ').length + 2;
-      if (largura > 24) break; // cada j seguinte só alarga a janela
-      if (entre.every(w => aceitaNoMeio(w, meio))) return true;
+function casaSequencia(
+  palavras: string[],
+  sequencia: string[],
+  permitida: (w: string) => boolean,
+  larguraMax: number,
+  aceitaDepoisDoUltimo: (proxima: string | undefined) => boolean,
+): boolean {
+  const busca = (k: number, inicio: number): boolean => {
+    for (let p = inicio; p < palavras.length; p++) {
+      const entre = palavras.slice(inicio, p);
+      if (k > 0) {
+        // um espaço de cada lado do trecho; sem palavra no meio, só o espaço
+        const largura = entre.length === 0 ? 1 : entre.join(' ').length + 2;
+        // o trecho só cresce com p: se já falhou aqui, falha para qualquer p seguinte
+        if (!entre.every(permitida) || largura > larguraMax) break;
+      }
+      if (palavras[p] !== sequencia[k]) continue;
+      if (k < sequencia.length - 1) {
+        if (busca(k + 1, p + 1)) return true;
+      } else if (aceitaDepoisDoUltimo(palavras[p + 1])) {
+        return true;
+      }
     }
-  }
-  return false;
+    return false;
+  };
+  return busca(0, 0);
 }
 
 /**
- * O assunto cita o titular? Duas formas, ambas estritas:
- *  - o nome inteiro, aceitando palavras curtas no meio ("OSSEL LOCACAO DE SALAS…");
- *  - primeiro e último nome a até 24 caracteres, com o meio compatível (ver `janelaCompativel`).
+ * O assunto cita o titular? Duas formas, com a MESMA regra entre os nomes:
+ *  - o nome completo: todos os nomes do titular, em ordem, sem limite de caracteres;
+ *  - primeiro e último nome, com até 24 caracteres entre eles (o nome do meio pode faltar).
+ * Entre dois nomes só cabe: conector (DA, DE, DO, DAS, DOS, E), palavra do PRÓPRIO titular
+ * (inclusive as curtas, como LU), ou a inicial de um nome do meio do titular. Sufixo de
+ * geração logo depois do último nome (JUNIOR, FILHO…) só casa se o titular também o tiver.
  * Nome de uma palavra só não identifica ninguém.
  */
 export function titularNoAssunto(assunto: string, titular: string): boolean {
-  const nomes = nomesDe(titular);
+  const todas = palavrasDo(titular);
+  const nomes = todas.filter(p => p.length > 2);
   if (nomes.length < 2) return false;
-  const normal = semAcento(assunto).toUpperCase().replace(/[^A-Z0-9]+/g, ' ');
-  const completo = new RegExp(`\\b${nomes.join('(?: [A-Z0-9]{1,2})* ')}\\b`);
-  if (completo.test(` ${normal} `)) return true;
-  return janelaCompativel(normal, nomes);
+  const primeiro = nomes[0];
+  const ultimo = nomes[nomes.length - 1];
+  const meio = todas.filter(p => p !== primeiro && p !== ultimo);
+  const permitida = (w: string): boolean =>
+    CONECTORES.has(w) || todas.includes(w) || (w.length === 1 && meio.some(n => n[0] === w));
+  const aceitaDepoisDoUltimo = (proxima: string | undefined): boolean =>
+    proxima === undefined || !SUFIXOS_GERACAO.has(proxima) || todas.includes(proxima);
+  const palavras = semAcento(assunto).toUpperCase().split(/[^A-Z0-9]+/).filter(p => p.length > 0);
+  return casaSequencia(palavras, nomes, permitida, Infinity, aceitaDepoisDoUltimo)
+    || casaSequencia(palavras, [primeiro, ultimo], permitida, 24, aceitaDepoisDoUltimo);
 }
 
 /**
