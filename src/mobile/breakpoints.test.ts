@@ -12,6 +12,16 @@ describe('colunasPorLargura', () => {
     expect(colunasPorLargura(800, 3)).toBe(2);
   });
 
+  it('no tablet nunca entrega mais colunas do que a tela pediu', () => {
+    expect(colunasPorLargura(800, 1)).toBe(1);
+    expect(colunasPorLargura(800, 2)).toBe(2);
+  });
+
+  it('a fronteira do tablet é 1024: 1023 ainda é tablet, 1024 já é desktop', () => {
+    expect(colunasPorLargura(1023, 4)).toBe(2);
+    expect(colunasPorLargura(1024, 4)).toBe(4);
+  });
+
   it('no desktop respeita o que a tela pediu', () => {
     expect(colunasPorLargura(1280, 4)).toBe(4);
   });
@@ -31,5 +41,9 @@ describe('gradeColapsavel', () => {
   it('devolve o valor de gridTemplateColumns pronto', () => {
     expect(gradeColapsavel(390, 3)).toBe('1fr');
     expect(gradeColapsavel(1280, 3)).toBe('repeat(3, minmax(0, 1fr))');
+  });
+
+  it('no tablet devolve a grade cortada pela metade', () => {
+    expect(gradeColapsavel(800, 4)).toBe('repeat(2, minmax(0, 1fr))');
   });
 });

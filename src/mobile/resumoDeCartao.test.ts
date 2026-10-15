@@ -36,6 +36,10 @@ describe('resumoDeCartao', () => {
     expect(resumoDeCartao(campos, 0)).toHaveLength(0);
   });
 
+  it('teto inválido (NaN) não vira "mostra tudo": devolve vazio', () => {
+    expect(resumoDeCartao(campos, NaN)).toEqual([]);
+  });
+
   it('lista vazia não quebra', () => {
     expect(resumoDeCartao([])).toEqual([]);
   });

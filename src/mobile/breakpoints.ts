@@ -14,7 +14,7 @@ export const LARGURA_TABLET = 1024;
 export function colunasPorLargura(largura: number, desejadas: number): number {
   const pedido = Math.max(1, Math.floor(desejadas) || 1);
   if (largura < LARGURA_MOBILE) return 1;
-  if (largura < LARGURA_TABLET) return Math.max(2, Math.ceil(pedido / 2));
+  if (largura < LARGURA_TABLET) return Math.min(pedido, Math.max(2, Math.ceil(pedido / 2)));
   return pedido;
 }
 

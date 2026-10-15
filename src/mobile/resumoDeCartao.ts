@@ -14,13 +14,14 @@ export function resumoDeCartao(
   campos: CampoDeCartao[],
   max = 3,
 ): { rotulo: string; valor: string }[] {
-  if (max <= 0) return [];
+  // `!(max > 0)` e não `max <= 0`: com NaN toda comparação é falsa e o teto sumiria.
+  if (!(max > 0)) return [];
   const cheios: { rotulo: string; valor: string }[] = [];
   for (const c of campos) {
     const valor = String(c.valor ?? '').replace(/\s+/g, ' ').trim();
     if (!valor) continue;
     cheios.push({ rotulo: c.rotulo, valor });
-    if (cheios.length === max) break;
+    if (cheios.length >= max) break;
   }
   return cheios;
 }

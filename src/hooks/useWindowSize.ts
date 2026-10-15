@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { LARGURA_MOBILE, LARGURA_TABLET } from '@/mobile/breakpoints';
 
 export function useWindowSize() {
   const [width, setWidth] = useState(() =>
@@ -13,8 +14,8 @@ export function useWindowSize() {
 
   return {
     width,
-    isMobile: width < 640,
-    isTablet: width < 1024,
-    isDesktop: width >= 1024,
+    isMobile: width < LARGURA_MOBILE,
+    isTablet: width < LARGURA_TABLET,
+    isDesktop: width >= LARGURA_TABLET,
   };
 }
