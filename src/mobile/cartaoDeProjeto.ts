@@ -1,19 +1,27 @@
 import type { ItemDeCartao } from '@/mobile/ListaEmCartoes';
 
 /**
- * O que a lista de projetos mostra, em cartão, no celular.
+ * O que a lista de projetos mostra, em cartão, no celular, e a cor de etapa
+ * que o app usa em selo.
  *
- * Os dois quadros (`ProjectsKanban`, do admin/projetista, e `CompanyProjects`,
- * da empresa) montam o MESMO cartão: titular no título, etapa no selo e três
- * campos de apoio. Fica aqui, num lugar só, para a cor da etapa não ser
- * escolhida de novo em cada tela.
+ * ATENÇÃO — acoplamento com `components/ui/badge.tsx`: a tradução
+ * variante -> hex (`COR_DA_VARIANTE`, abaixo) ESPELHA as cores de texto das
+ * variantes `pending`, `analysis`, `progress` e `approved` do Badge. O Tailwind
+ * exige a classe escrita por extenso lá, então não dá para ler de volta: quem
+ * mudar a cor de uma dessas variantes no `badge.tsx` TEM de mudar aqui também
+ * (o teste confere o contraste AA, não a igualdade com o badge).
+ *
+ * Quem usa: `CompanyProjects` (cartões da empresa, via `cartaoDeProjeto`) e
+ * `ProjectsKanban`, que importa só `statusVariants` para o `Badge` da sua lista
+ * própria de celular — ela já era mais rica (selos "parado" e "sem valor") e
+ * por isso NÃO usa o cartão; o mapa de etapa -> variante é o mesmo nos dois.
  */
 
 /**
- * Variante de `Badge` de cada etapa — o mapa que o `ProjectsKanban` já tinha
- * (e que dava cor à etapa na lista mobile antiga), movido sem mudar um valor.
+ * Variante de `Badge` de cada etapa. Era local do `ProjectsKanban`; está aqui
+ * para existir uma cópia só, valores intactos.
  */
-const VARIANTE_DA_ETAPA: Record<string, string> = {
+export const statusVariants: Record<string, string> = {
   pending: 'pending',
   analysis: 'analysis',
   documentation: 'progress',
@@ -49,7 +57,7 @@ const COR_NEUTRA = COR_DA_VARIANTE.pending;
 
 /** Cor do selo da etapa; etapa que não está no mapa (customizada) fica neutra. */
 export function corDaEtapa(status: string): string {
-  return COR_DA_VARIANTE[VARIANTE_DA_ETAPA[status]] ?? COR_NEUTRA;
+  return COR_DA_VARIANTE[statusVariants[status]] ?? COR_NEUTRA;
 }
 
 /** O pedaço do projeto que o cartão lê — `ProjectWithDetails` cabe aqui. */
