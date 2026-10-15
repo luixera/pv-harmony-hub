@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { cartaoDeProjeto, corDaEtapa } from './cartaoDeProjeto';
+import { cartaoDeProjeto, corDaEtapa, statusVariants } from './cartaoDeProjeto';
 import { resumoDeCartao } from './resumoDeCartao';
 import { VALID_PROJECT_STATUSES } from '@/lib/statusMapping';
 
@@ -84,5 +84,13 @@ describe('corDaEtapa', () => {
 
   it('etapa desconhecida cai no tom neutro de "pendente"', () => {
     expect(corDaEtapa('etapa-inventada-pelo-cliente')).toBe(corDaEtapa('pending'));
+  });
+
+  // Os dois primeiros testes NÃO pegam etapa faltando: a ausente cai no neutro,
+  // que é hex de 6 dígitos e passa em AA. Sem esta verificação, acrescentar uma
+  // etapa ao banco e esquecer do mapa passaria verde — e o selo sairia cinza.
+  it('toda etapa que o banco aceita tem variante declarada', () => {
+    const semVariante = VALID_PROJECT_STATUSES.filter(s => !(s in statusVariants));
+    expect(semVariante).toEqual([]);
   });
 });

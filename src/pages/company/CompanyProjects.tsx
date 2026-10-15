@@ -93,10 +93,6 @@ export default function CompanyProjects() {
               </Button>
             }
           />
-        ) : colunas.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-border py-16 text-center text-sm text-muted-foreground">
-            O quadro ainda não foi configurado. Fale com a equipe responsável pela homologação.
-          </div>
         ) : (
           <>
             {termo && (
@@ -108,11 +104,20 @@ export default function CompanyProjects() {
                 A busca e o "Novo Projeto" ficam no cabeçalho, fora daqui: no celular
                 o `children` do ListaEmCartoes não é renderizado. */}
             <ListaEmCartoes itens={itensMobile} vazio="Nenhum projeto encontrado.">
-              <ReadOnlyKanbanBoard
-                projects={projetos}
-                columns={colunas}
-                onOpenProject={setModalProjectId}
-              />
+              {colunas.length === 0 ? (
+                /* Sem modelo de Kanban não há quadro para montar. Isso é limitação do
+                   DESKTOP: o cartão do celular não precisa das colunas (a etapa cai no
+                   nome de fábrica), então ele continua mostrando os projetos. */
+                <div className="rounded-xl border border-dashed border-border py-16 text-center text-sm text-muted-foreground">
+                  O quadro ainda não foi configurado. Fale com a equipe responsável pela homologação.
+                </div>
+              ) : (
+                <ReadOnlyKanbanBoard
+                  projects={projetos}
+                  columns={colunas}
+                  onOpenProject={setModalProjectId}
+                />
+              )}
             </ListaEmCartoes>
           </>
         )}

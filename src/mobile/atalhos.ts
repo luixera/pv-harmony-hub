@@ -8,9 +8,15 @@
  */
 export type PapelDoUsuario = 'admin' | 'staff' | 'company';
 
+/**
+ * Identidade do atalho. É por ela que a barra escolhe o ícone e decide o que
+ * esconder — nunca pelo caminho, que muda quando a rota é renomeada.
+ */
+export type ChaveDeAtalho = 'projetos' | 'tarefas' | 'avisos' | 'perfil' | 'novo' | 'financeiro';
+
 export interface Atalho {
   /** nome do ícone, resolvido por quem renderiza */
-  chave: string;
+  chave: ChaveDeAtalho;
   rotulo: string;
   caminho: string;
 }
