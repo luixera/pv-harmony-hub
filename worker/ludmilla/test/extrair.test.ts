@@ -18,7 +18,7 @@ test('a carga descarta UC sem trafo', () => {
 
 test('a GD soma a potencia instalada por trafo', () => {
   const sql = sqlGdPorTrafo('UGBT_tab');
-  assert.ok(/sum\(/.test(sql) && sql.includes('POT_INST'));
+  assert.ok(/sum\(/.test(sql) && sql.includes('DEM_CONT'));
   assert.ok(sql.includes('GROUP BY UNI_TR_MT'));
   assert.ok(sql.includes('FROM UGBT_tab'));
 });
@@ -33,22 +33,29 @@ test('o SQL dos trafos traz a geometria no SELECT, nao por -lco', () => {
   assert.ok(sql.includes('FROM UNTRMT'));
 });
 
-import { POT_INST_KW, sqlGdPorAlimentador } from '../src/bdgd/extrair.js';
+import { GD_KW, POT_INST_KW, sqlGdPorAlimentador } from '../src/bdgd/extrair.js';
 
 // 13/10/2026: na CPFL Paulista, 815 de 288.154 unidades de GD de baixa tensao
 // vinham com POT_INST em WATTS (5000, 10000, 13202...). Somadas como kW,
 // davam 12.779 MW fantasmas — 13,7 GW de "microgeracao", uma Itaipu. Na
 // Piratininga eram 25 unidades e 88,6 MW (um terco do total).
 
-test('POT_INST acima de 1000 e lido como watt', () => {
-  // BT nao passa de 75 kW: acima de 1000 nao pode ser kW
-  assert.ok(/POT_INST\s*>\s*1000/.test(POT_INST_KW), POT_INST_KW);
-  assert.ok(/POT_INST\s*\/\s*1000/.test(POT_INST_KW), POT_INST_KW);
+test('a potencia da GD vem de DEM_CONT, que e o que a ANEEL registra como instalada', () => {
+  // Conferido em 15/10/2026 com o cadastro aberto da ANEEL (empreendimento-
+  // geracao-distribuida.parquet): para 8 unidades da Piratininga, a potencia
+  // instalada da ANEEL (5,0 · 6,0 · 4,5 · 5,0 · 3,0 · 3,0 · 4,4 · 4,0 kW) e
+  // IGUAL ao DEM_CONT da BDGD e nao tem relacao com POT_INST (0,62 · 1,68 ·
+  // 0,93 · 2,18 · 0,95 · 1,18 · 1,17 · 5,0). POT_INST e a potencia MEDIA gerada
+  // (energia do mes / horas de sol), ~2,5x menor. Piratininga: DEM_CONT soma
+  // 369,6 MW, POT_INST 164,4 MW, ANEEL 523 MW (base de out/2026, com MT).
+  assert.ok(/DEM_CONT\s*>\s*0\s*THEN\s*DEM_CONT/.test(GD_KW), GD_KW);
+  assert.ok(sqlGdPorTrafo('UGBT_tab').includes(GD_KW));
+  assert.ok(sqlGdPorAlimentador('UGBT_tab').includes(GD_KW));
 });
 
-test('a GD por trafo e por alimentador usam a mesma correcao', () => {
-  assert.ok(sqlGdPorTrafo('UGBT_tab').includes(POT_INST_KW));
-  assert.ok(sqlGdPorAlimentador('UGBT_tab').includes(POT_INST_KW));
+test('sem DEM_CONT, cai no POT_INST corrigido para kW (watts acima de 1000)', () => {
+  assert.ok(GD_KW.includes(POT_INST_KW));
+  assert.ok(/POT_INST\s*>\s*1000/.test(POT_INST_KW), POT_INST_KW);
 });
 
 test('a soma crua de POT_INST nao pode voltar', () => {
