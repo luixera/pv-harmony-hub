@@ -51,108 +51,136 @@ const algumEm = (a: Set<string>, b: Set<string>): boolean => {
   return false;
 };
 
-/** Sufixo de empresa no fim do nome não é sobrenome. */
-const SUFIXOS_PJ = new Set(['LTDA', 'EPP', 'EIRELI', 'MEI']);
+// ── O nome do titular: um TRECHO INTEIRO tem de ser o nome ──────────────────
 
-/** Todas as palavras do titular, sem sufixo de empresa no fim. Palavras curtas ficam (LU, DE). */
-function palavrasDo(titular: string): string[] {
-  const p = semAcento(titular).toUpperCase().split(/[^A-Z0-9]+/).filter(x => x.length > 0);
-  while (p.length > 2 && SUFIXOS_PJ.has(p[p.length - 1])) p.pop();
-  return p;
-}
+/** Sufixo de empresa no fim do nome não é sobrenome: pode estar de um lado e faltar do outro. */
+const SUFIXOS_PJ = new Set(['LTDA', 'EPP', 'EIRELI', 'MEI', 'ME', 'SA']);
 
-/** Sufixo de geração logo depois do último nome: "JOSE CARLOS SANTOS JUNIOR" não é "JOSE CARLOS SANTOS". */
-const SUFIXOS_GERACAO = new Set(['JUNIOR', 'JR', 'FILHO', 'NETO', 'SOBRINHO']);
+/** Sufixo de geração no fim: "JOSE CARLOS SANTOS JUNIOR" não é "JOSE CARLOS SANTOS", e o II não é o III. */
+const SUFIXOS_GERACAO = new Set(['JUNIOR', 'JR', 'FILHO', 'NETO', 'SOBRINHO', 'II', 'III', 'IV', 'SEGUNDO', 'TERCEIRO']);
+
+/** Grafias do mesmo sufixo de geração. */
+const MESMA_GERACAO: Record<string, string> = { JR: 'JUNIOR', SEGUNDO: 'II', TERCEIRO: 'III' };
+const geracao = (w: string): string => MESMA_GERACAO[w] ?? w;
 
 /** Palavras que podem ficar entre dois nomes do titular sem trocar de pessoa. */
 const CONECTORES = new Set(['DA', 'DE', 'DO', 'DAS', 'DOS', 'E']);
 
-/**
- * Os nomes aparecem no assunto, na ordem, com só palavras permitidas entre um e outro
- * (ver `titularNoAssunto`). `larguraMax` limita os caracteres de cada trecho entre dois
- * nomes. `aceitaDepoisDoUltimo` decide pela palavra logo depois do último nome.
- */
-function casaSequencia(
-  palavras: string[],
-  sequencia: string[],
-  permitida: (w: string) => boolean,
-  larguraMax: number,
-  aceitaDepoisDoUltimo: (proxima: string | undefined) => boolean,
-): boolean {
-  const busca = (k: number, inicio: number): boolean => {
-    for (let p = inicio; p < palavras.length; p++) {
-      const entre = palavras.slice(inicio, p);
-      if (k > 0) {
-        // um espaço de cada lado do trecho; sem palavra no meio, só o espaço
-        const largura = entre.length === 0 ? 1 : entre.join(' ').length + 2;
-        // o trecho só cresce com p: se já falhou aqui, falha para qualquer p seguinte
-        if (!entre.every(permitida) || largura > larguraMax) break;
-      }
-      if (palavras[p] !== sequencia[k]) continue;
-      if (k < sequencia.length - 1) {
-        if (busca(k + 1, p + 1)) return true;
-      } else if (aceitaDepoisDoUltimo(palavras[p + 1])) {
-        return true;
-      }
-    }
-    return false;
-  };
-  return busca(0, 0);
+/** As palavras de um nome: sem acento, em caixa alta, letras e dígitos ("S/A" vira S, A; "2B" fica inteiro). */
+const palavrasDe = (s: string): string[] =>
+  semAcento(s).toUpperCase().split(/[^A-Z0-9]+/).filter(x => x.length > 0);
+
+/** Tira do fim o sufixo de empresa (LTDA, ME, S/A…), sempre deixando duas palavras. */
+function semSufixoPJ(palavras: string[]): string[] {
+  const p = [...palavras];
+  for (;;) {
+    if (p.length > 2 && SUFIXOS_PJ.has(p[p.length - 1])) p.pop();
+    else if (p.length > 3 && p[p.length - 2] === 'S' && p[p.length - 1] === 'A') p.splice(-2);
+    else return p;
+  }
 }
 
-/**
- * O assunto cita o titular? Duas formas, com a MESMA regra entre os nomes:
- *  - o nome completo: todos os nomes do titular, em ordem, sem limite de caracteres;
- *  - primeiro e último nome, com até 24 caracteres entre eles (o nome do meio pode faltar).
- * Entre dois nomes só cabe: conector (DA, DE, DO, DAS, DOS, E), palavra do PRÓPRIO titular
- * (inclusive as curtas, como LU), ou a inicial de um nome do meio alfabético que não seja
- * conector ("D" não é inicial de DE; "1" não é inicial de 17).
- * Numeral do titular é palavra obrigatória, de qualquer tamanho, na posição dele ("1" não casa
- * "17"); na janela, numeral do meio não pode faltar (nome alfabético do meio pode).
- * Sufixo de geração no fim do cadastro (JUNIOR, JR, FILHO…) tem de vir logo depois do último
- * nome; JR e JUNIOR são o mesmo sufixo. Só é sufixo se a palavra anterior não for conector e
- * sobrarem dois nomes antes dele ("AUTO PECAS DO NETO" não tem sufixo; "JOSE CARLOS SANTOS NETO" tem).
- */
-export function titularNoAssunto(assunto: string, titular: string): boolean {
-  const todas = palavrasDo(titular);
-  const canonico = (w: string): string => (w === 'JR' ? 'JUNIOR' : w);
-  // sufixo de geração: a última palavra, se a anterior não for conector e sobrarem 2 nomes antes dela
+/** O titular do cadastro, pronto para comparar com um trecho. */
+interface NomeDoTitular {
+  /** as palavras, sem sufixo de empresa e sem o sufixo de geração */
+  palavras: string[];
+  /** a palavra que o trecho tem de trazer, exata e na posição dela */
+  obrigatoria: boolean[];
+  /** posição do primeiro e do último nome (palavra de 3+ letras, ou com dígito) */
+  primeiro: number;
+  ultimo: number;
+  /** sufixo de geração do cadastro, na grafia canônica (JR → JUNIOR, SEGUNDO → II) */
+  geracao?: string;
+}
+
+/** `null` quando o cadastro não tem dois nomes: nome de uma palavra só não identifica ninguém. */
+function nomeDoTitular(titular: string): NomeDoTitular | null {
+  const todas = semSufixoPJ(palavrasDe(titular));
   const antes = todas.slice(0, -1);
-  const eSufixo = SUFIXOS_GERACAO.has(todas[todas.length - 1])
+  // sufixo de geração: a última palavra, se a anterior não for conector e sobrarem 2 nomes antes dela
+  // ("BAR DO NETO" e "ANTONIO NETO" são nome; "JOSE CARLOS SANTOS NETO" tem sufixo)
+  const eGeracao = SUFIXOS_GERACAO.has(todas[todas.length - 1] ?? '')
     && !CONECTORES.has(antes[antes.length - 1] ?? '')
     && antes.filter(p => !CONECTORES.has(p)).length >= 2;
-  const sufixo = eSufixo ? canonico(todas[todas.length - 1]) : undefined;
-  const sobrenome = sufixo ? antes : todas;
-  // numeral é nome obrigatório, de qualquer tamanho; nome alfabético de até 2 letras não é
-  const numero = (p: string): boolean => /^\d+$/.test(p);
-  const nomes = sobrenome.filter(p => p.length > 2 || numero(p));
-  if (nomes.length < 2) return false;
+  const palavras = eGeracao ? antes : todas;
+  const eNome = (p: string): boolean => p.length > 2 || /\d/.test(p);
+  const nomes = palavras.flatMap((p, i) => (eNome(p) ? [i] : []));
+  if (nomes.length < 2) return null;
   const primeiro = nomes[0];
   const ultimo = nomes[nomes.length - 1];
-  // na janela pode faltar nome alfabético do meio; numeral do meio não
-  const obrigatorios = nomes.filter((p, i) => i === 0 || i === nomes.length - 1 || numero(p));
-  const meio = sobrenome.filter(p => p !== primeiro && p !== ultimo);
-  // inicial só de nome do meio alfabético que não é conector ("D" não é de DE; "1" não é de 17)
-  const iniciais = meio.filter(n => /^[A-Z]+$/.test(n) && !CONECTORES.has(n));
-  const permitida = (w: string): boolean =>
-    CONECTORES.has(w) || todas.includes(w) || (/^[A-Z]$/.test(w) && iniciais.some(n => n[0] === w));
-  const aceitaDepoisDoUltimo = (proxima: string | undefined): boolean =>
-    sufixo !== undefined
-      ? proxima !== undefined && canonico(proxima) === sufixo
-      : proxima === undefined || !SUFIXOS_GERACAO.has(proxima) || todas.includes(proxima);
-  const palavras = semAcento(assunto).toUpperCase().split(/[^A-Z0-9]+/).filter(p => p.length > 0);
-  return casaSequencia(palavras, nomes, permitida, Infinity, aceitaDepoisDoUltimo)
-    || casaSequencia(palavras, obrigatorios, permitida, 24, aceitaDepoisDoUltimo);
+  return {
+    palavras,
+    // obrigatórias: do começo até o primeiro nome, do último nome até o fim, e todo token com dígito
+    // (numeral nunca falta, e é token inteiro: "2B" não casa "2A", "1" não casa "17"); o resto do meio pode faltar
+    obrigatoria: palavras.map((p, i) => i <= primeiro || i >= ultimo || /\d/.test(p)),
+    primeiro,
+    ultimo,
+    geracao: eGeracao ? geracao(todas[todas.length - 1]) : undefined,
+  };
+}
+
+/** "A" no lugar de APARECIDA: inicial de nome do meio alfabético que não é conector ("D" não é DE; "1" não é 17). */
+const eInicialDe = (w: string, nome: string): boolean =>
+  /^[A-Z]$/.test(w) && /^[A-Z]+$/.test(nome) && !CONECTORES.has(nome) && nome[0] === w;
+
+/**
+ * O trecho é o nome deste titular? O trecho INTEIRO: a primeira palavra é a primeira do
+ * cadastro e a última é a última — nada livre antes nem depois. No caminho, na ordem do
+ * cadastro, cada palavra do trecho é:
+ *  - a palavra do cadastro, exata (inclusive as curtas, como LU, e os numerais);
+ *  - a inicial de um nome do meio alfabético que não é conector (MARIA A. SILVA);
+ *  - um conector solto (DA, DE, DO, DAS, DOS, E) entre dois nomes, um de cada vez.
+ * Nome alfabético do meio pode faltar; numeral não. Sufixo de empresa pode faltar de um
+ * lado. Sufixo de geração tem de ser o mesmo nos dois lados, ou faltar nos dois.
+ * É a regra única do nome: o assunto passa cada trecho; o documento, o nome extraído inteiro.
+ */
+function trechoConforma(trecho: string, t: NomeDoTitular): boolean {
+  let w = semSufixoPJ(palavrasDe(trecho));
+  if (t.geracao !== undefined) {
+    if (w.length === 0 || geracao(w[w.length - 1]) !== t.geracao) return false;
+    w = w.slice(0, -1);
+  }
+  const n = t.palavras;
+  const falhou = new Set<string>();
+  // i: palavras do cadastro já usadas; j: palavras do trecho já lidas; solto: a anterior foi conector solto
+  const alinha = (i: number, j: number, solto: boolean): boolean => {
+    if (i === n.length) return j === w.length;
+    const chave = `${i}:${j}:${solto}`;
+    if (falhou.has(chave)) return false;
+    const ok = (j < w.length && w[j] === n[i] && alinha(i + 1, j + 1, false))
+      || (!t.obrigatoria[i] && j < w.length && eInicialDe(w[j], n[i]) && alinha(i + 1, j + 1, false))
+      || (!t.obrigatoria[i] && alinha(i + 1, j, solto))
+      || (!solto && i > t.primeiro && i <= t.ultimo && j < w.length && CONECTORES.has(w[j]) && alinha(i, j + 1, true));
+    if (!ok) falhou.add(chave);
+    return ok;
+  };
+  return alinha(0, 0, false);
+}
+
+/** Os trechos do assunto: o que fica entre " - " (hífen, meia-risca ou travessão, com espaços) e ":". */
+const trechosDoAssunto = (assunto: string): string[] => ` ${assunto ?? ''} `.split(/\s[-–—]+\s|:/);
+
+/**
+ * O assunto cita o titular? Só se um TRECHO INTEIRO do assunto for o nome dele
+ * (`trechoConforma`). Os assuntos da equipe isolam o nome: "TROCA DE RELÓGIO - <NOME> - NT …",
+ * "RE: VISTORIA - <NOME> - NT …", "PROJETO GD - <NOME>"; prefixos (RE:, ENC:, Undeliverable:)
+ * viram trechos próprios. Nome sem separador em volta ("PROJETO GD JOSE SANTOS 5KWP") não
+ * identifica: fica com os números (protocolo, UC) ou levanta a mão — o lado seguro.
+ */
+export function titularNoAssunto(assunto: string, titular: string): boolean {
+  const t = nomeDoTitular(titular);
+  return t !== null && trechosDoAssunto(assunto).some(trecho => trechoConforma(trecho, t));
 }
 
 /**
- * O nome do documento (extraído pela IA) é o mesmo titular do cadastro? A mesma regra
- * estrita do assunto: `titularNoAssunto` lê o documento como se fosse o assunto.
+ * O nome do documento (extraído pela IA) é o mesmo titular do cadastro? O nome extraído é
+ * um trecho só, com a mesma regra do assunto (`trechoConforma`).
  * Não usa `casaTitular` (util.ts, da EDP): ele compara só primeiro e último nome, em
  * qualquer posição, e aceitava JOSE MARIA SANTOS como JOSE CARLOS SANTOS.
  */
 export function mesmoTitular(doSistema: string, doDocumento: string): boolean {
-  return titularNoAssunto(doDocumento, doSistema);
+  const t = nomeDoTitular(doSistema);
+  return t !== null && trechoConforma(doDocumento, t);
 }
 
 function decidir(porProtocolo: ProjetoEnel[], porUc: ProjetoEnel[], porTitular: ProjetoEnel[]): Identificacao {

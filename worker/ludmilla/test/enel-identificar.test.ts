@@ -176,7 +176,10 @@ test('janela: o mesmo nome identifica o titular que TEM esse nome do meio', () =
 });
 
 test('janela: vale a ocorrência compatível mesmo que a primeira traga outro nome do meio', () => {
-  assert.equal(titularNoAssunto('PROJETO GD - JOSE MARIA SANTOS E JOSE C. SANTOS', 'JOSE CARLOS SANTOS'), true);
+  // rodada 4: cada nome no seu trecho; vale o trecho compatível
+  assert.equal(titularNoAssunto('PROJETO GD - JOSE MARIA SANTOS - JOSE C. SANTOS', 'JOSE CARLOS SANTOS'), true);
+  // no mesmo trecho, "JOSE MARIA SANTOS E" fica antes do nome: não é o trecho do titular
+  assert.equal(titularNoAssunto('PROJETO GD - JOSE MARIA SANTOS E JOSE C. SANTOS', 'JOSE CARLOS SANTOS'), false);
 });
 
 // ── Correção pré-revisão 2: o caminho do DOCUMENTO usa a mesma regra estrita ──
@@ -307,12 +310,14 @@ test('combinar: inativo de um projeto e achado de OUTRO → conflito', () => {
 // ── Rodada de correção 2 ──
 
 test('numeral no nome do titular (POSTO 7, SUPERMERCADO 3) casa com o próprio cadastro', () => {
-  assert.equal(titularNoAssunto('PROJETO POSTO 7 DE SETEMBRO', 'POSTO 7 DE SETEMBRO LTDA'), true);
+  // rodada 4: o nome isolado por " - " (sem o separador, "PROJETO" ficaria antes do nome)
+  assert.equal(titularNoAssunto('PROJETO GD - POSTO 7 DE SETEMBRO', 'POSTO 7 DE SETEMBRO LTDA'), true);
   assert.equal(titularNoAssunto('SUPERMERCADO 3 IRMAOS LTDA', 'SUPERMERCADO 3 IRMAOS LTDA'), true);
 });
 
 test('numeral no nome do titular: POSTO 8 não casa com POSTO 7 DE SETEMBRO', () => {
-  assert.equal(titularNoAssunto('PROJETO POSTO 8 DE SETEMBRO', 'POSTO 7 DE SETEMBRO LTDA'), false);
+  // rodada 4: com o separador, quem barra é o numeral, não a palavra "PROJETO" antes do nome
+  assert.equal(titularNoAssunto('PROJETO GD - POSTO 8 DE SETEMBRO', 'POSTO 7 DE SETEMBRO LTDA'), false);
 });
 
 test('inicial D não é inicial de DE (conector): MARIA D SILVA não casa com MARIA DE FATIMA SILVA', () => {
@@ -395,4 +400,181 @@ test('sufixo: ANTONIO NETO casa consigo (só um nome antes de NETO, não é sufi
 test('sufixo: JOSE CARLOS SANTOS NETO continua exigindo NETO (pai × neto não casam)', () => {
   assert.equal(titularNoAssunto('PROJETO GD - JOSE CARLOS SANTOS', 'JOSE CARLOS SANTOS NETO'), false);
   assert.equal(titularNoAssunto('PROJETO GD - JOSE CARLOS SANTOS NETO', 'JOSE CARLOS SANTOS NETO'), true);
+});
+
+// ── Rodada de correção 4: o nome ocupa um TRECHO INTEIRO do assunto ──
+// Trecho = o que fica entre " - " (hífen, meia-risca ou travessão, com espaços) e ":".
+
+// Fronteira: nada de palavra livre antes do primeiro nome nem depois do último
+test('fronteira: palavra antes do primeiro nome não casa (MARIA JOSE SANTOS não é JOSE SANTOS)', () => {
+  assert.equal(titularNoAssunto('PROJETO GD - MARIA JOSE SANTOS', 'JOSE SANTOS'), false);
+});
+
+test('fronteira: palavra depois do último nome não casa (JOSE SANTOS PEREIRA não é JOSE SANTOS)', () => {
+  assert.equal(titularNoAssunto('PROJETO GD - JOSE SANTOS PEREIRA', 'JOSE SANTOS'), false);
+});
+
+test('fronteira: MEGA LOJA 2 não é LOJA 2; LOJA 2 casa consigo', () => {
+  assert.equal(titularNoAssunto('PROJETO GD - MEGA LOJA 2', 'LOJA 2'), false);
+  assert.equal(titularNoAssunto('PROJETO GD - LOJA 2', 'LOJA 2'), true);
+});
+
+test('fronteira: MARIA JOSE SANTOS concluída não puxa o JOSE SANTOS ativo', () => {
+  const JOSE = P({ project_id: 'js', codigo: 'PRJ-JS', titular: 'JOSE SANTOS' });
+  const MARIA = P({ project_id: 'mjs', codigo: 'PRJ-MJS', titular: 'MARIA JOSE SANTOS', status: 'completed', ativo: false });
+  assert.equal(identificarPorTexto(txt('VISTORIA - MARIA JOSE SANTOS - NT 1'), [JOSE, MARIA]).tipo, 'nenhum');
+  assert.equal(identificarPorTexto(txt('VISTORIA - JOSE SANTOS PEREIRA - NT 1'), [JOSE]).tipo, 'nenhum');
+});
+
+test('fronteira no documento: o nome extraído é um trecho só', () => {
+  assert.equal(mesmoTitular('JOSE SANTOS', 'MARIA JOSE SANTOS'), false);
+  assert.equal(mesmoTitular('JOSE SANTOS', 'JOSE SANTOS PEREIRA'), false);
+  assert.equal(mesmoTitular('LOJA 2', 'MEGA LOJA 2'), false);
+});
+
+test('fronteira: palavra curta do cadastro antes do primeiro nome ou depois do último não pode faltar', () => {
+  assert.equal(titularNoAssunto('PROJETO GD - ANDRE LUIZ', 'ANDRE LUIZ DO O'), false);
+  assert.equal(titularNoAssunto('PROJETO GD - ANDRE LUIZ DO O', 'ANDRE LUIZ DO O'), true);
+});
+
+test('fronteira: conector solto também não fica na borda do trecho', () => {
+  assert.equal(titularNoAssunto('PROJETO GD - DE JOSE SANTOS', 'JOSE SANTOS'), false);
+  assert.equal(titularNoAssunto('PROJETO GD - DA MARIA SILVA', 'MARIA APARECIDA SILVA'), false);
+  assert.equal(titularNoAssunto('PROJETO GD - JOSE SANTOS E', 'JOSE SANTOS'), false);
+});
+
+test('custo aceito: nome sem separador no assunto não identifica', () => {
+  assert.equal(titularNoAssunto('PROJETO GD JOSE CARLOS SANTOS 5KWP', 'JOSE CARLOS SANTOS'), false);
+  assert.equal(titularNoAssunto('PROJETO GD-JOSE CARLOS SANTOS', 'JOSE CARLOS SANTOS'), false); // hífen colado não separa
+});
+
+// G1: token com dígito (2B, 17A, LOJA2) é numeral e não pode faltar
+test('G1: EDIFICIO SOLAR TORRE NORTE não casa com EDIFICIO SOLAR 2B TORRE NORTE', () => {
+  assert.equal(titularNoAssunto('PROJETO GD - EDIFICIO SOLAR TORRE NORTE', 'EDIFICIO SOLAR 2B TORRE NORTE'), false);
+});
+
+test('G1: LOJA CENTRO não casa com LOJA 2A CENTRO', () => {
+  assert.equal(titularNoAssunto('PROJETO GD - LOJA CENTRO', 'LOJA 2A CENTRO'), false);
+});
+
+test('G1: SUPER CENTRO não casa com SUPER LOJA2 CENTRO', () => {
+  assert.equal(titularNoAssunto('PROJETO GD - SUPER CENTRO', 'SUPER LOJA2 CENTRO'), false);
+});
+
+test('G1: o alfanumérico é token inteiro (2B não casa 2A) e fica na posição dele', () => {
+  assert.equal(titularNoAssunto('PROJETO GD - LOJA 2B CENTRO', 'LOJA 2A CENTRO'), false);
+  assert.equal(titularNoAssunto('PROJETO GD - LOJA CENTRO 2A', 'LOJA 2A CENTRO'), false);
+});
+
+test('G1: o cadastro com alfanumérico casa consigo, e nome alfabético do meio ainda pode faltar', () => {
+  assert.equal(titularNoAssunto('PROJETO GD - EDIFICIO SOLAR 2B TORRE NORTE', 'EDIFICIO SOLAR 2B TORRE NORTE'), true);
+  assert.equal(titularNoAssunto('PROJETO GD - EDIFICIO SOLAR 2B NORTE', 'EDIFICIO SOLAR 2B TORRE NORTE'), true);
+  assert.equal(titularNoAssunto('PROJETO GD - LOJA 2A CENTRO', 'LOJA 2A CENTRO'), true);
+  assert.equal(titularNoAssunto('PROJETO GD - SUPER LOJA2 CENTRO', 'SUPER LOJA2 CENTRO'), true);
+});
+
+// G2: numeral a mais no assunto, que o cadastro não tem
+test('G2: CONDOMINIO EDIFICIO ALFA 2 não casa com CONDOMINIO EDIFICIO ALFA', () => {
+  assert.equal(titularNoAssunto('PROJETO GD - CONDOMINIO EDIFICIO ALFA 2', 'CONDOMINIO EDIFICIO ALFA'), false);
+});
+
+test('G2: ALFA ativo e ALFA 2 concluído — o e-mail do ALFA 2 não vai para o card do ALFA', () => {
+  const ALFA = P({ project_id: 'alfa', codigo: 'PRJ-ALFA', titular: 'CONDOMINIO EDIFICIO ALFA' });
+  const ALFA2 = P({ project_id: 'alfa2', codigo: 'PRJ-ALFA2', titular: 'CONDOMINIO EDIFICIO ALFA 2', status: 'completed', ativo: false });
+  assert.equal(identificarPorTexto(txt('PROJETO GD - CONDOMINIO EDIFICIO ALFA 2'), [ALFA, ALFA2]).tipo, 'nenhum');
+});
+
+test('G2: numeral a mais no meio também não casa (LOJA 2 CENTRO não é LOJA CENTRO)', () => {
+  assert.equal(titularNoAssunto('PROJETO GD - LOJA 2 CENTRO', 'LOJA CENTRO'), false);
+});
+
+test('G2 no documento: numeral a mais não é o mesmo titular', () => {
+  assert.equal(mesmoTitular('CONDOMINIO EDIFICIO ALFA', 'CONDOMINIO EDIFICIO ALFA 2'), false);
+});
+
+// G3: romano e ordinal são sufixo de geração
+test('G3: SANTOS III não casa com SANTOS II', () => {
+  assert.equal(titularNoAssunto('PROJETO GD - JOSE CARLOS SANTOS III', 'JOSE CARLOS SANTOS II'), false);
+});
+
+test('G3: sufixo romano presente de um lado só não casa', () => {
+  assert.equal(titularNoAssunto('PROJETO GD - JOSE CARLOS SANTOS', 'JOSE CARLOS SANTOS II'), false);
+  assert.equal(titularNoAssunto('PROJETO GD - JOSE CARLOS SANTOS II', 'JOSE CARLOS SANTOS'), false);
+  assert.equal(titularNoAssunto('PROJETO GD - JOSE CARLOS SANTOS IV', 'JOSE CARLOS SANTOS III'), false);
+});
+
+test('G3: SEGUNDO e TERCEIRO a mais não casam com o cadastro sem sufixo', () => {
+  assert.equal(titularNoAssunto('PROJETO GD - JOSE CARLOS SANTOS SEGUNDO', 'JOSE CARLOS SANTOS'), false);
+  assert.equal(titularNoAssunto('PROJETO GD - JOSE CARLOS SANTOS TERCEIRO', 'JOSE CARLOS SANTOS'), false);
+  assert.equal(titularNoAssunto('PROJETO GD - JOSE CARLOS SANTOS TERCEIRO', 'JOSE CARLOS SANTOS II'), false);
+});
+
+test('G3: II é SEGUNDO e III é TERCEIRO', () => {
+  assert.equal(titularNoAssunto('PROJETO GD - JOSE CARLOS SANTOS SEGUNDO', 'JOSE CARLOS SANTOS II'), true);
+  assert.equal(titularNoAssunto('PROJETO GD - JOSE CARLOS SANTOS II', 'JOSE CARLOS SANTOS SEGUNDO'), true);
+  assert.equal(titularNoAssunto('PROJETO GD - JOSE CARLOS SANTOS TERCEIRO', 'JOSE CARLOS SANTOS III'), true);
+  assert.equal(titularNoAssunto('PROJETO GD - JOSE CARLOS SANTOS III', 'JOSE CARLOS SANTOS TERCEIRO'), true);
+  assert.equal(titularNoAssunto('PROJETO GD - JOSE CARLOS SANTOS II', 'JOSE CARLOS SANTOS II'), true);
+});
+
+test('G3: o II ativo e o III concluído — o e-mail do III não vai para o card do II', () => {
+  const II = P({ project_id: 'ii', codigo: 'PRJ-II', titular: 'JOSE CARLOS SANTOS II' });
+  const III = P({ project_id: 'iii', codigo: 'PRJ-III', titular: 'JOSE CARLOS SANTOS III', status: 'completed', ativo: false });
+  assert.equal(identificarPorTexto(txt('PROJETO GD - JOSE CARLOS SANTOS III'), [II, III]).tipo, 'nenhum');
+});
+
+// Sufixo de empresa: pode estar no cadastro e faltar no trecho, ou o contrário
+test('sufixo de empresa (ME, SA, S/A, EPP, EIRELI, LTDA) pode faltar de um lado', () => {
+  assert.equal(titularNoAssunto('PROJETO GD - PADARIA PAO QUENTE', 'PADARIA PAO QUENTE ME'), true);
+  assert.equal(titularNoAssunto('PROJETO GD - ALFA ENERGIA', 'ALFA ENERGIA S/A'), true);
+  assert.equal(titularNoAssunto('PROJETO GD - ALFA ENERGIA SA', 'ALFA ENERGIA'), true);
+  assert.equal(titularNoAssunto('PROJETO GD - ALFA ENERGIA S.A.', 'ALFA ENERGIA LTDA'), true);
+  assert.equal(titularNoAssunto('PROJETO GD - PADARIA PAO QUENTE LTDA ME', 'PADARIA PAO QUENTE EIRELI EPP'), true);
+  assert.equal(mesmoTitular('ALFA ENERGIA S/A', 'ALFA ENERGIA'), true);
+});
+
+// Separadores: os prefixos do assunto viram trechos próprios
+test('trecho: os formatos reais do assunto isolam o nome', () => {
+  const t = 'JOSE CARLOS SANTOS';
+  assert.equal(titularNoAssunto('TROCA DE RELÓGIO - JOSE CARLOS SANTOS - NT 391901851', t), true);
+  assert.equal(titularNoAssunto('RE: VISTORIA - JOSE CARLOS SANTOS - NT 390698066', t), true);
+  assert.equal(titularNoAssunto('Re: FW: ENC: PROJETO GD - José Carlos Santos', t), true);
+  assert.equal(titularNoAssunto('Resposta Automática - VISTORIA - JOSE CARLOS SANTOS - NT 390698066', t), true);
+  assert.equal(titularNoAssunto('Undeliverable: TROCA DE RELÓGIO - JOSE CARLOS SANTOS - NT 391901851', t), true);
+  assert.equal(titularNoAssunto('TROCA DE RELÓGIO – JOSE CARLOS SANTOS — NT 391901851', t), true); // meia-risca e travessão
+  assert.equal(titularNoAssunto('PROJETO GD:JOSE CARLOS SANTOS', t), true);
+});
+
+// Positivos que não podem regredir, no formato real do assunto
+test('positivos que não regridem: inicial, meio omitido, conector, empresa, numeral, pai × filho', () => {
+  assert.equal(titularNoAssunto('RE: VISTORIA - MARIA A. SILVA - NT 1', 'MARIA APARECIDA SILVA'), true);
+  assert.equal(titularNoAssunto('RE: VISTORIA - MARIA SILVA - NT 1', 'MARIA APARECIDA SILVA'), true);
+  assert.equal(titularNoAssunto('RE: VISTORIA - MARIA DA SILVA - NT 1', 'MARIA APARECIDA SILVA'), true);
+  assert.equal(titularNoAssunto('RE: VISTORIA - MARIA A. DA SILVA - NT 1', 'MARIA APARECIDA SILVA'), true);
+  assert.equal(titularNoAssunto('RE: VISTORIA - POSTO 7 DE SETEMBRO LTDA - NT 1', 'POSTO 7 DE SETEMBRO LTDA'), true);
+  assert.equal(titularNoAssunto('RE: VISTORIA - FILIAL 3 NORTE - NT 1', 'FILIAL CENTRO 3 NORTE'), true);
+  assert.equal(titularNoAssunto('RE: VISTORIA - SUPERMERCADO 3 IRMAOS - NT 1', 'SUPERMERCADO 3 IRMAOS LTDA'), true);
+  assert.equal(titularNoAssunto('RE: VISTORIA - BAR DO NETO LTDA - NT 1', 'BAR DO NETO LTDA'), true);
+  assert.equal(titularNoAssunto('RE: VISTORIA - JOSE CARLOS SANTOS FILHO - NT 1', 'JOSE CARLOS SANTOS FILHO'), true);
+  assert.equal(titularNoAssunto('RE: VISTORIA - JOSE CARLOS SANTOS FILHO - NT 1', 'JOSE CARLOS SANTOS'), false);
+  assert.equal(titularNoAssunto('RE: VISTORIA - JOSE CARLOS SANTOS - NT 1', 'JOSE CARLOS SANTOS FILHO'), false);
+});
+
+test('nome do meio fora de ordem não casa (a ordem do cadastro vale)', () => {
+  assert.equal(titularNoAssunto('PROJETO GD - JOSE ANTONIO CARLOS SANTOS', 'JOSE CARLOS ANTONIO SANTOS'), false);
+  assert.equal(titularNoAssunto('PROJETO GD - JOSE CARLOS ANTONIO SANTOS', 'JOSE CARLOS ANTONIO SANTOS'), true);
+  assert.equal(titularNoAssunto('PROJETO GD - JOSE C. A. SANTOS', 'JOSE CARLOS ANTONIO SANTOS'), true);
+});
+
+test('nome no CORPO não identifica nem quando está isolado por separador ("Atendente: <nome> - …")', () => {
+  // com a regra de trecho, a assinatura comum ("Atenciosamente, <nome> — …") já não casaria por acaso;
+  // este caso isola o nome no corpo e prova que o corpo não é lido para o nome
+  const id = identificarPorTexto(txt('RE: sua solicitação', 'Atendente: Jose Carlos Santos - Serviço da Enel'), TODOS);
+  assert.equal(id.tipo, 'nenhum');
+});
+
+test('inicial vale só para nome do meio: o primeiro e o último nome vêm inteiros', () => {
+  assert.equal(titularNoAssunto('PROJETO GD - J CARLOS SANTOS', 'JOSE CARLOS SANTOS'), false);
+  assert.equal(titularNoAssunto('PROJETO GD - JOSE CARLOS S', 'JOSE CARLOS SANTOS'), false);
+  assert.equal(mesmoTitular('JOSE CARLOS SANTOS', 'J. C. SANTOS'), false);
 });
