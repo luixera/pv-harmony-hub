@@ -1,6 +1,11 @@
 import * as React from "react";
+import { LARGURA_MOBILE } from "@/mobile/breakpoints";
 
-const MOBILE_BREAKPOINT = 768;
+// O limiar vem de `mobile/breakpoints.ts`, o mesmo de `useWindowSize`. O app
+// chegou a ter 640, 768 e 1024 competindo pela mesma ideia de "é celular", e na
+// faixa 640-767 px o MainLayout e o Sidebar discordavam: a gaveta ficava presa
+// aberta com o fundo preto. Não volte a declarar um número aqui.
+const MOBILE_BREAKPOINT = LARGURA_MOBILE;
 
 export function useIsMobile() {
   const [isMobile, setIsMobile] = React.useState<boolean | undefined>(undefined);

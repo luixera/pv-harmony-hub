@@ -20,8 +20,9 @@ const ICONE = {
 const CAMINHO_LUDMILLA = '/ludmilla';
 
 /**
- * Barra de atalhos do celular. Alvo de toque de 44 px (antes era 32) e nenhum
- * item desabilitado: atalho que não leva a lugar nenhum é ruído.
+ * Barra de atalhos do celular. Com `items-stretch` dentro de `h-16` cada botão já
+ * ocupa ~63 px; o `min-h-[44px]` é só o piso garantido de alvo de toque. Nenhum
+ * item fica desabilitado: atalho que não leva a lugar nenhum é ruído.
  */
 export function BottomNav() {
   const navigate = useNavigate();
@@ -35,7 +36,7 @@ export function BottomNav() {
   if (itens.length === 0) return null;
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-30 bg-sidebar border-t border-sidebar-border flex items-stretch h-16 safe-area-bottom">
+    <nav aria-label="Atalhos" className="fixed bottom-0 left-0 right-0 z-30 bg-sidebar border-t border-sidebar-border flex items-stretch h-16 safe-area-bottom">
       {itens.map(item => {
         const Icone = ICONE[item.chave as keyof typeof ICONE] ?? Kanban;
         const ativo = location.pathname === item.caminho;
@@ -50,7 +51,7 @@ export function BottomNav() {
               ativo ? 'text-sidebar-primary' : 'text-sidebar-foreground/60',
             )}
           >
-            <Icone size={20} />
+            <Icone size={20} aria-hidden="true" />
             {item.rotulo}
           </button>
         );
