@@ -30,8 +30,8 @@ as skills certas. Regra do usuário (set/2026): **roda em todo prompt.**
 | "crie uma skill / melhore essa skill / a skill não dispara" | `skill-creator` (oficial anthropics) — captar intenção, entrevistar, rascunhar, testar com evals, otimizar a descrição | `writing-skills` (TDD do texto da skill) → `quick_validate.py` → instalar em `.claude/skills/` → registrar aqui na §3 |
 | mexer em auth, RLS/política, edge function, segredo, upload/Storage, endpoint novo, pagamento, dado sensível, CORS/CSP, dependência | `security-review` (checklist OWASP, **só quando necessário** — não roda em todo prompt) | passar o checklist adaptado (§3) antes de `verification-before-completion`; achado grave → memória `security-posture` |
 | "abra o portal / preencha / clique / veja a tela / automatize no navegador / a Ludmilla precisa fazer X no portal" | `agent-browser` (vercel-labs) — explorar a tela real com `snapshot -i` antes de codificar | roteiro escrito sobre o que a exploração mostrou; worker chama a CLI |
-| "a tela está feia / genérica / cara de IA / deixa bonito" numa página PÚBLICA (landing, portfólio, one-pager) | `design-taste-frontend` (tasteskill, 610K) — direção de arte com inspetor no navegador | **não** usar em tela de app/dashboard: lá vale `awesome-design-md` |
-| "redesenhar / padronizar o visual" de tela INTERNA (painel, modal, dashboard do GD Manager) | `awesome-design-md` — escolhe e aplica um `DESIGN.md` de estilo coerente | manter o visual que o app já tem; o GD Manager não é landing page |
+| "a tela está feia / genérica / cara de IA / deixa bonito" numa página PÚBLICA (landing, portfólio, one-pager) | `design-taste-frontend` (tasteskill, 610K) — direção de arte com inspetor no navegador | **não** usar em tela de app/dashboard (ver a linha abaixo) |
+| "redesenhar / padronizar o visual" de tela INTERNA (painel, modal, dashboard do GD Manager) | **nenhuma skill de estilo** — seguir o visual que o GD Manager já tem, olhando telas vizinhas | o usuário desinstalou `awesome-design-md` em 14/10/2026: estilo de big tech não entra no produto. Auditoria: `web-design-guidelines` |
 | "revise minha UI / acessibilidade / UX" | `web-design-guidelines` (vercel-labs, 736K) — audita contra as Web Interface Guidelines | achado vira correção, não só lista |
 | teste de navegador, E2E, "testa essa tela" | `playwright-cli` (microsoft, 183K) | o projeto usa vitest para unidade; Playwright é do worker da Ludmilla — ver §4 antes de criar suíte nova |
 
@@ -92,11 +92,6 @@ Reportar ao usuário o que foi encontrado, mesmo quando nada serve.
   - `design-taste-frontend` (`leonxlnx/taste-skill`, 610K) — página **pública**
     com cara de template. Traz direção de arte e um laço de "olhar e corrigir"
     por captura de tela. **Não** serve para dashboard/app.
-  - `awesome-design-md` (`wearescientist`, **370 instalações — abaixo do
-    critério da casa, aceita por decisão do usuário**) — escolhe um `DESIGN.md`
-    de estilo (Apple, Stripe, Linear…) e aplica. Para tela interna, preferir
-    manter o visual que o GD Manager já tem; estilo de big tech é referência,
-    não ordem de troca.
   - `web-design-guidelines` (oficial `vercel-labs`, 736K) — auditoria de UI e
     **acessibilidade**. Boa antes de entregar tela nova.
   - `playwright-cli` (oficial `microsoft`, 183K) — Playwright pela CLI. Atenção:
