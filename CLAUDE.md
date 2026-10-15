@@ -70,7 +70,7 @@ Detalhes: [docs/project/tech-stack.md](docs/project/tech-stack.md).
 | Geração compartilhada | 🟡 Parcial | [modules/shared-generation](docs/modules/shared-generation/overview.md) |
 | Diagramas (unifilar) | 🟡 Alpha — só master/GD Manager | [modules/diagrams](docs/modules/diagrams/overview.md) |
 | Motor de Engenharia (regras) | 🟡 Fase 1 — só GD Manager | [modules/engineering](docs/modules/engineering/overview.md) |
-| Capacidade de rede (BDGD) | 🟡 CPFL Paulista e Piratininga carregadas (295 mil trafos, base 31/12/2025); mapa v2 com camadas vetoriais, busca, traçado dos alimentadores e subestações; demais distribuidoras de SP pendentes; só GD Manager | [modules/engineering](docs/modules/engineering/overview.md) |
+| Capacidade de rede em BT (BDGD) | 🟡 CPFL Paulista e Piratininga carregadas (295 mil trafos MT/BT, base 31/12/2025); mapa v3 em WebGL (deck.gl) com amostra por contagem, busca, alimentadores de MT como contexto, ficha da fonte e conta aberta; demais distribuidoras de SP e confronto com pareceres reais pendentes; só GD Manager | [modules/engineering](docs/modules/engineering/overview.md) |
 | Mobile / PWA | 🟡 Fase 1 — padrão + telas do gestor e da empresa | [modules/mobile](docs/modules/mobile/overview.md) |
 | Marketplace | ⛔ Planejado | [modules/marketplace](docs/modules/marketplace/overview.md) |
 | BESS (armazenamento) | ⛔ Planejado | [modules/bess](docs/modules/bess/overview.md) |

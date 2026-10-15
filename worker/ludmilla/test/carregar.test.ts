@@ -44,6 +44,10 @@ test('monta o trafo juntando carga e GD pelo codigo', () => {
   assert.equal(r[0].tensao_secundaria_v, 220);          // 0,22 kV -> 220 V
   assert.equal(r[0].carga_min_diurna_kw, 11.71);        // 2 casas
   assert.equal(r[0].gd_conectada_kw, 8.4);
+  // BT: quantas UCs o trafo atende e quantas unidades de GD ja tem — os dois
+  // numeros que a pessoa pergunta primeiro num parecer de baixa tensao.
+  assert.equal(r[0].unidades_consumidoras, 42);
+  assert.equal(r[0].gd_unidades, 2);
   assert.deepEqual({ lng: r[0].lng, lat: r[0].lat }, { lng: -47.6, lat: -23.5 });
 });
 
@@ -56,6 +60,8 @@ test('trafo sem carga fica NULO, nunca zero', () => {
     [], []);
   assert.equal(r[0].carga_min_diurna_kw, null);
   assert.equal(r[0].gd_conectada_kw, 0);   // sem GD e zero de verdade: ninguem conectou
+  assert.equal(r[0].unidades_consumidoras, null);   // sem linha de carga: nao sei quantas UCs
+  assert.equal(r[0].gd_unidades, 0);                // sem linha de GD: nenhuma unidade
 });
 
 const bom = (cod: string) => ({ Shape: 'POINT (-47.6 -23.5)', COD_ID: cod,

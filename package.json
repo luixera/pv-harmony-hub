@@ -12,6 +12,9 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@deck.gl/core": "^9.4.0",
+    "@deck.gl/google-maps": "^9.4.0",
+    "@deck.gl/layers": "^9.4.0",
     "@hello-pangea/dnd": "^18.0.1",
     "@hookform/resolvers": "^3.10.0",
     "@marsidev/react-turnstile": "^1.5.2",

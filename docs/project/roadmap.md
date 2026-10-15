@@ -14,7 +14,7 @@
   regra, um navegador que não seja o Chrome pode servir um service worker
   velho do cache HTTP. O Chrome já ignora esse cache por conta própria, então
   nada quebra hoje — é rede de segurança. Ver
-  [ADR 0010](../adr/0010-pwa-casca-sem-fila-offline.md).
+  [ADR 0011](../adr/0011-pwa-casca-sem-fila-offline.md).
 
 ## Tarefas de produto em aberto (do backlog de sessão)
 - **Mobile / PWA — fase 2**: a fase 1 entregou o padrão (`src/mobile/`), a barra
@@ -195,8 +195,14 @@ Módulo [signatures](../modules/signatures/overview.md) — Fase 1, só GD Manag
   ver o [aceite](../modules/signatures/aceite.md)).
 - **Estilo misto** inline vs shadcn/ui em telas legadas.
 - **Chunk principal de 3,6 MB**: obriga o precache do PWA a subir o limite por
-  arquivo para 4 MiB e faz a primeira visita baixar ~4,3 MiB. Quebrar o bundle
+  arquivo para 4 MiB e faz a primeira visita baixar ~5,4 MiB. Quebrar o bundle
   resolveria os dois de uma vez.
+- **O deck.gl do mapa de rede entrou na casca do PWA** (~1,1 MiB entre o chunk
+  dele, o `assert-*` e o `expression-*`). O mapa é de `/painel`, só master, e
+  quem abre o app no celular nunca o usa. Não dá para tirar por `globIgnores`
+  como se fez com a família de PDF, porque o Rollup nomeia esses pedaços como
+  `index-*`, igual ao chunk principal: o conserto é dar nome a eles
+  (`build.rollupOptions.output.manualChunks`) e só então excluí-los.
 - **Dois limiares de celular convivendo**: o TypeScript usa 640 px
   (`src/mobile/breakpoints.ts`, fonte única desde out/2026) e o
   `src/index.css` tem um `@media (max-width: 767px)` com alvo de toque de 48 px
