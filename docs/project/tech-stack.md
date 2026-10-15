@@ -14,6 +14,9 @@
 - **@hello-pangea/dnd** — drag-and-drop do Kanban.
 - **@react-google-maps/api** — mapa e geocodificação.
 - **@marsidev/react-turnstile** — CAPTCHA no formulário público.
+- **vite-plugin-pwa** (dev) — manifest e service worker do PWA, gerados no
+  build. Cache só da casca; ver [ADR 0011](../adr/0011-pwa-casca-sem-fila-offline.md)
+  e [modules/mobile](../modules/mobile/overview.md).
 
 ## Geração de documentos
 - **jsPDF** + **html2pdf.js** + **html2canvas** — PDFs (cartilha RESUMO,

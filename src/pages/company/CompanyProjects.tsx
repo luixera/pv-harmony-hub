@@ -8,6 +8,9 @@ import { useProjects } from '@/hooks/useProjects';
 import { useCompanyKanbanModel } from '@/hooks/useKanbanConfig';
 import { ReadOnlyKanbanBoard, EmptyBoard } from '@/components/kanban/ReadOnlyKanbanBoard';
 import { ProjectModal } from '@/components/projects/ProjectModal';
+import { ListaEmCartoes } from '@/mobile/ListaEmCartoes';
+import { cartaoDeProjeto } from '@/mobile/cartaoDeProjeto';
+import { projectStatusLabel } from '@/lib/statusMapping';
 import { Loader2, Plus, Search } from 'lucide-react';
 
 /**
@@ -43,6 +46,14 @@ export default function CompanyProjects() {
     : daEmpresa;
 
   const colunas = modelo?.columns ?? [];
+
+  // Cartões do celular (abaixo de 640 px o quadro de colunas não aparece). Esta
+  // tela não tem filtro de etapa, então o celular mostra TODOS os projetos da
+  // empresa, com a etapa no selo. O nome da etapa é o da coluna do modelo da
+  // empresa (o mesmo do quadro); etapa fora do modelo cai no nome de fábrica.
+  const rotuloDaEtapa = (status: string) =>
+    colunas.find(c => c.status_key === status)?.status_label ?? projectStatusLabel(status);
+  const itensMobile = projetos.map(p => cartaoDeProjeto(p, rotuloDaEtapa, setModalProjectId));
 
   return (
     <MainLayout>
@@ -82,10 +93,6 @@ export default function CompanyProjects() {
               </Button>
             }
           />
-        ) : colunas.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-border py-16 text-center text-sm text-muted-foreground">
-            O quadro ainda não foi configurado. Fale com a equipe responsável pela homologação.
-          </div>
         ) : (
           <>
             {termo && (
@@ -93,11 +100,25 @@ export default function CompanyProjects() {
                 {projetos.length} de {daEmpresa.length} projeto(s) para “{busca.trim()}”
               </p>
             )}
-            <ReadOnlyKanbanBoard
-              projects={projetos}
-              columns={colunas}
-              onOpenProject={setModalProjectId}
-            />
+            {/* Abaixo de 640 px, cartões; de 640 px para cima, o quadro de sempre.
+                A busca e o "Novo Projeto" ficam no cabeçalho, fora daqui: no celular
+                o `children` do ListaEmCartoes não é renderizado. */}
+            <ListaEmCartoes itens={itensMobile} vazio="Nenhum projeto encontrado.">
+              {colunas.length === 0 ? (
+                /* Sem modelo de Kanban não há quadro para montar. Isso é limitação do
+                   DESKTOP: o cartão do celular não precisa das colunas (a etapa cai no
+                   nome de fábrica), então ele continua mostrando os projetos. */
+                <div className="rounded-xl border border-dashed border-border py-16 text-center text-sm text-muted-foreground">
+                  O quadro ainda não foi configurado. Fale com a equipe responsável pela homologação.
+                </div>
+              ) : (
+                <ReadOnlyKanbanBoard
+                  projects={projetos}
+                  columns={colunas}
+                  onOpenProject={setModalProjectId}
+                />
+              )}
+            </ListaEmCartoes>
           </>
         )}
       </div>

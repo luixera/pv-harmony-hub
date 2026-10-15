@@ -4,6 +4,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useUsers } from '@/hooks/useUsers';
 import { useProjects } from '@/hooks/useProjects';
 import { useCreateTask, useUpdateTask, Task, TaskPriority } from '@/hooks/useTasks';
+import { useWindowSize } from '@/hooks/useWindowSize';
+import { gradeColapsavel } from '@/mobile/breakpoints';
 
 interface TaskDialogProps {
   open: boolean;
@@ -27,6 +29,7 @@ export function TaskDialog({ open, onOpenChange, task, defaultProjectId }: TaskD
   const { data: allProjects = [] } = useProjects();
   const createTask = useCreateTask();
   const updateTask = useUpdateTask();
+  const { width } = useWindowSize(); // as 4 prioridades colapsam em tela estreita
 
   const isEditing = !!task;
 
@@ -200,7 +203,7 @@ export function TaskDialog({ open, onOpenChange, task, defaultProjectId }: TaskD
             {/* Prioridade */}
             <div>
               <p style={{ fontSize: 10, fontWeight: 700, color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>Prioridade</p>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: gradeColapsavel(width, 4), gap: 6 }}>
                 {PRIORITIES.map(p => {
                   const cfg = PRIORITY_CFG[p];
                   const active = priority === p;

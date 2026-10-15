@@ -45,6 +45,14 @@ flowchart TD
 1. **Apresentação (SPA)** — `src/pages` e `src/components`. Renderização,
    navegação (React Router) e estado de servidor via React Query. Sem regra de
    negócio sensível — o cliente é considerado não confiável.
+
+   A SPA também é um **PWA**: instala na tela inicial e o service worker
+   guarda só a casca (HTML, JS, CSS, ícones), nunca dado — não há fila de
+   escrita offline. Os limites de tela vivem num lugar só,
+   `src/mobile/breakpoints.ts` (640 px celular, 1024 px tablet), lidos por
+   `useWindowSize` e `useIsMobile`; as telas consomem o padrão de `src/mobile/`
+   (barra inferior, cartões, grades que colapsam) em vez de decidir o celular
+   cada uma por si. Ver [módulo Mobile / PWA](../modules/mobile/overview.md).
 2. **Acesso a dados (hooks)** — `src/hooks/use*.ts`. Cada hook encapsula queries
    e mutations do Supabase para uma entidade. É a fronteira entre UI e dados.
 3. **Lógica de servidor**:

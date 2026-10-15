@@ -24,6 +24,7 @@ módulo for alterado** (a documentação cresce junto com o código, ver
 | customers (titulares) | ✅ Overview | overview |
 | shared-generation | 🟡 Parcial | overview |
 | diagrams | 🟡 A definir | overview |
+| mobile (padrão mobile + PWA) | 🟡 Fase 1 | overview |
 | marketplace | ⛔ Planejado | overview |
 | bess | ⛔ Planejado | overview |
 | market-free | ⛔ Planejado | overview |

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { useWindowSize } from '@/hooks/useWindowSize';
+import { gradeColapsavel } from '@/mobile/breakpoints';
 import { formatCurrency, sanitizeFileName } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCompanyDisplay } from '@/hooks/useCompanyDisplay';
@@ -1728,6 +1729,9 @@ function TabFinanceiro({ project, isAdmin }: { project: ProjectWithDetails; isAd
   const [payAmt, setPayAmt] = useState('');
   const [payDate, setPayDate] = useState(new Date().toISOString().split('T')[0]);
   const [payNote, setPayNote] = useState('');
+  // Largura da tela: os três cartões de resumo colapsam em tela estreita.
+  // Fica aqui em cima, antes do retorno antecipado de !isAdmin (regra dos hooks).
+  const { width } = useWindowSize();
 
   const fmt = formatCurrency;
   const statusBadge: Record<string, { bg: string; color: string; label: string }> = {
@@ -1815,7 +1819,7 @@ function TabFinanceiro({ project, isAdmin }: { project: ProjectWithDetails; isAd
       </div>
 
       {/* 3.2 Summary Cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: gradeColapsavel(width, 3), gap: 10 }}>
         {[
           { label: 'Valor Total', value: fmt(projectValue), color: '#1A1A1A' },
           { label: 'Total Pago', value: fmt(paidValue), color: '#2D6A4F' },
@@ -2304,7 +2308,8 @@ export function ProjectModal({ projectId, onClose, initialTab = 'geral', viewAsC
           position: 'fixed', inset: 0, zIndex: 1001,
           display: 'flex', alignItems: 'flex-start',
           justifyContent: 'center',
-          overflowY: 'auto', padding: '24px 16px',
+          // Celular: tela cheia, sem folga (mesmo padrao do FinancialReportModal).
+          overflowY: 'auto', padding: isMobile ? 0 : '24px 16px',
           boxSizing: 'border-box',
         }}
         onClick={e => { if (e.target === e.currentTarget) onClose(); }}
@@ -2312,19 +2317,33 @@ export function ProjectModal({ projectId, onClose, initialTab = 'geral', viewAsC
         {/* Modal box */}
         <div
           style={{
-            background: '#fff', borderRadius: 16,
-            width: '95vw', maxWidth: 1280,
-            minHeight: '85vh',
+            background: '#fff', borderRadius: isMobile ? 0 : 16,
+            width: isMobile ? '100%' : '95vw', maxWidth: 1280,
+            minHeight: isMobile ? '100%' : '85vh',
             display: 'flex', flexDirection: 'column',
-            overflow: 'hidden',
+            // 'hidden' faria desta caixa o contêiner de rolagem do cabeçalho
+            // sticky (quem rola é a moldura de fora), e ele nunca grudaria.
+            // 'clip' corta do mesmo jeito sem virar contêiner de rolagem.
+            overflow: isMobile ? 'clip' : 'hidden',
             boxShadow: '0 24px 80px rgba(0,0,0,0.35)',
             margin: 'auto',
           }}
           onClick={e => e.stopPropagation()}
         >
           {isLoading || (!project && !accessDenied) ? (
-            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 60 }}>
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 60, ...(isMobile ? { flexDirection: 'column', gap: 24 } : {}) }}>
               <Loader2 size={28} className="animate-spin" style={{ color: '#F5A800' }} />
+              {/* Celular: o modal cobre a tela toda, sem moldura para tocar e
+                  fechar. Se o projeto nunca chegar (apagado, ou escondido por
+                  RLS), este botão é a única saída do spinner. */}
+              {isMobile && (
+                <button
+                  onClick={onClose}
+                  style={{ marginTop: 4, padding: '8px 18px', borderRadius: 8, background: '#F5A800', border: 'none', color: '#1A1A1A', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}
+                >
+                  Fechar
+                </button>
+              )}
             </div>
           ) : accessDenied ? (
             /* Staff com acesso restrito tentando abrir projeto que não é dele
@@ -2346,10 +2365,14 @@ export function ProjectModal({ projectId, onClose, initialTab = 'geral', viewAsC
           ) : !project ? null : (
             <>
               {/* Header */}
-              <div style={{ background: '#1A1A1A', padding: '20px 28px', flexShrink: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
+              <div style={{ ...(isMobile ? { position: 'sticky', top: 0, zIndex: 5 } : {}), background: '#1A1A1A', padding: '20px 28px', flexShrink: 0 }}>
+                {/* Celular: as ações quebram para baixo do título em vez de
+                    espremê-lo numa coluna de ~80 px, o que deixaria o
+                    cabeçalho fixo com ~290 px (36% de uma tela de 812 px) para
+                    admin/projetista; assim fica em ~190 px. */}
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, ...(isMobile ? { flexWrap: 'wrap' } : {}) }}>
                   {/* Left: project info */}
-                  <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ flex: isMobile ? '1 1 160px' : 1, minWidth: 0 }}>
                     <p style={{ fontFamily: 'monospace', fontSize: 20, fontWeight: 700, color: '#fff', marginBottom: 3 }}>
                       {project.code}
                     </p>
@@ -2383,7 +2406,7 @@ export function ProjectModal({ projectId, onClose, initialTab = 'geral', viewAsC
                   </div>
 
                   {/* Right: action buttons */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, ...(isMobile ? { marginLeft: 'auto' } : {}) }}>
                     {/* Pedido de vistoria — ação DO CLIENTE. Só aparece na visão
                         da empresa; quem clica de fato precisa ser a empresa dona
                         (no "Ver como empresa" fica à mostra, mas desabilitado,

@@ -29,6 +29,8 @@ import { StaffAssignmentDialog } from '@/components/projects/StaffAssignmentDial
 import { GenerateDocumentDialog } from '@/components/projects/GenerateDocumentDialog';
 import { DeleteProjectDialog } from '@/components/projects/DeleteProjectDialog';
 import { ProjectWithDetails } from '@/hooks/useProjects';
+// o mapa etapa -> variante do Badge mora em `mobile/cartaoDeProjeto.ts`, uma cópia só
+import { statusVariants } from '@/mobile/cartaoDeProjeto';
 
 type ProjectStatus = Database['public']['Enums']['project_status'];
 
@@ -39,20 +41,6 @@ const fallbackColumns: { id: string; title: string; color: string; isRejectionSt
   { id: 'approval', title: 'Aprovação', color: 'bg-kanban-progress', isRejectionStage: false, requiresProtocol: false },
   { id: 'approved', title: 'Aprovado', color: 'bg-kanban-approved', isRejectionStage: false, requiresProtocol: false },
 ];
-
-const statusVariants: Record<string, string> = {
-  pending: 'pending',
-  analysis: 'analysis',
-  documentation: 'progress',
-  approval: 'progress',
-  approved: 'approved',
-  pendencia: 'pending',
-  vistoria_solicitada: 'progress',
-  aguardando_instalacao: 'progress',
-  vistoria_sem_protocolo: 'pending',
-  vistoria_reprovada: 'pending',
-  completed: 'approved',
-};
 
 
 // Uses project_financials (canonical table). financialRecord is the legacy `financials` table.
