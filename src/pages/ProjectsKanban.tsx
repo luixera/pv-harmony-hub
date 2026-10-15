@@ -29,6 +29,9 @@ import { StaffAssignmentDialog } from '@/components/projects/StaffAssignmentDial
 import { GenerateDocumentDialog } from '@/components/projects/GenerateDocumentDialog';
 import { DeleteProjectDialog } from '@/components/projects/DeleteProjectDialog';
 import { ProjectWithDetails } from '@/hooks/useProjects';
+import { ListaEmCartoes } from '@/mobile/ListaEmCartoes';
+import { cartaoDeProjeto } from '@/mobile/cartaoDeProjeto';
+import { projectStatusLabel } from '@/lib/statusMapping';
 
 type ProjectStatus = Database['public']['Enums']['project_status'];
 
@@ -39,21 +42,6 @@ const fallbackColumns: { id: string; title: string; color: string; isRejectionSt
   { id: 'approval', title: 'Aprovação', color: 'bg-kanban-progress', isRejectionStage: false, requiresProtocol: false },
   { id: 'approved', title: 'Aprovado', color: 'bg-kanban-approved', isRejectionStage: false, requiresProtocol: false },
 ];
-
-const statusVariants: Record<string, string> = {
-  pending: 'pending',
-  analysis: 'analysis',
-  documentation: 'progress',
-  approval: 'progress',
-  approved: 'approved',
-  pendencia: 'pending',
-  vistoria_solicitada: 'progress',
-  aguardando_instalacao: 'progress',
-  vistoria_sem_protocolo: 'pending',
-  vistoria_reprovada: 'pending',
-  completed: 'approved',
-};
-
 
 // Uses project_financials (canonical table). financialRecord is the legacy `financials` table.
 function hasNoValue(project: { financials?: { project_value?: number | null } | null }) {
@@ -753,6 +741,17 @@ export default function ProjectsKanban() {
 
   // ── Stable callbacks (prevent KanbanCardContent re-renders via React.memo) ─
   const handleOpenModal = useCallback((id: string) => setModalProjectId(id), []);
+
+  // Cartões do celular (abaixo de 640 px o quadro de colunas não aparece).
+  // Parte de `filteredProjects`, então já respeita busca, empresa, concessionária,
+  // "sem valor" e o filtro de etapa. O nome da etapa é o da COLUNA do quadro, como
+  // a lista mobile antiga já fazia; etapa fora do modelo cai no nome de fábrica.
+  const itensMobile = useMemo(() => {
+    const rotuloDaEtapa = (status: string) =>
+      kanbanColumns.find(c => c.id === status)?.title ?? projectStatusLabel(status);
+    return filteredProjects.map(p => cartaoDeProjeto(p, rotuloDaEtapa, handleOpenModal));
+  }, [filteredProjects, kanbanColumns, handleOpenModal]);
+
   const handleChangeStatus = useCallback((id: string, status: ProjectStatus) => {
     updateStatus.mutate({ projectId: id, status });
   }, [updateStatus]);
@@ -926,81 +925,16 @@ export default function ProjectsKanban() {
           </div>
         </div>
 
-        {/* MOBILE: List view */}
-        {isMobile ? (
-          <div className="space-y-3">
-            {filteredProjects.length === 0 ? (
-              <div className="text-center py-12 text-muted-foreground">
-                <p>Nenhum projeto encontrado</p>
-              </div>
-            ) : (
-              filteredProjects.map((project) => {
-                const col = kanbanColumns.find(c => c.id === project.status);
-                const noValue = hasNoValue(project);
-                const daysStale = staleMap.get(project.id);
-                const isStale = daysStale !== undefined;
-                return (
-                  <motion.div
-                    key={project.id}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="bg-card rounded-xl p-4 border border-white/10 shadow-md"
-                    style={isStale ? { borderLeft: '3px solid #F59E0B' } : undefined}
-                    onClick={() => setModalProjectId(project.id)}
-                  >
-                    <div className="flex items-start justify-between gap-3 mb-2">
-                      <div className="min-w-0 flex-1">
-                        <p className="text-xs font-mono text-primary mb-1">{project.code}</p>
-                        <h4 className="font-semibold text-card-foreground text-base leading-tight truncate">
-                          {project.generalData?.holder_name || project.title}
-                        </h4>
-                      </div>
-                      <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                        <Badge variant={statusVariants[project.status] as any} className="text-xs">
-                          {col?.title || project.status}
-                        </Badge>
-                        {isStale && (
-                          <span
-                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium"
-                            style={{ background: '#FFFBEB', color: '#92400E', border: '0.5px solid #F59E0B' }}
-                          >
-                            <Clock className="w-2.5 h-2.5" />
-                            {daysStale}d parado
-                          </span>
-                        )}
-                        {isAdmin && noValue && (
-                          <Badge className="text-[10px] gap-1" style={{ background: '#FFF0E6', color: '#993C1D', border: 'none' }}>
-                            <DollarSign className="w-2.5 h-2.5" />
-                            Sem valor
-                          </Badge>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-4 text-xs text-muted-foreground mt-2">
-                      <span className="flex items-center gap-1 truncate">
-                        <Building2 className="w-3 h-3 flex-shrink-0" />
-                        {getCompanyDisplayName(project.companyName)}
-                      </span>
-                      {project.generalData?.city && (
-                        <span className="flex items-center gap-1 truncate">
-                          <MapPin className="w-3 h-3 flex-shrink-0" />
-                          {project.generalData.city}/{project.generalData.state}
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex items-center justify-between mt-3 pt-2 border-t border-border/50">
-                      <span className="text-xs text-muted-foreground">
-                        {project.equipment?.total_installed_power || 0} kWp · {project.equipment?.module_quantity || 0} módulos
-                      </span>
-                      <ChevronRight className="w-4 h-4 text-muted-foreground" />
-                    </div>
-                  </motion.div>
-                );
-              })
-            )}
-          </div>
-        ) : (
-          /* DESKTOP: Kanban board */
+        {/* Abaixo de 640 px a lista vira cartões; de 640 px para cima, o Kanban de
+            colunas de sempre (ListaEmCartoes). A busca e os filtros estão ACIMA,
+            fora daqui, de propósito: no celular o `children` não é renderizado,
+            e o que estivesse dentro sumiria. O filtro de etapa do celular
+            (mobileStatusFilter) já está no cabeçalho e é ele que mostra uma etapa
+            por vez; em "Todos os status" a etapa de cada projeto está no selo. */}
+        <ListaEmCartoes
+          itens={itensMobile}
+          vazio={mobileStatusFilter === 'all' ? 'Nenhum projeto encontrado.' : 'Nenhum projeto nesta etapa.'}
+        >
           <DragDropContext onDragEnd={handleDragEnd}>
             <div
               className="flex gap-4 overflow-x-auto overflow-y-hidden scrollbar-thin"
@@ -1024,7 +958,7 @@ export default function ProjectsKanban() {
               ))}
             </div>
           </DragDropContext>
-        )}
+        </ListaEmCartoes>
       </div>
 
       {/* Project Modal */}
