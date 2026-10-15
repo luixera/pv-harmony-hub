@@ -31,6 +31,8 @@ export function ListaEmCartoes({
         <button
           key={item.id}
           onClick={item.aoAbrir}
+          // evita enviar o formulário pai ao tocar no cartão (o padrão do button é submit)
+          type="button"
           style={{
             textAlign: 'left', minHeight: 44, width: '100%', cursor: item.aoAbrir ? 'pointer' : 'default',
             background: '#fff', border: '0.5px solid #E6E6E6', borderRadius: 12, padding: '12px 14px',
