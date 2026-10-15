@@ -59,15 +59,35 @@ export function sqlTrafos(): string {
  */
 export const POT_INST_KW = 'CASE WHEN POT_INST > 1000 THEN POT_INST / 1000.0 ELSE POT_INST END';
 
+/**
+ * A potência da GD é DEM_CONT, não POT_INST.
+ *
+ * Descoberto em 15/10/2026 confrontando um orçamento de conexão da CPFL
+ * (posto 189049: 5 unidades, 18,85 kW) com o nosso trafo 33820988 (5 unidades,
+ * 5,42 kW). Conferido no cadastro aberto da ANEEL (empreendimento-geracao-
+ * distribuida.parquet, 4,67 milhões de linhas): para 8 unidades da Piratininga,
+ * a "potência instalada" da ANEEL é IGUAL ao DEM_CONT da BDGD (5,0 · 6,0 · 4,5
+ * · 5,0 · 3,0 · 3,0 · 4,4 · 4,0 kW) e não tem relação com POT_INST (0,62 · 1,68
+ * · 0,93 · 2,18 · 0,95 · 1,18 · 1,17 · 5,0). Pelos valores (frações de 1/60,
+ * 1/90...) POT_INST é a potência MÉDIA gerada: energia do mês dividida pelas
+ * horas de sol. Somas na Piratininga: DEM_CONT 369,6 MW, POT_INST 164,4 MW,
+ * ANEEL 523 MW (cadastro de out/2026, inclui MT). Usar POT_INST subestimava a
+ * GD em ~2,5x — para o lado OTIMISTA, o pior para um semáforo de risco.
+ *
+ * POT_INST corrigido fica como reserva para linha sem DEM_CONT (zero na
+ * Piratininga; o guard-rail continua).
+ */
+export const GD_KW = `CASE WHEN DEM_CONT > 0 THEN DEM_CONT ELSE ${POT_INST_KW} END`;
+
 export function sqlGdPorTrafo(camada: 'UGBT_tab' | 'UGMT_tab'): string {
-  return `SELECT UNI_TR_MT AS trafo, count(*) AS unidades, sum(${POT_INST_KW}) AS gd_kw
+  return `SELECT UNI_TR_MT AS trafo, count(*) AS unidades, sum(${GD_KW}) AS gd_kw
   FROM ${camada}
  WHERE UNI_TR_MT <> ''
  GROUP BY UNI_TR_MT`;
 }
 
 export function sqlGdPorAlimentador(camada: 'UGBT_tab' | 'UGMT_tab'): string {
-  return `SELECT CTMT AS alimentador, sum(${POT_INST_KW}) AS gd_kw
+  return `SELECT CTMT AS alimentador, sum(${GD_KW}) AS gd_kw
   FROM ${camada}
  WHERE CTMT <> ''
  GROUP BY CTMT`;

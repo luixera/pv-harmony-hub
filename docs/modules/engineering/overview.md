@@ -238,11 +238,17 @@ desagenda quando a fila esvazia. O worker espera o desfecho em `rede_importacao`
 `ALTER FUNCTION ... SET statement_timeout` foi testado e **não** serve: não
 estende um comando já em curso.
 
-**POT_INST em watts na BDGD.** Parte das unidades de GD de baixa tensão vem com
-`POT_INST` em W, não kW (5000, 10000, 13202…). Como BT não passa de 75 kW, acima
-de 1000 é lido como watt (`POT_INST_KW` em `extrair.ts`); a faixa 75–1000 fica
-como está, que erra para o lado do risco. Sem isso, a Paulista somava 13,7 GW de
-"microgeração" (corrigido: 1.015 MW) e a Piratininga 267,9 MW (corrigido: 179,3).
+**A potência da GD é `DEM_CONT`, não `POT_INST` (corrigido em 15/10/2026).**
+Um orçamento de conexão da CPFL (posto 189049) declarava 5 unidades e 18,85 kW
+no trafo que a base mostrava com 5 unidades e 5,42 kW. Conferido no cadastro
+aberto da ANEEL (`empreendimento-geracao-distribuida.parquet`): a potência
+instalada da ANEEL é igual ao `DEM_CONT` da BDGD em todas as 8 unidades
+testadas, e `POT_INST` é a potência média gerada (energia do mês ÷ horas de
+sol), ~2,5× menor. Piratininga: `DEM_CONT` 369,6 MW contra `POT_INST` 164,4 MW.
+Usar `POT_INST` subestimava a GD para o lado otimista. `GD_KW` em `extrair.ts`
+usa `DEM_CONT` e cai no `POT_INST` corrigido (watts acima de 1000) só quando
+`DEM_CONT` falta. A carga de 13/10 (`POT_INST`) fica registrada no histórico
+para comparação; os totais abaixo são dela e serão refeitos na reingestão.
 
 **Carregado em 13/10/2026** (data-base 31/12/2025):
 
