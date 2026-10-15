@@ -114,6 +114,15 @@ de "é celular". Na faixa de 640 a 767 px o `MainLayout` (640) e o `Sidebar`
 (768) discordavam, e a gaveta ficava presa aberta, com o fundo preto, sem
 fechar. A correção foi fazer o `use-mobile.tsx` importar de `breakpoints.ts`.
 
+**E os dois têm de concordar no PRIMEIRO render, não só no número.** O
+`use-mobile.tsx` começava em `undefined` (que vira `false`) e só acertava no
+efeito; o `useWindowSize` sempre leu a largura no inicializador. Enquanto o
+`MainLayout` usou o primeiro, ninguém notava — passou a usar o segundo e o
+quadro 1 de todo carregamento frio no celular ficou incoerente: o layout já era
+de celular, mas o `Sidebar` ainda se achava desktop e desenhava a gaveta
+`fixed w-64` **por cima** do conteúdo, sem deslocá-lo. Hoje os dois leem a
+largura no inicializador. Hook de largura que comece em `undefined` é armadilha.
+
 Para decidir colunas numa grade, use `gradeColapsavel(width, n)` com o `width`
 do `useWindowSize()`. Seis grades rígidas de 3–4 colunas — que no celular
 viravam colunas de ~90 px — passaram a usá-lo: `ProjectModal` (os cartões-resumo
@@ -211,12 +220,14 @@ Plugin `vite-plugin-pwa`, configurado em `vite.config.ts`. Modo `generateSW`
   aplica ao ícone. A logo de origem é pequena (187×188 px), então no ícone de
   512 ela é ampliada.
 - **Precache só da casca** (`globPatterns`: js, css, html, ico, png, svg,
-  woff2). Medido no build de 15/10/2026: 18 entradas, ~4,4 MiB.
+  woff2). Medido no build de 15/10/2026: **17 entradas, 4379,76 KiB**.
 - **`maximumFileSizeToCacheInBytes` = 4 MiB.** O chunk principal tem ~3,6 MB e o
   limite padrão do workbox é 2 MiB. Sem o ajuste, o arquivo mais importante
   ficaria **fora** do precache, com um mero aviso no build.
 - **`globIgnores` tira a família de PDF** (`html2pdf`, `pdf`, `jspdf`,
-  `html2canvas`, `purify`; ~1,8 MB), que só carrega quando alguém **gera
+  `html2canvas`, `purify` e `index.es-*` — este último é o canvg, 147 KiB, que
+  só o `jspdf` importa e que escapou na primeira volta; ~1,9 MB no total), que
+  só carrega quando alguém **gera
   documento** — e aí há rede. Precachear tudo seriam ~6 MB na primeira visita,
   num celular com plano de dados. O `pdf.worker.min-*.mjs` (~1,2 MB) já fica
   fora porque `.mjs` não está nos `globPatterns`.
@@ -257,9 +268,6 @@ em desenvolvimento). Para testar PWA, use `npm run build` e `npm run preview`.
 - **O que ninguém viu rodando:** o botão de instalar do Chrome e a abertura
   "sem barra" do app instalado, o aviso "Nova versão disponível" (exige duas
   versões publicadas em sequência) e o carregamento sem rede.
-- **`apple-touch-icon` ausente.** Sem ele, o "Adicionar à Tela de Início" do iOS
-  usa uma captura da página em vez do ícone. É uma linha no `index.html`
-  (`<link rel="apple-touch-icon" ...>`; o ideal é 180×180).
 - **Nginx sem regra para `sw.js` e `manifest.webmanifest`.** O Chrome já ignora
   o cache HTTP para o script do service worker, então não trava, mas vale
   `Cache-Control: no-cache` neles (ver
@@ -272,9 +280,6 @@ em desenvolvimento). Para testar PWA, use `npm run build` e `npm run preview`.
   unificado em 640, o `DocumentUploadField` perde os atalhos de câmera/galeria e
   as prévias nessa faixa (ex.: iPad mini em pé, 744 px). O upload segue
   funcionando. Se incomodar, o conserto é o campo usar `isTablet` para a câmera.
-- **O primeiro quadro pode sair em layout de desktop no celular:** o
-  `useIsMobile` começa `undefined` (vira `false`) e só acerta no efeito. Já era
-  assim antes; o `useWindowSize` não tem esse problema (lê a largura na hora).
 - **`statusVariants` mora em `src/mobile/` mas não é específico de celular**;
   `src/lib/statusMapping.ts` seria o lugar natural numa refatoração futura.
 - Num projeto sem titular e sem título, o título do cartão repete o campo

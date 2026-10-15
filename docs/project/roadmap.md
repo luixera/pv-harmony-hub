@@ -23,10 +23,9 @@
   console do master, relatórios e telas administrativas — herdam o padrão quando
   forem tocadas. Ficou pendente de verdade: (a) a **aba corrente não é trazida
   para a vista** quando o modal do projeto abre numa aba da direita — o cabeçalho
-  gruda e a faixa rola de lado, mas ninguém rola até a aba ativa; (b) falta
-  `apple-touch-icon` no `index.html`, sem o qual o iOS usa uma captura da página
-  como ícone; (c) a barra inferior **nasce com 3 atalhos e ganha o 4º** quando o
-  tenant termina de carregar, o que pisca; (d) **nunca foram vistos funcionando**
+  gruda e a faixa rola de lado, mas ninguém rola até a aba ativa; (b) a barra
+  inferior **nasce com 3 atalhos e ganha o 4º** quando o tenant termina de
+  carregar, o que pisca; (c) **nunca foram vistos funcionando**
   o convite de instalação, o aviso de nova versão e a abertura sem rede — exigem
   HTTPS de verdade e um aparelho, não o preview local.
 - **Diagrama unifilar — evoluir do alpha**: hoje tem edição manual completa —
