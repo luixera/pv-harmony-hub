@@ -71,6 +71,7 @@ Detalhes: [docs/project/tech-stack.md](docs/project/tech-stack.md).
 | Diagramas (unifilar) | 🟡 Alpha — só master/GD Manager | [modules/diagrams](docs/modules/diagrams/overview.md) |
 | Motor de Engenharia (regras) | 🟡 Fase 1 — só GD Manager | [modules/engineering](docs/modules/engineering/overview.md) |
 | Capacidade de rede (BDGD) | 🟡 CPFL Paulista e Piratininga carregadas (295 mil trafos, base 31/12/2025); mapa v2 com camadas vetoriais, busca, traçado dos alimentadores e subestações; demais distribuidoras de SP pendentes; só GD Manager | [modules/engineering](docs/modules/engineering/overview.md) |
+| Mobile / PWA | 🟡 Fase 1 — padrão + telas do gestor e da empresa | [modules/mobile](docs/modules/mobile/overview.md) |
 | Marketplace | ⛔ Planejado | [modules/marketplace](docs/modules/marketplace/overview.md) |
 | BESS (armazenamento) | ⛔ Planejado | [modules/bess](docs/modules/bess/overview.md) |
 | Mercado Livre de energia | ⛔ Planejado | [modules/market-free](docs/modules/market-free/overview.md) |
