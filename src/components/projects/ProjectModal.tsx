@@ -2308,7 +2308,8 @@ export function ProjectModal({ projectId, onClose, initialTab = 'geral', viewAsC
           position: 'fixed', inset: 0, zIndex: 1001,
           display: 'flex', alignItems: 'flex-start',
           justifyContent: 'center',
-          overflowY: 'auto', padding: '24px 16px',
+          // Celular: tela cheia, sem folga (mesmo padrao do FinancialReportModal).
+          overflowY: 'auto', padding: isMobile ? 0 : '24px 16px',
           boxSizing: 'border-box',
         }}
         onClick={e => { if (e.target === e.currentTarget) onClose(); }}
@@ -2316,11 +2317,14 @@ export function ProjectModal({ projectId, onClose, initialTab = 'geral', viewAsC
         {/* Modal box */}
         <div
           style={{
-            background: '#fff', borderRadius: 16,
-            width: '95vw', maxWidth: 1280,
-            minHeight: '85vh',
+            background: '#fff', borderRadius: isMobile ? 0 : 16,
+            width: isMobile ? '100%' : '95vw', maxWidth: 1280,
+            minHeight: isMobile ? '100%' : '85vh',
             display: 'flex', flexDirection: 'column',
-            overflow: 'hidden',
+            // 'hidden' faria desta caixa o contêiner de rolagem do cabeçalho
+            // sticky (quem rola é a moldura de fora), e ele nunca grudaria.
+            // 'clip' corta do mesmo jeito sem virar contêiner de rolagem.
+            overflow: isMobile ? 'clip' : 'hidden',
             boxShadow: '0 24px 80px rgba(0,0,0,0.35)',
             margin: 'auto',
           }}
@@ -2350,10 +2354,14 @@ export function ProjectModal({ projectId, onClose, initialTab = 'geral', viewAsC
           ) : !project ? null : (
             <>
               {/* Header */}
-              <div style={{ background: '#1A1A1A', padding: '20px 28px', flexShrink: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
+              <div style={{ ...(isMobile ? { position: 'sticky', top: 0, zIndex: 5 } : {}), background: '#1A1A1A', padding: '20px 28px', flexShrink: 0 }}>
+                {/* Celular: as ações quebram para baixo do título em vez de
+                    espremê-lo numa coluna de ~80 px, o que deixaria o
+                    cabeçalho fixo com ~290 px (36% de uma tela de 812 px) para
+                    admin/projetista; assim fica em ~190 px. */}
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, ...(isMobile ? { flexWrap: 'wrap' } : {}) }}>
                   {/* Left: project info */}
-                  <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ flex: isMobile ? '1 1 160px' : 1, minWidth: 0 }}>
                     <p style={{ fontFamily: 'monospace', fontSize: 20, fontWeight: 700, color: '#fff', marginBottom: 3 }}>
                       {project.code}
                     </p>
@@ -2387,7 +2395,7 @@ export function ProjectModal({ projectId, onClose, initialTab = 'geral', viewAsC
                   </div>
 
                   {/* Right: action buttons */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, ...(isMobile ? { marginLeft: 'auto' } : {}) }}>
                     {/* Pedido de vistoria — ação DO CLIENTE. Só aparece na visão
                         da empresa; quem clica de fato precisa ser a empresa dona
                         (no "Ver como empresa" fica à mostra, mas desabilitado,
