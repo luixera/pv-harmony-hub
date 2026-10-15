@@ -10,8 +10,25 @@
   para as automações de e-mail realmente enviarem.
 - **Proteção de senha vazada** no Supabase Auth: habilitar no painel.
 - **Listagem pública de buckets** `avatars`/`tenant-logos`: revisar.
+- **Nginx da VPS, `no-cache` para `sw.js` e `manifest.webmanifest`**: sem a
+  regra, um navegador que não seja o Chrome pode servir um service worker
+  velho do cache HTTP. O Chrome já ignora esse cache por conta própria, então
+  nada quebra hoje — é rede de segurança. Ver
+  [ADR 0010](../adr/0010-pwa-casca-sem-fila-offline.md).
 
 ## Tarefas de produto em aberto (do backlog de sessão)
+- **Mobile / PWA — fase 2**: a fase 1 entregou o padrão (`src/mobile/`), a barra
+  inferior, as telas do gestor e da empresa e o app instalável
+  ([modules/mobile](../modules/mobile/overview.md)). Ficou de fora, de propósito:
+  console do master, relatórios e telas administrativas — herdam o padrão quando
+  forem tocadas. Ficou pendente de verdade: (a) a **aba corrente não é trazida
+  para a vista** quando o modal do projeto abre numa aba da direita — o cabeçalho
+  gruda e a faixa rola de lado, mas ninguém rola até a aba ativa; (b) falta
+  `apple-touch-icon` no `index.html`, sem o qual o iOS usa uma captura da página
+  como ícone; (c) a barra inferior **nasce com 3 atalhos e ganha o 4º** quando o
+  tenant termina de carregar, o que pisca; (d) **nunca foram vistos funcionando**
+  o convite de instalação, o aviso de nova versão e a abertura sem rede — exigem
+  HTTPS de verdade e um aparelho, não o preview local.
 - **Diagrama unifilar — evoluir do alpha**: hoje tem edição manual completa —
   arrastar de qualquer ponto do símbolo, girar, **redimensionar**, ligar com
   derivações (`ConnectionEndpoint` symbol/point — uma linha sempre termina
@@ -178,6 +195,16 @@ Módulo [signatures](../modules/signatures/overview.md) — Fase 1, só GD Manag
   não derruba o deploy e passa em silêncio (confira com `supabase functions list`;
   ver o [aceite](../modules/signatures/aceite.md)).
 - **Estilo misto** inline vs shadcn/ui em telas legadas.
+- **Chunk principal de 3,6 MB**: obriga o precache do PWA a subir o limite por
+  arquivo para 4 MiB e faz a primeira visita baixar ~4,4 MiB. Quebrar o bundle
+  resolveria os dois de uma vez.
+- **Dois limiares de celular convivendo**: o TypeScript usa 640 px
+  (`src/mobile/breakpoints.ts`, fonte única desde out/2026) e o
+  `src/index.css` tem um `@media (max-width: 767px)` com alvo de toque de 48 px
+  e fonte de 16 px nos campos. Entre 640 e 767 px as duas camadas discordam: o
+  CSS trata como celular, o TS não. Nada quebra hoje, mas é armadilha para quem
+  mexer em alvo de toque — um `minHeight` inline menor que 48 **vence** a folha
+  e piora o alvo.
 - **Convenção de faixa de preço** (`tiered_flat`): no limite exato, vale a faixa
   que termina nele — documentado, mas pode confundir.
 
