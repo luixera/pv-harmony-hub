@@ -80,6 +80,21 @@ export function NetworkSection() {
   const [camadas, setCamadas] = useState<Camada[]>(inicial.current?.camadas ?? ['pontos']);
   const [selecao, setSelecao] = useState<Selecao>(null);
   const [sobre, setSobre] = useState<string | null>(null);
+  // A altura é MEDIDA: a tela vive dentro de um <main> com padding, e um
+  // `calc(100vh - 48px)` chutado deixava a legenda e a faixa de status abaixo
+  // da borda da janela (relato do usuário em 15/10/2026).
+  const raiz = useRef<HTMLDivElement | null>(null);
+  const [altura, setAltura] = useState<number | null>(null);
+  useEffect(() => {
+    const medir = () => {
+      const el = raiz.current; if (!el) return;
+      const topo = el.getBoundingClientRect().top + window.scrollY;
+      setAltura(Math.max(560, window.innerHeight - topo - 24));
+    };
+    medir();
+    window.addEventListener('resize', medir);
+    return () => window.removeEventListener('resize', medir);
+  }, []);
 
   // Duas consultas: a camada principal nunca espera pelos alimentadores.
   const camadasBase = useMemo(() => camadas.filter(c => c !== 'alimentadores'), [camadas]);
@@ -185,7 +200,7 @@ export function NetworkSection() {
   const flutuante: React.CSSProperties = { background: 'rgba(14,14,20,0.92)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 9, padding: '7px 10px', fontSize: 11.5 };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, height: 'calc(100vh - 48px)', minHeight: 560 }}>
+    <div ref={raiz} style={{ display: 'flex', flexDirection: 'column', gap: 12, height: altura ?? 'calc(100vh - 96px)', minHeight: 560 }}>
       {/* cabeçalho: título, procedência, filtros */}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center' }}>
         <div style={{ marginRight: 6 }}>

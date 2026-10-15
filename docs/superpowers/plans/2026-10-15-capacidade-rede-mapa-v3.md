@@ -58,3 +58,4 @@
 - **Histórico**: 295.197 linhas gravadas no backfill (cargas 9 e 10); `mudancas.anterior = null` nas duas (primeira carga com histórico).
 - **Front**: `tsc` 65 erros (baseline), eslint limpo, vitest 196 testes (26 novos no módulo `rede`), build ok; deck.gl em chunk próprio por `import()`.
 - **Worker**: 344 testes, 320 passam; os 24 que falham são os de navegador (sem Chromium no container), como antes.
+- **Correções do primeiro uso em produção (15/10/2026, São José do Rio Preto, zoom 16)**: o traçado no nível 3 aparecia "cortado" (ramos < 33 m somem, emendas da grade de 11 m visíveis) → geometria cheia a partir do zoom 15, como na v2 (`20261015170000`); os ícones dos trafos saíam com 7 px porque a forma ocupava um terço da célula do atlas → raio 19/21 de 32; a altura da tela passou a ser medida (`getBoundingClientRect`), não chutada, para a legenda e a faixa de status não ficarem abaixo da janela.
