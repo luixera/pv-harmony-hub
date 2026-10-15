@@ -524,13 +524,27 @@ test('G3: o II ativo e o III concluído — o e-mail do III não vai para o card
 });
 
 // Sufixo de empresa: pode estar no cadastro e faltar no trecho, ou o contrário
-test('sufixo de empresa (ME, SA, S/A, EPP, EIRELI, LTDA) pode faltar de um lado', () => {
+test('sufixo de empresa (ME, S/A, S.A., EPP, EIRELI, LTDA) pode faltar de um lado', () => {
   assert.equal(titularNoAssunto('PROJETO GD - PADARIA PAO QUENTE', 'PADARIA PAO QUENTE ME'), true);
   assert.equal(titularNoAssunto('PROJETO GD - ALFA ENERGIA', 'ALFA ENERGIA S/A'), true);
-  assert.equal(titularNoAssunto('PROJETO GD - ALFA ENERGIA SA', 'ALFA ENERGIA'), true);
   assert.equal(titularNoAssunto('PROJETO GD - ALFA ENERGIA S.A.', 'ALFA ENERGIA LTDA'), true);
   assert.equal(titularNoAssunto('PROJETO GD - PADARIA PAO QUENTE LTDA ME', 'PADARIA PAO QUENTE EIRELI EPP'), true);
   assert.equal(mesmoTitular('ALFA ENERGIA S/A', 'ALFA ENERGIA'), true);
+});
+
+test('SA sozinho é sobrenome (Sá), não sufixo de empresa; a sociedade anônima vem escrita S/A ou S.A.', () => {
+  // Sá a mais depois do último nome é a classe que a fronteira fecha
+  assert.equal(titularNoAssunto('PROJETO GD - JOSE CARLOS SA', 'JOSE CARLOS'), false);
+  assert.equal(titularNoAssunto('PROJETO GD - JOSE CARLOS', 'JOSE CARLOS SA'), false);
+  assert.equal(mesmoTitular('JOSE CARLOS', 'JOSE CARLOS SA'), false);
+  assert.equal(titularNoAssunto('PROJETO GD - ALFA ENERGIA SA', 'ALFA ENERGIA'), false);
+  // Sá consigo
+  assert.equal(titularNoAssunto('PROJETO GD - JOSE CARLOS SA', 'JOSE CARLOS SA'), true);
+  assert.equal(titularNoAssunto('PROJETO GD - JOSE CARLOS DE SA', 'JOSE CARLOS DE SA'), true);
+  // S/A e S.A. continuam sufixo, dos dois lados
+  assert.equal(titularNoAssunto('PROJETO GD - CONSTRUTORA ALFA S/A', 'CONSTRUTORA ALFA'), true);
+  assert.equal(titularNoAssunto('PROJETO GD - CONSTRUTORA ALFA S.A.', 'CONSTRUTORA ALFA'), true);
+  assert.equal(titularNoAssunto('PROJETO GD - CONSTRUTORA ALFA', 'CONSTRUTORA ALFA S.A.'), true);
 });
 
 // Separadores: os prefixos do assunto viram trechos próprios

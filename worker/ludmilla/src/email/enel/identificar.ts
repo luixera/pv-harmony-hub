@@ -53,8 +53,12 @@ const algumEm = (a: Set<string>, b: Set<string>): boolean => {
 
 // ── O nome do titular: um TRECHO INTEIRO tem de ser o nome ──────────────────
 
-/** Sufixo de empresa no fim do nome não é sobrenome: pode estar de um lado e faltar do outro. */
-const SUFIXOS_PJ = new Set(['LTDA', 'EPP', 'EIRELI', 'MEI', 'ME', 'SA']);
+/**
+ * Sufixo de empresa no fim do nome não é sobrenome: pode estar de um lado e faltar do outro.
+ * "SA" sozinho NÃO entra: é sobrenome (Sá). A sociedade anônima só vale escrita S/A ou S.A.,
+ * que viram as duas palavras S, A (ver `semSufixoPJ`).
+ */
+const SUFIXOS_PJ = new Set(['LTDA', 'EPP', 'EIRELI', 'MEI', 'ME']);
 
 /** Sufixo de geração no fim: "JOSE CARLOS SANTOS JUNIOR" não é "JOSE CARLOS SANTOS", e o II não é o III. */
 const SUFIXOS_GERACAO = new Set(['JUNIOR', 'JR', 'FILHO', 'NETO', 'SOBRINHO', 'II', 'III', 'IV', 'SEGUNDO', 'TERCEIRO']);
@@ -70,7 +74,7 @@ const CONECTORES = new Set(['DA', 'DE', 'DO', 'DAS', 'DOS', 'E']);
 const palavrasDe = (s: string): string[] =>
   semAcento(s).toUpperCase().split(/[^A-Z0-9]+/).filter(x => x.length > 0);
 
-/** Tira do fim o sufixo de empresa (LTDA, ME, S/A…), sempre deixando duas palavras. */
+/** Tira do fim o sufixo de empresa (LTDA, ME, S/A, S.A.…), sempre deixando duas palavras. */
 function semSufixoPJ(palavras: string[]): string[] {
   const p = [...palavras];
   for (;;) {
