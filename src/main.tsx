@@ -19,6 +19,8 @@ createRoot(document.getElementById("root")!).render(<App />);
 const atualizar = registerSW({
   onNeedRefresh() {
     toast("Nova versão disponível", {
+      // id fixo: o workbox pode chamar onNeedRefresh duas vezes; o sonner deduplica por id
+      id: "nova-versao",
       action: { label: "Atualizar", onClick: () => atualizar(true) },
       duration: Infinity,
     });

@@ -58,6 +58,7 @@ export default defineConfig(({ mode }) => ({
           "**/jspdf*.js",
           "**/html2canvas*.js",
           "**/purify*.js",
+          "**/index.es-*.js",
         ],
         runtimeCaching: [],
       },
