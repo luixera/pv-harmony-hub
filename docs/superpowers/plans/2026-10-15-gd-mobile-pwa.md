@@ -744,7 +744,15 @@ git commit -m "feat(mobile): modal do projeto com cabecalho fixo e abas rolaveis
 
 ---
 
-### Task 9: Documentos em cartões
+### Task 9: Documentos em cartões — CANCELADA na execução
+
+> **Não executada (15/10/2026).** A aba de documentos do `ProjectModal`
+> (`TabDocuments`, dentro do próprio arquivo, não num componente separado como
+> este plano supunha) **já fazia mestre-detalhe** no celular: lista → prévia com
+> botão de voltar, linhas de 48 px, rótulo do tipo em vez do nome do arquivo.
+> Envolver isso em `ListaEmCartoes` apagaria a prévia. Vale aqui a regra que a
+> Task 7 ensinou: o padrão serve onde não há nada; onde já existe algo melhor,
+> o padrão não entra. Os passos abaixo ficam como registro do que se pensou.
 
 **Files:**
 - Modify: a aba de documentos do projeto — localizar com
@@ -943,6 +951,8 @@ git commit -m "docs(mobile): padrao mobile e PWA no indice e no modulo proprio"
 - [ ] `npm run build` → `✓ built`, com `dist/manifest.webmanifest` e `dist/sw.js`
 - [ ] Em 390 px: barra inferior com 4 atalhos vivos, projetos em cartões, nenhuma
       rolagem lateral, grades em uma coluna
-- [ ] Em 390 px: modal com cabeçalho fixo e abas deslizando; documentos em cartões
+- [ ] Em 390 px: modal com cabeçalho fixo e abas deslizando (documentos seguem
+      em mestre-detalhe, que é o que já havia — ver Task 9)
 - [ ] Em 1280 px: Kanban, modal, documentos e relatórios **iguais ao que eram**
+- [ ] `docs/modules/mobile/overview.md` e o ADR 0010 descrevem o que ficou de pé
 - [ ] `git log --oneline` mostra os commits no `main`
