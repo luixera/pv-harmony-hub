@@ -2331,8 +2331,19 @@ export function ProjectModal({ projectId, onClose, initialTab = 'geral', viewAsC
           onClick={e => e.stopPropagation()}
         >
           {isLoading || (!project && !accessDenied) ? (
-            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 60 }}>
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 60, ...(isMobile ? { flexDirection: 'column', gap: 24 } : {}) }}>
               <Loader2 size={28} className="animate-spin" style={{ color: '#F5A800' }} />
+              {/* Celular: o modal cobre a tela toda, sem moldura para tocar e
+                  fechar. Se o projeto nunca chegar (apagado, ou escondido por
+                  RLS), este botão é a única saída do spinner. */}
+              {isMobile && (
+                <button
+                  onClick={onClose}
+                  style={{ marginTop: 4, padding: '8px 18px', borderRadius: 8, background: '#F5A800', border: 'none', color: '#1A1A1A', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}
+                >
+                  Fechar
+                </button>
+              )}
             </div>
           ) : accessDenied ? (
             /* Staff com acesso restrito tentando abrir projeto que não é dele
