@@ -2,7 +2,7 @@ import { rm, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { supabase, reportarDisco } from '../fila.js';
-import { acharItem, baixarEExtrair } from './catalogo.js';
+import { acharItem, baixarEExtrair, versaoDe } from './catalogo.js';
 import { extrair } from './extrair.js';
 import { lerCsv, montarTrafos, montarAlimentadores, enviarEmLotes } from './carregar.js';
 import { jaCarregada, desfechoDa, type ImportacaoResumo } from './guarda.js';
@@ -78,7 +78,15 @@ export async function ingerir(sigla: string, opcoes: { forcar?: boolean } = {}):
 
   try {
     await marcar('baixando');
-    const gdb = await baixarEExtrair(item, dir);
+    const baixado = await baixarEExtrair(item, dir);
+    const gdb = baixado.gdb;
+    // Ficha da fonte (spec §12.3): hash e tamanho do zip, versao e hora do
+    // download. E o que permite provar, meses depois, qual arquivo gerou a carga.
+    await sb.from('rede_importacao').update({
+      hash_sha256: baixado.sha256, tamanho_bytes: baixado.bytes,
+      versao_bdgd: versaoDe(item.titulo), baixado_em: baixado.baixadoEm,
+    }).eq('id', imp.id);
+    console.log(`[bdgd] zip ${(baixado.bytes / 1024 ** 2).toFixed(1)} MB · sha256 ${baixado.sha256.slice(0, 12)}…`);
 
     await marcar('extraindo');
     const { data: jan } = await sb.rpc('rede_janela_geracao' as never);

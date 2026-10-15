@@ -260,6 +260,83 @@ por camada, e é dela que a tela tira o rótulo de idade do dado. O disco da VPS
 O que desapareceu da BDGD entre duas importações é marcado `ativo = false`,
 nunca apagado em silêncio.
 
+### Mapa v3 (15/10/2026): baixa tensão, WebGL, amostra por contagem, auditoria
+
+Depois da v2 publicada o mapa ainda travava. Medido numa vista de 1920×1080
+sobre Campinas com as duas CPFL (spec §12; plano
+`2026-10-15-capacidade-rede-mapa-v3.md`): a v2 devolvia **8,4 MB no zoom 11**
+(4.000 células cortadas no teto + 600 alimentadores em 59.877 partes) e a
+`google.maps.Data` desenhava cada parte como um `<path>` SVG — 40 a 120 mil
+elementos movidos por arrasto, com a camada de alimentadores ligada por padrão.
+O painel lateral listava os 4.000 trafos e re-renderizava a cada hover.
+
+**O que a tela analisa é a baixa tensão.** O usuário corrigiu o foco em
+15/10/2026: a MT raramente é o gargalo; a maioria dos sistemas conecta em BT. A
+unidade sempre foi o trafo MT/BT (`UNTRMT`, carga de `UCBT`, GD de `UGBT`), mas
+a tela não dizia. Agora diz: "Transformador MT/BT · conexão em baixa tensão";
+alimentador de MT é "contexto" e vem **desligado por padrão**. Cada trafo ganha
+`unidades_consumidoras` (UCs de BT) e `gd_unidades` (unidades de GD em BT),
+que a ingestão já contava e descartava — nulos até a próxima reingestão.
+"Alimentador" é o termo correto (é o `CTMT`, o circuito de MT que sai da
+subestação, o mesmo nome do parecer de acesso); "linha de distribuição" no
+PRODIST é a de 69–138 kV (`SSDAT`), que não carregamos.
+
+**Amostra pela contagem, não pelo zoom** (`rede_amostra`, `rede_no_mapa_v3`):
+a RPC conta os trafos da caixa com `LIMIT 4001` (para de varrer cedo). Até
+4.000, pontos; acima, o passo de célula mais fino que caiba em 3.000 células.
+Entrou o **nível 5** (0,0025°, ~275 m). Zona rural vê pontos no zoom 12;
+Campinas vê células até o 15. Nunca corta. A cor da célula deixou de ser "o
+pior estado presente" (um trafo em 300 pintava a célula de vermelho) e passou
+a ser **o estado que atinge 1 em 5 trafos** (ou pelo menos um, nas células
+pequenas); a proporção vai nas propriedades e a legenda explica.
+
+**WebGL.** `deck.gl` 9.4 (`GoogleMapsOverlay` sobre o mapa raster) desenha
+células e linhas em `GeoJsonLayer` e os pontos com um atlas de ícones (as
+mesmas formas da legenda, desenhadas em canvas: `rede/atlas.ts`). As camadas
+são montadas por uma função pura (`rede/camadas.ts`, testada com fábricas
+falsas) e aplicadas por `setProps`. Carregado por `import()` só nesta tela.
+ADR 0010.
+
+**Payload enxuto**: ponto = `{id, codigo, risco, ocupacao_pct}`, célula =
+`{id, nivel, risco, trafos, trafos_risco, trafos_atencao}`; o resto vem em
+`rede_trafo_detalhe` no clique. Alimentadores no zoom 11–12 usam o nível 1 do
+traçado. Medido (mesma vista de Campinas, quente):
+
+| Zoom | v2 | v3 |
+|---|---|---|
+| 11 | 4.000 células cortadas, 2,5 MB (+5,8 MB de alimentadores) | nível 2, 431 células, 210 KB |
+| 12 | 2.071 células, 1,3 MB | nível 3, 2.071 células, 1,0 MB |
+| 13 | 3.038 células, 1,9 MB | nível 3, 748 células, 364 KB |
+| 14 | 4.000 pontos de 12.508, 2,2 MB | nível 4, 991 células, 483 KB |
+| 15 | 4.000 pontos de 6.252, 2,2 MB | nível 5, 1.012 células, 494 KB |
+| 16 | 3.031 pontos, 1,6 MB | 3.033 pontos, 778 KB |
+
+Alimentadores (camada opcional): 2,3 MB no 11 (600 linhas, 22 mil partes),
+1,6 MB no 12, 962 KB no 14, 404 KB no 16 — o WebGL desenha isso num quadro;
+o custo que resta é de rede, e por isso a camada é opcional e separada.
+
+**"Pesquisar nesta área"**: com "atualizar ao mover o mapa" desligado, a
+vista que sai da caixa carregada só vai ao servidor quando a pessoa pede.
+Painel em `React.memo`, lista de 40 com "mostrar mais", detalhe por RPC.
+
+**Auditoria do dado** (duas camadas; a terceira — confronto com o parecer
+real — fica para a próxima spec):
+
+- **Ficha da fonte** (`rede_fontes`, botão "Fonte dos dados"): por
+  distribuidora e por carga, arquivo da ANEEL, versão (`V11`), data-base,
+  **SHA-256 do zip** (calculado em streaming no download, `contadorSha256`),
+  tamanho, quando foi baixado, contagens por camada, **regras vigentes na
+  carga** (`rede_importacao.regras`: fator, limiares, janela) e **mudanças**
+  em relação à carga anterior (`rede_importacao.mudancas`: novos, inativados,
+  transições de risco). O histórico por carga vive em
+  `rede_transformador_hist` (295.197 linhas por carga), gravado em
+  `rede_concluir_carga`; as cargas 9 e 10 receberam backfill.
+- **Conta aberta** no detalhe do trafo: `carga mínima diurna × fator =
+  capacidade de absorção; − GD conectada = margem; GD ÷ capacidade =
+  ocupação`, com os números; os campos brutos com o nome da BDGD (`COD_ID`,
+  `POT_NOM`, `CTMT`, `SUB`…); UCs e unidades de GD; e o estado na carga
+  anterior.
+
 ## Liga/desliga por FUNÇÃO e por regra (Fase 2)
 
 Cada grupo tem a regra especial **`group_enabled`**, que a tela mostra como

@@ -16,6 +16,10 @@ export interface LinhaTrafo {
   tensao_secundaria_v: number | null;
   carga_min_diurna_kw: number | null;
   gd_conectada_kw: number | null;
+  /** UCs de BT ligadas ao trafo (UCBT). Nulo quando não há linha de carga. */
+  unidades_consumidoras: number | null;
+  /** Unidades de GD em BT ligadas ao trafo (UGBT). Zero quando não há linha. */
+  gd_unidades: number;
   lng: number;
   lat: number;
 }
@@ -70,6 +74,9 @@ export function montarTrafos(
 ): LinhaTrafo[] {
   const porCarga = new Map(carga.map(c => [c.trafo, num(c.carga_min_diurna_kw)]));
   const porGd = new Map(gd.map(g => [g.trafo, num(g.gd_kw)]));
+  // As contagens ja vinham no CSV (count(*) por UNI_TR_MT) e eram descartadas.
+  const porUcs = new Map(carga.map(c => [c.trafo, num(c.ucs)]));
+  const porGdUnidades = new Map(gd.map(g => [g.trafo, num(g.unidades)]));
 
   const saida: LinhaTrafo[] = [];
   const descartados: string[] = [];
@@ -88,6 +95,8 @@ export function montarTrafos(
       carga_min_diurna_kw: duasCasas(porCarga.get(t.COD_ID) ?? null),
       // GD ausente E zero de verdade: ninguem conectou nada neste trafo.
       gd_conectada_kw: duasCasas(porGd.get(t.COD_ID) ?? 0),
+      unidades_consumidoras: porUcs.get(t.COD_ID) ?? null,
+      gd_unidades: porGdUnidades.get(t.COD_ID) ?? 0,
       lng: p.lng, lat: p.lat,
     });
   }

@@ -9,28 +9,40 @@ const Forma = ({ risco, satelite }: { risco: Risco; satelite: boolean }) => {
   return <span style={{ width: 12, height: 12, borderRadius: 6, background: cor, border: `1.6px solid ${satelite ? '#07070B' : 'rgba(255,255,255,0.45)'}`, boxSizing: 'border-box' }} />;
 };
 
-/** Forma + cor + o limiar REAL (lido de rede_regras pela RPC), nunca cor sozinha. */
-export function Legenda({ regras, satelite, alimentadores, subestacoes }:
-  { regras: Regras | undefined; satelite: boolean; alimentadores: boolean; subestacoes: boolean }) {
+const nota: React.CSSProperties = { fontSize: 10.5, color: '#8A8A96', margin: 0, lineHeight: 1.45 };
+
+/**
+ * Forma + cor + o limiar REAL (lido de rede_regras pela RPC), nunca cor sozinha.
+ * E diz o que está sendo analisado: o trafo MT/BT, onde a GD de baixa tensão
+ * se conecta. O alimentador de MT é contexto.
+ */
+export function Legenda({ regras, satelite, camada, alimentadores, subestacoes }:
+  { regras: Regras | undefined; satelite: boolean; camada: 'celula' | 'ponto' | undefined; alimentadores: boolean; subestacoes: boolean }) {
   return (
     <div aria-label="Legenda" style={{ background: 'rgba(14,14,20,0.92)', border: '1px solid rgba(255,255,255,0.1)',
-                                       borderRadius: 11, padding: '11px 13px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                       borderRadius: 11, padding: '11px 13px', display: 'flex', flexDirection: 'column', gap: 7, maxWidth: 340 }}>
       <p style={{ fontSize: 10, fontWeight: 700, color: '#6B6B78', textTransform: 'uppercase', letterSpacing: '0.07em', margin: 0 }}>
-        Risco de inversão de fluxo
+        Inversão de fluxo no transformador MT/BT
       </p>
+      <p style={nota}>O ponto onde a GD de baixa tensão se conecta. Carga das UCs de BT, geração das unidades de BT.</p>
       {ORDEM.map(r => (
         <span key={r} style={{ display: 'flex', alignItems: 'center', gap: 9, fontSize: 11.5, color: '#D5D5DD' }}>
           <span style={{ width: 14, display: 'inline-flex', justifyContent: 'center' }}><Forma risco={r} satelite={satelite} /></span>
           <span>{ROTULOS[r]}{regras && <span style={{ color: '#8A8A96' }}> — {descricaoDe(r, regras)}</span>}</span>
         </span>
       ))}
+      {camada === 'celula' && (
+        <p style={{ ...nota, paddingTop: 6, borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+          Cada célula resume os trafos dentro dela: a cor é a do estado que atinge <strong style={{ color: '#D5D5DD' }}>1 em 5</strong> deles. Aproxime para ver um a um.
+        </p>
+      )}
       {alimentadores && (
         <span style={{ display: 'flex', alignItems: 'center', gap: 9, fontSize: 11.5, color: '#D5D5DD',
                        paddingTop: 7, borderTop: '1px solid rgba(255,255,255,0.08)' }}>
           <span style={{ width: 14, display: 'inline-flex', flexDirection: 'column', gap: 2 }}>
             <span style={{ height: 3, background: CORES.risco }} /><span style={{ height: 1.5, background: CORES.folga, opacity: 0.7 }} />
           </span>
-          Alimentador — traço grosso em risco, fino com folga
+          Alimentador de MT (contexto) — traço grosso em risco, fino com folga
         </span>
       )}
       {subestacoes && (
