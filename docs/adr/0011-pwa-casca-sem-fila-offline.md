@@ -1,4 +1,4 @@
-# ADR 0010 — PWA com cache da casca, sem fila de escrita offline
+# ADR 0011 — PWA com cache da casca, sem fila de escrita offline
 
 **Status**: aceito · **Data**: out/2026
 

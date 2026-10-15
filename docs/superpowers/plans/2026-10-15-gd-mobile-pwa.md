@@ -954,5 +954,5 @@ git commit -m "docs(mobile): padrao mobile e PWA no indice e no modulo proprio"
 - [ ] Em 390 px: modal com cabeçalho fixo e abas deslizando (documentos seguem
       em mestre-detalhe, que é o que já havia — ver Task 9)
 - [ ] Em 1280 px: Kanban, modal, documentos e relatórios **iguais ao que eram**
-- [ ] `docs/modules/mobile/overview.md` e o ADR 0010 descrevem o que ficou de pé
+- [ ] `docs/modules/mobile/overview.md` e o ADR 0011 descrevem o que ficou de pé
 - [ ] `git log --oneline` mostra os commits no `main`
