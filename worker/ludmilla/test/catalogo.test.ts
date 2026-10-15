@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { interpretarTitulo, cabeNoDisco } from '../src/bdgd/catalogo.js';
+import { interpretarTitulo, cabeNoDisco, versaoDe, contadorSha256 } from '../src/bdgd/catalogo.js';
 
 const GB = 1024 ** 3;
 
@@ -43,4 +43,22 @@ test('a Paulista nao cabe em 8 GB livres', () => {
   // 1,22 GB de zip -> ~6,5 GB extraido -> precisa ~10 GB
   assert.equal(cabeNoDisco(8 * GB, 1.22 * GB).cabe, false);
   assert.equal(cabeNoDisco(12 * GB, 1.22 * GB).cabe, true);
+});
+
+test('a versao da BDGD sai do titulo (V11), e falta vira null', () => {
+  assert.equal(versaoDe('CPFL_Piratininga_2937_2025-12-31_V11_20260823-1826'), 'V11');
+  assert.equal(versaoDe('Energisa_Minas_Rio_6585_2025-12-31_V12_20270824-0939'), 'V12');
+  assert.equal(versaoDe('Manual de Instruções da BDGD Rev5'), null);
+});
+
+test('o contador SHA-256 em streaming da o hash e o tamanho do que passou', async () => {
+  // sha256("abc") e o vetor de teste do FIPS 180-2.
+  const c = contadorSha256();
+  await new Promise<void>((ok, erro) => {
+    c.on('finish', ok); c.on('error', erro);
+    c.write(Buffer.from('a')); c.write(Buffer.from('bc')); c.end();
+  });
+  c.resume();
+  assert.equal(c.resultado().sha256, 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad');
+  assert.equal(c.resultado().bytes, 3);
 });

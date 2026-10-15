@@ -14,3 +14,4 @@ um arquivo `NNNN-titulo.md`. Formato: Contexto · Decisão · Consequências.
 | [0007](0007-engineering-rules-engine.md) | Motor de Engenharia: regras como dados, nunca no código | Aceito |
 | [0008](0008-assinatura-append-sobre-bytes-aprovados.md) | Assinatura digital: a estampa vem antes, a assinatura é *append* sobre os bytes aprovados | Aceito |
 | [0009](0009-rede-publica-sem-tenant.md) | Base pública de rede elétrica sem `tenant_id` | Aceito |
+| [0010](0010-webgl-no-mapa-de-rede.md) | WebGL (deck.gl) para as camadas densas do mapa de rede | Aceito |

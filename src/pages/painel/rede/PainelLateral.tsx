@@ -1,30 +1,55 @@
-import { AlertTriangle, ArrowLeft, Crosshair, GitBranch } from 'lucide-react';
+import { memo, useState } from 'react';
+import { AlertTriangle, ArrowLeft, Check, Copy, Crosshair, GitBranch, ShieldCheck } from 'lucide-react';
 import { GOLD } from '../ConsoleSections';
-import { useDetalheAlimentador } from './consultas';
+import { useDetalheAlimentador, useDetalheTrafo, useFontes } from './consultas';
 import { CORES, ORDEM, ROTULOS } from './estilos';
-import { inteiro, kva, kw, mesesDesde, pct, percentualDe, rotuloIdade } from './formato';
-import type { PropsAlimentador, PropsPonto, RespostaMapa, Risco, Selecao } from './tipos';
+import { bytesLegiveis, data, dataHora, hashCurto, inteiro, kva, kw, mesesDesde, pct, percentualDe, rotuloIdade } from './formato';
+import type { DetalheTrafo, FonteImportacao, Importacao, Mudancas, PropsAlimentador, PropsPonto, RegrasCompletas, RespostaMapa, Risco, Selecao } from './tipos';
 import type { Caixa } from './zoom';
 
 /**
  * O equivalente acessível do mapa — não enfeite. Mil marcadores não se
  * navegam por teclado; esta coluna sim. Tem os mesmos dados do mapa, na
  * mesma ordem de importância: resumo da área, lista contextual, detalhe.
+ *
+ * `memo` de propósito: a seção re-renderiza a cada passagem do mouse (faixa
+ * de status), e a v2 refazia aqui uma lista de 4.000 itens por hover.
  */
 interface Props {
   resposta: RespostaMapa | undefined; carregando: boolean; selecao: Selecao;
   aoSelecionar: (s: Selecao) => void; aoEnquadrar: (c: Caixa) => void; aoCentrar: (lng: number, lat: number) => void;
 }
 
+const PAGINA = 40;
 const rotuloSecao: React.CSSProperties = { fontSize: 10, fontWeight: 700, color: '#6B6B78', textTransform: 'uppercase', letterSpacing: '0.07em', margin: 0 };
 const linha: React.CSSProperties = { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10, padding: '9px 12px', background: '#16161F' };
 const bloco: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: 1, background: 'rgba(255,255,255,0.05)', borderRadius: 10, overflow: 'hidden' };
 const botaoLink: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', color: GOLD, cursor: 'pointer', fontSize: 12, padding: 0, fontFamily: 'inherit' };
+const chave: React.CSSProperties = { fontSize: 12, color: '#9A9AA8' };
+const valor: React.CSSProperties = { fontSize: 13, fontWeight: 700, color: '#fff', textAlign: 'right' };
+const nota: React.CSSProperties = { fontSize: 11, color: '#8A8A96', margin: 0, lineHeight: 1.5 };
 
 const Ponto = ({ risco }: { risco: Risco }) =>
   <span style={{ width: 9, height: 9, borderRadius: 5, flexShrink: 0, background: CORES[risco] }} />;
 
-function Resumo({ r }: { r: RespostaMapa['resumo'] }) {
+const Par = ({ k, v, forte }: { k: string; v: React.ReactNode; forte?: boolean }) => (
+  <div style={{ ...linha, ...(forte ? { background: 'rgba(255,255,255,0.08)' } : {}) }}>
+    <span style={chave}>{k}</span><span style={valor}>{v}</span>
+  </div>
+);
+
+function Copiar({ texto }: { texto: string }) {
+  const [feito, setFeito] = useState(false);
+  return (
+    <button type="button" aria-label="Copiar" title="Copiar"
+            onClick={() => { void navigator.clipboard?.writeText(texto).then(() => { setFeito(true); setTimeout(() => setFeito(false), 1500); }); }}
+            style={{ ...botaoLink, fontSize: 11 }}>
+      {feito ? <Check size={12} /> : <Copy size={12} />}
+    </button>
+  );
+}
+
+function Resumo({ r, camada }: { r: RespostaMapa['resumo']; camada: 'celula' | 'ponto' }) {
   const tile = (risco: Risco, rotulo: string) => (
     <div key={risco} style={{ background: `${CORES[risco]}1A`, border: `1px solid ${CORES[risco]}47`, borderRadius: 10, padding: '10px 12px' }}>
       <p style={{ fontSize: 19, fontWeight: 800, color: risco === 'folga' ? '#5DD372' : risco === 'risco' ? '#FF7A6B' : CORES[risco], margin: 0 }}>
@@ -35,7 +60,7 @@ function Resumo({ r }: { r: RespostaMapa['resumo'] }) {
   );
   return (
     <div>
-      <p style={{ ...rotuloSecao, marginBottom: 9 }}>Área visível · {inteiro(r.total)} trafos</p>
+      <p style={{ ...rotuloSecao, marginBottom: 9 }}>Área visível · {inteiro(r.total)} trafos MT/BT{camada === 'celula' ? ' (resumidos em células)' : ''}</p>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
         {tile('folga', 'com folga')}{tile('atencao', 'em atenção')}{tile('risco', 'em risco')}{tile('sem_dado', 'sem dado')}
       </div>
@@ -56,25 +81,32 @@ function BarraOcupacao({ ocupacao, risco, limiarRisco }: { ocupacao: number | nu
         <div style={{ width: `${Math.min(100, (ocupacao / escala) * 100)}%`, height: '100%', background: CORES[risco], borderRadius: 5 }} />
         <div aria-hidden style={{ position: 'absolute', left: `${(limiarRisco / escala) * 100}%`, top: -2, bottom: -2, width: 2, background: '#E8E8EE' }} />
       </div>
-      <p style={{ fontSize: 10.5, color: '#6B6B78', margin: '5px 0 0' }}>
-        A marca clara é o limite de {limiarRisco}%{ocupacao >= limiarRisco ? ' — a barra passou dele.' : '.'}
-      </p>
+      <p style={{ ...nota, marginTop: 5 }}>A marca clara é o limite de {limiarRisco}%{ocupacao >= limiarRisco ? ' — a barra passou dele.' : '.'}</p>
     </div>
   );
 }
 
-function Procedencia({ base }: { base: RespostaMapa['base'] }) {
-  const idade = base.data_base ? mesesDesde(base.data_base) : null;
-  const d = (iso?: string | null) => iso ? new Date(iso).toLocaleDateString('pt-BR') : '—';
+function Procedencia({ base, fonte }: { base: RespostaMapa['base']; fonte?: FonteImportacao | null }) {
+  const dataBase = fonte?.data_base ?? base.data_base;
+  const idade = dataBase ? mesesDesde(dataBase) : null;
   return (
     <div style={{ border: '1px solid rgba(255,255,255,0.1)', borderRadius: 11, padding: 12, display: 'flex', flexDirection: 'column', gap: 7 }}>
       <p style={rotuloSecao}>Procedência do dado</p>
-      {[['Fonte', 'BDGD · ANEEL'], ['Distribuidora', base.distribuidora ?? '—'], ['Data-base', d(base.data_base)],
-        ['Importada em', d(base.importado_em)]].map(([k, v]) => (
-        <div key={k} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
-          <span style={{ color: '#9A9AA8' }}>{k}</span><span style={{ color: '#D5D5DD', fontWeight: 600 }}>{v}</span>
+      {[['Fonte', 'BDGD · ANEEL'], ['Distribuidora', base.distribuidora ?? '—'],
+        ['Arquivo', fonte?.arquivo_origem ?? '—'], ['Versão', fonte?.versao_bdgd ?? '—'],
+        ['Data-base', data(dataBase)], ['Baixado em', dataHora(fonte?.baixado_em)],
+        ['Importado em', dataHora(fonte?.concluido_em ?? base.importado_em)]].map(([k, v]) => (
+        <div key={k} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 12 }}>
+          <span style={{ color: '#9A9AA8', flexShrink: 0 }}>{k}</span>
+          <span style={{ color: '#D5D5DD', fontWeight: 600, textAlign: 'right', wordBreak: 'break-all' }}>{v}</span>
         </div>
       ))}
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 12 }}>
+        <span style={{ color: '#9A9AA8' }}>SHA-256 do zip</span>
+        <span style={{ color: '#D5D5DD', fontWeight: 600, display: 'inline-flex', gap: 6, alignItems: 'center', fontFamily: 'ui-monospace, monospace', fontSize: 11 }}>
+          {hashCurto(fonte?.hash_sha256)}{fonte?.hash_sha256 && <Copiar texto={fonte.hash_sha256} />}
+        </span>
+      </div>
       {idade !== null && (
         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
           <span style={{ color: '#9A9AA8' }}>Idade do dado</span><span style={{ color: '#E3B341', fontWeight: 700 }}>{rotuloIdade(idade)}</span>
@@ -84,59 +116,151 @@ function Procedencia({ base }: { base: RespostaMapa['base'] }) {
   );
 }
 
-function ContextoAlimentador({ id, aoAbrir }: { id: number | null; aoAbrir: (id: number) => void }) {
-  const q = useDetalheAlimentador(id);
-  if (id === null) return <span style={{ fontSize: 12, color: '#8A8A96' }}>alimentador não informado</span>;
-  if (!q.data) return <span style={{ fontSize: 12, color: '#8A8A96' }}>{q.isLoading ? 'lendo o alimentador…' : '—'}</span>;
-  const a = q.data;
+const FASES: Record<number, string> = { 1: 'monofásico', 2: 'bifásico', 3: 'trifásico' };
+const n0 = (v: number | null | undefined) => v == null ? '—' : inteiro(v);
+const fator = (v: number) => new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v);
+
+/** A fórmula com os números de verdade: o que o semáforo está dizendo, e por quê. */
+function ContaAberta({ d }: { d: DetalheTrafo }) {
+  const g = d.regras;
+  const carga = d.carga_min_diurna_kw; const gd = d.gd_conectada_kw;
+  if (carga == null || carga <= 0 || gd == null) {
+    return (
+      <div style={{ border: '1px dashed rgba(255,255,255,0.18)', borderRadius: 11, padding: 12 }}>
+        <p style={{ ...rotuloSecao, marginBottom: 6 }}>Conta aberta</p>
+        <p style={nota}>
+          Não dá para fechar a conta: {carga == null || carga <= 0 ? 'a base não traz carga das UCs deste trafo' : 'a base não traz a geração conectada'}.
+          Por isso o estado é "sem dado" — ausência de dado não é ausência de risco.
+        </p>
+      </div>
+    );
+  }
+  const capacidade = carga * g.fator;
+  const margem = capacidade - gd;
+  const ocupacao = (gd / capacidade) * 100;
+  const passo = (k: React.ReactNode, v: React.ReactNode, destaque = false) => (
+    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 12, padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+      <span style={{ color: destaque ? '#D5D5DD' : '#9A9AA8', fontWeight: destaque ? 600 : 400 }}>{k}</span>
+      <span style={{ color: destaque ? CORES[d.risco] : '#fff', fontWeight: 700, whiteSpace: 'nowrap' }}>{v}</span>
+    </div>
+  );
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-      {[['Alimentador', a.codigo], ['Subestação', a.subestacao ?? '—'],
-        ['Trafos no alimentador', `${inteiro(a.trafos)} · ${inteiro(a.trafos_risco)} em risco`],
-        ['Ocupação do alimentador', pct(a.ocupacao_pct)]].map(([k, v]) => (
-        <div key={k} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
-          <span style={{ color: '#9A9AA8' }}>{k}</span><span style={{ color: '#D5D5DD', fontWeight: 600, textAlign: 'right' }}>{v}</span>
-        </div>
-      ))}
-      <button type="button" onClick={() => aoAbrir(a.id)} style={botaoLink}><GitBranch size={12} /> Ver o alimentador</button>
+    <div style={{ border: '1px solid rgba(255,255,255,0.1)', borderRadius: 11, padding: 12 }}>
+      <p style={{ ...rotuloSecao, marginBottom: 4 }}>Conta aberta</p>
+      {passo(`Carga mínima diurna estimada (${g.janela_inicio}h–${g.janela_fim}h)`, kw(carga))}
+      {passo(`× fator de segurança ${fator(g.fator)} = capacidade de absorção`, kw(capacidade))}
+      {passo('− GD já conectada em BT', kw(gd))}
+      {passo('= margem até a inversão', kw(margem), true)}
+      {passo('Ocupação = GD ÷ capacidade', pct(ocupacao), true)}
+      <p style={{ ...nota, marginTop: 8 }}>
+        Atenção a partir de {g.atencao}% e risco a partir de {g.risco}% (regras do Motor de Engenharia vigentes nesta carga).
+        A carga é estimativa pela curva de carga das UCs, não medição.
+      </p>
     </div>
   );
 }
 
-function DetalheTrafo({ p, regras, base, aoVoltar, aoAbrirAlimentador }:
-  { p: PropsPonto; regras: RespostaMapa['regras']; base: RespostaMapa['base']; aoVoltar: () => void; aoAbrirAlimentador: (id: number) => void }) {
+function BaseAnterior({ d }: { d: DetalheTrafo }) {
+  const a = d.anterior;
+  return (
+    <div style={{ border: '1px solid rgba(255,255,255,0.1)', borderRadius: 11, padding: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <p style={rotuloSecao}>Na carga anterior</p>
+      {!a ? (
+        <p style={nota}>Primeira carga com histórico. A comparação começa na próxima BDGD publicada pela ANEEL.</p>
+      ) : (
+        <>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: '#D5D5DD' }}>
+            <Ponto risco={a.risco} /> {ROTULOS[a.risco]} · {pct(a.ocupacao_pct)}
+            <span style={{ color: '#8A8A96' }}>→</span>
+            <Ponto risco={d.risco} /> {ROTULOS[d.risco]} · {pct(d.ocupacao_pct)}
+          </div>
+          <p style={nota}>Base de {data(a.data_base)}: GD {kw(a.gd_conectada_kw)} → {kw(d.gd_conectada_kw)} · carga {kw(a.carga_min_diurna_kw)} → {kw(d.carga_min_diurna_kw)}{!a.ativo ? ' · estava inativo' : ''}</p>
+        </>
+      )}
+    </div>
+  );
+}
+
+function CamposBdgd({ bdgd }: { bdgd: DetalheTrafo['bdgd'] }) {
+  return (
+    <details style={{ border: '1px solid rgba(255,255,255,0.1)', borderRadius: 11, padding: '10px 12px' }}>
+      <summary style={{ ...rotuloSecao, cursor: 'pointer', listStyle: 'none' }}>Campos brutos da BDGD · camada {String(bdgd.camada)}</summary>
+      <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
+        {Object.entries(bdgd).filter(([k]) => k !== 'camada').map(([k, v]) => (
+          <div key={k} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 11.5 }}>
+            <span style={{ color: '#9A9AA8', fontFamily: 'ui-monospace, monospace' }}>{k}</span>
+            <span style={{ color: '#D5D5DD', fontWeight: 600, textAlign: 'right' }}>{v == null ? '—' : String(v)}</span>
+          </div>
+        ))}
+        <p style={{ ...nota, marginTop: 4 }}>Com estes nomes você confere a linha no arquivo da ANEEL.</p>
+      </div>
+    </details>
+  );
+}
+
+function DetalheTrafoView({ id, props, base, aoVoltar, aoAbrirAlimentador, aoCentrar }:
+  { id: number; props?: PropsPonto; base: RespostaMapa['base']; aoVoltar: () => void; aoAbrirAlimentador: (id: number) => void; aoCentrar: (lng: number, lat: number) => void }) {
+  const q = useDetalheTrafo(id);
+  const d = q.data;
+  const risco: Risco = d?.risco ?? props?.risco ?? 'sem_dado';
+  const codigo = d?.codigo ?? props?.codigo ?? `#${id}`;
   const veredito: Record<Risco, [string, string]> = {
-    risco: ['Margem esgotada', 'A geração já conectada supera a carga mínima diurna estimada. Um novo projeto neste trafo tende a inverter o fluxo.'],
-    atencao: ['Margem apertada', `A geração conectada já passa de ${regras.atencao}% da margem estimada. Cabe pouco antes da inversão.`],
-    folga: ['Há margem aparente', `A geração conectada fica abaixo de ${regras.atencao}% da carga mínima diurna estimada.`],
+    risco: ['Margem esgotada', 'A geração já conectada supera a carga mínima diurna estimada. Um novo projeto em baixa tensão neste trafo tende a inverter o fluxo.'],
+    atencao: ['Margem apertada', `A geração conectada já passa de ${d?.regras.atencao ?? 60}% da margem estimada. Cabe pouco antes da inversão.`],
+    folga: ['Há margem aparente', `A geração conectada fica abaixo de ${d?.regras.atencao ?? 60}% da capacidade de absorção estimada.`],
     sem_dado: ['Sem dado para avaliar', 'A base não traz carga ou geração para este trafo. Ausência de dado não é ausência de risco.'],
   };
-  const [titulo, texto] = veredito[p.risco];
+  const [titulo, texto] = veredito[risco];
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <button type="button" onClick={aoVoltar} style={botaoLink}><ArrowLeft size={13} /> Voltar à lista</button>
       <div>
-        <p style={rotuloSecao}>Transformador de distribuição</p>
-        <h3 style={{ fontSize: 17, fontWeight: 800, color: '#fff', margin: '4px 0 0' }}>{p.codigo}</h3>
+        <p style={rotuloSecao}>Transformador MT/BT · conexão em baixa tensão</p>
+        <h3 style={{ fontSize: 17, fontWeight: 800, color: '#fff', margin: '4px 0 0' }}>{codigo}</h3>
         <p style={{ fontSize: 11.5, color: '#8A8A96', margin: '3px 0 0' }}>
-          {p.alimentador ? `Alimentador ${p.alimentador}` : 'alimentador não informado'}{p.subestacao ? ` · SE ${p.subestacao}` : ''}
+          {d?.alimentador ? `Alimentador ${d.alimentador.codigo}` : d ? 'alimentador não informado' : 'lendo…'}{d?.subestacao ? ` · SE ${d.subestacao.nome ?? d.subestacao.codigo}` : ''}
         </p>
       </div>
-      <div style={{ background: `${CORES[p.risco]}1A`, border: `1px solid ${CORES[p.risco]}59`, borderRadius: 11, padding: 13 }}>
-        <p style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13.5, fontWeight: 800, color: CORES[p.risco], margin: '0 0 6px' }}>
+      <div style={{ background: `${CORES[risco]}1A`, border: `1px solid ${CORES[risco]}59`, borderRadius: 11, padding: 13 }}>
+        <p style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13.5, fontWeight: 800, color: CORES[risco], margin: '0 0 6px' }}>
           <AlertTriangle size={14} /> {titulo}
         </p>
         <p style={{ fontSize: 12.5, color: '#D5D5DD', margin: 0, lineHeight: 1.5 }}>{texto}</p>
       </div>
-      <div style={bloco}>
-        <div style={linha}><span style={{ fontSize: 12, color: '#9A9AA8' }}>Potência nominal</span><span style={{ fontSize: 13, fontWeight: 700, color: '#fff' }}>{kva(p.potencia_nominal_kva)}</span></div>
-        <div style={linha}><span style={{ fontSize: 12, color: '#9A9AA8' }}>Carga mínima diurna estimada</span><span style={{ fontSize: 13, fontWeight: 700, color: '#fff' }}>{kw(p.carga_min_diurna_kw)}</span></div>
-        <div style={linha}><span style={{ fontSize: 12, color: '#9A9AA8' }}>GD já conectada</span><span style={{ fontSize: 13, fontWeight: 700, color: '#fff' }}>{kw(p.gd_conectada_kw)}</span></div>
-        <div style={{ ...linha, background: `${CORES[p.risco]}17` }}><span style={{ fontSize: 12, color: '#D5D5DD', fontWeight: 600 }}>Margem até a inversão</span><span style={{ fontSize: 14, fontWeight: 800, color: CORES[p.risco] }}>{kw(p.margem_kw)}</span></div>
-      </div>
-      <BarraOcupacao ocupacao={p.ocupacao_pct} risco={p.risco} limiarRisco={regras.risco} />
-      <ContextoAlimentador id={p.alimentador_id} aoAbrir={aoAbrirAlimentador} />
-      <Procedencia base={base} />
+      {q.isError && <p style={{ ...nota, color: '#FF7A6B' }}>Não consegui ler o detalhe deste trafo.</p>}
+      {d && (
+        <>
+          <div>
+            <p style={{ ...rotuloSecao, marginBottom: 6 }}>A rede de baixa tensão deste trafo</p>
+            <div style={bloco}>
+              <Par k="UCs atendidas" v={d.unidades_consumidoras == null ? <span title="Chega na próxima carga da BDGD" style={{ color: '#8A8A96' }}>—</span> : n0(d.unidades_consumidoras)} />
+              <Par k="Unidades de GD já conectadas" v={d.gd_unidades == null ? <span style={{ color: '#8A8A96' }}>—</span> : n0(d.gd_unidades)} />
+              <Par k="Potência nominal" v={kva(d.potencia_nominal_kva)} />
+              <Par k="Ligação" v={d.fases ? `${FASES[d.fases] ?? `${d.fases} fases`}` : '—'} />
+              <Par k="Tensão secundária" v={d.tensao_secundaria_v == null ? '—' : `${inteiro(d.tensao_secundaria_v)} V`} />
+            </div>
+            {d.unidades_consumidoras == null && <p style={{ ...nota, marginTop: 6 }}>UCs e unidades de GD por trafo passam a vir na próxima carga da BDGD.</p>}
+          </div>
+          <ContaAberta d={d} />
+          <BarraOcupacao ocupacao={d.ocupacao_pct} risco={risco} limiarRisco={d.regras.risco} />
+          <BaseAnterior d={d} />
+          {d.alimentador && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <p style={rotuloSecao}>Contexto de média tensão</p>
+              {[['Alimentador', d.alimentador.codigo], ['Trafos no alimentador', `${inteiro(d.alimentador.trafos)} · ${inteiro(d.alimentador.trafos_risco)} em risco`],
+                ['Ocupação do alimentador', pct(d.alimentador.ocupacao_pct)]].map(([k, v]) => (
+                <div key={k} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+                  <span style={{ color: '#9A9AA8' }}>{k}</span><span style={{ color: '#D5D5DD', fontWeight: 600, textAlign: 'right' }}>{v}</span>
+                </div>
+              ))}
+              <button type="button" onClick={() => aoAbrirAlimentador(d.alimentador!.id)} style={botaoLink}><GitBranch size={12} /> Ver o alimentador</button>
+            </div>
+          )}
+          <CamposBdgd bdgd={d.bdgd} />
+          <button type="button" onClick={() => aoCentrar(d.lng, d.lat)} style={botaoLink}><Crosshair size={13} /> Centralizar no mapa</button>
+          <Procedencia base={{ ...base, distribuidora: d.distribuidora.nome }} fonte={d.fonte} />
+        </>
+      )}
     </div>
   );
 }
@@ -155,7 +279,7 @@ function DetalheAlimentadorView({ id, props, regras, base, aoVoltar, aoEnquadrar
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <button type="button" onClick={aoVoltar} style={botaoLink}><ArrowLeft size={13} /> Voltar à lista</button>
       <div>
-        <p style={rotuloSecao}>Alimentador de média tensão</p>
+        <p style={rotuloSecao}>Alimentador de média tensão · contexto</p>
         <h3 style={{ fontSize: 17, fontWeight: 800, color: '#fff', margin: '4px 0 0' }}>{codigo}</h3>
         <p style={{ fontSize: 11.5, color: '#8A8A96', margin: '3px 0 0' }}>
           {a?.subestacao ? `SE ${a.subestacao}` : props?.subestacao ? `SE ${props.subestacao}` : 'subestação não informada'}
@@ -166,16 +290,17 @@ function DetalheAlimentadorView({ id, props, regras, base, aoVoltar, aoEnquadrar
                      color: '#ddd', padding: '4px 9px', borderRadius: 20, background: `${CORES[risco]}2E`, border: `1px solid ${CORES[risco]}80` }}>
         <AlertTriangle size={11} style={{ color: CORES[risco] }} /> {ROTULOS[risco]}
       </span>
+      <p style={nota}>A MT raramente é o gargalo da GD em baixa tensão; o que decide é o trafo. Este agregado mostra onde a geração já pesa no circuito inteiro.</p>
       {a && (
         <>
           <div style={bloco}>
-            <div style={linha}><span style={{ fontSize: 12, color: '#9A9AA8' }}>Carga mínima diurna estimada</span><span style={{ fontSize: 13, fontWeight: 700, color: '#fff' }}>{kw(a.carga_min_diurna_kw)}</span></div>
-            <div style={linha}><span style={{ fontSize: 12, color: '#9A9AA8' }}>GD já conectada</span><span style={{ fontSize: 13, fontWeight: 700, color: '#fff' }}>{kw(a.gd_conectada_kw)}</span></div>
-            <div style={{ ...linha, background: `${CORES[risco]}17` }}><span style={{ fontSize: 12, color: '#D5D5DD', fontWeight: 600 }}>Margem até a inversão</span><span style={{ fontSize: 14, fontWeight: 800, color: CORES[risco] }}>{kw(a.margem_kw)}</span></div>
+            <Par k="Carga mínima diurna estimada" v={kw(a.carga_min_diurna_kw)} />
+            <Par k="GD já conectada" v={kw(a.gd_conectada_kw)} />
+            <Par k="Margem até a inversão" v={<span style={{ color: CORES[risco] }}>{kw(a.margem_kw)}</span>} forte />
           </div>
           <BarraOcupacao ocupacao={a.ocupacao_pct} risco={risco} limiarRisco={regras.risco} />
           <div>
-            <p style={{ ...rotuloSecao, marginBottom: 7 }}>Trafos neste alimentador · {inteiro(a.trafos)}</p>
+            <p style={{ ...rotuloSecao, marginBottom: 7 }}>Trafos MT/BT neste alimentador · {inteiro(a.trafos)}</p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
               {ORDEM.map(r => {
                 const n = { risco: a.trafos_risco, atencao: a.trafos_atencao, folga: a.trafos_folga, sem_dado: a.trafos_sem_dado }[r];
@@ -189,7 +314,7 @@ function DetalheAlimentadorView({ id, props, regras, base, aoVoltar, aoEnquadrar
               })}
             </div>
           </div>
-          {!a.tem_tracado && <p style={{ fontSize: 11.5, color: '#9A9AA8', margin: 0 }}>Este alimentador ainda não tem traçado na base; a caixa vem dos trafos.</p>}
+          {!a.tem_tracado && <p style={nota}>Este alimentador ainda não tem traçado na base; a caixa vem dos trafos.</p>}
         </>
       )}
       {caixa && <button type="button" onClick={() => aoEnquadrar(caixa)} style={botaoLink}><Crosshair size={13} /> Enquadrar este alimentador</button>}
@@ -198,55 +323,173 @@ function DetalheAlimentadorView({ id, props, regras, base, aoVoltar, aoEnquadrar
   );
 }
 
-export function PainelLateral({ resposta, carregando, selecao, aoSelecionar, aoEnquadrar, aoCentrar }: Props) {
-  const pontos = resposta?.pontos?.features.map(f => f.properties) ?? [];
+function MudancasView({ m }: { m: Mudancas | null }) {
+  if (!m) return <p style={nota}>Sem histórico registrado para esta carga.</p>;
+  if (!m.anterior) return <p style={nota}>Sem carga anterior com histórico para comparar — a comparação começa na próxima BDGD.</p>;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <p style={nota}>Comparada à carga de {data(m.anterior.data_base)} (importação #{m.anterior.importacao_id}):</p>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0,1fr))', gap: 4, fontSize: 11.5, color: '#D5D5DD' }}>
+        <span>Trafos novos: <strong>{n0(m.novos)}</strong></span><span>Inativados: <strong>{n0(m.inativados)}</strong></span>
+        <span>Mudaram de estado: <strong>{n0(m.mudaram)}</strong></span><span>Iguais: <strong>{n0(m.iguais)}</strong></span>
+      </div>
+      {!!m.transicoes?.length && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 4 }}>
+          {m.transicoes.slice(0, 6).map(t => (
+            <div key={`${t.de}-${t.para}`} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: '#D5D5DD' }}>
+              <Ponto risco={t.de} />{ROTULOS[t.de]} <span style={{ color: '#8A8A96' }}>→</span> <Ponto risco={t.para} />{ROTULOS[t.para]}
+              <span style={{ marginLeft: 'auto', fontWeight: 700 }}>{inteiro(t.n)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ImportacaoView({ i }: { i: Importacao }) {
+  const cor = i.situacao === 'concluida' ? '#5DD372' : i.situacao === 'falhou' ? '#FF7A6B' : GOLD;
+  return (
+    <details style={{ background: '#16161F', borderRadius: 9, padding: '9px 11px' }}>
+      <summary style={{ cursor: 'pointer', listStyle: 'none', display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#D5D5DD' }}>
+        <span style={{ fontWeight: 700, color: '#fff' }}>#{i.id}</span>
+        <span>base {data(i.data_base)}</span>
+        {i.versao_bdgd && <span style={{ color: '#9A9AA8' }}>{i.versao_bdgd}</span>}
+        <span style={{ marginLeft: 'auto', fontSize: 10.5, fontWeight: 700, color: cor, textTransform: 'uppercase' }}>{i.situacao}</span>
+      </summary>
+      <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 5, fontSize: 11.5 }}>
+        {[['Arquivo', i.arquivo_origem ?? '—'], ['Tamanho do zip', bytesLegiveis(i.tamanho_bytes)], ['Baixado em', dataHora(i.baixado_em)],
+          ['Concluída em', dataHora(i.concluido_em)],
+          ['Linhas', Object.entries(i.linhas_por_camada ?? {}).map(([k, v]) => `${k} ${inteiro(v)}`).join(' · ') || '—'],
+          ['Regras na carga', i.regras ? `fator ${fator(i.regras.fator)} · atenção ${i.regras.atencao}% · risco ${i.regras.risco}% · janela ${i.regras.janela_inicio}h–${i.regras.janela_fim}h` : '—']].map(([k, v]) => (
+          <div key={k} style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
+            <span style={{ color: '#9A9AA8', flexShrink: 0 }}>{k}</span><span style={{ color: '#D5D5DD', fontWeight: 600, textAlign: 'right', wordBreak: 'break-all' }}>{v}</span>
+          </div>
+        ))}
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
+          <span style={{ color: '#9A9AA8' }}>SHA-256</span>
+          <span style={{ color: '#D5D5DD', fontFamily: 'ui-monospace, monospace', fontSize: 10.5, wordBreak: 'break-all', textAlign: 'right', display: 'inline-flex', gap: 6, alignItems: 'flex-start' }}>
+            {i.hash_sha256 ?? 'não registrado nesta carga'}{i.hash_sha256 && <Copiar texto={i.hash_sha256} />}
+          </span>
+        </div>
+        {i.erro && <p style={{ ...nota, color: '#FF7A6B' }}>{i.erro}</p>}
+        <div style={{ marginTop: 4 }}><p style={{ ...rotuloSecao, marginBottom: 4 }}>Mudanças</p><MudancasView m={i.mudancas} /></div>
+      </div>
+    </details>
+  );
+}
+
+function FichaDaFonte({ aoVoltar }: { aoVoltar: () => void }) {
+  const q = useFontes(true);
+  const f = q.data;
+  const regras = (g: RegrasCompletas) => `fator ${fator(g.fator)} · atenção ≥ ${g.atencao}% · risco ≥ ${g.risco}% · janela ${g.janela_inicio}h–${g.janela_fim}h`;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <button type="button" onClick={aoVoltar} style={botaoLink}><ArrowLeft size={13} /> Voltar</button>
+      <div>
+        <p style={rotuloSecao}>Auditoria</p>
+        <h3 style={{ fontSize: 17, fontWeight: 800, color: '#fff', margin: '4px 0 0', display: 'flex', alignItems: 'center', gap: 8 }}><ShieldCheck size={16} color={GOLD} /> Fonte dos dados</h3>
+        <p style={{ ...nota, marginTop: 4 }}>
+          O que está no mapa vem da BDGD (Base de Dados Geográfica da Distribuidora) que cada concessionária entrega à ANEEL, data-base 31/12. Aqui está qual arquivo, de que versão, com que regras e o que mudou desde a carga anterior.
+        </p>
+      </div>
+      {q.isLoading && <p style={nota}>lendo…</p>}
+      {q.isError && <p style={{ ...nota, color: '#FF7A6B' }}>Não consegui ler a ficha da fonte.</p>}
+      {f && (
+        <>
+          <div style={{ border: '1px solid rgba(245,168,0,0.3)', background: 'rgba(245,168,0,0.08)', borderRadius: 11, padding: 12 }}>
+            <p style={{ ...rotuloSecao, color: '#E3B341', marginBottom: 4 }}>Regras vigentes agora</p>
+            <p style={{ fontSize: 12, color: '#D5D5DD', margin: 0 }}>{regras(f.regras_atuais)}</p>
+            <p style={{ ...nota, marginTop: 4 }}>Mudar uma regra no Motor de Engenharia muda o semáforo na próxima recarga; cada carga guarda as regras com que foi calculada.</p>
+          </div>
+          {f.distribuidoras.map(d => (
+            <div key={d.distribuidora.id} style={{ border: '1px solid rgba(255,255,255,0.1)', borderRadius: 11, padding: 12, display: 'flex', flexDirection: 'column', gap: 9 }}>
+              <div>
+                <p style={{ fontSize: 14, fontWeight: 800, color: '#fff', margin: 0 }}>{d.distribuidora.nome}</p>
+                <p style={{ ...nota }}>{d.distribuidora.sigla} · código ANEEL {d.distribuidora.codigo_aneel ?? '—'} · {d.distribuidora.uf} · data-base {data(d.distribuidora.data_base)}</p>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0,1fr))', gap: 6, fontSize: 11.5, color: '#D5D5DD' }}>
+                <span>Trafos ativos <strong>{inteiro(d.trafos.ativos)}</strong></span>
+                <span>Inativos <strong>{inteiro(d.trafos.inativos)}</strong></span>
+                <span style={{ color: CORES.risco }}>Em risco <strong>{inteiro(d.trafos.risco)}</strong></span>
+                <span style={{ color: CORES.atencao }}>Em atenção <strong>{inteiro(d.trafos.atencao)}</strong></span>
+                <span>Com folga <strong>{inteiro(d.trafos.folga)}</strong></span>
+                <span>Sem dado <strong>{inteiro(d.trafos.sem_dado)}</strong></span>
+                <span>Com UCs contadas <strong>{inteiro(d.trafos.com_ucs)}</strong></span>
+                <span>Alimentadores <strong>{inteiro(d.alimentadores.ativos)}</strong> · traçado {inteiro(d.alimentadores.com_tracado)}</span>
+              </div>
+              {d.trafos.com_ucs === 0 && <p style={nota}>UCs e unidades de GD por trafo entram na próxima carga.</p>}
+              <p style={{ ...rotuloSecao, marginTop: 2 }}>Cargas</p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                {d.importacoes.map(i => <ImportacaoView key={i.id} i={i} />)}
+              </div>
+            </div>
+          ))}
+        </>
+      )}
+    </div>
+  );
+}
+
+export const PainelLateral = memo(function PainelLateral({ resposta, carregando, selecao, aoSelecionar, aoEnquadrar, aoCentrar }: Props) {
+  const [mostrar, setMostrar] = useState(PAGINA);
+  const pontos = resposta?.pontos?.features ?? [];
   const alims = (resposta?.alimentadores?.features.map(f => f.properties) ?? [])
     .slice().sort((a, b) => (b.ocupacao_pct ?? -1) - (a.ocupacao_pct ?? -1));
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16, height: '100%', minHeight: 0 }}>
-      {resposta && !selecao && <Resumo r={resposta.resumo} />}
+      {resposta && !selecao && <Resumo r={resposta.resumo} camada={resposta.camada} />}
 
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 14 }} aria-busy={carregando}>
-        {selecao?.tipo === 'trafo' && resposta && (
-          <DetalheTrafo p={selecao.props} regras={resposta.regras} base={resposta.base}
-                        aoVoltar={() => aoSelecionar(null)} aoAbrirAlimentador={id => aoSelecionar({ tipo: 'alimentador', id })} />
+        {selecao?.tipo === 'fonte' && <FichaDaFonte aoVoltar={() => aoSelecionar(null)} />}
+        {selecao?.tipo === 'trafo' && (
+          <DetalheTrafoView id={selecao.id} props={selecao.props} base={resposta?.base ?? {}}
+                            aoVoltar={() => aoSelecionar(null)} aoAbrirAlimentador={id => aoSelecionar({ tipo: 'alimentador', id })} aoCentrar={aoCentrar} />
         )}
         {selecao?.tipo === 'alimentador' && resposta && (
           <DetalheAlimentadorView id={selecao.id} props={selecao.props} regras={resposta.regras} base={resposta.base}
                                   aoVoltar={() => aoSelecionar(null)} aoEnquadrar={aoEnquadrar} />
         )}
 
-        {!selecao && resposta?.camada === 'ponto' && (
+        {!selecao && resposta?.camada === 'ponto' && pontos.length > 0 && (
           <div>
-            <p style={{ ...rotuloSecao, marginBottom: 6 }}>
-              Transformadores nesta vista{resposta.excedeu ? ` · os ${inteiro(resposta.teto)} mais ocupados` : ''}
-            </p>
+            <p style={{ ...rotuloSecao, marginBottom: 6 }}>Transformadores nesta vista · dos mais ocupados aos com folga</p>
             <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 1 }}>
-              {pontos.map(p => (
-                <li key={p.id}>
-                  <button type="button" onClick={() => { aoSelecionar({ tipo: 'trafo', props: p }); aoCentrar(p.lng, p.lat); }}
-                          style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 9, padding: '8px 10px', background: 'none',
-                                   border: 'none', borderRadius: 7, cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit' }}>
-                    <Ponto risco={p.risco} />
-                    <span style={{ flex: 1, minWidth: 0, fontSize: 12, color: '#ddd' }}>{p.codigo}</span>
-                    <span style={{ fontSize: 11, color: '#8A8A96', whiteSpace: 'nowrap' }}>{pct(p.ocupacao_pct)}</span>
-                  </button>
-                </li>
-              ))}
+              {pontos.slice(0, mostrar).map(f => {
+                const p = f.properties;
+                const [lng, lat] = ((f.geometry as { coordinates?: number[] })?.coordinates ?? [0, 0]);
+                return (
+                  <li key={p.id}>
+                    <button type="button" onClick={() => { aoSelecionar({ tipo: 'trafo', id: p.id, props: p }); aoCentrar(lng, lat); }}
+                            style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 9, padding: '8px 10px', background: 'none',
+                                     border: 'none', borderRadius: 7, cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit' }}>
+                      <Ponto risco={p.risco} />
+                      <span style={{ flex: 1, minWidth: 0, fontSize: 12, color: '#ddd' }}>{p.codigo}</span>
+                      <span style={{ fontSize: 11, color: '#8A8A96', whiteSpace: 'nowrap' }}>{pct(p.ocupacao_pct)}</span>
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
+            {pontos.length > mostrar && (
+              <button type="button" onClick={() => setMostrar(m => m + PAGINA)} style={{ ...botaoLink, marginTop: 6 }}>
+                Mostrar mais {Math.min(PAGINA, pontos.length - mostrar)} de {inteiro(pontos.length - mostrar)} restantes
+              </button>
+            )}
           </div>
         )}
 
         {!selecao && resposta?.camada === 'celula' && alims.length === 0 && (
-          <p style={{ fontSize: 12, color: '#8A8A96', margin: 0, lineHeight: 1.5 }}>
-            Aproxime até o zoom 14 para listar os transformadores. Os alimentadores aparecem a partir do zoom 9 (ligue a camada): até o 10, só os em risco ou atenção.
+          <p style={nota}>
+            Área densa: os trafos estão resumidos em células. Aproxime (ou clique numa célula) até caberem um a um — aí a lista aparece aqui.
+            Os alimentadores de MT aparecem a partir do zoom 9 quando a camada está ligada; até o 10, só os em risco ou atenção.
           </p>
         )}
 
         {!selecao && alims.length > 0 && (
           <div>
-            <p style={{ ...rotuloSecao, marginBottom: 6 }}>Alimentadores mais saturados na vista</p>
+            <p style={{ ...rotuloSecao, marginBottom: 6 }}>Alimentadores de MT mais saturados na vista</p>
             <div style={bloco}>
               {alims.slice(0, 12).map(a => (
                 <button key={a.id} type="button" onClick={() => aoSelecionar({ tipo: 'alimentador', id: a.id, props: a })}
@@ -264,14 +507,9 @@ export function PainelLateral({ resposta, carregando, selecao, aoSelecionar, aoE
             </div>
           </div>
         )}
-      </div>
 
-      <div style={{ padding: '10px 12px', borderRadius: 9, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
-        <p style={{ fontSize: 11.5, color: '#9A9AA8', margin: 0, lineHeight: 1.55 }}>
-          <strong style={{ color: '#D5D5DD' }}>Indicativo, não é parecer.</strong>{' '}
-          A carga mínima é estimada da curva das unidades consumidoras. Só a distribuidora emite o parecer de acesso.
-        </p>
+        {!selecao && resposta && <Procedencia base={resposta.base} />}
       </div>
     </div>
   );
-}
+});

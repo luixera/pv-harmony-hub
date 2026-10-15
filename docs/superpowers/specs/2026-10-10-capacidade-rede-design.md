@@ -605,6 +605,115 @@ descartados porque a camada vetorial nativa resolve o volume medido (≤ 4.000
 pontos, ≤ 600 linhas) sem dependência nova. Se uma distribuidora futura
 estourar isso, o caminho é mais um nível de célula, não outra biblioteca.
 
+## 12. Revisão de desempenho e auditoria (15/10/2026) — mapa v3
+
+Depois da v2 publicada (PR #4), o usuário relatou: "ficou bem melhor, porém
+está travando bastante". Pediu também um "pesquise aqui" com amostragem pelo
+zoom, perguntou se "alimentador" é o termo certo, e como auditar os dados
+mesmo com a fonte desatualizada. E corrigiu o foco: **o que interessa é a rede
+de BT** — a MT não é o gargalo; a maioria dos sistemas conecta em baixa tensão.
+
+### 12.1 Diagnóstico medido
+
+Vista de 1920×1080 sobre Campinas, caixa já com a folga de 20%, as duas CPFL
+carregadas (295.197 trafos). `pg_column_size` do JSONB devolvido:
+
+| Zoom | Células / pontos | Alimentadores | Partes de linha | Vértices | Total |
+|---|---|---|---|---|---|
+| 11 | 4.000 células (teto — **cortadas**) · 2,5 MB | 600 · 5,8 MB | 59.877 | 125.934 | 8,4 MB |
+| 12 | 2.071 células · 1,3 MB | 600 · 4,3 MB | 43.543 | 90.776 | 5,6 MB |
+| 13 | 3.038 células · 1,9 MB | 398 · 4,3 MB | 43.276 | 94.410 | 6,3 MB |
+| 14 | 4.000 pontos (de 12.508) · 2,2 MB | 226 · 2,0 MB | 20.060 | 43.165 | 4,2 MB |
+| 15 | 4.000 pontos (de 6.252) · 2,2 MB | 114 · 1,4 MB | 13.477 | 32.051 | 3,6 MB |
+| 16 | 3.031 pontos · 1,6 MB | 72 · 0,7 MB | 6.869 | 15.627 | 2,3 MB |
+
+Causas, por peso:
+
+1. **A `google.maps.Data` desenha em SVG, um `<path>` por parte.** A rede de
+   MT é uma árvore e o `ST_LineMerge` não une em nó de grau 3: 2,1 vértices por
+   parte em média, 100 partes por alimentador. No satélite a camada de
+   contorno dobra. São 40 a 120 mil elementos SVG reposicionados a cada
+   arrasto — e a camada vinha **ligada por padrão**.
+2. **Tabela de níveis calibrada numa tela pequena e só com a Piratininga.**
+   Com a Paulista e uma tela grande, o zoom 11 passa de 11 mil células e o
+   teto de 4.000 deixa região em branco; o zoom 14 em Campinas tem 12.508
+   trafos — 4.000 marcadores sobrepostos não informam nada.
+3. **O painel lateral lista os 4.000 trafos** e a seção inteira re-renderiza a
+   cada `mouseover` (estado `sobre`), sem `memo`.
+4. **540 bytes por ponto**: as propriedades que só o detalhe usa viajam com
+   todos os pontos.
+
+### 12.2 Decisões
+
+- **BT é a unidade de análise, e a tela diz isso.** O trafo MT/BT (camada
+  `UNTRMT`) é onde a GD em baixa tensão se conecta; carga vem de `UCBT`, GD de
+  `UGBT`. Era assim desde a Fase A, mas a tela não explicava. Rótulos:
+  "Transformador MT/BT — ponto de conexão em baixa tensão"; "Alimentador MT —
+  contexto". `Alimentadores` passa a vir **desligado por padrão**.
+  "Alimentador" é o termo correto: `CTMT` da BDGD, o circuito de média tensão
+  que sai da subestação, o mesmo nome do parecer de acesso. "Linha de
+  distribuição", no PRODIST, é a de 69–138 kV (`SSDAT`), que não carregamos.
+- **Amostragem adaptativa no servidor, por contagem e não por zoom.** A RPC
+  conta os trafos da caixa (com `LIMIT teto+1`, para parar cedo). Até 4.000:
+  pontos. Acima: o passo de célula mais fino que caiba em 3.000 células na
+  caixa. Entra o **nível 5 (0,0025°, ~275 m)**: no zoom 15 em Campinas são
+  6.252 trafos, e o nível 4 daria 276 blocos de 120 px. Zona rural vê pontos
+  no zoom 12; o centro de Campinas vê células até o 15. Nunca corta.
+- **WebGL (deck.gl 9.4, `GoogleMapsOverlay`) em vez de SVG** para pontos,
+  células e linhas. Ícones por risco num atlas desenhado em canvas (as mesmas
+  formas da v2), células em `GeoJsonLayer`, linhas em `GeoJsonLayer` com
+  contorno sobre satélite. Carregado por `import()` só nesta tela. Procurado
+  no registro de skills (`npx skills find deck.gl`): nada; a biblioteca é a
+  referência da área.
+- **"Pesquisar nesta área"**: quando a vista sai da caixa carregada, aparece o
+  botão; "atualizar ao mover o mapa" (ligado por padrão) mantém o comportamento
+  atual. Não resolve o travamento (que é de renderização), mas corta consultas
+  enquanto a pessoa só navega e protege a instância pequena.
+- **Payload enxuto**: ponto = `{id, codigo, risco, ocupacao_pct}`; célula =
+  `{id, nivel, risco, trafos, trafos_risco}`; o resto vem no clique
+  (`rede_trafo_detalhe`). Alimentadores no zoom 11–12 usam o nível 1 do
+  traçado (ramos < 330 m somem; 1 px = 76 m no 11).
+- **Painel**: `React.memo`, lista de 40 com "mostrar mais", callbacks
+  estáveis.
+
+### 12.2.1 Medido depois da migração (15/10/2026, mesma vista)
+
+| Zoom | Amostra | Células/pontos | Bytes | Alimentadores (opcional) |
+|---|---|---|---|---|
+| 9 | nível 1 | 208 células | 100 KB | 299 · 2,9 MB |
+| 11 | nível 2 | 431 células | 210 KB | 600 · 2,3 MB |
+| 12 | nível 3 | 2.071 células | 1,0 MB | 600 · 1,6 MB |
+| 13 | nível 3 | 748 células | 364 KB | 391 · 2,2 MB |
+| 14 | nível 4 | 991 células | 483 KB | 220 · 962 KB |
+| 15 | nível 5 | 1.012 células | 494 KB | 114 · 862 KB |
+| 16 | pontos | 3.033 pontos | 778 KB | 72 · 404 KB |
+
+A camada principal caiu de 2–8 MB para 0,2–1 MB por vista e nunca corta. Os
+alimentadores continuam pesados em rede (a árvore tem ~40 partes por linha
+mesmo no nível 1) — por isso opcionais, desligados por padrão e em consulta
+separada; em WebGL o desenho deles não custa.
+
+### 12.3 Auditoria dos dados (duas camadas nesta rodada)
+
+1. **Ficha da fonte**, por distribuidora e por importação: arquivo da ANEEL,
+   versão da BDGD (`V11`), data-base, **SHA-256 do zip** e tamanho, quando foi
+   baixado, contagens por camada, **regras vigentes na carga** (fator,
+   limiares, janela) e **mudanças em relação à carga anterior** (novos,
+   inativados, matriz de risco antes→depois). Tabela nova
+   `rede_transformador_hist` guarda risco/ocupação/insumos por importação.
+2. **Conta aberta** no detalhe do trafo: a fórmula com os números
+   (`carga mínima diurna × fator − GD conectada = margem`; `GD ÷ (carga ×
+   fator) = ocupação`), os campos brutos da BDGD (`COD_ID`, `POT_NOM`,
+   `CTMT`, `SUB`, fases, tensão), **UCs atendidas e unidades de GD** no trafo
+   (novas colunas; vêm na próxima reingestão) e o estado na carga anterior.
+
+Fora desta rodada (próxima spec, decisão do usuário): o **confronto com a
+realidade** — registrar o parecer de acesso real por trafo/alimentador e
+medir a taxa de acerto por distribuidora; e a **rede BT propriamente**
+(`SSDBT`, `RAMLIG`): traçado do circuito de BT de cada trafo, comprimento,
+condutor, UCs por fase — os critérios de elevação de tensão que o parecer
+de BT também olha.
+
 ## Fontes
 
 Normativas: [REN 1.000/2021](https://www2.aneel.gov.br/cedoc/ren20211000.html) ·

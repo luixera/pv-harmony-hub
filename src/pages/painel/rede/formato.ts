@@ -20,3 +20,14 @@ export function rotuloIdade(meses: number): string {
 
 export const percentualDe = (parte: number, total: number) =>
   total > 0 ? Math.round((parte / total) * 100) : 0;
+
+export function bytesLegiveis(n: number | null | undefined): string {
+  if (n == null) return '—';
+  if (n < 1024 ** 2) return `${fmt(0).format(n / 1024)} KB`;
+  if (n < 1024 ** 3) return `${fmt(1).format(n / 1024 ** 2)} MB`;
+  return `${fmt(2).format(n / 1024 ** 3)} GB`;
+}
+export const data = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleDateString('pt-BR') : '—';
+export const dataHora = (iso: string | null | undefined) =>
+  iso ? new Date(iso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '—';
+export const hashCurto = (h: string | null | undefined) => h ? `${h.slice(0, 12)}…` : '—';
