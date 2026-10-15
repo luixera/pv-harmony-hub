@@ -31,9 +31,13 @@ export function mapeamentoAtlas(): Mapeamento {
 
 function desenharIcone(ctx: CanvasRenderingContext2D, estado: Estado, satelite: boolean, destaque: boolean) {
   const c = TAM_ICONE / 2;
-  const r = (satelite ? 13 : 11) * (destaque ? 1.3 : 1);
+  // A forma ocupa quase a célula inteira: o deck exibe a célula de 64 px em
+  // `getIconSize` px, então um raio de 11 virava uma marca de 7 px na tela
+  // (visto em produção em 15/10/2026). Raio 19/21 + traço cabe nos 32 de meia
+  // célula, inclusive o triângulo em destaque (×1,15).
+  const r = (satelite ? 21 : 19) * (destaque ? 1.15 : 1);
   const contorno = satelite ? CONTORNO_ESCURO : 'rgba(255,255,255,0.55)';
-  const traco = (satelite ? 4 : 3) + (destaque ? 3 : 0);
+  const traco = (satelite ? 5 : 4) + (destaque ? 3 : 0);
   ctx.lineJoin = 'round';
   if (estado === 'subestacao') {
     ctx.beginPath(); ctx.moveTo(c, c - r - 3); ctx.lineTo(c + r + 3, c); ctx.lineTo(c, c + r + 3); ctx.lineTo(c - r - 3, c); ctx.closePath();
@@ -50,8 +54,8 @@ function desenharIcone(ctx: CanvasRenderingContext2D, estado: Estado, satelite: 
     // anel: vazado no mapa liso, miolo escuro opaco sobre imagem
     ctx.beginPath(); ctx.arc(c, c, r, 0, Math.PI * 2);
     if (satelite) { ctx.fillStyle = MIOLO_ESCURO; ctx.fill(); }
-    ctx.lineWidth = 7 + (destaque ? 3 : 0); ctx.strokeStyle = cor; ctx.stroke();
-    if (satelite) { ctx.lineWidth = 2; ctx.strokeStyle = CONTORNO_ESCURO; ctx.beginPath(); ctx.arc(c, c, r + 4.5, 0, Math.PI * 2); ctx.stroke(); }
+    ctx.lineWidth = 9 + (destaque ? 3 : 0); ctx.strokeStyle = cor; ctx.stroke();
+    if (satelite) { ctx.lineWidth = 2.5; ctx.strokeStyle = CONTORNO_ESCURO; ctx.beginPath(); ctx.arc(c, c, r + 5.5, 0, Math.PI * 2); ctx.stroke(); }
   } else if (estado === 'sem_dado') {
     // quadrado, não anel fino: espessura não se lê sobre imagem
     ctx.beginPath(); ctx.rect(c - r, c - r, 2 * r, 2 * r);
