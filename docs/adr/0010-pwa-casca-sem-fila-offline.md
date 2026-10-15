@@ -56,7 +56,7 @@ subsistema inteiro, que não foi pedido.
 - O app abre rápido e instalado, e não finge funcionar sem rede.
 - Nenhum dado de negócio fica guardado no aparelho — o que também é bom para a
   postura de segurança: celular perdido não carrega projeto de cliente.
-- O precache (~4,4 MiB) é baixado na primeira visita. É o preço da abertura
+- O precache (~4,3 MiB) é baixado na primeira visita. É o preço da abertura
   instantânea; reduzi-lo de verdade exige quebrar o chunk de 3,6 MB, que é
   débito técnico separado.
 - Fica pendente, na VPS, uma regra de `no-cache` para `sw.js` e

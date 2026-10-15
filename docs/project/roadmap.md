@@ -195,7 +195,7 @@ Módulo [signatures](../modules/signatures/overview.md) — Fase 1, só GD Manag
   ver o [aceite](../modules/signatures/aceite.md)).
 - **Estilo misto** inline vs shadcn/ui em telas legadas.
 - **Chunk principal de 3,6 MB**: obriga o precache do PWA a subir o limite por
-  arquivo para 4 MiB e faz a primeira visita baixar ~4,4 MiB. Quebrar o bundle
+  arquivo para 4 MiB e faz a primeira visita baixar ~4,3 MiB. Quebrar o bundle
   resolveria os dois de uma vez.
 - **Dois limiares de celular convivendo**: o TypeScript usa 640 px
   (`src/mobile/breakpoints.ts`, fonte única desde out/2026) e o

@@ -220,7 +220,11 @@ Plugin `vite-plugin-pwa`, configurado em `vite.config.ts`. Modo `generateSW`
   aplica ao ícone. A logo de origem é pequena (187×188 px), então no ícone de
   512 ela é ampliada.
 - **Precache só da casca** (`globPatterns`: js, css, html, ico, png, svg,
-  woff2). Medido no build de 15/10/2026: **17 entradas, 4379,76 KiB**.
+  woff2). Medido no build de 15/10/2026: **16 entradas, ~4,3 MiB** num
+  checkout limpo. Cuidado ao conferir: `globPatterns` pega **qualquer** `.html`
+  de `public/`, então um rascunho solto ali entra no precache e muda a conta
+  (foi o que aconteceu com um `_medida-card.html` não rastreado, que rendia uma
+  17ª entrada só nas máquinas que o tinham).
 - **`maximumFileSizeToCacheInBytes` = 4 MiB.** O chunk principal tem ~3,6 MB e o
   limite padrão do workbox é 2 MiB. Sem o ajuste, o arquivo mais importante
   ficaria **fora** do precache, com um mero aviso no build.
