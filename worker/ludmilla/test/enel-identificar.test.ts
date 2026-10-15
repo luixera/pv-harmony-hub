@@ -333,3 +333,66 @@ test('sufixo JR no cadastro é exigido no texto, e JR e JUNIOR são equivalentes
   assert.equal(titularNoAssunto('PROJETO GD - JOSE CARLOS SANTOS JR', 'JOSE CARLOS SANTOS JR'), true);
   assert.equal(titularNoAssunto('PROJETO GD - JOSE CARLOS SANTOS JR', 'JOSE CARLOS SANTOS JUNIOR'), true);
 });
+
+// ── Rodada de correção 3 ──
+
+test('dígito não vira inicial: POSTO 1 DE SETEMBRO não casa com POSTO 17 DE SETEMBRO LTDA', () => {
+  assert.equal(titularNoAssunto('PROJETO GD - POSTO 1 DE SETEMBRO', 'POSTO 17 DE SETEMBRO LTDA'), false);
+});
+
+test('dígito não vira inicial: POSTO 2 DE SETEMBRO não casa com POSTO 20 DE SETEMBRO LTDA', () => {
+  assert.equal(titularNoAssunto('PROJETO GD - POSTO 2 DE SETEMBRO', 'POSTO 20 DE SETEMBRO LTDA'), false);
+});
+
+test('dígito de um numeral não vira inicial: o 1 de 17 não casa como inicial', () => {
+  assert.equal(titularNoAssunto('PROJETO GD - POSTO 17 1 SETEMBRO', 'POSTO 17 DE SETEMBRO LTDA'), false);
+});
+
+test('numeral obrigatório: CONDOMINIO EDIFICIO ALFA 2 não casa com ALFA 3', () => {
+  assert.equal(titularNoAssunto('PROJETO GD - CONDOMINIO EDIFICIO ALFA 2', 'CONDOMINIO EDIFICIO ALFA 3'), false);
+});
+
+test('numeral obrigatório: ALFA 3 casa com o próprio cadastro', () => {
+  assert.equal(titularNoAssunto('PROJETO GD - CONDOMINIO EDIFICIO ALFA 3', 'CONDOMINIO EDIFICIO ALFA 3'), true);
+});
+
+test('numeral obrigatório: POSTO DE SETEMBRO não casa com POSTO 7 DE SETEMBRO LTDA', () => {
+  assert.equal(titularNoAssunto('PROJETO GD - POSTO DE SETEMBRO', 'POSTO 7 DE SETEMBRO LTDA'), false);
+});
+
+test('numeral obrigatório: POSTO 17 DE SETEMBRO não casa com POSTO 1 DE SETEMBRO', () => {
+  assert.equal(titularNoAssunto('PROJETO GD - POSTO 17 DE SETEMBRO', 'POSTO 1 DE SETEMBRO'), false);
+});
+
+test('numeral obrigatório: SUPERMERCADO 3 IRMAOS casa com o próprio cadastro (LTDA)', () => {
+  assert.equal(titularNoAssunto('PROJETO GD - SUPERMERCADO 3 IRMAOS', 'SUPERMERCADO 3 IRMAOS LTDA'), true);
+});
+
+test('numeral do meio não pode faltar na janela: FILIAL NORTE não casa com FILIAL CENTRO 3 NORTE', () => {
+  assert.equal(titularNoAssunto('PROJETO GD - FILIAL NORTE', 'FILIAL CENTRO 3 NORTE'), false);
+});
+
+test('nome do meio alfabético pode faltar na janela: FILIAL 3 NORTE casa com FILIAL CENTRO 3 NORTE', () => {
+  assert.equal(titularNoAssunto('PROJETO GD - FILIAL 3 NORTE', 'FILIAL CENTRO 3 NORTE'), true);
+});
+
+test('sufixo: AUTO PECAS DO NETO LTDA casa consigo (NETO depois de conector não é sufixo)', () => {
+  assert.equal(titularNoAssunto('AUTO PECAS DO NETO LTDA', 'AUTO PECAS DO NETO LTDA'), true);
+});
+
+test('sufixo: MECANICA DO JUNIOR LTDA casa consigo (JUNIOR depois de conector não é sufixo)', () => {
+  assert.equal(titularNoAssunto('MECANICA DO JUNIOR LTDA', 'MECANICA DO JUNIOR LTDA'), true);
+});
+
+test('sufixo: BAR DO NETO LTDA casa consigo', () => {
+  assert.equal(titularNoAssunto('BAR DO NETO LTDA', 'BAR DO NETO LTDA'), true);
+});
+
+test('sufixo: ANTONIO NETO casa consigo (só um nome antes de NETO, não é sufixo)', () => {
+  assert.equal(titularNoAssunto('ANTONIO NETO', 'ANTONIO NETO'), true);
+});
+
+test('sufixo: JOSE CARLOS SANTOS NETO continua exigindo NETO (pai × neto não casam)', () => {
+  assert.equal(titularNoAssunto('PROJETO GD - JOSE CARLOS SANTOS', 'JOSE CARLOS SANTOS NETO'), false);
+  assert.equal(titularNoAssunto('PROJETO GD - JOSE CARLOS SANTOS NETO', 'JOSE CARLOS SANTOS NETO'), true);
+});

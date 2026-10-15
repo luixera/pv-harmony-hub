@@ -105,33 +105,44 @@ function casaSequencia(
  *  - o nome completo: todos os nomes do titular, em ordem, sem limite de caracteres;
  *  - primeiro e último nome, com até 24 caracteres entre eles (o nome do meio pode faltar).
  * Entre dois nomes só cabe: conector (DA, DE, DO, DAS, DOS, E), palavra do PRÓPRIO titular
- * (inclusive as curtas, como LU), ou a inicial de um nome do meio que não seja conector
- * ("D" não é inicial de DE). Sufixo de geração no fim do cadastro (JUNIOR, JR, FILHO…) tem de
- * vir logo depois do último nome, qualquer que seja o tamanho; JR e JUNIOR são o mesmo sufixo.
- * Cadastro sem sufixo não casa com texto que traga um.
- * Nome de uma palavra só não identifica ninguém.
+ * (inclusive as curtas, como LU), ou a inicial de um nome do meio alfabético que não seja
+ * conector ("D" não é inicial de DE; "1" não é inicial de 17).
+ * Numeral do titular é palavra obrigatória, de qualquer tamanho, na posição dele ("1" não casa
+ * "17"); na janela, numeral do meio não pode faltar (nome alfabético do meio pode).
+ * Sufixo de geração no fim do cadastro (JUNIOR, JR, FILHO…) tem de vir logo depois do último
+ * nome; JR e JUNIOR são o mesmo sufixo. Só é sufixo se a palavra anterior não for conector e
+ * sobrarem dois nomes antes dele ("AUTO PECAS DO NETO" não tem sufixo; "JOSE CARLOS SANTOS NETO" tem).
  */
 export function titularNoAssunto(assunto: string, titular: string): boolean {
   const todas = palavrasDo(titular);
   const canonico = (w: string): string => (w === 'JR' ? 'JUNIOR' : w);
-  const ultima = todas[todas.length - 1];
-  const sufixo = todas.length > 1 && SUFIXOS_GERACAO.has(ultima) ? canonico(ultima) : undefined;
-  const sobrenome = sufixo ? todas.slice(0, -1) : todas;
-  const nomes = sobrenome.filter(p => p.length > 2);
+  // sufixo de geração: a última palavra, se a anterior não for conector e sobrarem 2 nomes antes dela
+  const antes = todas.slice(0, -1);
+  const eSufixo = SUFIXOS_GERACAO.has(todas[todas.length - 1])
+    && !CONECTORES.has(antes[antes.length - 1] ?? '')
+    && antes.filter(p => !CONECTORES.has(p)).length >= 2;
+  const sufixo = eSufixo ? canonico(todas[todas.length - 1]) : undefined;
+  const sobrenome = sufixo ? antes : todas;
+  // numeral é nome obrigatório, de qualquer tamanho; nome alfabético de até 2 letras não é
+  const numero = (p: string): boolean => /^\d+$/.test(p);
+  const nomes = sobrenome.filter(p => p.length > 2 || numero(p));
   if (nomes.length < 2) return false;
   const primeiro = nomes[0];
   const ultimo = nomes[nomes.length - 1];
+  // na janela pode faltar nome alfabético do meio; numeral do meio não
+  const obrigatorios = nomes.filter((p, i) => i === 0 || i === nomes.length - 1 || numero(p));
   const meio = sobrenome.filter(p => p !== primeiro && p !== ultimo);
-  const iniciais = meio.filter(n => !CONECTORES.has(n));
+  // inicial só de nome do meio alfabético que não é conector ("D" não é de DE; "1" não é de 17)
+  const iniciais = meio.filter(n => /^[A-Z]+$/.test(n) && !CONECTORES.has(n));
   const permitida = (w: string): boolean =>
-    CONECTORES.has(w) || todas.includes(w) || (w.length === 1 && iniciais.some(n => n[0] === w));
+    CONECTORES.has(w) || todas.includes(w) || (/^[A-Z]$/.test(w) && iniciais.some(n => n[0] === w));
   const aceitaDepoisDoUltimo = (proxima: string | undefined): boolean =>
     sufixo !== undefined
       ? proxima !== undefined && canonico(proxima) === sufixo
       : proxima === undefined || !SUFIXOS_GERACAO.has(proxima) || todas.includes(proxima);
   const palavras = semAcento(assunto).toUpperCase().split(/[^A-Z0-9]+/).filter(p => p.length > 0);
   return casaSequencia(palavras, nomes, permitida, Infinity, aceitaDepoisDoUltimo)
-    || casaSequencia(palavras, [primeiro, ultimo], permitida, 24, aceitaDepoisDoUltimo);
+    || casaSequencia(palavras, obrigatorios, permitida, 24, aceitaDepoisDoUltimo);
 }
 
 /**
