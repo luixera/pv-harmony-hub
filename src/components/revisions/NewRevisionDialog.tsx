@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { X, Lock } from 'lucide-react';
 import { ProjectRevision, useCreateRevision } from '@/hooks/useProjectRevisions';
 import { ProjectWithDetails } from '@/hooks/useProjects';
+import { useWindowSize } from '@/hooks/useWindowSize';
+import { gradeColapsavel } from '@/mobile/breakpoints';
 
 interface NewRevisionDialogProps {
   open: boolean;
@@ -19,6 +21,7 @@ export function NewRevisionDialog({
   nextRevisionNumber,
 }: NewRevisionDialogProps) {
   const createRevision = useCreateRevision();
+  const { width } = useWindowSize(); // os dados do titular colapsam em tela estreita
 
   const gd = currentRevision?.general_data;
   const eq = currentRevision?.equipment;
@@ -255,7 +258,7 @@ export function NewRevisionDialog({
               <div
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+                  gridTemplateColumns: gradeColapsavel(width, 3),
                   gap: '10px 14px',
                 }}
               >

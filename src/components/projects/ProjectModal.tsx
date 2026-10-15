@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { useWindowSize } from '@/hooks/useWindowSize';
+import { gradeColapsavel } from '@/mobile/breakpoints';
 import { formatCurrency, sanitizeFileName } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCompanyDisplay } from '@/hooks/useCompanyDisplay';
@@ -1728,6 +1729,9 @@ function TabFinanceiro({ project, isAdmin }: { project: ProjectWithDetails; isAd
   const [payAmt, setPayAmt] = useState('');
   const [payDate, setPayDate] = useState(new Date().toISOString().split('T')[0]);
   const [payNote, setPayNote] = useState('');
+  // Largura da tela: os três cartões de resumo colapsam em tela estreita.
+  // Fica aqui em cima, antes do retorno antecipado de !isAdmin (regra dos hooks).
+  const { width } = useWindowSize();
 
   const fmt = formatCurrency;
   const statusBadge: Record<string, { bg: string; color: string; label: string }> = {
@@ -1815,7 +1819,7 @@ function TabFinanceiro({ project, isAdmin }: { project: ProjectWithDetails; isAd
       </div>
 
       {/* 3.2 Summary Cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: gradeColapsavel(width, 3), gap: 10 }}>
         {[
           { label: 'Valor Total', value: fmt(projectValue), color: '#1A1A1A' },
           { label: 'Total Pago', value: fmt(paidValue), color: '#2D6A4F' },

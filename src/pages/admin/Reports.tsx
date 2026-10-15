@@ -5,6 +5,8 @@ import { useReportFilters } from '@/hooks/useReportFilters'
 import { useCompanies } from '@/hooks/useCompanies'
 import { useEnergyConcessionaires } from '@/hooks/useEnergyConcessionaires'
 import { useUsers } from '@/hooks/useUsers'
+import { useWindowSize } from '@/hooks/useWindowSize'
+import { gradeColapsavel } from '@/mobile/breakpoints'
 import { ReportFilterBar } from '@/components/reports/ReportFilterBar'
 import { ReportBarChart } from '@/components/reports/ReportBarChart'
 import { ReportTicketChart } from '@/components/reports/ReportTicketChart'
@@ -66,6 +68,8 @@ export default function Reports() {
   const { data: companies = [] } = useCompanies()
   const { data: concessionaires = [] } = useEnergyConcessionaires(true)
   const { data: users = [] } = useUsers()
+  // Largura da tela: as grades de KPIs e gráficos colapsam em tela estreita
+  const { width, isDesktop } = useWindowSize()
 
   const staffList = users.filter((u) => u.role === 'staff' || u.role === 'admin')
 
@@ -251,7 +255,9 @@ export default function Reports() {
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: '1.2fr 1fr 1fr 1fr',
+            // O destaque da 1ª coluna (1.2fr) só vale no desktop; gradeColapsavel
+            // devolve colunas iguais, então no celular e no tablet usa ela.
+            gridTemplateColumns: isDesktop ? '1.2fr 1fr 1fr 1fr' : gradeColapsavel(width, 4),
             gap: 10,
             marginBottom: 10,
           }}
@@ -310,7 +316,7 @@ export default function Reports() {
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(4, 1fr)',
+            gridTemplateColumns: gradeColapsavel(width, 4),
             gap: 10,
             marginBottom: 10,
           }}
@@ -387,7 +393,7 @@ export default function Reports() {
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: '1fr 1fr 1fr',
+            gridTemplateColumns: gradeColapsavel(width, 3),
             gap: 10,
             marginBottom: 10,
           }}
