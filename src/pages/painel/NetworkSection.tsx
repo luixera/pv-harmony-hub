@@ -2,7 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { GoogleMap, useJsApiLoader } from '@react-google-maps/api';
 import { AlertTriangle, Clock, Satellite, Map as MapIcon, Zap, GitBranch, Factory } from 'lucide-react';
 import { card, GOLD, Loading } from './ConsoleSections';
-import { Busca } from './rede/Busca';
+// arquivo renomeado: 'Busca.tsx' colidia com 'busca.ts' em sistema de
+// arquivos sem distincao de caixa (Windows), e o import resolvia para o util
+import { Busca } from './rede/BarraDeBusca';
 import { Legenda } from './rede/Legenda';
 import { PainelLateral } from './rede/PainelLateral';
 import { useRedeNoMapa } from './rede/consultas';
