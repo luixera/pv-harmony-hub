@@ -40,7 +40,7 @@ export function ListaEmCartoes({
               )}
             </span>
             {resumoDeCartao(item.campos).map((c, i) => (
-              <span key={i} style={{ display: 'block', fontSize: 12, color: '#666', margin: '2px 0 0' }}>
+              <span key={i} style={{ display: 'block', fontSize: 12, color: '#1A1A1A', margin: '2px 0 0' }}>
                 <span style={{ color: '#666' }}>{c.rotulo}: </span>{c.valor}
               </span>
             ))}
@@ -57,7 +57,7 @@ export function ListaEmCartoes({
             onClick={item.aoAbrir}
             // evita enviar o formulário pai ao tocar no cartão (o padrão do button é submit)
             type="button"
-            style={estilo}
+            style={{ ...estilo, cursor: 'pointer' }}
           >
             {conteudo}
           </button>
