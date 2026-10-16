@@ -10,11 +10,22 @@
   para as automações de e-mail realmente enviarem.
 - **Proteção de senha vazada** no Supabase Auth: habilitar no painel.
 - **Listagem pública de buckets** `avatars`/`tenant-logos`: revisar.
-- **Nginx da VPS, `no-cache` para `sw.js` e `manifest.webmanifest`**: sem a
-  regra, um navegador que não seja o Chrome pode servir um service worker
-  velho do cache HTTP. O Chrome já ignora esse cache por conta própria, então
-  nada quebra hoje — é rede de segurança. Ver
-  [ADR 0011](../adr/0011-pwa-casca-sem-fila-offline.md).
+- **Nginx da VPS — falta só RODAR o workflow.** O
+  [`nginx-cache-headers.yml`](../../.github/workflows/nginx-cache-headers.yml)
+  já está pronto e testado contra uma cópia da configuração real (Actions →
+  o workflow → Run workflow; tem `simular` e `desfazer`). Ele faz três coisas,
+  e a terceira é a que importa:
+  1. `no-cache` no `sw.js` — sem isso, um navegador que não seja o Chrome pode
+     servir um service worker velho do cache HTTP, e ele controla **todas** as
+     páginas. Ver [ADR 0011](../adr/0011-pwa-casca-sem-fila-offline.md).
+  2. `application/manifest+json` no manifest, que hoje sai como
+     `application/octet-stream` porque `.webmanifest` não está no mime.types.
+  3. **Devolve `X-Content-Type-Options`, `X-Frame-Options` e `Referrer-Policy`
+     ao `index.html`.** O bloco de cache criado em set/2026 tirou os três sem
+     querer: no Nginx, um `add_header` dentro de um `location` cancela todos
+     os herdados do `server`. Medido em produção em 16/10/2026 — `/sw.js` vem
+     com os três, `/` vem sem nenhum. É o documento HTML sem proteção de
+     clickjacking. **Enquanto o workflow não rodar, essa brecha continua.**
 
 ## Tarefas de produto em aberto (do backlog de sessão)
 - **Mobile / PWA — fase 2**: a fase 1 entregou o padrão (`src/mobile/`), a barra
