@@ -1,0 +1,22 @@
+{
+  "name": "gdm-eletropostos",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Eletropostos — coletor do status dos carregadores de VE (mapa público da Tupi) a cada 5 minutos. Só leitura; nenhum dado de motorista.",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "pretest": "node -e \"require('node:fs').rmSync('dist-test',{recursive:true,force:true})\"",
+    "test": "tsc -p tsconfig.test.json && node scripts/testes.mjs",
+    "start": "node dist/index.js"
+  },
+  "engines": { "node": ">=22" },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.5.0"
+  }
+}

@@ -1,7 +1,7 @@
 # Eletropostos — monitor de carregadores de VE
 
 > **Estado (16/10/2026):** 🟡 Entrega 1 pronta — banco, RPCs, seção no console
-> e coletor da Tupi na VPS. Entrega 2 (estação local com BlueStacks para os
+> e coletor da Tupi na VPS (agente próprio `gdm-eletropostos`). Entrega 2 (estação local com BlueStacks para os
 > apps ATM EVs e Cury) pendente. **Só GD Manager (master).**
 > Spec: [2026-10-15-eletropostos-design.md](../../superpowers/specs/2026-10-15-eletropostos-design.md) ·
 > Plano: [2026-10-15-eletropostos.md](../../superpowers/plans/2026-10-15-eletropostos.md)
@@ -31,7 +31,7 @@ e para o console em 15–16/10/2026.
 | Lógica pura da tela (testada) | `src/pages/painel/eletropostos/calculo.ts` (+ `calculo.test.ts`) |
 | Banco | migração `20261015200000_eletropostos.sql` — tabelas `eletroposto_*`, RPCs `eletropostos_*` ([database.md](database.md)) |
 | Validação das RPCs | `supabase/eletropostos-validacao.sql` (leituras sintéticas, 28 conferências, limpa no fim) |
-| Coletor da Tupi (VPS) | `worker/ludmilla/src/eletropostos/` — tique de 5 min no laço da Ludmilla |
+| Coletor da Tupi (VPS) | `worker/eletropostos/` — **agente próprio** (serviço systemd `gdm-eletropostos`, workflow `eletropostos-worker.yml`), separado da Ludmilla por decisão do usuário em 16/10/2026 |
 | Estação local (apps) | `C:\Users\luiza\Documents\monitor-eletropostos` (Python; entrega 2) |
 
 ## As cinco abas
@@ -55,7 +55,7 @@ hora, conectores com linha do tempo de 48 h e o cadastro editável.
 
 | Fonte | Como | Onde roda | Estado |
 |---|---|---|---|
-| `tupi` | API pública do mapa (`stationsShortVersion`), por conector | VPS (worker da Ludmilla) | ✅ |
+| `tupi` | API pública do mapa (`stationsShortVersion`), por conector | VPS (serviço `gdm-eletropostos`, a cada 5 min alinhado ao relógio) | ✅ |
 | apps ATM EVs e Cury | leitura da tela no BlueStacks via `adb`/`uiautomator` (uso normal do app) | PC do usuário (estação local) | ⛔ entrega 2 |
 | Spott, ChargeOn, EvoltBR, EZVolt | só app de celular / PlugShare | — | sem fonte |
 
@@ -87,5 +87,5 @@ políticas, não migrar tabela.
   enxuto (Python + `adb`), `adb connect` no BlueStacks, calibração de ATM EVs e
   Cury (`telas.json`), usuário staff da estação em `eletroposto_estacao`.
 - Retenção das leituras (hoje nenhuma; ~2 M linhas/ano cabem).
-- Primeira leitura real da Tupi aparece na aba Coleta depois do deploy do
-  worker (`ludmilla-worker.yml`).
+- Deploy do coletor: Actions → "Eletropostos — deploy do coletor na VPS"
+  (`eletropostos-worker.yml`, manual). Log na VPS: `journalctl -u gdm-eletropostos`.

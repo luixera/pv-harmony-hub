@@ -2,8 +2,8 @@
  * Monitor de eletropostos — a parte PURA do coletor da Tupi.
  *
  * Porta de `comum.py` (MAPA_STATUS, normalizar) e de `coletor_tupi.py` (caixa
- * geográfica e montagem das linhas). Sem rede e sem banco: é o que o teste
- * `eletropostos-status.test.ts` exercita.
+ * geográfica e montagem das linhas). Sem rede e sem banco: é o que
+ * `test/status.test.ts` exercita.
  *
  * Regra do usuário: NENHUM dado de motorista. O JSON da Tupi traz
  * `startedUserID`/`reservedUserID` por conector — aqui só saem os campos
@@ -89,4 +89,9 @@ export function linhasDaTupi(dados: unknown): { linhas: Linha[]; estacoes: numbe
     }
   }
   return { linhas, estacoes };
+}
+
+/** Milissegundos até a próxima virada de 5 min, mais uma folga para a leitura cair na janela nova. */
+export function atrasoAteProximaJanela(agora = Date.now(), passoMs = 5 * 60_000, folgaMs = 5_000): number {
+  return passoMs - (agora % passoMs) + folgaMs;
 }

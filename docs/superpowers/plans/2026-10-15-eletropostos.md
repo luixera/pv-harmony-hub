@@ -49,6 +49,12 @@ Formato do JSON de `resumo`/`detalhe`/`coleta`: o mesmo do `servidor.py` (chaves
 
 ### Task 2: Worker — tique da Tupi na VPS
 
+> **Executado diferente (16/10/2026):** por decisão do usuário o coletor virou
+> agente próprio em `worker/eletropostos/` (src/status.ts, src/tupi.ts,
+> src/index.ts, test/status.test.ts, deploy/instalar.sh,
+> deploy/gdm-eletropostos.service) + `.github/workflows/eletropostos-worker.yml`.
+> Nada ficou no worker da Ludmilla.
+
 **Files:**
 - Create: `worker/ludmilla/src/eletropostos/status.ts` — `MAPA_STATUS`, `normalizar(s)`, `dentroDaCaixa(lat,lng)`, `linhasDaTupi(json): Linha[]` (puro; descarta campos de usuário).
 - Create: `worker/ludmilla/src/eletropostos/tupi.ts` — `coletarTupi(): Promise<number>` (fetch + RPC `eletropostos_gravar` com service role; em erro grava `p_erro`).

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizar, dentroDaCaixa, linhasDaTupi } from '../src/eletropostos/status.js';
+import { atrasoAteProximaJanela, normalizar, dentroDaCaixa, linhasDaTupi } from '../src/status.js';
 
 /**
  * O coletor da Tupi é a parte pura do monitor de eletropostos: dado o JSON do
@@ -62,4 +62,11 @@ test('nenhum campo de usuário escapa para o banco', () => {
 test('entrada que não é lista vira zero linhas, sem explodir', () => {
   assert.deepEqual(linhasDaTupi(null as unknown as unknown[]), { linhas: [], estacoes: 0 });
   assert.deepEqual(linhasDaTupi({} as unknown as unknown[]), { linhas: [], estacoes: 0 });
+});
+
+test('o tique alinha à próxima virada de 5 min, com folga de 5 s', () => {
+  const t = Date.UTC(2026, 9, 16, 12, 3, 20);          // 12:03:20 → próxima virada 12:05:00
+  assert.equal(atrasoAteProximaJanela(t), 100_000 + 5_000);
+  const naVirada = Date.UTC(2026, 9, 16, 12, 5, 0);    // exatamente na virada: espera o passo inteiro
+  assert.equal(atrasoAteProximaJanela(naVirada), 300_000 + 5_000);
 });

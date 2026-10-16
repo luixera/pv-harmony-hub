@@ -140,6 +140,13 @@ Período em horário de Brasília (`America/Sao_Paulo`), como o Python (`TZ -3`)
 
 ## 5. Coletor da Tupi na VPS
 
+> **Revisão de 16/10/2026 (decisão do usuário):** o coletor **não** vai no
+> worker da Ludmilla — é um **agente próprio**, `worker/eletropostos`, com
+> serviço systemd `gdm-eletropostos`, usuário `gdmeletropostos`, ambiente em
+> `/etc/gdm-eletropostos/env` e workflow `eletropostos-worker.yml` (padrão do
+> assinador). O laço é só o tique de 5 min alinhado ao relógio. O texto abaixo
+> descreve a versão original, substituída.
+
 `worker/ludmilla/src/eletropostos/tupi.ts` + `tick.ts`. No laço da Ludmilla
 (`index.ts`), a cada volta: se passaram ≥ 5 min da última coleta, chama
 `coletarTupi()` em `try/catch` separado — erro na Tupi **nunca** derruba o

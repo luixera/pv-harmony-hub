@@ -1,0 +1,33 @@
+[Unit]
+Description=Eletropostos — coletor do status dos carregadores de VE (GD Manager)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=gdmeletropostos
+Group=gdmeletropostos
+WorkingDirectory=/opt/gdm-eletropostos
+EnvironmentFile=/etc/gdm-eletropostos/env
+Environment=HOME=/home/gdmeletropostos
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+ExecStart=/usr/bin/node dist/index.js
+Restart=always
+RestartSec=10
+TimeoutStopSec=15
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=gdm-eletropostos
+
+# endurecimento: o coletor só faz HTTP de saída (mapa da Tupi e Supabase).
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=read-only
+ReadWritePaths=/home/gdmeletropostos
+# O código é só leitura em execução: o instalador deixa /opt/gdm-eletropostos
+# com dono root + este ReadOnlyPaths (ProtectSystem=full não cobre /opt).
+ReadOnlyPaths=/opt/gdm-eletropostos
+
+[Install]
+WantedBy=multi-user.target

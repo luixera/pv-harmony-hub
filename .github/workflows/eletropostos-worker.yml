@@ -1,0 +1,85 @@
+name: Eletropostos — deploy do coletor na VPS
+
+# Execução MANUAL (aba Actions → este workflow → "Run workflow").
+#
+# O que faz: roda os testes e compila worker/eletropostos no CI, sincroniza para
+# /opt/gdm-eletropostos na VPS e roda deploy/instalar.sh por SSH — que instala
+# Node 22 (se faltar), grava o ambiente em /etc/gdm-eletropostos/env e
+# (re)inicia o serviço systemd `gdm-eletropostos`. Idempotente.
+#
+# Agente próprio, separado da Ludmilla (decisão do usuário em 16/10/2026).
+#
+# Segredos necessários (Settings → Secrets → Actions) — os mesmos da Ludmilla:
+#   VPS_HOST, VPS_USER, VPS_SSH_PORT, VPS_SSH_KEY
+#   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+
+on:
+  workflow_dispatch:
+    inputs:
+      simular:
+        description: 'Só diagnosticar na VPS, sem instalar nada'
+        type: boolean
+        default: false
+
+concurrency:
+  group: eletropostos-worker
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: worker/eletropostos/package-lock.json
+
+      - name: Testes do coletor
+        working-directory: worker/eletropostos
+        run: |
+          npm ci
+          npm test
+
+      - name: Compilar
+        working-directory: worker/eletropostos
+        run: npm run build
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p ${{ secrets.VPS_SSH_PORT }} -H "${{ secrets.VPS_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Sincronizar código
+        if: ${{ !inputs.simular }}
+        run: |
+          SSH="ssh -i ~/.ssh/deploy_key -p ${{ secrets.VPS_SSH_PORT }} -o StrictHostKeyChecking=no"
+          $SSH ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} 'mkdir -p /opt/gdm-eletropostos'
+          # só o necessário para rodar: dist/ (compilado acima), manifesto,
+          # lockfile e deploy/. O node_modules da VPS é preservado.
+          rsync -avz --delete -e "$SSH" \
+            --exclude='node_modules' --exclude='dist-test' --exclude='test' --exclude='src' --exclude='_*' \
+            worker/eletropostos/ ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/opt/gdm-eletropostos/
+
+      - name: Instalar / reiniciar
+        env:
+          SIMULAR: ${{ inputs.simular }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          # Variáveis pelo STDIN (um `export` por variável, antes do instalar.sh),
+          # nunca na linha de comando do ssh. %q escapa qualquer valor.
+          {
+            printf 'export SIMULAR=%q\n' "$SIMULAR"
+            printf 'export SUPABASE_URL=%q\n' "$SUPABASE_URL"
+            printf 'export SUPABASE_SERVICE_ROLE_KEY=%q\n' "$SUPABASE_SERVICE_ROLE_KEY"
+            cat worker/eletropostos/deploy/instalar.sh
+          } | ssh -i ~/.ssh/deploy_key -p ${{ secrets.VPS_SSH_PORT }} -o StrictHostKeyChecking=no \
+            ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} bash -s
