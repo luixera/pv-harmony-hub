@@ -16,6 +16,7 @@ tabelas têm `tenant_id` (padrão `eletropostos_tenant()` = tenant
 | `eletroposto_varredura` | `id` | uma linha por coleta: fonte, `ok`, `n` linhas, `erro`, `falhas jsonb` (falhas por local `[{nome, erro, conector?}]`, desde 16/10/2026) |
 | `eletroposto_premissas` | `tenant_id` | `valores jsonb` (só o que difere do padrão; `eletropostos_premissas()` devolve padrão ∪ valores) |
 | `eletroposto_coleta_config` | `tenant_id` | periodicidade por faixa de potência (`faixas jsonb`) e `cidades text[]` monitoradas ([business-rules](business-rules.md)) |
+| `eletroposto_espelho` | `id` | espelho da estação: um passo por linha (`estacao_id`, `ciclo`, `fonte`, `passo`, `situacao` info/ok/falha/fim, `mensagem`, `foto` da falha, `foto_atual_em`); retenção de 3 dias por pg_cron. Fotos no bucket privado `eletropostos-espelho` (`<estacao>/atual.png` sobrescrita a cada passo; `<estacao>/<AAAAMMDD>/<ciclo>/<n>.png` nas falhas, apagadas pela estação após 3 dias) |
 | `eletroposto_estacao` | `id` | estação local: `nome`, `operador` (auth.users do staff da estação), `vista_em`, `ativa` |
 
 ## Funções auxiliares
@@ -50,6 +51,8 @@ tabelas têm `tenant_id` (padrão `eletropostos_tenant()` = tenant
 |---|---|
 | `eletropostos_resumo(p_de date, p_ate date)` | `{periodo, kpis, locais[], nao_vinculados[], premissas}` |
 | `eletropostos_detalhe(p_local uuid, p_de, p_ate)` | `{periodo, local, conectores[], diario[], perfil[7][24], linha_do_tempo{nome: [[ts, status]]}, vinculos[]}` — `linha_do_tempo` só das últimas 48 h por conector |
+| `eletropostos_espelho_registrar(p_estacao, p_ciclo, p_passo, p_situacao, p_fonte, p_mensagem, p_foto, p_foto_atual)` → bigint | só service role (estação da VPS) |
+| `eletropostos_espelho()` | por estação: último passo, passos do ciclo corrente, caminho e hora da foto atual (master) |
 | `eletropostos_coleta_config()` | `{faixas, cidades, fora[], atualizado_em}` — master, operador da estação ou service role |
 | `eletropostos_coleta_config_salvar(p_faixas jsonb, p_cidades text[])` → jsonb | master; valida (uma faixa aberta, limites crescentes, cidades do cadastro) |
 | `eletropostos_assertividade(p_de, p_ate)` | `{por_fonte[], por_local[], ciclos_24h[]}` — ciclos ok/parciais/falhas, leituras lidas × esperadas (mediana), taxa por local, falhas e último erro ([business-rules](business-rules.md)) |

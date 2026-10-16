@@ -6,6 +6,7 @@ import { h3, input, manchete, mudo, sub, td, th, vazio } from './estilo';
 import { COR_STATUS, type Resumo } from './tipos';
 import { Assertividade } from './Assertividade';
 import { ConfiguracaoColeta } from './ConfiguracaoColeta';
+import { EspelhoEstacao } from './EspelhoEstacao';
 
 export function Coleta({ resumo, de, ate }: { resumo: Resumo; de: string; ate: string }) {
   const { data: c, isLoading } = useColeta();
@@ -48,6 +49,8 @@ export function Coleta({ resumo, de, ate }: { resumo: Resumo; de: string; ate: s
         c.fontes.map(f => [<b key="f">{f.fonte}</b>, relativo(f.ultima_ok, agora), String(f.total), pct(f.total ? f.oks / f.total : null),
           atrasada(f.ultima_ok, agora) ? situacao(false, 'Sem leitura recente') : situacao(true, 'Em dia')]),
         i => c.fontes[i].fonte, 'Nenhuma varredura registrada.')}
+
+      <EspelhoEstacao />
 
       <ConfiguracaoColeta locais={resumo.locais} />
 
