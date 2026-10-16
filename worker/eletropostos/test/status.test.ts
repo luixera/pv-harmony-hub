@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { atrasoAteProximaJanela, deveTentar, normalizar, dentroDaCaixa, linhasDaTupi, registrarResultado } from '../src/status.js';
+import { atrasoAteProximaJanela, deveTentar, normalizar, dentroDaCaixa, linhasDaTupi, registrarResultado, semOsDeFora } from '../src/status.js';
 
 /**
  * O coletor da Tupi é a parte pura do monitor de eletropostos: dado o JSON do
@@ -84,4 +84,12 @@ test('recuo: 3 recusas seguidas → uma tentativa por hora; sucesso zera; outro 
   assert.equal(r.recusasSeguidas, 0);
   r = registrarResultado(r, true, t + 4_500_000);
   assert.equal(r.recusasSeguidas, 0);
+});
+
+test('cidades monitoradas: tira só as estações desta fonte listadas em "fora"', () => {
+  const linhas = linhasDaTupi(estacoes).linhas;   // 2 linhas da estação 'abc'
+  assert.equal(semOsDeFora(linhas, [{ fonte: 'tupi', local_fonte: 'abc' }], 'tupi').length, 0);
+  assert.equal(semOsDeFora(linhas, [{ fonte: 'atm', local_fonte: 'abc' }], 'tupi').length, 2);   // outra fonte não conta
+  assert.equal(semOsDeFora(linhas, [], 'tupi').length, 2);
+  assert.equal(semOsDeFora(linhas, null, 'tupi').length, 2);
 });

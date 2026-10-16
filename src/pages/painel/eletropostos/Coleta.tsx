@@ -5,6 +5,7 @@ import { atrasada, pct, relativo } from './calculo';
 import { h3, input, manchete, mudo, sub, td, th, vazio } from './estilo';
 import { COR_STATUS, type Resumo } from './tipos';
 import { Assertividade } from './Assertividade';
+import { ConfiguracaoColeta } from './ConfiguracaoColeta';
 
 export function Coleta({ resumo, de, ate }: { resumo: Resumo; de: string; ate: string }) {
   const { data: c, isLoading } = useColeta();
@@ -47,6 +48,8 @@ export function Coleta({ resumo, de, ate }: { resumo: Resumo; de: string; ate: s
         c.fontes.map(f => [<b key="f">{f.fonte}</b>, relativo(f.ultima_ok, agora), String(f.total), pct(f.total ? f.oks / f.total : null),
           atrasada(f.ultima_ok, agora) ? situacao(false, 'Sem leitura recente') : situacao(true, 'Em dia')]),
         i => c.fontes[i].fonte, 'Nenhuma varredura registrada.')}
+
+      <ConfiguracaoColeta locais={resumo.locais} />
 
       <h3 style={{ ...h3, marginTop: 24 }}>Estações locais</h3>
       <p style={sub}>O PC com o BlueStacks bate a cada coleta. Mais de 15 minutos sem batida = estação parada.</p>

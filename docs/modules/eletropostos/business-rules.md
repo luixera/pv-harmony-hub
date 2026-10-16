@@ -103,6 +103,23 @@ como reserva, só se o navegador falhar. Se a página não carregar, a coleta
 falha e fica registrada. Depois de 3 recusas seguidas (403/429) o coletor
 tenta só uma vez por hora.
 
+## Periodicidade e cidades (16/10/2026)
+
+Pedido do usuário: controle de periodicidade na página, por faixa de
+potência, e as cidades monitoradas. Tabela `eletroposto_coleta_config`
+(tenant biblioteca; só master edita, via `eletropostos_coleta_config_salvar`):
+
+- **faixas** `[{ate_kw, intervalo_min}]`, crescentes, com exatamente uma
+  "acima de tudo" (`ate_kw` nulo). A estação escolhe a faixa pela **maior**
+  potência do carregador (misto 7+40 cai na faixa do 40) e arredonda o
+  intervalo a múltiplos do ciclo de 8 min; a Tupi (VPS, API) segue em 5 min.
+  Padrão inicial: até 22 kW → 16 min; acima → 8 min.
+- **cidades**: só os locais de cidade marcada são lidos. A RPC
+  `eletropostos_coleta_config()` (master, operador da estação ou service role)
+  devolve também `fora`: os vínculos cujo cadastro é de cidade não monitorada —
+  a estação nem abre esses locais e o coletor da Tupi não os grava. Local sem
+  cadastro continua lido.
+
 ## Assertividade da leitura (16/10/2026)
 
 Pedido do usuário: marcar as falhas de leitura para medir a assertividade.

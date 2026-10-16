@@ -15,6 +15,7 @@ tabelas têm `tenant_id` (padrão `eletropostos_tenant()` = tenant
 | `eletroposto_leitura` | `id bigint`; `UNIQUE (slot, fonte, local_fonte, conector)` | leituras cruas: `ts_utc`, `slot` (janela de 5 min UTC), `conector` (`'*'` = só o local), `potencia_kw`, `status_bruto`, `status`, `upstream_ts`, `passo_min` (passo da leitura em min, opcional; sem ele vale o da fonte). Índices em `(slot)` e `(fonte, local_fonte, slot)`. |
 | `eletroposto_varredura` | `id` | uma linha por coleta: fonte, `ok`, `n` linhas, `erro`, `falhas jsonb` (falhas por local `[{nome, erro, conector?}]`, desde 16/10/2026) |
 | `eletroposto_premissas` | `tenant_id` | `valores jsonb` (só o que difere do padrão; `eletropostos_premissas()` devolve padrão ∪ valores) |
+| `eletroposto_coleta_config` | `tenant_id` | periodicidade por faixa de potência (`faixas jsonb`) e `cidades text[]` monitoradas ([business-rules](business-rules.md)) |
 | `eletroposto_estacao` | `id` | estação local: `nome`, `operador` (auth.users do staff da estação), `vista_em`, `ativa` |
 
 ## Funções auxiliares
@@ -49,6 +50,8 @@ tabelas têm `tenant_id` (padrão `eletropostos_tenant()` = tenant
 |---|---|
 | `eletropostos_resumo(p_de date, p_ate date)` | `{periodo, kpis, locais[], nao_vinculados[], premissas}` |
 | `eletropostos_detalhe(p_local uuid, p_de, p_ate)` | `{periodo, local, conectores[], diario[], perfil[7][24], linha_do_tempo{nome: [[ts, status]]}, vinculos[]}` — `linha_do_tempo` só das últimas 48 h por conector |
+| `eletropostos_coleta_config()` | `{faixas, cidades, fora[], atualizado_em}` — master, operador da estação ou service role |
+| `eletropostos_coleta_config_salvar(p_faixas jsonb, p_cidades text[])` → jsonb | master; valida (uma faixa aberta, limites crescentes, cidades do cadastro) |
 | `eletropostos_assertividade(p_de, p_ate)` | `{por_fonte[], por_local[], ciclos_24h[]}` — ciclos ok/parciais/falhas, leituras lidas × esperadas (mediana), taxa por local, falhas e último erro ([business-rules](business-rules.md)) |
 | `eletropostos_coleta()` | `{fontes[], erros[≤15], por_dia[≤60], inicio, total_leituras, estacoes[], agora}` |
 | `eletropostos_local_salvar(p_local jsonb)` → uuid | cria (sem `id`) ou atualiza **as chaves presentes** (chave com `null` limpa o campo) |

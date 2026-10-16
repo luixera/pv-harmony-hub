@@ -116,3 +116,15 @@ export function registrarResultado(r: Recuo, ok: boolean, quando: number, erro?:
   if (ok) return { recusasSeguidas: 0, ultimaTentativa: quando };
   return { recusasSeguidas: ehRecusa(erro) ? r.recusasSeguidas + 1 : 0, ultimaTentativa: quando };
 }
+
+/**
+ * Cidades monitoradas: a configuração da coleta (RPC eletropostos_coleta_config)
+ * devolve em `fora` os pares (fonte, local_fonte) cujo cadastro é de cidade não
+ * monitorada. Essas linhas não vão para o banco.
+ */
+export interface Fora { fonte: string; local_fonte: string }
+export function semOsDeFora(linhas: Linha[], fora: Fora[] | null | undefined, fonte: string): Linha[] {
+  if (!fora?.length) return linhas;
+  const chaves = new Set(fora.filter(f => f.fonte === fonte).map(f => f.local_fonte));
+  return chaves.size ? linhas.filter(l => !chaves.has(l.local_fonte)) : linhas;
+}

@@ -1,5 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { linhasDaTupi } from './status.js';
+import { linhasDaTupi, semOsDeFora, type Fora } from './status.js';
 import { lerMapaPeloNavegador } from './navegador.js';
 
 /**
@@ -43,6 +43,13 @@ export function supabase(): SupabaseClient {
   return cliente;
 }
 
+/** Cidades monitoradas (configuração da coleta na página): quem está em 'fora' não é gravado. Sem a RPC, grava tudo. */
+async function deFora(log: Log): Promise<Fora[]> {
+  const { data, error } = await supabase().rpc('eletropostos_coleta_config');
+  if (error) { log('configuração da coleta indisponível, gravando tudo', { erro: error.message }); return []; }
+  return ((data as { fora?: Fora[] } | null)?.fora) ?? [];
+}
+
 async function gravar(linhas: unknown[], erro: string | null): Promise<number> {
   const { data, error } = await supabase().rpc('eletropostos_gravar', { p_fonte: FONTE, p_linhas: linhas, p_erro: erro });
   if (error) throw new Error(`eletropostos_gravar: ${error.message}`);
@@ -74,8 +81,9 @@ export async function coletarTupi(log: Log = () => undefined): Promise<number> {
     const t0 = Date.now();
     const { dados, origem } = await lerMapa(log);
     const lidas = linhasDaTupi(dados);
-    linhas = lidas.linhas;
-    log('mapa lido', { origem, estacoes_na_caixa: lidas.estacoes, conectores: linhas.length, ms: Date.now() - t0 });
+    const fora = await deFora(log);
+    linhas = semOsDeFora(lidas.linhas, fora, FONTE);
+    log('mapa lido', { origem, estacoes_na_caixa: lidas.estacoes, conectores: lidas.linhas.length, fora: lidas.linhas.length - linhas.length, ms: Date.now() - t0 });
     return await gravar(linhas, null);
   } catch (e) {
     const motivo = ((e as Error).message ?? String(e)).slice(0, 300);
