@@ -48,7 +48,9 @@ e para o console em 15–16/10/2026.
   DC, pequeno = AC; dourado mais forte = mais ocupado; cinza = sem monitoramento.
 - **Coleta** — saúde das fontes (última leitura ok, taxa de sucesso, "sem
   leitura recente" acima de 15 min), estações locais (batimento), **locais
-  lidos sem vínculo** (select para vincular ao cadastro) e últimos erros.
+  lidos sem vínculo** (select para vincular ao cadastro), últimos erros e o
+  quadro de **assertividade da leitura** (ciclos ok/parciais/falhos e taxa de
+  leitura por fonte e por local, no período escolhido; faixa das últimas 24 h).
 - **Premissas** — os 8 fatores da estimativa (DC/AC, preço e custo padrão).
 
 O **painel lateral** de um local traz KPIs, horas por dia, mapa de calor dia ×

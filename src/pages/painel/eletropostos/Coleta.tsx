@@ -4,8 +4,9 @@ import { useColeta, useVincular } from './consultas';
 import { atrasada, pct, relativo } from './calculo';
 import { h3, input, manchete, mudo, sub, td, th, vazio } from './estilo';
 import { COR_STATUS, type Resumo } from './tipos';
+import { Assertividade } from './Assertividade';
 
-export function Coleta({ resumo }: { resumo: Resumo }) {
+export function Coleta({ resumo, de, ate }: { resumo: Resumo; de: string; ate: string }) {
   const { data: c, isLoading } = useColeta();
   const vincular = useVincular();
   if (isLoading || !c) return <Loading />;
@@ -68,6 +69,7 @@ export function Coleta({ resumo }: { resumo: Resumo }) {
       {c.erros.length ? tabela(['Quando', 'Fonte', 'Erro'],
         c.erros.map(e => [new Date(e.ts_utc).toLocaleString('pt-BR'), e.fonte, <span key="e" style={mudo}>{e.erro}</span>]),
         i => `${c.erros[i].ts_utc}-${i}`, '') : <div style={vazio}>Nenhum erro registrado.</div>}
+      <Assertividade de={de} ate={ate} />
     </div>
   );
 }

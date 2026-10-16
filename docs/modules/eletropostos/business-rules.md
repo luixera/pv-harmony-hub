@@ -95,6 +95,27 @@ como reserva, só se o navegador falhar. Se a página não carregar, a coleta
 falha e fica registrada. Depois de 3 recusas seguidas (403/429) o coletor
 tenta só uma vez por hora.
 
+## Assertividade da leitura (16/10/2026)
+
+Pedido do usuário: marcar as falhas de leitura para medir a assertividade.
+Vocabulário de um **ciclo** (uma varredura de uma fonte): **ok** (gravou tudo),
+**parcial** (`ok=false` com `n>0`: gravou, mas algum local falhou), **falha**
+(`ok=false`, `n=0`). As falhas por local de um ciclo vão em
+`eletroposto_varredura.falhas` (`[{nome, erro, conector?}]`, enviado pelos
+coletores em `p_falhas`); enquanto a fonte não manda, são lidas do texto de
+`erro` ("Nome: erro; Nome: erro"), que é truncado a 300 caracteres.
+
+RPC `eletropostos_assertividade(p_de, p_ate)`:
+- **por fonte**: ciclos, ok/parciais/falhas, taxa de ciclos ok, leituras lidas,
+  **esperado por ciclo** (mediana dos ciclos com leitura) e **taxa de leitura**
+  = lidas ÷ (ciclos × esperado), limitada a 100 %;
+- **por local** (como a fonte chama, com o vínculo ao cadastro): conectores
+  lidos, leituras, tentativas (ciclos da fonte com alguma leitura), **taxa** =
+  leituras ÷ (tentativas × conectores), ilegíveis (status `desconhecido`),
+  falhas atribuídas (nome casado em minúsculas) e último erro;
+- **ciclos das últimas 24 h** para a faixa visual.
+Locais em rodízio (ATM EVs fora do inventário) ficam com taxa baixa por desenho.
+
 ## Saúde da coleta
 
 Fonte sem leitura ok há mais de **15 minutos** (3 janelas) = "sem leitura

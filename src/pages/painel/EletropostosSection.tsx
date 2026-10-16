@@ -48,7 +48,7 @@ export function EletropostosSection() {
     a.href = URL.createObjectURL(blob); a.download = `eletropostos_${de}_${ate}.csv`; a.click();
     URL.revokeObjectURL(a.href);
   };
-  const comPeriodo = aba !== 'coleta' && aba !== 'premissas';
+  const comPeriodo = aba !== 'premissas';   // Coleta usa o período na assertividade
 
   return (
     <div style={{ maxWidth: 1180, margin: '0 auto' }}>
@@ -86,7 +86,7 @@ export function EletropostosSection() {
           {aba === 'geral' && <VisaoGeral resumo={resumo} de={de} ate={ate} abrir={setSelecionado} irParaColeta={() => irPara('coleta')} />}
           {aba === 'carregadores' && <Carregadores resumo={resumo} filtro={filtro} setFiltro={setFiltro} ordem={ordem} setOrdem={setOrdem} abrir={setSelecionado} />}
           {aba === 'mapa' && <Mapa resumo={resumo} abrir={setSelecionado} />}
-          {aba === 'coleta' && <Coleta resumo={resumo} />}
+          {aba === 'coleta' && <Coleta resumo={resumo} de={de} ate={ate} />}
           {aba === 'premissas' && <Premissas key={JSON.stringify(resumo.premissas)} premissas={resumo.premissas} />}
           {selecionado && <PainelLateral id={selecionado} de={de} ate={ate} premissas={resumo.premissas} fechar={fechar} irParaColeta={() => irPara('coleta')} />}
         </>
