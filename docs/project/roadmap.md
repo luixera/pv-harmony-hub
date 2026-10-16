@@ -28,15 +28,12 @@
      clickjacking. **Enquanto o workflow não rodar, essa brecha continua.**
 
 ## Tarefas de produto em aberto (do backlog de sessão)
-- **Eletropostos — entrega 2 (estação local)**: a entrega 1 (16/10/2026) pôs
-  banco, RPCs, seção no `/painel` e o coletor da Tupi na VPS
-  ([modules/eletropostos](../modules/eletropostos/overview.md)). Em 16/10/2026
-  a estação no PC do usuário foi reescrita para o Supabase, instalada, agendada
-  (5 min) e **calibrada**: `telas.json` lê os 8 carregadores da Cury e os 47
-  plugues da ATM EVs (13 carregadores fixos + 16 em rodízio) em ~274 s por ciclo.
-  **Falta**: o login da estação pela pessoa (`entrar_estacao.bat`), a primeira
-  gravação conferida na aba Coleta e o vínculo/cadastro dos carregadores da ATM
-  que não estão no inventário. Sem retenção de leituras ainda.
+- **Eletropostos — pós-entrega 2**: a estação local (PC do gestor + BlueStacks)
+  está instalada, calibrada e gravando desde 16/10/2026 (a primeira coleta agendada, às 08:56 de 16/10/2026, gravou 7 leituras da Cury e 25 da ATM;
+  [modules/eletropostos](../modules/eletropostos/overview.md)). Em aberto: vincular
+  ou cadastrar os carregadores da ATM que não estão no inventário; os 16 opcionais
+  da ATM são lidos em rodízio (tempo de uso subestimado) — cortar a lista ou abrir
+  uma segunda estação se interessarem; retenção das leituras (nenhuma ainda).
 - **Mobile / PWA — fase 2**: a fase 1 entregou o padrão (`src/mobile/`), a barra
   inferior, as telas do gestor e da empresa e o app instalável
   ([modules/mobile](../modules/mobile/overview.md)). Ficou de fora, de propósito:

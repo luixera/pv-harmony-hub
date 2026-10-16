@@ -96,6 +96,10 @@ nunca derruba o laço do worker.
   as fontes da estação.
 - Leitura de tela é texto visível (uiautomator): um status por regra; texto que
   não casa vira `desconhecido`, que sai do denominador.
+- Sem GPS no BlueStacks (lista da ATM com "0.00 km") a estação reinicia o BlueStacks
+  uma vez e repete; persistindo, busca os carregadores do inventário pelo nome.
+- Duas coletas nunca rodam juntas (`dados\coleta.lock`); a agendada pula quando a
+  manual está rodando, e vice-versa.
 - O ciclo tem **orçamento de 270 s** (`telas.json`): roteiros fixos (Cury e os
   carregadores da ATM que estão no inventário) sempre rodam; roteiros `opcional`
   rodam em rodízio no tempo que sobra, continuando de onde o ciclo anterior parou.

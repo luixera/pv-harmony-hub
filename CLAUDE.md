@@ -71,7 +71,7 @@ Detalhes: [docs/project/tech-stack.md](docs/project/tech-stack.md).
 | Diagramas (unifilar) | 🟡 Alpha — só master/GD Manager | [modules/diagrams](docs/modules/diagrams/overview.md) |
 | Motor de Engenharia (regras) | 🟡 Fase 1 — só GD Manager | [modules/engineering](docs/modules/engineering/overview.md) |
 | Capacidade de rede em BT (BDGD) | 🟡 CPFL Paulista e Piratininga carregadas (295 mil trafos MT/BT, base 31/12/2025); mapa v3 em WebGL (deck.gl) com amostra por contagem, busca por código/coordenada/posto, alimentadores de MT como contexto, ficha da fonte, conta aberta e confronto com orçamentos/pareceres reais (taxa de acerto); GD lida de `DEM_CONT`; demais distribuidoras de SP pendentes; só GD Manager | [modules/engineering](docs/modules/engineering/overview.md) |
-| Eletropostos (carregadores de VE) | 🟡 Entrega 1 — banco, RPCs, seção no /painel e coletor da Tupi na VPS; entrega 2 (estação local no BlueStacks) instalada e calibrada (Cury 8 carregadores + ATM 47 plugues), falta o login da estação e a 1ª gravação; só GD Manager | [modules/eletropostos](docs/modules/eletropostos/overview.md) |
+| Eletropostos (carregadores de VE) | 🟡 Entrega 1 — banco, RPCs, seção no /painel e coletor da Tupi na VPS; entrega 2 pronta 16/10/2026: estação local (PC do gestor + BlueStacks) lê Cury (8 carregadores) e ATM EVs (47 plugues) a cada 5 min; só GD Manager | [modules/eletropostos](docs/modules/eletropostos/overview.md) |
 | Mobile / PWA | 🟡 Fase 1 — padrão + telas do gestor e da empresa | [modules/mobile](docs/modules/mobile/overview.md) |
 | Marketplace | ⛔ Planejado | [modules/marketplace](docs/modules/marketplace/overview.md) |
 | BESS (armazenamento) | ⛔ Planejado | [modules/bess](docs/modules/bess/overview.md) |

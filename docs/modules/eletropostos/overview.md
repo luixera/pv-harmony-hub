@@ -2,11 +2,10 @@
 
 > **Estado (16/10/2026):** 🟡 Entrega 1 pronta — banco, RPCs, seção no console
 > e coletor da Tupi na VPS (agente próprio `gdm-eletropostos`). Entrega 2 (estação
-> local com BlueStacks para os apps ATM EVs e Cury) **calibrada em 16/10/2026**:
-> scripts Python no Supabase, instalador rodado, coleta agendada a cada 5 min, ADB
-> ligado, `telas.json` lendo 8 carregadores da Cury e 47 plugues da ATM em ensaio;
-> falta só a pessoa entrar uma vez (`entrar_estacao.bat`) para a primeira gravação.
-> **Só GD Manager (master).**
+> local com BlueStacks para os apps ATM EVs e Cury) **pronta em 16/10/2026**: a
+> estação entra com a conta do gestor, lê 8 carregadores da Cury e 47 plugues da
+> ATM a cada 5 min (Agendador do Windows) e grava por `eletropostos_gravar_local`;
+> a primeira coleta agendada, às 08:56 de 16/10/2026, gravou 7 leituras da Cury e 25 da ATM. **Só GD Manager (master).**
 > Spec: [2026-10-15-eletropostos-design.md](../../superpowers/specs/2026-10-15-eletropostos-design.md) ·
 > Plano: [2026-10-15-eletropostos.md](../../superpowers/plans/2026-10-15-eletropostos.md)
 
@@ -60,7 +59,7 @@ hora, conectores com linha do tempo de 48 h e o cadastro editável.
 | Fonte | Como | Onde roda | Estado |
 |---|---|---|---|
 | `tupi` | API pública do mapa (`stationsShortVersion`), por conector | VPS (serviço `gdm-eletropostos`, a cada 5 min alinhado ao relógio) | ✅ |
-| apps ATM EVs e Cury | leitura da tela no BlueStacks via `adb`/`uiautomator` (uso normal do app) | PC do usuário (estação local) | 🟡 calibrada; aguarda o login da estação |
+| apps ATM EVs e Cury | leitura da tela no BlueStacks via `adb`/`uiautomator` (uso normal do app) | PC do usuário (estação local) | ✅ (precisa do PC e do BlueStacks abertos) |
 | Spott, ChargeOn, EvoltBR, EZVolt | só app de celular / PlugShare | — | sem fonte |
 
 Regras firmes do usuário: **nunca** digitar senha nem dado de login (a pessoa
@@ -97,9 +96,9 @@ SQLite: tudo vai para o Supabase.
 | `estacao.py` | sessão no GD Manager: `login` pede e-mail e senha **no terminal** (`getpass`), guarda só os tokens em `dados\sessao.json` e renova pelo refresh token quando o access token está a menos de 2 min de vencer; `testar` renova e chama `eletropostos_estacao_pulsa`; `rpc()` é a única porta para o PostgREST |
 | `comum.py` | `linha()` monta a leitura no formato da RPC; `gravar(fonte, linhas, erro)` chama `eletropostos_gravar_local`; `normalizar()` com o mesmo `MAPA_STATUS` do worker |
 | `coletor_tela.py` | `adb connect ADB_ALVO` + `adb -s`; roteiros de `config\telas.json`; modos `ver` (lista os textos da tela), `descobrir NOME` (salva xml/png/txt em `capturas\`) e `coletar` |
-| `coletar.py` | o que o Agendador roda: batimento → telas; registro em `dados\coleta.log` |
+| `coletar.py` | o que o Agendador roda: batimento → telas; registro em `dados\coleta.log`; tranca `dados\coleta.lock` (duas coletas nunca rodam juntas) |
 | `coletor_tupi.py` | reserva **manual** (a VPS cobre a Tupi) |
-| `instalar.ps1` | Python (via `py`, porque o `python` do PATH pode ser o atalho da Store), `platform-tools` oficial em `%LOCALAPPDATA%\Android\Sdk`, pastas, tarefa `Eletropostos\Coleta a cada 5 min` (`pythonw coletar.py`); remove as tarefas antigas Painel/Celular virtual |
+| `instalar.ps1` | Python (via `py`, porque o `python` do PATH pode ser o atalho da Store), `platform-tools` oficial em `ferramentas\platform-tools` (dentro da pasta do monitor), pastas, tarefa `Eletropostos\Coleta a cada 5 min` (`pythonw coletar.py`); remove as tarefas antigas Painel/Celular virtual |
 | `config\supabase.env` | `SUPABASE_URL`, `SUPABASE_ANON_KEY` (públicos, os mesmos do site) e `ADB_ALVO` |
 | `.bat` | `entrar_estacao` (login), `coletar_agora`, `capturar_tela`, `iniciar_celular` (abre o BlueStacks) |
 | `_aposentado\` | `servidor.py`, `web\`, `relatorio.py`, `abrir_painel.bat` — o painel local morreu; a tela é o console |
@@ -127,6 +126,16 @@ Enumerações que geraram os roteiros: `capturas\atm_carregadores.json`,
 `telas.json` pode ser editado à mão). Calibrar de novo: `coletor_tela.py ver` /
 `ensaiar [fonte]` (não grava; `ELETROPOSTOS_DEPURAR=1` cronometra cada passo).
 
+**GPS do BlueStacks.** Horas depois de aberto, o BlueStacks pode parar de entregar
+posição; a lista da ATM vem com "0.00 km" e fora de ordem e os roteiros não acham
+os carregadores. O passo `escolher` do primeiro roteiro da ATM detecta isso e a
+estação **reinicia o BlueStacks sozinha** (uma vez por ciclo: `taskkill HD-Player`,
+`HD-Player.exe --instance Rvc64`, espera o adb, +30 s) e repete o alvo; se ainda
+assim não houver distância, cai em `roteiros_sem_gps` (busca cada carregador do
+inventário pelo nome, ~18 s cada). Os logins dos apps ficam dentro do Android e
+sobrevivem ao reinício. Uma falha num roteiro (ficha que não abriu) não derruba o
+alvo: segue, grava o que leu e a varredura fica `ok = false` com os motivos.
+
 Armadilhas: o `uiautomator dump` leva ~2,5 s (o coletor reaproveita o último dump até a
 próxima ação e guarda a lista em cache); `input tap` não funciona enquanto o app está
 "morto" depois de reiniciar o BlueStacks (relançar o app resolve); **não** zerar as
@@ -134,6 +143,9 @@ animações do Android (`settings put global *_animation_scale 0` derrubou o
 `system_server` do BlueStacks). O interruptor de ADB da tela de configurações não
 obedeceu aos cliques sintéticos: ficou ligado trocando `bst.enable_adb_access` para
 `"1"` em `C:\ProgramData\BlueStacks_nxt\bluestacks.conf` com o BlueStacks fechado.
+O `adb` precisa ficar **dentro da pasta do monitor** (`ferramentas\platform-tools`):
+arquivos criados pelas ferramentas do Claude em `%LOCALAPPDATA%` ficaram só no
+sandbox e a tarefa agendada não os via.
 
 Por que a sessão guarda também o access token (e não só o refresh token da
 spec): o Supabase **gira** o refresh token a cada uso e revoga a família
@@ -150,10 +162,9 @@ Android 11; por isso o `platform-tools` oficial.
 
 ## Pendências
 
-- **Entrega 2 — para fechar**: a pessoa roda `entrar_estacao.bat` (e-mail e senha
-  da conta do gestor, no terminal) e confere na aba Coleta a estação "Em dia" e as
-  fontes `cury` e `atm`; vincular na aba Coleta os carregadores lidos que não
-  estão no cadastro (hotéis, condomínios, lojas da ATM) ou cadastrá-los.
+- Vincular na aba Coleta (ou cadastrar) os carregadores da ATM lidos que não estão
+  no inventário (hotéis, condomínios, lojas); os da Cury e os 13 da ATM do
+  inventário já se vincularam sozinhos pelas coordenadas.
 - Os 16 carregadores opcionais da ATM são lidos a cada ~5 ciclos (rodízio): o
   tempo de uso deles fica subestimado; se interessarem ao estudo, cortar a lista
   ou dividir a ATM em duas estações.
