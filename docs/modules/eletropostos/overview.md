@@ -147,6 +147,13 @@ por cima dela (a tranca antiga "vencia" aos 10 min): as duas disputaram a tela e
 fizeram o Android parecer travado. Apagar ou trocar a tarefa agendada também mata
 a coleta em andamento (aconteceu na troca de 5 para 8 min).
 
+**Bateria.** O PC é um notebook. O `schtasks /Create` cria a tarefa com o padrão do
+Windows: **não inicia na bateria e mata a execução quando a tomada sai**. Em
+16/10/2026 isso derrubou a coleta das 15:10 e pulou as três seguintes, sem nada no
+log. A tarefa agora é liberada para a bateria, com uma execução por vez e teto de
+30 min (`New-ScheduledTaskSettingsSet` no `instalar.ps1`). Para pausar a coleta fora
+da tomada, desativar a tarefa no Agendador.
+
 **GPS do BlueStacks.** Horas depois de aberto, o BlueStacks pode parar de entregar
 posição; a lista da ATM vem com "0.00 km" e fora de ordem e os roteiros não acham
 os carregadores. O passo `escolher` do primeiro roteiro da ATM detecta isso e a
