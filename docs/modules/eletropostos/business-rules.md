@@ -84,6 +84,19 @@ recente". Estação local sem batimento há mais de 15 min = "parada". Erro de
 coleta vira `eletroposto_varredura.ok = false` com o motivo (300 caracteres);
 nunca derruba o laço do worker.
 
+## Estação local
+
+- A estação entra como um usuário comum (staff) com e-mail e senha digitados
+  **no terminal** uma vez; em arquivo fica só a sessão (`dados\sessao.json`).
+  Sessão inválida = a corrida grava "estação ERRO" no log e nada no banco.
+- O batimento vem antes da leitura das telas: a estação aparece "Em dia" mesmo
+  quando um app falha; a falha do app vai para `eletroposto_varredura` com
+  `ok = false` (uma linha por fonte, nunca derruba as outras fontes).
+- BlueStacks fechado ou ADB desligado = `ok = false` com o motivo para **todas**
+  as fontes da estação.
+- Leitura de tela é texto visível (uiautomator): um status por regra; texto que
+  não casa vira `desconhecido`, que sai do denominador.
+
 ## O que não se faz
 
 - Não gravar dado de motorista (campos de usuário são descartados na origem).

@@ -68,6 +68,22 @@ apaga tudo no fim. RLS foi provada por impersonação em 16/10/2026: master lê
 72 locais; admin de outro tenant e staff não master leem 0; ninguém insere
 direto; `gravar` recusa sem service role; `gravar_local` recusa sem estação.
 
+## Estação local
+
+Uma linha em `eletroposto_estacao` por PC que coleta. `operador` é o `auth.users.id`
+do staff da estação (criado pelo app, senha da pessoa); `eletropostos_estacao_ok()`
+exige estação `ativa` **e** do tenant do usuário. Registro (como master, pelo
+`db query --linked`):
+
+```sql
+INSERT INTO public.eletroposto_estacao (nome, operador)
+SELECT 'PC do Luiz (BlueStacks)', id FROM auth.users WHERE email = '<e-mail da estação>';
+```
+
+`vista_em` é atualizado por `eletropostos_estacao_pulsa` (início de cada corrida)
+e por `eletropostos_gravar_local`; a aba Coleta mostra "parada" acima de 15 min.
+Para desligar uma estação: `ativa = false` (as RPCs passam a recusar).
+
 ## Volume
 
 ~20 conectores × 288 janelas/dia ≈ 6 mil leituras/dia (2 M/ano). Sem
