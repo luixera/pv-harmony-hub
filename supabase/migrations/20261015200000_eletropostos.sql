@@ -572,7 +572,7 @@ BEGIN
 
   -- leituras do local no período, em horário de Brasília
   CREATE TEMP TABLE IF NOT EXISTS pg_temp._el (slot_local timestamp, status text, nome text) ON COMMIT DROP;
-  DELETE FROM pg_temp._el;
+  TRUNCATE pg_temp._el;   -- não DELETE: o safeupdate do PostgREST recusa DELETE sem WHERE
   INSERT INTO pg_temp._el
   SELECT le.slot AT TIME ZONE 'America/Sao_Paulo', le.status, le.fonte || ' · ' || le.local_fonte || ' · ' || le.conector
     FROM public.eletroposto_leitura le
