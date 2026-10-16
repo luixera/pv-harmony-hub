@@ -174,6 +174,16 @@ reservados, o Android sobe em ~40 s e o ciclo voltou a ~4,5 min sem travar
 O passo `tocar_ate` (texto, `aparecer`, `fechar`, `tentativas`, `ate`) toca e confere:
 fecha o aviso ("Encerrar") se ele estiver na tela e toca de novo até a lista abrir.
 
+**Periodicidade por potência (16/10/2026).** Os carregadores AC de 7 kW da ATM (24, com
+todos os plugues até 22 kW) são lidos a cada 16 min, em duas metades que se alternam a
+cada ciclo de 8; DC e mistos (Cury e 5 da ATM) seguem a cada 8. Cada leitura AC vai
+com `passo_min = 16`, e o banco pondera por ele (migração `..._passo_por_leitura`). No
+`telas.json`: `ciclo_min`, `cadencia_ativa`, e por roteiro `intervalo_min` + `grupo`.
+A estação já aceita a configuração vinda da página: a RPC `eletropostos_coleta_config()`
+(faixas `ate_kw` → `intervalo_min`, cidades monitoradas e `fora` = locais de cidades
+desmarcadas). Quando ela existe, sobrepõe o `telas.json` a cada ciclo; sem ela, vale o
+arquivo. Tela e tabela dessa configuração: pendentes.
+
 **Assertividade.** Cada gravação com leitura manda `p_falhas` (`[{nome, erro}]`,
 com `nome` = `local_nome`) com os locais que falharam e os fixos não lidos por limite
 do ciclo ou pelo disjuntor. Ciclo sem leitura nenhuma não manda (já conta como
