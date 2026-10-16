@@ -43,3 +43,6 @@ preview.html
 # Certificados digitais A1 - NUNCA no git, em pasta nenhuma
 *.pfx
 *.p12
+
+# saida compilada dos testes dos workers (node:test), gerada por npm test
+worker/*/dist-test/
