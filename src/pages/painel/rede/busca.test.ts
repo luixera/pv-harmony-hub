@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { prepararTermo, sugestoesDaRede, mesclarSugestoes, type SugestaoLugar } from './busca';
+import { coordenadaDe, prepararTermo, sugestoesDaRede, mesclarSugestoes, type SugestaoLugar } from './busca';
 import type { ResultadoBusca } from './tipos';
 
 const sub: ResultadoBusca = { tipo: 'subestacao', id: 1, codigo: 'SE1', nome: 'CAMPINAS CENTRO', risco: null, lng: -47, lat: -22, oeste: null, sul: null, leste: null, norte: null };
@@ -29,5 +29,21 @@ describe('busca', () => {
     const m = mesclarSugestoes('1', muitos, lugares);
     expect(m.length).toBe(8);
     expect(m.filter(x => x.tipo === 'lugar').length).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe('coordenada digitada na busca', () => {
+  it('lê decimal "lat, lng" e DMS como vem no orçamento da CPFL', () => {
+    expect(coordenadaDe('-20.78898, -49.36583')).toEqual({ lat: -20.78898, lng: -49.36583 });
+    expect(coordenadaDe('-20,78898 -49,36583')).toEqual({ lat: -20.78898, lng: -49.36583 });
+    const d = coordenadaDe(`20°47'20.1"S 49°21'57.5"W`)!;
+    expect(d.lat).toBeCloseTo(-20.78892, 4); expect(d.lng).toBeCloseTo(-49.36597, 4);
+  });
+  it('não confunde código de trafo nem número solto com coordenada', () => {
+    expect(coordenadaDe('33820988')).toBeNull();
+    expect(coordenadaDe('189049')).toBeNull();
+    expect(coordenadaDe('Campinas')).toBeNull();
+    expect(coordenadaDe('-20.78898')).toBeNull();          // só uma parte
+    expect(coordenadaDe('95, -49.3')).toBeNull();          // latitude impossível
   });
 });

@@ -714,6 +714,57 @@ medir a taxa de acerto por distribuidora; e a **rede BT propriamente**
 condutor, UCs por fase — os critérios de elevação de tensão que o parecer
 de BT também olha.
 
+## 13. Confronto com a distribuidora (15–16/10/2026)
+
+### 13.1 O que aconteceu
+
+O usuário trouxe um orçamento de conexão real da CPFL Paulista (estudo
+OC00693/10-2026, pedido 2248586925, São José do Rio Preto) e não achou na
+busca o "posto de transformação 189049" que o documento cita. Dois fatos:
+
+1. **O número do posto não existe na BDGD.** A camada `UNTRMT` identifica o
+   trafo só pelo `COD_ID` do GIS da distribuidora (`33820988`); `DESCR` é
+   "AEREO", `PAC_1/2` são nós, `UNI_TR_AT` é o trafo da SE. O número
+   operacional vive no GISD da CPFL e não é publicado. O trafo foi achado
+   pelas coordenadas da UC (a 57–72 m): 45 kVA, mesmo alimentador AMC08,
+   48 UCs (CPFL: 45), 5 unidades de GD (CPFL: 5).
+2. **A GD estava 3,5× subestimada.** CPFL: 18,85 kW; nós: 5,42 kW. Conferido
+   no cadastro aberto da ANEEL (`empreendimento-geracao-distribuida.parquet`,
+   4,67 milhões de linhas): a potência instalada da ANEEL é igual ao
+   `DEM_CONT` da BDGD em 8 de 8 unidades testadas; `POT_INST` é a potência
+   média gerada (frações de 1/60, 1/90 — energia ÷ horas de sol). Piratininga:
+   `DEM_CONT` 369,6 MW, `POT_INST` 164,4 MW, ANEEL 523 MW. Corrigido em
+   `GD_KW` (PR #7); reingestão da Piratininga: 13.210 trafos em risco (eram
+   6.176), 10.216 mudaram de estado (5.083 folga→risco, 2.408 folga→atenção,
+   2.311 atenção→risco). A carga mínima bateu: 11,0 kW nossa, 11–13 kW na
+   curva da CPFL entre 9h e 14h.
+
+### 13.2 Decisões
+
+- **Busca por coordenada** (`coordenadaDe` em `busca.ts`): decimal ou DMS
+  como vem no orçamento; vai ao ponto e abre o trafo mais próximo
+  (`rede_trafo_mais_proximo`, KNN pelo GiST, raio de 300 m). Um inteiro
+  solto (código de trafo, número do posto) nunca é coordenada.
+- **Registro do parecer no trafo** (`rede_parecer`, só master; escrita por
+  `rede_parecer_registrar`, anulação por UPDATE, nunca DELETE): tipo
+  (orçamento de conexão / parecer de acesso / outro), número do posto da
+  distribuidora, nº do estudo e do pedido, data, potência solicitada,
+  **resultado** (já inverte sem o novo · inverte só com o novo · sem
+  inversão · aprovado · aprovado com obra · reprovado), potência injetável,
+  os números que a distribuidora declarou (UCs, unidades e kW de GD, carga
+  mínima), PDF no bucket privado `rede-pareceres` com SHA-256, e **o que o
+  modelo dizia na hora** (risco, ocupação, GD, carga, importação) —
+  congelado, porque a base muda.
+- **Acerto** (`rede_parecer_acerto`, espelhado em `confronto.ts`): "já
+  inverte" ou "reprovado" só é acerto se o modelo dizia risco; os outros
+  resultados são acerto se dizia atenção ou folga; sem dado não conta. A
+  ficha da fonte mostra registrados, acertos, erros e taxa por distribuidora.
+- **O número do posto vira pesquisável**: `rede_buscar` procura em
+  `rede_parecer.codigo_distribuidora` (trgm) e devolve o trafo.
+
+Fica para depois: ler o PDF da CPFL automaticamente (os campos têm posição
+fixa no modelo deles) e a rede de BT propriamente (`SSDBT`, `RAMLIG`).
+
 ## Fontes
 
 Normativas: [REN 1.000/2021](https://www2.aneel.gov.br/cedoc/ren20211000.html) ·

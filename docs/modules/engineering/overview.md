@@ -343,6 +343,25 @@ real — fica para a próxima spec):
   `POT_NOM`, `CTMT`, `SUB`…); UCs e unidades de GD; e o estado na carga
   anterior.
 
+### Confronto com a distribuidora (16/10/2026)
+
+O orçamento de conexão da CPFL cita o "posto de transformação" (ex.: 189049),
+número que **não existe na BDGD** (só o `COD_ID` do GIS). A tela passou a
+aceitar **coordenada** na busca (decimal ou DMS, como no orçamento) e abre o
+trafo mais próximo (`rede_trafo_mais_proximo`, raio de 300 m). No detalhe do
+trafo, **Confronto com a distribuidora** registra o documento real
+(`rede_parecer`, só master, escrita por `rede_parecer_registrar`; PDF no bucket
+privado `rede-pareceres` com SHA-256): número do posto, estudo, pedido, data,
+potência solicitada, resultado, potência injetável e os números declarados pela
+distribuidora, mais o que o modelo dizia na hora (congelado). O número do posto
+vira pesquisável. `rede_parecer_acerto` dá o veredito (espelhado em
+`rede/confronto.ts`) e a ficha da fonte mostra acertos, erros e taxa por
+distribuidora. Spec §13.
+
+Foi esse confronto que revelou a GD 3,5× subestimada (`POT_INST` → `DEM_CONT`).
+Reingestão da Piratininga com a GD correta: 13.210 trafos em risco (eram
+6.176); 10.216 mudaram de estado, registrados em `rede_importacao.mudancas`.
+
 ## Liga/desliga por FUNÇÃO e por regra (Fase 2)
 
 Cada grupo tem a regra especial **`group_enabled`**, que a tela mostra como

@@ -65,13 +65,38 @@ export interface DetalheTrafo {
   unidades_consumidoras: number | null; gd_unidades: number | null; atualizado_em: string;
   alimentador: { id: number; codigo: string; risco: Risco; ocupacao_pct: number | null; trafos: number; trafos_risco: number } | null;
   subestacao: { codigo: string; nome: string | null } | null;
-  distribuidora: { nome: string; sigla: string; data_base: string | null };
+  distribuidora: { id: number; nome: string; sigla: string; data_base: string | null };
   regras: RegrasCompletas;
   bdgd: Record<string, string | number | null>;
   fonte: FonteImportacao | null;
   anterior: { importacao_id: number; data_base: string | null; risco: Risco; ocupacao_pct: number | null; margem_kw: number | null;
               carga_min_diurna_kw: number | null; gd_conectada_kw: number | null; ativo: boolean } | null;
+  /** Confrontos registrados neste trafo (spec §13). */
+  pareceres: Parecer[];
 }
+
+export type TipoParecer = 'orcamento_conexao' | 'parecer_acesso' | 'outro';
+export type ResultadoParecer =
+  | 'inversao_sem_novo' | 'inversao_com_novo' | 'sem_inversao' | 'aprovado' | 'aprovado_com_obra' | 'reprovado';
+/** Linha de `rede_parecer`: o documento real da distribuidora, registrado no trafo. */
+export interface Parecer {
+  id: number; transformador_id: number; distribuidora_id: number; tipo: TipoParecer;
+  codigo_distribuidora: string | null; numero_estudo: string | null; numero_pedido: string | null; data_documento: string | null;
+  potencia_solicitada_kw: number | null; resultado: ResultadoParecer; potencia_injetavel_kw: number | null;
+  ucs_distribuidora: number | null; gd_unidades_distribuidora: number | null; gd_kw_distribuidora: number | null;
+  carga_min_distribuidora_kw: number | null;
+  arquivo_nome: string | null; arquivo_hash_sha256: string | null; arquivo_caminho: string | null; observacoes: string | null;
+  risco_modelo: Risco; ocupacao_modelo: number | null; gd_modelo_kw: number | null; carga_modelo_kw: number | null;
+  importacao_id: number | null; acerto: boolean | null; anulado: boolean; criado_em: string;
+}
+export interface NovoParecer {
+  transformador_id: number; tipo: TipoParecer; resultado: ResultadoParecer;
+  codigo_distribuidora?: string; numero_estudo?: string; numero_pedido?: string; data_documento?: string;
+  potencia_solicitada_kw?: number; potencia_injetavel_kw?: number;
+  ucs_distribuidora?: number; gd_unidades_distribuidora?: number; gd_kw_distribuidora?: number; carga_min_distribuidora_kw?: number;
+  arquivo_nome?: string; arquivo_hash_sha256?: string; arquivo_caminho?: string; observacoes?: string;
+}
+export interface TrafoProximo { id: number; codigo: string; risco: Risco; ocupacao_pct: number | null; dist_m: number; lng: number; lat: number }
 
 export interface Transicao { de: Risco; para: Risco; n: number }
 export interface Mudancas {
@@ -93,6 +118,7 @@ export interface Fontes {
     distribuidora: { id: number; nome: string; sigla: string; codigo_aneel: string | null; uf: string; data_base: string | null };
     trafos: { ativos: number; inativos: number; risco: number; atencao: number; folga: number; sem_dado: number; com_ucs: number };
     alimentadores: { ativos: number; com_tracado: number };
+    confrontos: { n: number; acertos: number; erros: number; sem_conta: number };
     importacoes: Importacao[];
   }[];
 }
