@@ -119,7 +119,8 @@ no texto da ficha. `depois` roda após a leitura (fechar a ficha).
 | Cury Energia (`eco.spott.curyenergia`, rede Spott) | abrir → "Lista" → tocar o local → ficha "Escolha um carregador" | nó combinado por carregador: `91748 - 1 / Autocharge / Ultra Rápido / 80kW / Livre / Usado há 3 horas…` → status = linha após a de kW | 5 locais públicos, 8 carregadores DC, ~126 s — a lista "Locais de Recarga" segue o mapa (depois de uma ficha só mostra o que está no mapa), então cada local reabre o app; HM 60 kW aproveita a tela do HM 80 kW |
 | ATM EVs (`br.com.atmoutsourcing.evscharger`, sem login) | abrir → "Pesquisar" + espaço (lista tudo por distância) → tocar o carregador → ficha → X (852,781) | nó combinado por plugue: `Tipo 2 - 32A, ID: 5838, DISPONÍVEL` | 30 carregadores públicos até 15 km / 47 plugues; os **13 do inventário são fixos** e os 16 restantes `opcional` em **rodízio** no tempo que sobra (`dados\rodizio.json`), ~147 s |
 
-Status vistos: ATM `DISPONÍVEL` e `LIBERADO` (= livre); Cury `Livre`. O `MAPA_STATUS` já
+Status vistos: ATM `DISPONÍVEL`, `LIBERADO` (= livre) e `EM USO` (= ocupado); Cury `Livre`,
+`Em preparação` (= ocupado, plugado) e `Falha` (= fora). O `MAPA_STATUS` já
 cobre em uso/ocupado/indisponível/inativo/reservado; o que não casar vira `desconhecido`.
 Enumerações que geraram os roteiros: `capturas\atm_carregadores.json`,
 `capturas\cury_locais.json` (script `gera_telas.py` da sessão de calibração; o
