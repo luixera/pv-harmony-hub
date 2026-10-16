@@ -8,7 +8,7 @@ não grava dado de motorista. Salva tudo em capturas/calibracao-<data>/ para mon
   atm_fichas.json      plugues de cada carregador público até RAIO km (id, tipo, status) + o botão de fechar
   cury_locais.json     locais da lista "Locais de Recarga" da Cury e os carregadores de cada um
 
-Uso: python3 calibrar.py [raio_km] [partes]     (padrão 15 e "atm,cury"; ex.: 15 cury)
+Uso: python3 calibrar.py [raio_km] [partes]     (padrão 15 e "atm,cury"; ex.: 15 cury; 15 ensaio)
 """
 import datetime as dt, json, re, sys, time
 from pathlib import Path
@@ -96,6 +96,15 @@ def main():
         descobrir_atm(w, h)
     if "cury" in PARTES:
         descobrir_cury(w, h)
+    if "ensaio" in PARTES:
+        nota("ENSAIO: ciclo completo com o telas.json, sem gravar")
+        import io, contextlib
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            r = c.coletar(ensaio=True)
+        for linha in buf.getvalue().splitlines():
+            nota("  " + linha)
+        nota(f"ENSAIO resumo: {r}")
 
 
 def descobrir_atm(w, h):

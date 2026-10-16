@@ -154,7 +154,50 @@ ULTIMO_XML = ""      # último dump (cada dump leva ~2,5 s; reaproveitado quando
 XML_VALIDO = False   # True entre um dump e a próxima ação de entrada (toque, rolagem, tecla, abrir)
 CACHE_LISTA = ""     # último dump de uma lista em que tocar_texto_rolando achou o alvo
 ORDEM_LISTA = []     # nomes na ordem em que o app lista (do alvo em execução): rola na direção certa
-PASSO_LISTA = 160    # altura de um item da lista, em px (do alvo em execução)
+PASSO_LISTA = 160    # altura de um item da lista, em px de referência (do alvo em execução)
+TELA_REF = (900, 1600)   # resolução em que o telas.json foi calibrado (BlueStacks)
+_TELA = None
+
+
+def tela():
+    """(largura, altura) do aparelho, pelo `wm size` (o Override vence o Physical)."""
+    global _TELA
+    if _TELA is None:
+        try:
+            saida = adb("shell", "wm", "size", timeout=15)
+            m = re.findall(r"(\d+)x(\d+)", saida)
+            _TELA = (int(m[-1][0]), int(m[-1][1])) if m else TELA_REF
+        except Exception:
+            _TELA = TELA_REF
+    return _TELA
+
+
+def px(x, y):
+    """Coordenada calibrada em TELA_REF -> pixels do aparelho atual."""
+    w, h = tela()
+    return str(int(round(x * w / TELA_REF[0]))), str(int(round(y * h / TELA_REF[1])))
+
+
+def rolar_y(y1, y2, ms):
+    """Rolagem vertical no meio da tela, com y em px de referência."""
+    xa, ya = px(450, y1)
+    _, yb = px(450, y2)
+    entrada("swipe", xa, ya, xa, yb, str(ms))
+
+
+def botao_sem_texto(xml, filtro):
+    """Centro do primeiro nó clicável sem texto que passa no filtro(cx, cy, w, h)."""
+    import xml.etree.ElementTree as ET
+    w, h = tela()
+    try:
+        for n in ET.fromstring(xml).iter("node"):
+            if n.get("clickable") == "true" and not (n.get("text") or "").strip() and n.get("bounds"):
+                cx, cy = centro(n.get("bounds"))
+                if filtro(cx, cy, w, h):
+                    return cx, cy
+    except ET.ParseError:
+        pass
+    return None
 DEPURAR = bool(os.environ.get("ELETROPOSTOS_DEPURAR"))
 
 
@@ -286,21 +329,32 @@ def executar_passo(p):
             adb("shell", "am", "force-stop", p["pacote"]); time.sleep(1)
             adb("shell", "monkey", "-p", p["pacote"], "-c", "android.intent.category.LAUNCHER", "1")
     elif tipo == "toque":
-        entrada("tap", str(p["x"]), str(p["y"]))
+        entrada("tap", *px(p["x"], p["y"]))
     elif tipo == "deslizar":
-        entrada("swipe", *map(str, (p["x1"], p["y1"], p["x2"], p["y2"], p.get("ms", 400))))
+        entrada("swipe", *px(p["x1"], p["y1"]), *px(p["x2"], p["y2"]), str(p.get("ms", 400)))
     elif tipo == "voltar":
         entrada("keyevent", "4")
     elif tipo == "digitar":      # texto num campo já focado (sem acento: o input text não aceita)
         entrada("text", p["texto"].replace(" ", "%s"))
     elif tipo == "fechar_ficha":   # X da ficha da ATM, só se a ficha estiver aberta
-        if any("Clique na tomada" in t for t, _ in tela_atual()):
-            entrada("tap", str(p.get("x", 852)), str(p.get("y", 781))); time.sleep(1)
+        itens = tela_atual()
+        if any("Clique na tomada" in t for t, _ in itens):
+            selo = next((b for t, b in itens if re.match(r"^\d+[.,]\d+ km$", t.strip())), None)
+            alvo_x = None
+            if selo:
+                kx, ky = centro(selo)
+                alvo_x = botao_sem_texto(ULTIMO_XML, lambda cx, cy, w, h: abs(cy - ky) < h * 0.05 and cx > kx)
+            if alvo_x:
+                entrada("tap", *map(str, alvo_x))
+            else:
+                entrada("tap", *px(p.get("x", 852), p.get("y", 781)))
+            time.sleep(1)
     elif tipo == "ir_ao_mapa":     # seta "voltar" da busca da ATM até o campo "Pesquisar" aparecer
         for _ in range(3):
             if any(t == "Pesquisar" for t, _ in tela_atual()):
                 break
-            entrada("tap", str(p.get("x", 60)), str(p.get("y", 96))); time.sleep(1.2)
+            seta = botao_sem_texto(ULTIMO_XML if XML_VALIDO else tela_xml(), lambda cx, cy, w, h: cx < w * 0.15 and cy < h * 0.12)
+            entrada("tap", *(map(str, seta) if seta else px(p.get("x", 60), p.get("y", 96)))); time.sleep(1.2)
     elif tipo == "tocar_ate":     # toca no texto até outro texto aparecer, fechando avisos no caminho
         # Ex.: Cury — tocar "Lista" até ver "Locais de Recarga"; o aviso de boas-vindas
         # ("Encerrar") às vezes surge logo depois de abrir e engole o toque.
@@ -342,8 +396,13 @@ def executar_passo(p):
         # se não achar, volta ao topo e desce de novo.
         alvo_txt = p["texto"].lower()
         def _no_alvo(xml):
+            """Bounds do item; None se não está na tela OU está cortado nas bordas (o toque cairia no vizinho)."""
+            _, h = tela()
             for t, b in textos(xml):
                 if alvo_txt in t.lower() and not re.search(r", [0-9]+[.][0-9]+ km, ", t):
+                    y1, y2 = map(int, re.findall(r"-?\d+", b)[1::2])
+                    if y2 >= h * 0.985 or y1 <= h * 0.03:
+                        return None            # cortado: rola e tenta de novo
                     return b
             return None
         def _visiveis(xml):
@@ -367,18 +426,18 @@ def executar_passo(p):
             if vis:
                 menor, maior = min(i for i, _ in vis), max(i for i, _ in vis)
                 if idx > maior:
-                    px = min((idx - maior) * PASSO_LISTA + PASSO_LISTA // 2, 900)
-                    entrada("swipe", "450", "1250", "450", str(1250 - px), "400")
+                    desloc = min((idx - maior) * PASSO_LISTA + PASSO_LISTA // 2, 900)
+                    rolar_y(1250, 1250 - desloc, 400)
                 elif idx < menor:
-                    px = min((menor - idx) * PASSO_LISTA + PASSO_LISTA // 2, 900)
-                    entrada("swipe", "450", "400", "450", str(400 + px), "400")
+                    desloc = min((menor - idx) * PASSO_LISTA + PASSO_LISTA // 2, 900)
+                    rolar_y(400, 400 + desloc, 400)
                 else:   # está entre os visíveis mas o nó não casou: rola um pouco
-                    entrada("swipe", "450", "1000", "450", "800", "300")
+                    rolar_y(1000, 800, 300)
             elif tentativa < p.get("rolagens", 14) // 2:
-                entrada("swipe", "450", "1200", "450", "750", "500")
+                rolar_y(1200, 750, 500)
             else:
                 for _ in range(8):   # não achou descendo: volta ao topo e desce de novo
-                    entrada("swipe", "450", "500", "450", "1300", "250")
+                    rolar_y(500, 1300, 250)
             time.sleep(1.2)
             xml = None
         if not achou:
@@ -465,6 +524,20 @@ def aplicar_config_remota(cfg, remota, ciclo_min):
            (f"; {len(fora)} locais fora das cidades monitoradas" if fora else "")
 
 
+def _espelho(*args, **kw):
+    """Registra um passo no quadro "Estação ao vivo" (só na VPS; nunca derruba o ciclo)."""
+    if ESPELHO_DESLIGADO:
+        return
+    try:
+        import espelho
+        espelho.registrar(*args, **kw)
+    except Exception:
+        pass
+
+
+ESPELHO_DESLIGADO = False
+
+
 class _RepetirAlvo(Exception):
     """Sinal interno: o alvo deve recomeçar do primeiro roteiro (depois de reiniciar o BlueStacks)."""
 
@@ -501,6 +574,15 @@ def coletar(ensaio=False, so_fonte=None):
     max_falhas_seguidas = cfg.get("max_falhas_seguidas", 3)
     resumo = list(resumo_inicial)
 
+    global ESPELHO_DESLIGADO
+    ESPELHO_DESLIGADO = bool(ensaio)
+    if not ensaio:
+        try:
+            import espelho
+            espelho.limpar_antigas()
+        except Exception:
+            pass
+
     def gravar_(fonte, linhas, erro=None, falhas=None):
         if ensaio:
             for l in linhas:
@@ -519,6 +601,7 @@ def coletar(ensaio=False, so_fonte=None):
         nonlocal reinicios
         reinicios += 1
         msg = (f"Android reiniciado pela estação: {motivo}"[:220] + nota_memoria())[:300]
+        _espelho("reiniciando o aparelho", "falha", fonte, msg)
         resumo.append(msg)
         print("  " + msg, flush=True)
         for f in ([fonte] if fonte else [a["fonte"] for a in alvos]):
@@ -554,8 +637,11 @@ def coletar(ensaio=False, so_fonte=None):
         rodizio = {}
     for alvo in alvos:
         t0 = time.time()
+        _espelho(f"abrindo {alvo.get('app', alvo['fonte'])}", "info", alvo["fonte"], foto=True)
         ORDEM_LISTA = alvo.get("ordem", [])
         PASSO_LISTA = alvo.get("passo_lista_px", 160)
+        if cfg.get("tela_ref"):
+            globals()["TELA_REF"] = tuple(cfg["tela_ref"])
         # roteiros fixos primeiro; os opcionais em rodízio (começando de onde o ciclo anterior parou)
         fixos = [r for r in alvo["roteiros"] if not r.get("opcional")]
         opcionais = [r for r in alvo["roteiros"] if r.get("opcional")]
@@ -595,6 +681,8 @@ def coletar(ensaio=False, so_fonte=None):
                     falhas.insert(0, f"{seguidas} carregadores seguidos falharam: app desistido neste ciclo")
                     nao_lidos(f"não lido: {seguidas} carregadores seguidos falharam antes", i - 1)
                     break
+                if roteiro.get("regras"):
+                    _espelho(f"lendo {roteiro['regras'][0]['local_nome'].strip()}", "info", alvo["fonte"])
                 try:
                     for p in roteiro["passos"]:
                         if p["tipo"] == "escolher":
@@ -626,6 +714,7 @@ def coletar(ensaio=False, so_fonte=None):
                         raise                      # falhou a abertura do app: o alvo inteiro cai
                     falhas.append(f"{roteiro.get('nome', '?')}: {repr(e)[:80]}")
                     falhas_local.append({"nome": roteiro["regras"][0]["local_nome"], "erro": repr(e)[:200]})
+                    _espelho(f"falha em {roteiro['regras'][0]['local_nome'].strip()}", "falha", alvo["fonte"], repr(e)[:200])
                     seguidas += 1
                     print(f"  roteiro falhou: {falhas[-1]}", flush=True)
                     CACHE_LISTA = ""
@@ -634,6 +723,8 @@ def coletar(ensaio=False, so_fonte=None):
             erro = ("; ".join(falhas))[:300] if falhas else None
             # falhas por local só em ciclo que leu algo: ciclo sem leitura nenhuma já conta como falha da fonte
             n = gravar_(alvo["fonte"], linhas, erro=erro, falhas=falhas_local if linhas else None)
+            _espelho(f"{alvo['fonte']}: {n} leituras gravadas", "ok" if not falhas else "falha", alvo["fonte"],
+                     f"{n} leituras" + (f", {len(falhas_local)} locais não lidos" if falhas_local else ""), foto=False)
             resumo.append(f"{alvo['fonte']} {n} leituras em {time.time() - t0:.0f} s"
                           + (f" ({pulados} roteiros opcionais pulados)" if pulados else "")
                           + (f" ({fora_da_vez} fora da vez)" if fora_da_vez else "")
@@ -658,6 +749,7 @@ def coletar(ensaio=False, so_fonte=None):
           break
         if opcionais:
             rodizio[alvo["fonte"]] = (k + lidos_opc) % len(opcionais)
+    _espelho("fim do ciclo", "fim", None, "; ".join(resumo)[:300])
     if not ensaio:
         try:
             rodizio_arq.parent.mkdir(exist_ok=True)

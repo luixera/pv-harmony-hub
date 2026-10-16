@@ -7,16 +7,16 @@
    "fonte": "cury",
    "app": "Cury Energia / Spott (eco.spott.curyenergia)",
    "ordem": [
-    "Green Life II - Cury Energia",
-    "Posto HM Ernani Pires 80Kw - Cury Energia",
-    "Posto HM Ernani Pires 60kw - Cury Energia",
     "NAU VIVENDAS",
+    "Green Life II - Cury Energia",
     "THE WEEK JK 80KW CURY ENERGIA",
     "Shopping Iguatemi São Jose do Rio Preto",
+    "Posto HM Ernani Pires 80Kw - Cury Energia",
+    "Posto HM Ernani Pires 60kw - Cury Energia",
     "Posto HM Bady Bassit - Cury Energia",
     "Posto HM Mirassol - Cury Energia"
    ],
-   "passo_lista_px": 291,
+   "passo_lista_px": 480,
    "roteiros": [
     {
      "nome": "Posto HM Ernani Pires 80Kw - Cury Energia",
@@ -53,6 +53,13 @@
        "texto": "Escolha um carregador",
        "ate": 15,
        "espera": 0
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Posto HM Ernani Pires 80Kw - Cury Energia",
+       "ate": 4,
+       "espera": 0,
+       "conferir": true
       },
       {
        "tipo": "tocar_texto",
@@ -110,6 +117,13 @@
        "texto": "Escolha um carregador",
        "ate": 15,
        "espera": 0
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Posto HM Ernani Pires 60kw - Cury Energia",
+       "ate": 4,
+       "espera": 0,
+       "conferir": true
       },
       {
        "tipo": "tocar_texto",
@@ -176,6 +190,13 @@
        "espera": 0
       },
       {
+       "tipo": "esperar_texto",
+       "texto": "THE WEEK JK 80KW CURY ENERGIA",
+       "ate": 4,
+       "espera": 0,
+       "conferir": true
+      },
+      {
        "tipo": "tocar_texto",
        "texto": "Encerrar",
        "opcional": true,
@@ -240,6 +261,13 @@
        "espera": 0
       },
       {
+       "tipo": "esperar_texto",
+       "texto": "Posto HM Bady Bassit - Cury Energia",
+       "ate": 4,
+       "espera": 0,
+       "conferir": true
+      },
+      {
        "tipo": "tocar_texto",
        "texto": "Encerrar",
        "opcional": true,
@@ -295,6 +323,13 @@
        "espera": 0
       },
       {
+       "tipo": "esperar_texto",
+       "texto": "Posto HM Mirassol - Cury Energia",
+       "ate": 4,
+       "espera": 0,
+       "conferir": true
+      },
+      {
        "tipo": "tocar_texto",
        "texto": "Encerrar",
        "opcional": true,
@@ -319,40 +354,41 @@
    "fonte": "atm",
    "app": "ATM EVs (br.com.atmoutsourcing.evscharger)",
    "ordem": [
-    "O Rei do Pão de Queijo - AV Bady Bassit",
-    "Muffato Gourmet",
-    "Hotel Nacional",
-    "NAVARRO HOME ",
-    "Brazilian Convenience (Av. Fernando Costa) 7kW",
-    "Eko Business Park - 7,2kW",
-    "GOL LOG",
-    "Max Potirendaba Totem 7,2kW - 1",
-    "Max Philadelpho Totem 7,2kW - 1",
-    "LUPEMA - L.STORE",
-    "Muffato Damha Totem 7,2kW - 1",
-    "Eletroposto Muffato Damha 40kW",
-    "Muffato JK Rio Preto Totem 7,2kW - 1",
     "Rancho do Cupim",
+    "Muffato JK Rio Preto Totem 7,2kW - 1",
     "Saint James Barbearia",
     "Georgina Café Conchego",
-    "CONDOMÍNIO MYRÁ JK",
     "Georgina BMW",
+    "NAVARRO HOME ",
     "COMPRADO DOURATECH",
-    "Max Eldorado Rio Preto Totem 7,2kw - 1",
     "FAMA CONNECT - CASTELLAMARE",
+    "CONDOMÍNIO MYRÁ JK",
     "Hilton Garden Inn",
+    "LUPEMA - L.STORE",
     "CONDOMINIO  GREEN PARK 7.2kw",
+    "Eko Business Park - 7,2kW",
+    "Muffato Gourmet",
     "SCP JK 7KW",
     "Academia Corpore",
     "IMPPER VENDAS totem 7.2kw",
     "IMOBILIÁRIA RENASCER & JALES",
-    "Brazilian Convenience Talhado 7kW",
+    "GOL LOG",
+    "Max Potirendaba Totem 7,2kW - 1",
+    "O Rei do Pão de Queijo - AV Bady Bassit",
     "QUINTA DO GOLFE JARDINS",
-    "Ipê Park Hotel",
+    "Hotel Nacional",
+    "Max Eldorado Rio Preto Totem 7,2kw - 1",
+    "Brazilian Convenience (Av. Fernando Costa) 7kW",
+    "Max Philadelpho Totem 7,2kW - 1",
+    "Muffato Damha Totem 7,2kW - 1",
+    "Eletroposto Muffato Damha 40kW",
+    "Brazilian Convenience Talhado 7kW",
     "Supermercado Alfredo Antunes LJ04 (SCP)",
-    "Totem 7kW Supermercado Antunes Lj. 01"
+    "Ipê Park Hotel",
+    "Totem 7kW Supermercado Antunes Lj. 01",
+    "Mirassol Futebol Clube"
    ],
-   "passo_lista_px": 160,
+   "passo_lista_px": 295,
    "roteiros": [
     {
      "nome": "abrir e listar tudo por distância",
@@ -401,6 +437,13 @@
        "texto": "Clique na tomada",
        "ate": 12,
        "espera": 0
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Brazilian Convenience (Av. Fernando Costa) 7kW",
+       "ate": 4,
+       "espera": 0,
+       "conferir": true
       }
      ],
      "regras": [
@@ -425,9 +468,7 @@
      ],
      "depois": [
       {
-       "tipo": "toque",
-       "x": 852,
-       "y": 781,
+       "tipo": "fechar_ficha",
        "espera": 0.5
       }
      ]
@@ -445,6 +486,13 @@
        "texto": "Clique na tomada",
        "ate": 12,
        "espera": 0
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Eko Business Park - 7,2kW",
+       "ate": 4,
+       "espera": 0,
+       "conferir": true
       }
      ],
      "regras": [
@@ -469,9 +517,7 @@
      ],
      "depois": [
       {
-       "tipo": "toque",
-       "x": 852,
-       "y": 781,
+       "tipo": "fechar_ficha",
        "espera": 0.5
       }
      ],
@@ -491,6 +537,13 @@
        "texto": "Clique na tomada",
        "ate": 12,
        "espera": 0
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Max Potirendaba Totem 7,2kW - 1",
+       "ate": 4,
+       "espera": 0,
+       "conferir": true
       }
      ],
      "regras": [
@@ -515,9 +568,7 @@
      ],
      "depois": [
       {
-       "tipo": "toque",
-       "x": 852,
-       "y": 781,
+       "tipo": "fechar_ficha",
        "espera": 0.5
       }
      ],
@@ -537,6 +588,13 @@
        "texto": "Clique na tomada",
        "ate": 12,
        "espera": 0
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Max Philadelpho Totem 7,2kW - 1",
+       "ate": 4,
+       "espera": 0,
+       "conferir": true
       }
      ],
      "regras": [
@@ -561,9 +619,7 @@
      ],
      "depois": [
       {
-       "tipo": "toque",
-       "x": 852,
-       "y": 781,
+       "tipo": "fechar_ficha",
        "espera": 0.5
       }
      ],
@@ -583,6 +639,13 @@
        "texto": "Clique na tomada",
        "ate": 12,
        "espera": 0
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Muffato Damha Totem 7,2kW - 1",
+       "ate": 4,
+       "espera": 0,
+       "conferir": true
       }
      ],
      "regras": [
@@ -607,9 +670,7 @@
      ],
      "depois": [
       {
-       "tipo": "toque",
-       "x": 852,
-       "y": 781,
+       "tipo": "fechar_ficha",
        "espera": 0.5
       }
      ],
@@ -629,6 +690,13 @@
        "texto": "Clique na tomada",
        "ate": 12,
        "espera": 0
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Eletroposto Muffato Damha 40kW",
+       "ate": 4,
+       "espera": 0,
+       "conferir": true
       }
      ],
      "regras": [
@@ -644,9 +712,7 @@
      ],
      "depois": [
       {
-       "tipo": "toque",
-       "x": 852,
-       "y": 781,
+       "tipo": "fechar_ficha",
        "espera": 0.5
       }
      ]
@@ -664,6 +730,13 @@
        "texto": "Clique na tomada",
        "ate": 12,
        "espera": 0
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Muffato JK Rio Preto Totem 7,2kW - 1",
+       "ate": 4,
+       "espera": 0,
+       "conferir": true
       }
      ],
      "regras": [
@@ -688,9 +761,7 @@
      ],
      "depois": [
       {
-       "tipo": "toque",
-       "x": 852,
-       "y": 781,
+       "tipo": "fechar_ficha",
        "espera": 0.5
       }
      ],
@@ -710,6 +781,13 @@
        "texto": "Clique na tomada",
        "ate": 12,
        "espera": 0
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Georgina Café Conchego",
+       "ate": 4,
+       "espera": 0,
+       "conferir": true
       }
      ],
      "regras": [
@@ -734,9 +812,7 @@
      ],
      "depois": [
       {
-       "tipo": "toque",
-       "x": 852,
-       "y": 781,
+       "tipo": "fechar_ficha",
        "espera": 0.5
       }
      ]
@@ -754,6 +830,13 @@
        "texto": "Clique na tomada",
        "ate": 12,
        "espera": 0
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Georgina BMW",
+       "ate": 4,
+       "espera": 0,
+       "conferir": true
       }
      ],
      "regras": [
@@ -778,9 +861,7 @@
      ],
      "depois": [
       {
-       "tipo": "toque",
-       "x": 852,
-       "y": 781,
+       "tipo": "fechar_ficha",
        "espera": 0.5
       }
      ],
@@ -800,6 +881,13 @@
        "texto": "Clique na tomada",
        "ate": 12,
        "espera": 0
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Max Eldorado Rio Preto Totem 7,2kw - 1",
+       "ate": 4,
+       "espera": 0,
+       "conferir": true
       }
      ],
      "regras": [
@@ -824,9 +912,7 @@
      ],
      "depois": [
       {
-       "tipo": "toque",
-       "x": 852,
-       "y": 781,
+       "tipo": "fechar_ficha",
        "espera": 0.5
       }
      ],
@@ -846,6 +932,13 @@
        "texto": "Clique na tomada",
        "ate": 12,
        "espera": 0
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "SCP JK 7KW",
+       "ate": 4,
+       "espera": 0,
+       "conferir": true
       }
      ],
      "regras": [
@@ -870,9 +963,7 @@
      ],
      "depois": [
       {
-       "tipo": "toque",
-       "x": 852,
-       "y": 781,
+       "tipo": "fechar_ficha",
        "espera": 0.5
       }
      ]
@@ -890,6 +981,13 @@
        "texto": "Clique na tomada",
        "ate": 12,
        "espera": 0
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Brazilian Convenience Talhado 7kW",
+       "ate": 4,
+       "espera": 0,
+       "conferir": true
       }
      ],
      "regras": [
@@ -914,9 +1012,7 @@
      ],
      "depois": [
       {
-       "tipo": "toque",
-       "x": 852,
-       "y": 781,
+       "tipo": "fechar_ficha",
        "espera": 0.5
       }
      ]
@@ -934,6 +1030,13 @@
        "texto": "Clique na tomada",
        "ate": 12,
        "espera": 0
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Totem 7kW Supermercado Antunes Lj. 01",
+       "ate": 4,
+       "espera": 0,
+       "conferir": true
       }
      ],
      "regras": [
@@ -958,9 +1061,7 @@
      ],
      "depois": [
       {
-       "tipo": "toque",
-       "x": 852,
-       "y": 781,
+       "tipo": "fechar_ficha",
        "espera": 0.5
       }
      ],
@@ -980,6 +1081,13 @@
        "texto": "Clique na tomada",
        "ate": 12,
        "espera": 0
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "O Rei do Pão de Queijo - AV Bady Bassit",
+       "ate": 4,
+       "espera": 0,
+       "conferir": true
       }
      ],
      "regras": [
@@ -995,9 +1103,7 @@
      ],
      "depois": [
       {
-       "tipo": "toque",
-       "x": 852,
-       "y": 781,
+       "tipo": "fechar_ficha",
        "espera": 0.5
       }
      ],
@@ -1018,6 +1124,13 @@
        "texto": "Clique na tomada",
        "ate": 12,
        "espera": 0
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Muffato Gourmet",
+       "ate": 4,
+       "espera": 0,
+       "conferir": true
       }
      ],
      "regras": [
@@ -1033,9 +1146,7 @@
      ],
      "depois": [
       {
-       "tipo": "toque",
-       "x": 852,
-       "y": 781,
+       "tipo": "fechar_ficha",
        "espera": 0.5
       }
      ],
@@ -1056,6 +1167,13 @@
        "texto": "Clique na tomada",
        "ate": 12,
        "espera": 0
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Hotel Nacional",
+       "ate": 4,
+       "espera": 0,
+       "conferir": true
       }
      ],
      "regras": [
@@ -1071,9 +1189,7 @@
      ],
      "depois": [
       {
-       "tipo": "toque",
-       "x": 852,
-       "y": 781,
+       "tipo": "fechar_ficha",
        "espera": 0.5
       }
      ],
@@ -1094,6 +1210,13 @@
        "texto": "Clique na tomada",
        "ate": 12,
        "espera": 0
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "GOL LOG",
+       "ate": 4,
+       "espera": 0,
+       "conferir": true
       }
      ],
      "regras": [
@@ -1118,9 +1241,7 @@
      ],
      "depois": [
       {
-       "tipo": "toque",
-       "x": 852,
-       "y": 781,
+       "tipo": "fechar_ficha",
        "espera": 0.5
       }
      ],
@@ -1141,6 +1262,13 @@
        "texto": "Clique na tomada",
        "ate": 12,
        "espera": 0
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Rancho do Cupim",
+       "ate": 4,
+       "espera": 0,
+       "conferir": true
       }
      ],
      "regras": [
@@ -1156,9 +1284,7 @@
      ],
      "depois": [
       {
-       "tipo": "toque",
-       "x": 852,
-       "y": 781,
+       "tipo": "fechar_ficha",
        "espera": 0.5
       }
      ],
@@ -1179,6 +1305,13 @@
        "texto": "Clique na tomada",
        "ate": 12,
        "espera": 0
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Saint James Barbearia",
+       "ate": 4,
+       "espera": 0,
+       "conferir": true
       }
      ],
      "regras": [
@@ -1194,9 +1327,7 @@
      ],
      "depois": [
       {
-       "tipo": "toque",
-       "x": 852,
-       "y": 781,
+       "tipo": "fechar_ficha",
        "espera": 0.5
       }
      ],
@@ -1217,6 +1348,13 @@
        "texto": "Clique na tomada",
        "ate": 12,
        "espera": 0
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "CONDOMÍNIO MYRÁ JK",
+       "ate": 4,
+       "espera": 0,
+       "conferir": true
       }
      ],
      "regras": [
@@ -1241,9 +1379,7 @@
      ],
      "depois": [
       {
-       "tipo": "toque",
-       "x": 852,
-       "y": 781,
+       "tipo": "fechar_ficha",
        "espera": 0.5
       }
      ],
@@ -1264,6 +1400,13 @@
        "texto": "Clique na tomada",
        "ate": 12,
        "espera": 0
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "COMPRADO DOURATECH",
+       "ate": 4,
+       "espera": 0,
+       "conferir": true
       }
      ],
      "regras": [
@@ -1288,9 +1431,7 @@
      ],
      "depois": [
       {
-       "tipo": "toque",
-       "x": 852,
-       "y": 781,
+       "tipo": "fechar_ficha",
        "espera": 0.5
       }
      ],
@@ -1311,6 +1452,13 @@
        "texto": "Clique na tomada",
        "ate": 12,
        "espera": 0
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "FAMA CONNECT - CASTELLAMARE",
+       "ate": 4,
+       "espera": 0,
+       "conferir": true
       }
      ],
      "regras": [
@@ -1326,9 +1474,7 @@
      ],
      "depois": [
       {
-       "tipo": "toque",
-       "x": 852,
-       "y": 781,
+       "tipo": "fechar_ficha",
        "espera": 0.5
       }
      ],
@@ -1349,6 +1495,13 @@
        "texto": "Clique na tomada",
        "ate": 12,
        "espera": 0
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Hilton Garden Inn",
+       "ate": 4,
+       "espera": 0,
+       "conferir": true
       }
      ],
      "regras": [
@@ -1373,9 +1526,7 @@
      ],
      "depois": [
       {
-       "tipo": "toque",
-       "x": 852,
-       "y": 781,
+       "tipo": "fechar_ficha",
        "espera": 0.5
       }
      ],
@@ -1396,6 +1547,13 @@
        "texto": "Clique na tomada",
        "ate": 12,
        "espera": 0
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "CONDOMINIO  GREEN PARK 7.2kw",
+       "ate": 4,
+       "espera": 0,
+       "conferir": true
       }
      ],
      "regras": [
@@ -1411,9 +1569,7 @@
      ],
      "depois": [
       {
-       "tipo": "toque",
-       "x": 852,
-       "y": 781,
+       "tipo": "fechar_ficha",
        "espera": 0.5
       }
      ],
@@ -1434,6 +1590,13 @@
        "texto": "Clique na tomada",
        "ate": 12,
        "espera": 0
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Academia Corpore",
+       "ate": 4,
+       "espera": 0,
+       "conferir": true
       }
      ],
      "regras": [
@@ -1467,9 +1630,7 @@
      ],
      "depois": [
       {
-       "tipo": "toque",
-       "x": 852,
-       "y": 781,
+       "tipo": "fechar_ficha",
        "espera": 0.5
       }
      ],
@@ -1490,6 +1651,13 @@
        "texto": "Clique na tomada",
        "ate": 12,
        "espera": 0
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "IMPPER VENDAS totem 7.2kw",
+       "ate": 4,
+       "espera": 0,
+       "conferir": true
       }
      ],
      "regras": [
@@ -1505,9 +1673,7 @@
      ],
      "depois": [
       {
-       "tipo": "toque",
-       "x": 852,
-       "y": 781,
+       "tipo": "fechar_ficha",
        "espera": 0.5
       }
      ],
@@ -1528,6 +1694,13 @@
        "texto": "Clique na tomada",
        "ate": 12,
        "espera": 0
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "IMOBILIÁRIA RENASCER & JALES",
+       "ate": 4,
+       "espera": 0,
+       "conferir": true
       }
      ],
      "regras": [
@@ -1543,9 +1716,7 @@
      ],
      "depois": [
       {
-       "tipo": "toque",
-       "x": 852,
-       "y": 781,
+       "tipo": "fechar_ficha",
        "espera": 0.5
       }
      ],
@@ -1566,6 +1737,13 @@
        "texto": "Clique na tomada",
        "ate": 12,
        "espera": 0
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Ipê Park Hotel",
+       "ate": 4,
+       "espera": 0,
+       "conferir": true
       }
      ],
      "regras": [
@@ -1581,9 +1759,7 @@
      ],
      "depois": [
       {
-       "tipo": "toque",
-       "x": 852,
-       "y": 781,
+       "tipo": "fechar_ficha",
        "espera": 0.5
       }
      ],
@@ -1604,6 +1780,13 @@
        "texto": "Clique na tomada",
        "ate": 12,
        "espera": 0
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Supermercado Alfredo Antunes LJ04 (SCP)",
+       "ate": 4,
+       "espera": 0,
+       "conferir": true
       }
      ],
      "regras": [
@@ -1619,9 +1802,50 @@
      ],
      "depois": [
       {
-       "tipo": "toque",
-       "x": 852,
-       "y": 781,
+       "tipo": "fechar_ficha",
+       "espera": 0.5
+      }
+     ],
+     "opcional": true,
+     "intervalo_min": 16,
+     "grupo": 1
+    },
+    {
+     "nome": "LUPEMA - L.STORE",
+     "passos": [
+      {
+       "tipo": "tocar_texto_rolando",
+       "texto": "LUPEMA - L.STORE",
+       "espera": 0.5
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Clique na tomada",
+       "ate": 12,
+       "espera": 0
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "LUPEMA - L.STORE",
+       "ate": 4,
+       "espera": 0,
+       "conferir": true
+      }
+     ],
+     "regras": [
+      {
+       "local_id": "LUPEMA - L.STORE",
+       "local_nome": "LUPEMA - L.STORE",
+       "conector": "5612",
+       "potencia_kw": 7.2,
+       "lat": null,
+       "lng": null,
+       "regex": "ID: 5612, (.+)$"
+      }
+     ],
+     "depois": [
+      {
+       "tipo": "fechar_ficha",
        "espera": 0.5
       }
      ],
@@ -1667,6 +1891,13 @@
        "texto": "Clique na tomada",
        "ate": 12,
        "espera": 0
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Brazilian Convenience (Av. Fernando Costa) 7kW",
+       "ate": 4,
+       "espera": 0,
+       "conferir": true
       }
      ],
      "regras": [
@@ -1691,9 +1922,7 @@
      ],
      "depois": [
       {
-       "tipo": "toque",
-       "x": 852,
-       "y": 781,
+       "tipo": "fechar_ficha",
        "espera": 0.5
       }
      ]
@@ -1734,6 +1963,13 @@
        "texto": "Clique na tomada",
        "ate": 12,
        "espera": 0
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Eko Business Park - 7,2kW",
+       "ate": 4,
+       "espera": 0,
+       "conferir": true
       }
      ],
      "regras": [
@@ -1758,9 +1994,7 @@
      ],
      "depois": [
       {
-       "tipo": "toque",
-       "x": 852,
-       "y": 781,
+       "tipo": "fechar_ficha",
        "espera": 0.5
       }
      ],
@@ -1803,6 +2037,13 @@
        "texto": "Clique na tomada",
        "ate": 12,
        "espera": 0
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Max Potirendaba Totem 7,2kW - 1",
+       "ate": 4,
+       "espera": 0,
+       "conferir": true
       }
      ],
      "regras": [
@@ -1827,9 +2068,7 @@
      ],
      "depois": [
       {
-       "tipo": "toque",
-       "x": 852,
-       "y": 781,
+       "tipo": "fechar_ficha",
        "espera": 0.5
       }
      ],
@@ -1872,6 +2111,13 @@
        "texto": "Clique na tomada",
        "ate": 12,
        "espera": 0
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Max Philadelpho Totem 7,2kW - 1",
+       "ate": 4,
+       "espera": 0,
+       "conferir": true
       }
      ],
      "regras": [
@@ -1896,9 +2142,7 @@
      ],
      "depois": [
       {
-       "tipo": "toque",
-       "x": 852,
-       "y": 781,
+       "tipo": "fechar_ficha",
        "espera": 0.5
       }
      ],
@@ -1941,6 +2185,13 @@
        "texto": "Clique na tomada",
        "ate": 12,
        "espera": 0
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Muffato Damha Totem 7,2kW - 1",
+       "ate": 4,
+       "espera": 0,
+       "conferir": true
       }
      ],
      "regras": [
@@ -1965,9 +2216,7 @@
      ],
      "depois": [
       {
-       "tipo": "toque",
-       "x": 852,
-       "y": 781,
+       "tipo": "fechar_ficha",
        "espera": 0.5
       }
      ],
@@ -2010,6 +2259,13 @@
        "texto": "Clique na tomada",
        "ate": 12,
        "espera": 0
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Eletroposto Muffato Damha 40kW",
+       "ate": 4,
+       "espera": 0,
+       "conferir": true
       }
      ],
      "regras": [
@@ -2025,9 +2281,7 @@
      ],
      "depois": [
       {
-       "tipo": "toque",
-       "x": 852,
-       "y": 781,
+       "tipo": "fechar_ficha",
        "espera": 0.5
       }
      ]
@@ -2068,6 +2322,13 @@
        "texto": "Clique na tomada",
        "ate": 12,
        "espera": 0
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Muffato JK Rio Preto Totem 7,2kW - 1",
+       "ate": 4,
+       "espera": 0,
+       "conferir": true
       }
      ],
      "regras": [
@@ -2092,9 +2353,7 @@
      ],
      "depois": [
       {
-       "tipo": "toque",
-       "x": 852,
-       "y": 781,
+       "tipo": "fechar_ficha",
        "espera": 0.5
       }
      ],
@@ -2137,6 +2396,13 @@
        "texto": "Clique na tomada",
        "ate": 12,
        "espera": 0
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Georgina Café Conchego",
+       "ate": 4,
+       "espera": 0,
+       "conferir": true
       }
      ],
      "regras": [
@@ -2161,9 +2427,7 @@
      ],
      "depois": [
       {
-       "tipo": "toque",
-       "x": 852,
-       "y": 781,
+       "tipo": "fechar_ficha",
        "espera": 0.5
       }
      ]
@@ -2204,6 +2468,13 @@
        "texto": "Clique na tomada",
        "ate": 12,
        "espera": 0
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Georgina BMW",
+       "ate": 4,
+       "espera": 0,
+       "conferir": true
       }
      ],
      "regras": [
@@ -2228,9 +2499,7 @@
      ],
      "depois": [
       {
-       "tipo": "toque",
-       "x": 852,
-       "y": 781,
+       "tipo": "fechar_ficha",
        "espera": 0.5
       }
      ],
@@ -2273,6 +2542,13 @@
        "texto": "Clique na tomada",
        "ate": 12,
        "espera": 0
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Max Eldorado Rio Preto Totem 7,2kw - 1",
+       "ate": 4,
+       "espera": 0,
+       "conferir": true
       }
      ],
      "regras": [
@@ -2297,9 +2573,7 @@
      ],
      "depois": [
       {
-       "tipo": "toque",
-       "x": 852,
-       "y": 781,
+       "tipo": "fechar_ficha",
        "espera": 0.5
       }
      ],
@@ -2342,6 +2616,13 @@
        "texto": "Clique na tomada",
        "ate": 12,
        "espera": 0
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "SCP JK 7KW",
+       "ate": 4,
+       "espera": 0,
+       "conferir": true
       }
      ],
      "regras": [
@@ -2366,9 +2647,7 @@
      ],
      "depois": [
       {
-       "tipo": "toque",
-       "x": 852,
-       "y": 781,
+       "tipo": "fechar_ficha",
        "espera": 0.5
       }
      ]
@@ -2409,6 +2688,13 @@
        "texto": "Clique na tomada",
        "ate": 12,
        "espera": 0
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Brazilian Convenience Talhado 7kW",
+       "ate": 4,
+       "espera": 0,
+       "conferir": true
       }
      ],
      "regras": [
@@ -2433,9 +2719,7 @@
      ],
      "depois": [
       {
-       "tipo": "toque",
-       "x": 852,
-       "y": 781,
+       "tipo": "fechar_ficha",
        "espera": 0.5
       }
      ]
@@ -2476,6 +2760,13 @@
        "texto": "Clique na tomada",
        "ate": 12,
        "espera": 0
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Totem 7kW Supermercado Antunes Lj. 01",
+       "ate": 4,
+       "espera": 0,
+       "conferir": true
       }
      ],
      "regras": [
@@ -2500,9 +2791,7 @@
      ],
      "depois": [
       {
-       "tipo": "toque",
-       "x": 852,
-       "y": 781,
+       "tipo": "fechar_ficha",
        "espera": 0.5
       }
      ],
@@ -2515,5 +2804,10 @@
  "limite_s": 420,
  "max_falhas_seguidas": 3,
  "ciclo_min": 8,
- "cadencia_ativa": true
+ "cadencia_ativa": true,
+ "tela_ref": [
+  900,
+  1600
+ ],
+ "_aparelho": "VMOS Cloud ACP25091462JLVCR — Android 13, 720x1280, 320 dpi (calibrado em 16/10/2026 pela descoberta na VPS)"
 }
