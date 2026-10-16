@@ -143,7 +143,7 @@ const KanbanCardContent = memo(function KanbanCardContent({
   const isStale = daysStale !== undefined;
   return (
     <>
-      <div className="flex items-start justify-between mb-3">
+      <div className="flex items-start justify-between mb-1.5">
         <span className="text-xs font-mono text-primary">{project.code}</span>
         <div className="flex items-center gap-1">
           {pediuVistoria && (
@@ -209,10 +209,10 @@ const KanbanCardContent = memo(function KanbanCardContent({
           />
         </div>
       </div>
-      <h4 className="font-medium text-card-foreground text-sm mb-2">
+      <h4 className="font-medium text-card-foreground text-sm mb-1 leading-snug">
         {project.generalData?.holder_name || project.title}
       </h4>
-      <div className="flex items-center gap-2 text-xs text-muted-foreground mb-2">
+      <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
         <Building2 className="w-3 h-3 shrink-0" />
         <span className="truncate">{companyDisplayName}</span>
         {/* Concessionária: o mesmo selo do cabeçalho do modal, em tom escuro —
@@ -232,13 +232,13 @@ const KanbanCardContent = memo(function KanbanCardContent({
           </span>
         )}
       </div>
-      <div className="flex items-center gap-2 text-xs text-muted-foreground mb-3">
+      <div className="flex items-center gap-2 text-xs text-muted-foreground mb-2">
         <MapPin className="w-3 h-3" />
         <span className="truncate">
           {project.generalData?.city}/{project.generalData?.state}
         </span>
       </div>
-      <div className="flex items-center justify-between pt-3 border-t border-border/50">
+      <div className="flex items-center justify-between pt-2 border-t border-border/50">
         <span className="text-xs text-muted-foreground">
           {project.equipment?.total_installed_power || 0} kWp
         </span>
@@ -276,8 +276,8 @@ const KanbanCardContent = memo(function KanbanCardContent({
               display: 'flex',
               alignItems: 'center',
               gap: 4,
-              marginTop: 6,
-              paddingTop: 6,
+              marginTop: 4,
+              paddingTop: 4,
               borderTop: '0.5px solid #F0F0F0',
             }}
           >
@@ -560,7 +560,7 @@ const KanbanColumn = memo(function KanbanColumn({
                       {...provided.draggableProps}
                       {...provided.dragHandleProps}
                       onClick={() => onOpenModal(project.id)}
-                      className={`kanban-card mb-3 ${
+                      className={`kanban-card mb-2 ${
                         snapshot.isDragging ? 'shadow-2xl ring-2 ring-primary' : ''
                       }`}
                       style={

@@ -127,8 +127,11 @@
     @apply bg-muted/50 rounded-xl p-4;
   }
 
+  /* p-3 (e não p-4): o cartão estava alto demais e a altura vinha dos
+     respiros, não do texto — pedido do usuário, set/2026. Fonte e selos
+     ficaram como estavam. */
   .kanban-card {
-    @apply bg-card rounded-lg p-4 shadow-lg border border-white/10 cursor-grab active:cursor-grabbing transition-all duration-200;
+    @apply bg-card rounded-lg p-3 shadow-lg border border-white/10 cursor-grab active:cursor-grabbing transition-all duration-200;
   }
 
   .kanban-card:hover {
