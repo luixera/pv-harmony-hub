@@ -162,6 +162,17 @@ de memória comprometida (Chrome, o app do Claude, BlueStacks, WSL/Docker, Steam
 Reiniciar o BlueStacks não adianta nesse caso. A varredura anexa
 "[PC com pouca memória: X MB …]" ao erro quando a RAM livre cai abaixo de 1 GB ou a
 comprometível abaixo de 4 GB, para a aba Coleta mostrar a causa real.
+Correção aplicada no mesmo dia: a instância do BlueStacks reservava 4 GB e 4 núcleos
+para dois apps simples. Passou a **2 GB e 2 núcleos** (`bst.instance.Rvc64.ram` e
+`.cpus` no `bluestacks.conf`, editado com o BlueStacks fechado; backup em
+`dadosackup-bluestacks.conf-20261016`). O BlueStacks caiu de 5,3 para 3,5 GB
+reservados, o Android sobe em ~40 s e o ciclo voltou a ~4,5 min sem travar
+(Cury 7–8 de 8, ATM 25 fixos + rodízio).
+
+**Aviso de boas-vindas da Cury.** Logo depois de abrir, a Cury às vezes mostra
+"Bem vindo ao novo app curyenergia" por cima do mapa, e o toque em "Lista" cai nele.
+O passo `tocar_ate` (texto, `aparecer`, `fechar`, `tentativas`, `ate`) toca e confere:
+fecha o aviso ("Encerrar") se ele estiver na tela e toca de novo até a lista abrir.
 
 **Assertividade.** Cada gravação com leitura manda `p_falhas` (`[{nome, erro}]`,
 com `nome` = `local_nome`) com os locais que falharam e os fixos não lidos por limite
