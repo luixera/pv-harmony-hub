@@ -1,0 +1,29 @@
+[Unit]
+Description=Eletropostos — estação de telas (Cury, ATM EVs) num celular na nuvem (VMOS), um ciclo
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# Um ciclo por disparo do timer (gdm-estacao.timer, a cada 8 min). O túnel SSH do
+# ADB e o adb nascem e morrem dentro do ciclo: KillMode padrão (control-group).
+Type=oneshot
+User=gdmestacao
+Group=gdmestacao
+WorkingDirectory=/opt/gdm-estacao
+EnvironmentFile=/etc/gdm-estacao/env
+Environment=HOME=/home/gdmestacao
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+ExecStart=/usr/bin/python3 coletar.py
+TimeoutStartSec=15min
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=gdm-estacao
+
+# endurecimento: só HTTP/SSH de saída. dados/ (log e tranca) fica gravável; o
+# código é só leitura (dono root + ReadOnlyPaths, que ProtectSystem=full não cobre).
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=read-only
+ReadWritePaths=/home/gdmestacao /opt/gdm-estacao/dados
+ReadOnlyPaths=/opt/gdm-estacao

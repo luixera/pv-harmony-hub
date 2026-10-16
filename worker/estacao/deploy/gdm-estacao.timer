@@ -1,0 +1,11 @@
+[Unit]
+Description=Eletropostos — dispara a estação de telas a cada 8 minutos
+
+[Timer]
+OnCalendar=*:0/8
+AccuracySec=15s
+Persistent=false
+Unit=gdm-estacao.service
+
+[Install]
+WantedBy=timers.target

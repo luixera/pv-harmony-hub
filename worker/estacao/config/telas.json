@@ -1,0 +1,2519 @@
+{
+ "_sobre": "Roteiros de leitura dos apps no BlueStacks (gerado em 16/10/2026 por gera_telas.py a partir de capturas/*.json). Passos: abrir, toque, tocar_texto, tocar_texto_rolando, esperar_texto, digitar, deslizar, voltar, escolher; 'opcional' não falha. Regras: uma por plugue/carregador; o status é o grupo 1 do regex no texto da ficha. Roteiros 'opcional' rodam em rodízio no tempo que sobrar do orçamento (orcamento_s). Na ATM, sem GPS (lista com 0.00 km) o alvo troca para roteiros_sem_gps (busca pelo nome, só os fixos). limite_s: nenhum roteiro novo começa depois disso (coleta a cada 8 min); max_falhas_seguidas: desiste do app no ciclo. Cadência: roteiros com intervalo_min (AC de 7 kW: 16) rodam em 1 de cada intervalo/ciclo_min ciclos, no grupo indicado; só vale com cadencia_ativa.",
+ "orcamento_s": 360,
+ "guardar_capturas": false,
+ "alvos": [
+  {
+   "fonte": "cury",
+   "app": "Cury Energia / Spott (eco.spott.curyenergia)",
+   "ordem": [
+    "Green Life II - Cury Energia",
+    "Posto HM Ernani Pires 80Kw - Cury Energia",
+    "Posto HM Ernani Pires 60kw - Cury Energia",
+    "NAU VIVENDAS",
+    "THE WEEK JK 80KW CURY ENERGIA",
+    "Shopping Iguatemi São Jose do Rio Preto",
+    "Posto HM Bady Bassit - Cury Energia",
+    "Posto HM Mirassol - Cury Energia"
+   ],
+   "passo_lista_px": 291,
+   "roteiros": [
+    {
+     "nome": "Posto HM Ernani Pires 80Kw - Cury Energia",
+     "passos": [
+      {
+       "tipo": "abrir",
+       "pacote": "eco.spott.curyenergia",
+       "espera": 2
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Lista",
+       "ate": 40,
+       "espera": 1.5
+      },
+      {
+       "tipo": "tocar_ate",
+       "texto": "Lista",
+       "aparecer": "Locais de Recarga",
+       "fechar": [
+        "Encerrar"
+       ],
+       "tentativas": 4,
+       "ate": 8,
+       "espera": 0.5
+      },
+      {
+       "tipo": "tocar_texto_rolando",
+       "texto": "Posto HM Ernani Pires 80Kw - Cury Energia",
+       "espera": 0.5
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Escolha um carregador",
+       "ate": 15,
+       "espera": 0
+      },
+      {
+       "tipo": "tocar_texto",
+       "texto": "Encerrar",
+       "opcional": true,
+       "espera": 0.5
+      }
+     ],
+     "regras": [
+      {
+       "local_id": "Posto HM Ernani Pires 80Kw - Cury Energia",
+       "local_nome": "Posto HM Ernani Pires 80Kw - Cury Energia",
+       "conector": "91748 - 1",
+       "potencia_kw": 80.0,
+       "lat": -20.803,
+       "lng": -49.411,
+       "regex": "^91748\\ \\-\\ 1\\n(?:[^\\n]*\\n){0,5}?[0-9.,]+\\s*kW\\n([^\\n]+)"
+      },
+      {
+       "local_id": "Posto HM Ernani Pires 80Kw - Cury Energia",
+       "local_nome": "Posto HM Ernani Pires 80Kw - Cury Energia",
+       "conector": "91748 - 2",
+       "potencia_kw": 80.0,
+       "lat": -20.803,
+       "lng": -49.411,
+       "regex": "^91748\\ \\-\\ 2\\n(?:[^\\n]*\\n){0,5}?[0-9.,]+\\s*kW\\n([^\\n]+)"
+      }
+     ]
+    },
+    {
+     "nome": "Posto HM Ernani Pires 60kw - Cury Energia",
+     "passos": [
+      {
+       "tipo": "voltar",
+       "espera": 1.5
+      },
+      {
+       "tipo": "tocar_ate",
+       "texto": "Lista",
+       "aparecer": "Locais de Recarga",
+       "fechar": [
+        "Encerrar"
+       ],
+       "tentativas": 4,
+       "ate": 8,
+       "espera": 0.5
+      },
+      {
+       "tipo": "tocar_texto_rolando",
+       "texto": "Posto HM Ernani Pires 60kw - Cury Energia",
+       "espera": 0.5
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Escolha um carregador",
+       "ate": 15,
+       "espera": 0
+      },
+      {
+       "tipo": "tocar_texto",
+       "texto": "Encerrar",
+       "opcional": true,
+       "espera": 0.5
+      }
+     ],
+     "regras": [
+      {
+       "local_id": "Posto HM Ernani Pires 60kw - Cury Energia",
+       "local_nome": "Posto HM Ernani Pires 60kw - Cury Energia",
+       "conector": "91747 - 1",
+       "potencia_kw": 60.0,
+       "lat": -20.803,
+       "lng": -49.411,
+       "regex": "^91747\\ \\-\\ 1\\n(?:[^\\n]*\\n){0,5}?[0-9.,]+\\s*kW\\n([^\\n]+)"
+      },
+      {
+       "local_id": "Posto HM Ernani Pires 60kw - Cury Energia",
+       "local_nome": "Posto HM Ernani Pires 60kw - Cury Energia",
+       "conector": "91747 - 2",
+       "potencia_kw": 60.0,
+       "lat": -20.803,
+       "lng": -49.411,
+       "regex": "^91747\\ \\-\\ 2\\n(?:[^\\n]*\\n){0,5}?[0-9.,]+\\s*kW\\n([^\\n]+)"
+      }
+     ]
+    },
+    {
+     "nome": "THE WEEK JK 80KW CURY ENERGIA",
+     "passos": [
+      {
+       "tipo": "abrir",
+       "pacote": "eco.spott.curyenergia",
+       "espera": 2
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Lista",
+       "ate": 40,
+       "espera": 1.5
+      },
+      {
+       "tipo": "tocar_ate",
+       "texto": "Lista",
+       "aparecer": "Locais de Recarga",
+       "fechar": [
+        "Encerrar"
+       ],
+       "tentativas": 4,
+       "ate": 8,
+       "espera": 0.5
+      },
+      {
+       "tipo": "tocar_texto_rolando",
+       "texto": "THE WEEK JK 80KW CURY ENERGIA",
+       "espera": 0.5
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Escolha um carregador",
+       "ate": 15,
+       "espera": 0
+      },
+      {
+       "tipo": "tocar_texto",
+       "texto": "Encerrar",
+       "opcional": true,
+       "espera": 0.5
+      }
+     ],
+     "regras": [
+      {
+       "local_id": "THE WEEK JK 80KW CURY ENERGIA",
+       "local_nome": "THE WEEK JK 80KW CURY ENERGIA",
+       "conector": "13113 - 1",
+       "potencia_kw": 80.0,
+       "lat": -20.856,
+       "lng": -49.413,
+       "regex": "^13113\\ \\-\\ 1\\n(?:[^\\n]*\\n){0,5}?[0-9.,]+\\s*kW\\n([^\\n]+)"
+      },
+      {
+       "local_id": "THE WEEK JK 80KW CURY ENERGIA",
+       "local_nome": "THE WEEK JK 80KW CURY ENERGIA",
+       "conector": "13113 - 2",
+       "potencia_kw": 80.0,
+       "lat": -20.856,
+       "lng": -49.413,
+       "regex": "^13113\\ \\-\\ 2\\n(?:[^\\n]*\\n){0,5}?[0-9.,]+\\s*kW\\n([^\\n]+)"
+      }
+     ]
+    },
+    {
+     "nome": "Posto HM Bady Bassit - Cury Energia",
+     "passos": [
+      {
+       "tipo": "abrir",
+       "pacote": "eco.spott.curyenergia",
+       "espera": 2
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Lista",
+       "ate": 40,
+       "espera": 1.5
+      },
+      {
+       "tipo": "tocar_ate",
+       "texto": "Lista",
+       "aparecer": "Locais de Recarga",
+       "fechar": [
+        "Encerrar"
+       ],
+       "tentativas": 4,
+       "ate": 8,
+       "espera": 0.5
+      },
+      {
+       "tipo": "tocar_texto_rolando",
+       "texto": "Posto HM Bady Bassit - Cury Energia",
+       "espera": 0.5
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Escolha um carregador",
+       "ate": 15,
+       "espera": 0
+      },
+      {
+       "tipo": "tocar_texto",
+       "texto": "Encerrar",
+       "opcional": true,
+       "espera": 0.5
+      }
+     ],
+     "regras": [
+      {
+       "local_id": "Posto HM Bady Bassit - Cury Energia",
+       "local_nome": "Posto HM Bady Bassit - Cury Energia",
+       "conector": "43036 - 1",
+       "potencia_kw": 40.0,
+       "lat": -20.899,
+       "lng": -49.439,
+       "regex": "^43036\\ \\-\\ 1\\n(?:[^\\n]*\\n){0,5}?[0-9.,]+\\s*kW\\n([^\\n]+)"
+      }
+     ]
+    },
+    {
+     "nome": "Posto HM Mirassol - Cury Energia",
+     "passos": [
+      {
+       "tipo": "abrir",
+       "pacote": "eco.spott.curyenergia",
+       "espera": 2
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Lista",
+       "ate": 40,
+       "espera": 1.5
+      },
+      {
+       "tipo": "tocar_ate",
+       "texto": "Lista",
+       "aparecer": "Locais de Recarga",
+       "fechar": [
+        "Encerrar"
+       ],
+       "tentativas": 4,
+       "ate": 8,
+       "espera": 0.5
+      },
+      {
+       "tipo": "tocar_texto_rolando",
+       "texto": "Posto HM Mirassol - Cury Energia",
+       "espera": 0.5
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Escolha um carregador",
+       "ate": 15,
+       "espera": 0
+      },
+      {
+       "tipo": "tocar_texto",
+       "texto": "Encerrar",
+       "opcional": true,
+       "espera": 0.5
+      }
+     ],
+     "regras": [
+      {
+       "local_id": "Posto HM Mirassol - Cury Energia",
+       "local_nome": "Posto HM Mirassol - Cury Energia",
+       "conector": "65497 - 1",
+       "potencia_kw": 40.0,
+       "lat": -20.802,
+       "lng": -49.505,
+       "regex": "^65497\\ \\-\\ 1\\n(?:[^\\n]*\\n){0,5}?[0-9.,]+\\s*kW\\n([^\\n]+)"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "fonte": "atm",
+   "app": "ATM EVs (br.com.atmoutsourcing.evscharger)",
+   "ordem": [
+    "O Rei do Pão de Queijo - AV Bady Bassit",
+    "Muffato Gourmet",
+    "Hotel Nacional",
+    "NAVARRO HOME ",
+    "Brazilian Convenience (Av. Fernando Costa) 7kW",
+    "Eko Business Park - 7,2kW",
+    "GOL LOG",
+    "Max Potirendaba Totem 7,2kW - 1",
+    "Max Philadelpho Totem 7,2kW - 1",
+    "LUPEMA - L.STORE",
+    "Muffato Damha Totem 7,2kW - 1",
+    "Eletroposto Muffato Damha 40kW",
+    "Muffato JK Rio Preto Totem 7,2kW - 1",
+    "Rancho do Cupim",
+    "Saint James Barbearia",
+    "Georgina Café Conchego",
+    "CONDOMÍNIO MYRÁ JK",
+    "Georgina BMW",
+    "COMPRADO DOURATECH",
+    "Max Eldorado Rio Preto Totem 7,2kw - 1",
+    "FAMA CONNECT - CASTELLAMARE",
+    "Hilton Garden Inn",
+    "CONDOMINIO  GREEN PARK 7.2kw",
+    "SCP JK 7KW",
+    "Academia Corpore",
+    "IMPPER VENDAS totem 7.2kw",
+    "IMOBILIÁRIA RENASCER & JALES",
+    "Brazilian Convenience Talhado 7kW",
+    "QUINTA DO GOLFE JARDINS",
+    "Ipê Park Hotel",
+    "Supermercado Alfredo Antunes LJ04 (SCP)",
+    "Totem 7kW Supermercado Antunes Lj. 01"
+   ],
+   "passo_lista_px": 160,
+   "roteiros": [
+    {
+     "nome": "abrir e listar tudo por distância",
+     "passos": [
+      {
+       "tipo": "abrir",
+       "pacote": "br.com.atmoutsourcing.evscharger",
+       "espera": 3
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Pesquisar",
+       "ate": 40,
+       "espera": 2
+      },
+      {
+       "tipo": "tocar_texto",
+       "texto": "Pesquisar",
+       "espera": 2
+      },
+      {
+       "tipo": "digitar",
+       "texto": " ",
+       "espera": 6
+      },
+      {
+       "tipo": "escolher",
+       "regex": ", 0\\.00 km, ",
+       "se_casar": "reiniciar_bluestacks",
+       "depois": "roteiros_sem_gps",
+       "motivo": "lista da ATM sem distâncias (GPS do BlueStacks parado)"
+      }
+     ],
+     "regras": []
+    },
+    {
+     "nome": "Brazilian Convenience (Av. Fernando Costa) 7kW",
+     "passos": [
+      {
+       "tipo": "tocar_texto_rolando",
+       "texto": "Brazilian Convenience (Av. Fernando Costa) 7kW",
+       "espera": 0.5
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Clique na tomada",
+       "ate": 12,
+       "espera": 0
+      }
+     ],
+     "regras": [
+      {
+       "local_id": "Brazilian Convenience (Av. Fernando Costa) 7kW",
+       "local_nome": "Brazilian Convenience (Av. Fernando Costa) 7kW",
+       "conector": "5602",
+       "potencia_kw": 7.0,
+       "lat": -20.803,
+       "lng": -49.359,
+       "regex": "ID: 5602, (.+)$"
+      },
+      {
+       "local_id": "Brazilian Convenience (Av. Fernando Costa) 7kW",
+       "local_nome": "Brazilian Convenience (Av. Fernando Costa) 7kW",
+       "conector": "5756",
+       "potencia_kw": 40.0,
+       "lat": -20.803,
+       "lng": -49.359,
+       "regex": "ID: 5756, (.+)$"
+      }
+     ],
+     "depois": [
+      {
+       "tipo": "toque",
+       "x": 852,
+       "y": 781,
+       "espera": 0.5
+      }
+     ]
+    },
+    {
+     "nome": "Eko Business Park - 7,2kW",
+     "passos": [
+      {
+       "tipo": "tocar_texto_rolando",
+       "texto": "Eko Business Park - 7,2kW",
+       "espera": 0.5
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Clique na tomada",
+       "ate": 12,
+       "espera": 0
+      }
+     ],
+     "regras": [
+      {
+       "local_id": "Eko Business Park - 7,2kW",
+       "local_nome": "Eko Business Park - 7,2kW",
+       "conector": "5642",
+       "potencia_kw": 7.2,
+       "lat": -20.82,
+       "lng": -49.396,
+       "regex": "ID: 5642, (.+)$"
+      },
+      {
+       "local_id": "Eko Business Park - 7,2kW",
+       "local_nome": "Eko Business Park - 7,2kW",
+       "conector": "5845",
+       "potencia_kw": 7.2,
+       "lat": -20.82,
+       "lng": -49.396,
+       "regex": "ID: 5845, (.+)$"
+      }
+     ],
+     "depois": [
+      {
+       "tipo": "toque",
+       "x": 852,
+       "y": 781,
+       "espera": 0.5
+      }
+     ],
+     "intervalo_min": 16,
+     "grupo": 0
+    },
+    {
+     "nome": "Max Potirendaba Totem 7,2kW - 1",
+     "passos": [
+      {
+       "tipo": "tocar_texto_rolando",
+       "texto": "Max Potirendaba Totem 7,2kW - 1",
+       "espera": 0.5
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Clique na tomada",
+       "ate": 12,
+       "espera": 0
+      }
+     ],
+     "regras": [
+      {
+       "local_id": "Max Potirendaba Totem 7,2kW - 1",
+       "local_nome": "Max Potirendaba Totem 7,2kW - 1",
+       "conector": "5862",
+       "potencia_kw": 7.2,
+       "lat": -20.84,
+       "lng": -49.37,
+       "regex": "ID: 5862, (.+)$"
+      },
+      {
+       "local_id": "Max Potirendaba Totem 7,2kW - 1",
+       "local_nome": "Max Potirendaba Totem 7,2kW - 1",
+       "conector": "5871",
+       "potencia_kw": 7.2,
+       "lat": -20.84,
+       "lng": -49.37,
+       "regex": "ID: 5871, (.+)$"
+      }
+     ],
+     "depois": [
+      {
+       "tipo": "toque",
+       "x": 852,
+       "y": 781,
+       "espera": 0.5
+      }
+     ],
+     "intervalo_min": 16,
+     "grupo": 1
+    },
+    {
+     "nome": "Max Philadelpho Totem 7,2kW - 1",
+     "passos": [
+      {
+       "tipo": "tocar_texto_rolando",
+       "texto": "Max Philadelpho Totem 7,2kW - 1",
+       "espera": 0.5
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Clique na tomada",
+       "ate": 12,
+       "espera": 0
+      }
+     ],
+     "regras": [
+      {
+       "local_id": "Max Philadelpho Totem 7,2kW - 1",
+       "local_nome": "Max Philadelpho Totem 7,2kW - 1",
+       "conector": "5839",
+       "potencia_kw": 7.2,
+       "lat": -20.781,
+       "lng": -49.379,
+       "regex": "ID: 5839, (.+)$"
+      },
+      {
+       "local_id": "Max Philadelpho Totem 7,2kW - 1",
+       "local_nome": "Max Philadelpho Totem 7,2kW - 1",
+       "conector": "5846",
+       "potencia_kw": 7.2,
+       "lat": -20.781,
+       "lng": -49.379,
+       "regex": "ID: 5846, (.+)$"
+      }
+     ],
+     "depois": [
+      {
+       "tipo": "toque",
+       "x": 852,
+       "y": 781,
+       "espera": 0.5
+      }
+     ],
+     "intervalo_min": 16,
+     "grupo": 0
+    },
+    {
+     "nome": "Muffato Damha Totem 7,2kW - 1",
+     "passos": [
+      {
+       "tipo": "tocar_texto_rolando",
+       "texto": "Muffato Damha Totem 7,2kW - 1",
+       "espera": 0.5
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Clique na tomada",
+       "ate": 12,
+       "espera": 0
+      }
+     ],
+     "regras": [
+      {
+       "local_id": "Muffato Damha Totem 7,2kW - 1",
+       "local_nome": "Muffato Damha Totem 7,2kW - 1",
+       "conector": "5852",
+       "potencia_kw": 7.2,
+       "lat": -20.8,
+       "lng": -49.345,
+       "regex": "ID: 5852, (.+)$"
+      },
+      {
+       "local_id": "Muffato Damha Totem 7,2kW - 1",
+       "local_nome": "Muffato Damha Totem 7,2kW - 1",
+       "conector": "5853",
+       "potencia_kw": 7.2,
+       "lat": -20.8,
+       "lng": -49.345,
+       "regex": "ID: 5853, (.+)$"
+      }
+     ],
+     "depois": [
+      {
+       "tipo": "toque",
+       "x": 852,
+       "y": 781,
+       "espera": 0.5
+      }
+     ],
+     "intervalo_min": 16,
+     "grupo": 1
+    },
+    {
+     "nome": "Eletroposto Muffato Damha 40kW",
+     "passos": [
+      {
+       "tipo": "tocar_texto_rolando",
+       "texto": "Eletroposto Muffato Damha 40kW",
+       "espera": 0.5
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Clique na tomada",
+       "ate": 12,
+       "espera": 0
+      }
+     ],
+     "regras": [
+      {
+       "local_id": "Eletroposto Muffato Damha 40kW",
+       "local_nome": "Eletroposto Muffato Damha 40kW",
+       "conector": "5982",
+       "potencia_kw": 40.0,
+       "lat": -20.8,
+       "lng": -49.345,
+       "regex": "ID: 5982, (.+)$"
+      }
+     ],
+     "depois": [
+      {
+       "tipo": "toque",
+       "x": 852,
+       "y": 781,
+       "espera": 0.5
+      }
+     ]
+    },
+    {
+     "nome": "Muffato JK Rio Preto Totem 7,2kW - 1",
+     "passos": [
+      {
+       "tipo": "tocar_texto_rolando",
+       "texto": "Muffato JK Rio Preto Totem 7,2kW - 1",
+       "espera": 0.5
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Clique na tomada",
+       "ate": 12,
+       "espera": 0
+      }
+     ],
+     "regras": [
+      {
+       "local_id": "Muffato JK Rio Preto Totem 7,2kW - 1",
+       "local_nome": "Muffato JK Rio Preto Totem 7,2kW - 1",
+       "conector": "5838",
+       "potencia_kw": 7.2,
+       "lat": -20.831,
+       "lng": -49.406,
+       "regex": "ID: 5838, (.+)$"
+      },
+      {
+       "local_id": "Muffato JK Rio Preto Totem 7,2kW - 1",
+       "local_nome": "Muffato JK Rio Preto Totem 7,2kW - 1",
+       "conector": "5860",
+       "potencia_kw": 7.2,
+       "lat": -20.831,
+       "lng": -49.406,
+       "regex": "ID: 5860, (.+)$"
+      }
+     ],
+     "depois": [
+      {
+       "tipo": "toque",
+       "x": 852,
+       "y": 781,
+       "espera": 0.5
+      }
+     ],
+     "intervalo_min": 16,
+     "grupo": 0
+    },
+    {
+     "nome": "Georgina Café Conchego",
+     "passos": [
+      {
+       "tipo": "tocar_texto_rolando",
+       "texto": "Georgina Café Conchego",
+       "espera": 0.5
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Clique na tomada",
+       "ate": 12,
+       "espera": 0
+      }
+     ],
+     "regras": [
+      {
+       "local_id": "Georgina Café Conchego",
+       "local_nome": "Georgina Café Conchego",
+       "conector": "5676",
+       "potencia_kw": 7.2,
+       "lat": -20.845,
+       "lng": -49.4,
+       "regex": "ID: 5676, (.+)$"
+      },
+      {
+       "local_id": "Georgina Café Conchego",
+       "local_nome": "Georgina Café Conchego",
+       "conector": "5805",
+       "potencia_kw": 40.0,
+       "lat": -20.845,
+       "lng": -49.4,
+       "regex": "ID: 5805, (.+)$"
+      }
+     ],
+     "depois": [
+      {
+       "tipo": "toque",
+       "x": 852,
+       "y": 781,
+       "espera": 0.5
+      }
+     ]
+    },
+    {
+     "nome": "Georgina BMW",
+     "passos": [
+      {
+       "tipo": "tocar_texto_rolando",
+       "texto": "Georgina BMW",
+       "espera": 0.5
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Clique na tomada",
+       "ate": 12,
+       "espera": 0
+      }
+     ],
+     "regras": [
+      {
+       "local_id": "Georgina BMW",
+       "local_nome": "Georgina BMW",
+       "conector": "5254",
+       "potencia_kw": 7.2,
+       "lat": -20.845,
+       "lng": -49.4,
+       "regex": "ID: 5254, (.+)$"
+      },
+      {
+       "local_id": "Georgina BMW",
+       "local_nome": "Georgina BMW",
+       "conector": "5826",
+       "potencia_kw": 7.2,
+       "lat": -20.845,
+       "lng": -49.4,
+       "regex": "ID: 5826, (.+)$"
+      }
+     ],
+     "depois": [
+      {
+       "tipo": "toque",
+       "x": 852,
+       "y": 781,
+       "espera": 0.5
+      }
+     ],
+     "intervalo_min": 16,
+     "grupo": 1
+    },
+    {
+     "nome": "Max Eldorado Rio Preto Totem 7,2kw - 1",
+     "passos": [
+      {
+       "tipo": "tocar_texto_rolando",
+       "texto": "Max Eldorado Rio Preto Totem 7,2kw - 1",
+       "espera": 0.5
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Clique na tomada",
+       "ate": 12,
+       "espera": 0
+      }
+     ],
+     "regras": [
+      {
+       "local_id": "Max Eldorado Rio Preto Totem 7,2kw - 1",
+       "local_nome": "Max Eldorado Rio Preto Totem 7,2kw - 1",
+       "conector": "5613",
+       "potencia_kw": 7.2,
+       "lat": -20.789,
+       "lng": -49.411,
+       "regex": "ID: 5613, (.+)$"
+      },
+      {
+       "local_id": "Max Eldorado Rio Preto Totem 7,2kw - 1",
+       "local_nome": "Max Eldorado Rio Preto Totem 7,2kw - 1",
+       "conector": "5660",
+       "potencia_kw": 7.2,
+       "lat": -20.789,
+       "lng": -49.411,
+       "regex": "ID: 5660, (.+)$"
+      }
+     ],
+     "depois": [
+      {
+       "tipo": "toque",
+       "x": 852,
+       "y": 781,
+       "espera": 0.5
+      }
+     ],
+     "intervalo_min": 16,
+     "grupo": 0
+    },
+    {
+     "nome": "SCP JK 7KW",
+     "passos": [
+      {
+       "tipo": "tocar_texto_rolando",
+       "texto": "SCP JK 7KW",
+       "espera": 0.5
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Clique na tomada",
+       "ate": 12,
+       "espera": 0
+      }
+     ],
+     "regras": [
+      {
+       "local_id": "SCP JK 7KW",
+       "local_nome": "SCP JK 7KW",
+       "conector": "5078",
+       "potencia_kw": 40.0,
+       "lat": -20.851,
+       "lng": -49.413,
+       "regex": "ID: 5078, (.+)$"
+      },
+      {
+       "local_id": "SCP JK 7KW",
+       "local_nome": "SCP JK 7KW",
+       "conector": "5617",
+       "potencia_kw": 7.0,
+       "lat": -20.851,
+       "lng": -49.413,
+       "regex": "ID: 5617, (.+)$"
+      }
+     ],
+     "depois": [
+      {
+       "tipo": "toque",
+       "x": 852,
+       "y": 781,
+       "espera": 0.5
+      }
+     ]
+    },
+    {
+     "nome": "Brazilian Convenience Talhado 7kW",
+     "passos": [
+      {
+       "tipo": "tocar_texto_rolando",
+       "texto": "Brazilian Convenience Talhado 7kW",
+       "espera": 0.5
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Clique na tomada",
+       "ate": 12,
+       "espera": 0
+      }
+     ],
+     "regras": [
+      {
+       "local_id": "Brazilian Convenience Talhado 7kW",
+       "local_nome": "Brazilian Convenience Talhado 7kW",
+       "conector": "5601",
+       "potencia_kw": 7.0,
+       "lat": -20.761,
+       "lng": -49.344,
+       "regex": "ID: 5601, (.+)$"
+      },
+      {
+       "local_id": "Brazilian Convenience Talhado 7kW",
+       "local_nome": "Brazilian Convenience Talhado 7kW",
+       "conector": "5757",
+       "potencia_kw": 40.0,
+       "lat": -20.761,
+       "lng": -49.344,
+       "regex": "ID: 5757, (.+)$"
+      }
+     ],
+     "depois": [
+      {
+       "tipo": "toque",
+       "x": 852,
+       "y": 781,
+       "espera": 0.5
+      }
+     ]
+    },
+    {
+     "nome": "Totem 7kW Supermercado Antunes Lj. 01",
+     "passos": [
+      {
+       "tipo": "tocar_texto_rolando",
+       "texto": "Totem 7kW Supermercado Antunes Lj. 01",
+       "espera": 0.5
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Clique na tomada",
+       "ate": 12,
+       "espera": 0
+      }
+     ],
+     "regras": [
+      {
+       "local_id": "Totem 7kW Supermercado Antunes Lj. 01",
+       "local_nome": "Totem 7kW Supermercado Antunes Lj. 01",
+       "conector": "5669",
+       "potencia_kw": 7.0,
+       "lat": -20.814,
+       "lng": -49.509,
+       "regex": "ID: 5669, (.+)$"
+      },
+      {
+       "local_id": "Totem 7kW Supermercado Antunes Lj. 01",
+       "local_nome": "Totem 7kW Supermercado Antunes Lj. 01",
+       "conector": "5977",
+       "potencia_kw": 7.0,
+       "lat": -20.814,
+       "lng": -49.509,
+       "regex": "ID: 5977, (.+)$"
+      }
+     ],
+     "depois": [
+      {
+       "tipo": "toque",
+       "x": 852,
+       "y": 781,
+       "espera": 0.5
+      }
+     ],
+     "intervalo_min": 16,
+     "grupo": 1
+    },
+    {
+     "nome": "O Rei do Pão de Queijo - AV Bady Bassit",
+     "passos": [
+      {
+       "tipo": "tocar_texto_rolando",
+       "texto": "O Rei do Pão de Queijo - AV Bady Bassit",
+       "espera": 0.5
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Clique na tomada",
+       "ate": 12,
+       "espera": 0
+      }
+     ],
+     "regras": [
+      {
+       "local_id": "O Rei do Pão de Queijo - AV Bady Bassit",
+       "local_nome": "O Rei do Pão de Queijo - AV Bady Bassit",
+       "conector": "5481",
+       "potencia_kw": 7.2,
+       "lat": null,
+       "lng": null,
+       "regex": "ID: 5481, (.+)$"
+      }
+     ],
+     "depois": [
+      {
+       "tipo": "toque",
+       "x": 852,
+       "y": 781,
+       "espera": 0.5
+      }
+     ],
+     "opcional": true,
+     "intervalo_min": 16,
+     "grupo": 0
+    },
+    {
+     "nome": "Muffato Gourmet",
+     "passos": [
+      {
+       "tipo": "tocar_texto_rolando",
+       "texto": "Muffato Gourmet",
+       "espera": 0.5
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Clique na tomada",
+       "ate": 12,
+       "espera": 0
+      }
+     ],
+     "regras": [
+      {
+       "local_id": "Muffato Gourmet",
+       "local_nome": "Muffato Gourmet",
+       "conector": "5292",
+       "potencia_kw": 7.2,
+       "lat": null,
+       "lng": null,
+       "regex": "ID: 5292, (.+)$"
+      }
+     ],
+     "depois": [
+      {
+       "tipo": "toque",
+       "x": 852,
+       "y": 781,
+       "espera": 0.5
+      }
+     ],
+     "opcional": true,
+     "intervalo_min": 16,
+     "grupo": 1
+    },
+    {
+     "nome": "Hotel Nacional",
+     "passos": [
+      {
+       "tipo": "tocar_texto_rolando",
+       "texto": "Hotel Nacional",
+       "espera": 0.5
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Clique na tomada",
+       "ate": 12,
+       "espera": 0
+      }
+     ],
+     "regras": [
+      {
+       "local_id": "Hotel Nacional",
+       "local_nome": "Hotel Nacional",
+       "conector": "5571",
+       "potencia_kw": 7.2,
+       "lat": null,
+       "lng": null,
+       "regex": "ID: 5571, (.+)$"
+      }
+     ],
+     "depois": [
+      {
+       "tipo": "toque",
+       "x": 852,
+       "y": 781,
+       "espera": 0.5
+      }
+     ],
+     "opcional": true,
+     "intervalo_min": 16,
+     "grupo": 0
+    },
+    {
+     "nome": "GOL LOG",
+     "passos": [
+      {
+       "tipo": "tocar_texto_rolando",
+       "texto": "GOL LOG",
+       "espera": 0.5
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Clique na tomada",
+       "ate": 12,
+       "espera": 0
+      }
+     ],
+     "regras": [
+      {
+       "local_id": "GOL LOG",
+       "local_nome": "GOL LOG",
+       "conector": "5912",
+       "potencia_kw": 7.2,
+       "lat": null,
+       "lng": null,
+       "regex": "ID: 5912, (.+)$"
+      },
+      {
+       "local_id": "GOL LOG",
+       "local_nome": "GOL LOG",
+       "conector": "5913",
+       "potencia_kw": 7.2,
+       "lat": null,
+       "lng": null,
+       "regex": "ID: 5913, (.+)$"
+      }
+     ],
+     "depois": [
+      {
+       "tipo": "toque",
+       "x": 852,
+       "y": 781,
+       "espera": 0.5
+      }
+     ],
+     "opcional": true,
+     "intervalo_min": 16,
+     "grupo": 1
+    },
+    {
+     "nome": "Rancho do Cupim",
+     "passos": [
+      {
+       "tipo": "tocar_texto_rolando",
+       "texto": "Rancho do Cupim",
+       "espera": 0.5
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Clique na tomada",
+       "ate": 12,
+       "espera": 0
+      }
+     ],
+     "regras": [
+      {
+       "local_id": "Rancho do Cupim",
+       "local_nome": "Rancho do Cupim",
+       "conector": "5212",
+       "potencia_kw": 7.2,
+       "lat": null,
+       "lng": null,
+       "regex": "ID: 5212, (.+)$"
+      }
+     ],
+     "depois": [
+      {
+       "tipo": "toque",
+       "x": 852,
+       "y": 781,
+       "espera": 0.5
+      }
+     ],
+     "opcional": true,
+     "intervalo_min": 16,
+     "grupo": 0
+    },
+    {
+     "nome": "Saint James Barbearia",
+     "passos": [
+      {
+       "tipo": "tocar_texto_rolando",
+       "texto": "Saint James Barbearia",
+       "espera": 0.5
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Clique na tomada",
+       "ate": 12,
+       "espera": 0
+      }
+     ],
+     "regras": [
+      {
+       "local_id": "Saint James Barbearia",
+       "local_nome": "Saint James Barbearia",
+       "conector": "5247",
+       "potencia_kw": 7.2,
+       "lat": null,
+       "lng": null,
+       "regex": "ID: 5247, (.+)$"
+      }
+     ],
+     "depois": [
+      {
+       "tipo": "toque",
+       "x": 852,
+       "y": 781,
+       "espera": 0.5
+      }
+     ],
+     "opcional": true,
+     "intervalo_min": 16,
+     "grupo": 1
+    },
+    {
+     "nome": "CONDOMÍNIO MYRÁ JK",
+     "passos": [
+      {
+       "tipo": "tocar_texto_rolando",
+       "texto": "CONDOMÍNIO MYRÁ JK",
+       "espera": 0.5
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Clique na tomada",
+       "ate": 12,
+       "espera": 0
+      }
+     ],
+     "regras": [
+      {
+       "local_id": "CONDOMÍNIO MYRÁ JK",
+       "local_nome": "CONDOMÍNIO MYRÁ JK",
+       "conector": "5501",
+       "potencia_kw": 7.2,
+       "lat": null,
+       "lng": null,
+       "regex": "ID: 5501, (.+)$"
+      },
+      {
+       "local_id": "CONDOMÍNIO MYRÁ JK",
+       "local_nome": "CONDOMÍNIO MYRÁ JK",
+       "conector": "5565",
+       "potencia_kw": 7.2,
+       "lat": null,
+       "lng": null,
+       "regex": "ID: 5565, (.+)$"
+      }
+     ],
+     "depois": [
+      {
+       "tipo": "toque",
+       "x": 852,
+       "y": 781,
+       "espera": 0.5
+      }
+     ],
+     "opcional": true,
+     "intervalo_min": 16,
+     "grupo": 0
+    },
+    {
+     "nome": "COMPRADO DOURATECH",
+     "passos": [
+      {
+       "tipo": "tocar_texto_rolando",
+       "texto": "COMPRADO DOURATECH",
+       "espera": 0.5
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Clique na tomada",
+       "ate": 12,
+       "espera": 0
+      }
+     ],
+     "regras": [
+      {
+       "local_id": "COMPRADO DOURATECH",
+       "local_nome": "COMPRADO DOURATECH",
+       "conector": "5679",
+       "potencia_kw": 7.2,
+       "lat": null,
+       "lng": null,
+       "regex": "ID: 5679, (.+)$"
+      },
+      {
+       "local_id": "COMPRADO DOURATECH",
+       "local_nome": "COMPRADO DOURATECH",
+       "conector": "5832",
+       "potencia_kw": 7.2,
+       "lat": null,
+       "lng": null,
+       "regex": "ID: 5832, (.+)$"
+      }
+     ],
+     "depois": [
+      {
+       "tipo": "toque",
+       "x": 852,
+       "y": 781,
+       "espera": 0.5
+      }
+     ],
+     "opcional": true,
+     "intervalo_min": 16,
+     "grupo": 1
+    },
+    {
+     "nome": "FAMA CONNECT - CASTELLAMARE",
+     "passos": [
+      {
+       "tipo": "tocar_texto_rolando",
+       "texto": "FAMA CONNECT - CASTELLAMARE",
+       "espera": 0.5
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Clique na tomada",
+       "ate": 12,
+       "espera": 0
+      }
+     ],
+     "regras": [
+      {
+       "local_id": "FAMA CONNECT - CASTELLAMARE",
+       "local_nome": "FAMA CONNECT - CASTELLAMARE",
+       "conector": "5646",
+       "potencia_kw": 7.2,
+       "lat": null,
+       "lng": null,
+       "regex": "ID: 5646, (.+)$"
+      }
+     ],
+     "depois": [
+      {
+       "tipo": "toque",
+       "x": 852,
+       "y": 781,
+       "espera": 0.5
+      }
+     ],
+     "opcional": true,
+     "intervalo_min": 16,
+     "grupo": 0
+    },
+    {
+     "nome": "Hilton Garden Inn",
+     "passos": [
+      {
+       "tipo": "tocar_texto_rolando",
+       "texto": "Hilton Garden Inn",
+       "espera": 0.5
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Clique na tomada",
+       "ate": 12,
+       "espera": 0
+      }
+     ],
+     "regras": [
+      {
+       "local_id": "Hilton Garden Inn",
+       "local_nome": "Hilton Garden Inn",
+       "conector": "5223",
+       "potencia_kw": 7.2,
+       "lat": null,
+       "lng": null,
+       "regex": "ID: 5223, (.+)$"
+      },
+      {
+       "local_id": "Hilton Garden Inn",
+       "local_nome": "Hilton Garden Inn",
+       "conector": "5286",
+       "potencia_kw": 7.2,
+       "lat": null,
+       "lng": null,
+       "regex": "ID: 5286, (.+)$"
+      }
+     ],
+     "depois": [
+      {
+       "tipo": "toque",
+       "x": 852,
+       "y": 781,
+       "espera": 0.5
+      }
+     ],
+     "opcional": true,
+     "intervalo_min": 16,
+     "grupo": 1
+    },
+    {
+     "nome": "CONDOMINIO  GREEN PARK 7.2kw",
+     "passos": [
+      {
+       "tipo": "tocar_texto_rolando",
+       "texto": "CONDOMINIO  GREEN PARK 7.2kw",
+       "espera": 0.5
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Clique na tomada",
+       "ate": 12,
+       "espera": 0
+      }
+     ],
+     "regras": [
+      {
+       "local_id": "CONDOMINIO  GREEN PARK 7.2kw",
+       "local_nome": "CONDOMINIO  GREEN PARK 7.2kw",
+       "conector": "5863",
+       "potencia_kw": 7.2,
+       "lat": null,
+       "lng": null,
+       "regex": "ID: 5863, (.+)$"
+      }
+     ],
+     "depois": [
+      {
+       "tipo": "toque",
+       "x": 852,
+       "y": 781,
+       "espera": 0.5
+      }
+     ],
+     "opcional": true,
+     "intervalo_min": 16,
+     "grupo": 0
+    },
+    {
+     "nome": "Academia Corpore",
+     "passos": [
+      {
+       "tipo": "tocar_texto_rolando",
+       "texto": "Academia Corpore",
+       "espera": 0.5
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Clique na tomada",
+       "ate": 12,
+       "espera": 0
+      }
+     ],
+     "regras": [
+      {
+       "local_id": "Academia Corpore",
+       "local_nome": "Academia Corpore",
+       "conector": "1053",
+       "potencia_kw": 7.2,
+       "lat": null,
+       "lng": null,
+       "regex": "ID: 1053, (.+)$"
+      },
+      {
+       "local_id": "Academia Corpore",
+       "local_nome": "Academia Corpore",
+       "conector": "1054",
+       "potencia_kw": 7.2,
+       "lat": null,
+       "lng": null,
+       "regex": "ID: 1054, (.+)$"
+      },
+      {
+       "local_id": "Academia Corpore",
+       "local_nome": "Academia Corpore",
+       "conector": "1055",
+       "potencia_kw": 7.2,
+       "lat": null,
+       "lng": null,
+       "regex": "ID: 1055, (.+)$"
+      }
+     ],
+     "depois": [
+      {
+       "tipo": "toque",
+       "x": 852,
+       "y": 781,
+       "espera": 0.5
+      }
+     ],
+     "opcional": true,
+     "intervalo_min": 16,
+     "grupo": 1
+    },
+    {
+     "nome": "IMPPER VENDAS totem 7.2kw",
+     "passos": [
+      {
+       "tipo": "tocar_texto_rolando",
+       "texto": "IMPPER VENDAS totem 7.2kw",
+       "espera": 0.5
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Clique na tomada",
+       "ate": 12,
+       "espera": 0
+      }
+     ],
+     "regras": [
+      {
+       "local_id": "IMPPER VENDAS totem 7.2kw",
+       "local_nome": "IMPPER VENDAS totem 7.2kw",
+       "conector": "5279",
+       "potencia_kw": 7.2,
+       "lat": null,
+       "lng": null,
+       "regex": "ID: 5279, (.+)$"
+      }
+     ],
+     "depois": [
+      {
+       "tipo": "toque",
+       "x": 852,
+       "y": 781,
+       "espera": 0.5
+      }
+     ],
+     "opcional": true,
+     "intervalo_min": 16,
+     "grupo": 0
+    },
+    {
+     "nome": "IMOBILIÁRIA RENASCER & JALES",
+     "passos": [
+      {
+       "tipo": "tocar_texto_rolando",
+       "texto": "IMOBILIÁRIA RENASCER & JALES",
+       "espera": 0.5
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Clique na tomada",
+       "ate": 12,
+       "espera": 0
+      }
+     ],
+     "regras": [
+      {
+       "local_id": "IMOBILIÁRIA RENASCER & JALES",
+       "local_nome": "IMOBILIÁRIA RENASCER & JALES",
+       "conector": "5684",
+       "potencia_kw": 7.2,
+       "lat": null,
+       "lng": null,
+       "regex": "ID: 5684, (.+)$"
+      }
+     ],
+     "depois": [
+      {
+       "tipo": "toque",
+       "x": 852,
+       "y": 781,
+       "espera": 0.5
+      }
+     ],
+     "opcional": true,
+     "intervalo_min": 16,
+     "grupo": 1
+    },
+    {
+     "nome": "Ipê Park Hotel",
+     "passos": [
+      {
+       "tipo": "tocar_texto_rolando",
+       "texto": "Ipê Park Hotel",
+       "espera": 0.5
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Clique na tomada",
+       "ate": 12,
+       "espera": 0
+      }
+     ],
+     "regras": [
+      {
+       "local_id": "Ipê Park Hotel",
+       "local_nome": "Ipê Park Hotel",
+       "conector": "5627",
+       "potencia_kw": 7.2,
+       "lat": null,
+       "lng": null,
+       "regex": "ID: 5627, (.+)$"
+      }
+     ],
+     "depois": [
+      {
+       "tipo": "toque",
+       "x": 852,
+       "y": 781,
+       "espera": 0.5
+      }
+     ],
+     "opcional": true,
+     "intervalo_min": 16,
+     "grupo": 0
+    },
+    {
+     "nome": "Supermercado Alfredo Antunes LJ04 (SCP)",
+     "passos": [
+      {
+       "tipo": "tocar_texto_rolando",
+       "texto": "Supermercado Alfredo Antunes LJ04 (SCP)",
+       "espera": 0.5
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Clique na tomada",
+       "ate": 12,
+       "espera": 0
+      }
+     ],
+     "regras": [
+      {
+       "local_id": "Supermercado Alfredo Antunes LJ04 (SCP)",
+       "local_nome": "Supermercado Alfredo Antunes LJ04 (SCP)",
+       "conector": "5354",
+       "potencia_kw": 7.2,
+       "lat": null,
+       "lng": null,
+       "regex": "ID: 5354, (.+)$"
+      }
+     ],
+     "depois": [
+      {
+       "tipo": "toque",
+       "x": 852,
+       "y": 781,
+       "espera": 0.5
+      }
+     ],
+     "opcional": true,
+     "intervalo_min": 16,
+     "grupo": 1
+    }
+   ],
+   "roteiros_sem_gps": [
+    {
+     "nome": "Brazilian Convenience (Av. Fernando Costa) 7kW (busca pelo nome)",
+     "passos": [
+      {
+       "tipo": "fechar_ficha"
+      },
+      {
+       "tipo": "ir_ao_mapa"
+      },
+      {
+       "tipo": "tocar_texto",
+       "texto": "Pesquisar",
+       "espera": 1.5
+      },
+      {
+       "tipo": "digitar",
+       "texto": "Fernando Costa",
+       "espera": 3
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Brazilian Convenience (Av. Fernando Costa) 7kW",
+       "ate": 10,
+       "espera": 0.3
+      },
+      {
+       "tipo": "tocar_texto_rolando",
+       "texto": "Brazilian Convenience (Av. Fernando Costa) 7kW",
+       "rolagens": 4,
+       "espera": 0.5
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Clique na tomada",
+       "ate": 12,
+       "espera": 0
+      }
+     ],
+     "regras": [
+      {
+       "local_id": "Brazilian Convenience (Av. Fernando Costa) 7kW",
+       "local_nome": "Brazilian Convenience (Av. Fernando Costa) 7kW",
+       "conector": "5602",
+       "potencia_kw": 7.0,
+       "lat": -20.803,
+       "lng": -49.359,
+       "regex": "ID: 5602, (.+)$"
+      },
+      {
+       "local_id": "Brazilian Convenience (Av. Fernando Costa) 7kW",
+       "local_nome": "Brazilian Convenience (Av. Fernando Costa) 7kW",
+       "conector": "5756",
+       "potencia_kw": 40.0,
+       "lat": -20.803,
+       "lng": -49.359,
+       "regex": "ID: 5756, (.+)$"
+      }
+     ],
+     "depois": [
+      {
+       "tipo": "toque",
+       "x": 852,
+       "y": 781,
+       "espera": 0.5
+      }
+     ]
+    },
+    {
+     "nome": "Eko Business Park - 7,2kW (busca pelo nome)",
+     "passos": [
+      {
+       "tipo": "fechar_ficha"
+      },
+      {
+       "tipo": "ir_ao_mapa"
+      },
+      {
+       "tipo": "tocar_texto",
+       "texto": "Pesquisar",
+       "espera": 1.5
+      },
+      {
+       "tipo": "digitar",
+       "texto": "Eko Business",
+       "espera": 3
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Eko Business Park - 7,2kW",
+       "ate": 10,
+       "espera": 0.3
+      },
+      {
+       "tipo": "tocar_texto_rolando",
+       "texto": "Eko Business Park - 7,2kW",
+       "rolagens": 4,
+       "espera": 0.5
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Clique na tomada",
+       "ate": 12,
+       "espera": 0
+      }
+     ],
+     "regras": [
+      {
+       "local_id": "Eko Business Park - 7,2kW",
+       "local_nome": "Eko Business Park - 7,2kW",
+       "conector": "5642",
+       "potencia_kw": 7.2,
+       "lat": -20.82,
+       "lng": -49.396,
+       "regex": "ID: 5642, (.+)$"
+      },
+      {
+       "local_id": "Eko Business Park - 7,2kW",
+       "local_nome": "Eko Business Park - 7,2kW",
+       "conector": "5845",
+       "potencia_kw": 7.2,
+       "lat": -20.82,
+       "lng": -49.396,
+       "regex": "ID: 5845, (.+)$"
+      }
+     ],
+     "depois": [
+      {
+       "tipo": "toque",
+       "x": 852,
+       "y": 781,
+       "espera": 0.5
+      }
+     ],
+     "intervalo_min": 16,
+     "grupo": 0
+    },
+    {
+     "nome": "Max Potirendaba Totem 7,2kW - 1 (busca pelo nome)",
+     "passos": [
+      {
+       "tipo": "fechar_ficha"
+      },
+      {
+       "tipo": "ir_ao_mapa"
+      },
+      {
+       "tipo": "tocar_texto",
+       "texto": "Pesquisar",
+       "espera": 1.5
+      },
+      {
+       "tipo": "digitar",
+       "texto": "Potirendaba",
+       "espera": 3
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Max Potirendaba Totem 7,2kW - 1",
+       "ate": 10,
+       "espera": 0.3
+      },
+      {
+       "tipo": "tocar_texto_rolando",
+       "texto": "Max Potirendaba Totem 7,2kW - 1",
+       "rolagens": 4,
+       "espera": 0.5
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Clique na tomada",
+       "ate": 12,
+       "espera": 0
+      }
+     ],
+     "regras": [
+      {
+       "local_id": "Max Potirendaba Totem 7,2kW - 1",
+       "local_nome": "Max Potirendaba Totem 7,2kW - 1",
+       "conector": "5862",
+       "potencia_kw": 7.2,
+       "lat": -20.84,
+       "lng": -49.37,
+       "regex": "ID: 5862, (.+)$"
+      },
+      {
+       "local_id": "Max Potirendaba Totem 7,2kW - 1",
+       "local_nome": "Max Potirendaba Totem 7,2kW - 1",
+       "conector": "5871",
+       "potencia_kw": 7.2,
+       "lat": -20.84,
+       "lng": -49.37,
+       "regex": "ID: 5871, (.+)$"
+      }
+     ],
+     "depois": [
+      {
+       "tipo": "toque",
+       "x": 852,
+       "y": 781,
+       "espera": 0.5
+      }
+     ],
+     "intervalo_min": 16,
+     "grupo": 1
+    },
+    {
+     "nome": "Max Philadelpho Totem 7,2kW - 1 (busca pelo nome)",
+     "passos": [
+      {
+       "tipo": "fechar_ficha"
+      },
+      {
+       "tipo": "ir_ao_mapa"
+      },
+      {
+       "tipo": "tocar_texto",
+       "texto": "Pesquisar",
+       "espera": 1.5
+      },
+      {
+       "tipo": "digitar",
+       "texto": "Philadelpho",
+       "espera": 3
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Max Philadelpho Totem 7,2kW - 1",
+       "ate": 10,
+       "espera": 0.3
+      },
+      {
+       "tipo": "tocar_texto_rolando",
+       "texto": "Max Philadelpho Totem 7,2kW - 1",
+       "rolagens": 4,
+       "espera": 0.5
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Clique na tomada",
+       "ate": 12,
+       "espera": 0
+      }
+     ],
+     "regras": [
+      {
+       "local_id": "Max Philadelpho Totem 7,2kW - 1",
+       "local_nome": "Max Philadelpho Totem 7,2kW - 1",
+       "conector": "5839",
+       "potencia_kw": 7.2,
+       "lat": -20.781,
+       "lng": -49.379,
+       "regex": "ID: 5839, (.+)$"
+      },
+      {
+       "local_id": "Max Philadelpho Totem 7,2kW - 1",
+       "local_nome": "Max Philadelpho Totem 7,2kW - 1",
+       "conector": "5846",
+       "potencia_kw": 7.2,
+       "lat": -20.781,
+       "lng": -49.379,
+       "regex": "ID: 5846, (.+)$"
+      }
+     ],
+     "depois": [
+      {
+       "tipo": "toque",
+       "x": 852,
+       "y": 781,
+       "espera": 0.5
+      }
+     ],
+     "intervalo_min": 16,
+     "grupo": 0
+    },
+    {
+     "nome": "Muffato Damha Totem 7,2kW - 1 (busca pelo nome)",
+     "passos": [
+      {
+       "tipo": "fechar_ficha"
+      },
+      {
+       "tipo": "ir_ao_mapa"
+      },
+      {
+       "tipo": "tocar_texto",
+       "texto": "Pesquisar",
+       "espera": 1.5
+      },
+      {
+       "tipo": "digitar",
+       "texto": "Muffato Damha Totem",
+       "espera": 3
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Muffato Damha Totem 7,2kW - 1",
+       "ate": 10,
+       "espera": 0.3
+      },
+      {
+       "tipo": "tocar_texto_rolando",
+       "texto": "Muffato Damha Totem 7,2kW - 1",
+       "rolagens": 4,
+       "espera": 0.5
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Clique na tomada",
+       "ate": 12,
+       "espera": 0
+      }
+     ],
+     "regras": [
+      {
+       "local_id": "Muffato Damha Totem 7,2kW - 1",
+       "local_nome": "Muffato Damha Totem 7,2kW - 1",
+       "conector": "5852",
+       "potencia_kw": 7.2,
+       "lat": -20.8,
+       "lng": -49.345,
+       "regex": "ID: 5852, (.+)$"
+      },
+      {
+       "local_id": "Muffato Damha Totem 7,2kW - 1",
+       "local_nome": "Muffato Damha Totem 7,2kW - 1",
+       "conector": "5853",
+       "potencia_kw": 7.2,
+       "lat": -20.8,
+       "lng": -49.345,
+       "regex": "ID: 5853, (.+)$"
+      }
+     ],
+     "depois": [
+      {
+       "tipo": "toque",
+       "x": 852,
+       "y": 781,
+       "espera": 0.5
+      }
+     ],
+     "intervalo_min": 16,
+     "grupo": 1
+    },
+    {
+     "nome": "Eletroposto Muffato Damha 40kW (busca pelo nome)",
+     "passos": [
+      {
+       "tipo": "fechar_ficha"
+      },
+      {
+       "tipo": "ir_ao_mapa"
+      },
+      {
+       "tipo": "tocar_texto",
+       "texto": "Pesquisar",
+       "espera": 1.5
+      },
+      {
+       "tipo": "digitar",
+       "texto": "Muffato Damha 40",
+       "espera": 3
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Eletroposto Muffato Damha 40kW",
+       "ate": 10,
+       "espera": 0.3
+      },
+      {
+       "tipo": "tocar_texto_rolando",
+       "texto": "Eletroposto Muffato Damha 40kW",
+       "rolagens": 4,
+       "espera": 0.5
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Clique na tomada",
+       "ate": 12,
+       "espera": 0
+      }
+     ],
+     "regras": [
+      {
+       "local_id": "Eletroposto Muffato Damha 40kW",
+       "local_nome": "Eletroposto Muffato Damha 40kW",
+       "conector": "5982",
+       "potencia_kw": 40.0,
+       "lat": -20.8,
+       "lng": -49.345,
+       "regex": "ID: 5982, (.+)$"
+      }
+     ],
+     "depois": [
+      {
+       "tipo": "toque",
+       "x": 852,
+       "y": 781,
+       "espera": 0.5
+      }
+     ]
+    },
+    {
+     "nome": "Muffato JK Rio Preto Totem 7,2kW - 1 (busca pelo nome)",
+     "passos": [
+      {
+       "tipo": "fechar_ficha"
+      },
+      {
+       "tipo": "ir_ao_mapa"
+      },
+      {
+       "tipo": "tocar_texto",
+       "texto": "Pesquisar",
+       "espera": 1.5
+      },
+      {
+       "tipo": "digitar",
+       "texto": "Muffato JK",
+       "espera": 3
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Muffato JK Rio Preto Totem 7,2kW - 1",
+       "ate": 10,
+       "espera": 0.3
+      },
+      {
+       "tipo": "tocar_texto_rolando",
+       "texto": "Muffato JK Rio Preto Totem 7,2kW - 1",
+       "rolagens": 4,
+       "espera": 0.5
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Clique na tomada",
+       "ate": 12,
+       "espera": 0
+      }
+     ],
+     "regras": [
+      {
+       "local_id": "Muffato JK Rio Preto Totem 7,2kW - 1",
+       "local_nome": "Muffato JK Rio Preto Totem 7,2kW - 1",
+       "conector": "5838",
+       "potencia_kw": 7.2,
+       "lat": -20.831,
+       "lng": -49.406,
+       "regex": "ID: 5838, (.+)$"
+      },
+      {
+       "local_id": "Muffato JK Rio Preto Totem 7,2kW - 1",
+       "local_nome": "Muffato JK Rio Preto Totem 7,2kW - 1",
+       "conector": "5860",
+       "potencia_kw": 7.2,
+       "lat": -20.831,
+       "lng": -49.406,
+       "regex": "ID: 5860, (.+)$"
+      }
+     ],
+     "depois": [
+      {
+       "tipo": "toque",
+       "x": 852,
+       "y": 781,
+       "espera": 0.5
+      }
+     ],
+     "intervalo_min": 16,
+     "grupo": 0
+    },
+    {
+     "nome": "Georgina Café Conchego (busca pelo nome)",
+     "passos": [
+      {
+       "tipo": "fechar_ficha"
+      },
+      {
+       "tipo": "ir_ao_mapa"
+      },
+      {
+       "tipo": "tocar_texto",
+       "texto": "Pesquisar",
+       "espera": 1.5
+      },
+      {
+       "tipo": "digitar",
+       "texto": "Conchego",
+       "espera": 3
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Georgina Café Conchego",
+       "ate": 10,
+       "espera": 0.3
+      },
+      {
+       "tipo": "tocar_texto_rolando",
+       "texto": "Georgina Café Conchego",
+       "rolagens": 4,
+       "espera": 0.5
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Clique na tomada",
+       "ate": 12,
+       "espera": 0
+      }
+     ],
+     "regras": [
+      {
+       "local_id": "Georgina Café Conchego",
+       "local_nome": "Georgina Café Conchego",
+       "conector": "5676",
+       "potencia_kw": 7.2,
+       "lat": -20.845,
+       "lng": -49.4,
+       "regex": "ID: 5676, (.+)$"
+      },
+      {
+       "local_id": "Georgina Café Conchego",
+       "local_nome": "Georgina Café Conchego",
+       "conector": "5805",
+       "potencia_kw": 40.0,
+       "lat": -20.845,
+       "lng": -49.4,
+       "regex": "ID: 5805, (.+)$"
+      }
+     ],
+     "depois": [
+      {
+       "tipo": "toque",
+       "x": 852,
+       "y": 781,
+       "espera": 0.5
+      }
+     ]
+    },
+    {
+     "nome": "Georgina BMW (busca pelo nome)",
+     "passos": [
+      {
+       "tipo": "fechar_ficha"
+      },
+      {
+       "tipo": "ir_ao_mapa"
+      },
+      {
+       "tipo": "tocar_texto",
+       "texto": "Pesquisar",
+       "espera": 1.5
+      },
+      {
+       "tipo": "digitar",
+       "texto": "Georgina BMW",
+       "espera": 3
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Georgina BMW",
+       "ate": 10,
+       "espera": 0.3
+      },
+      {
+       "tipo": "tocar_texto_rolando",
+       "texto": "Georgina BMW",
+       "rolagens": 4,
+       "espera": 0.5
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Clique na tomada",
+       "ate": 12,
+       "espera": 0
+      }
+     ],
+     "regras": [
+      {
+       "local_id": "Georgina BMW",
+       "local_nome": "Georgina BMW",
+       "conector": "5254",
+       "potencia_kw": 7.2,
+       "lat": -20.845,
+       "lng": -49.4,
+       "regex": "ID: 5254, (.+)$"
+      },
+      {
+       "local_id": "Georgina BMW",
+       "local_nome": "Georgina BMW",
+       "conector": "5826",
+       "potencia_kw": 7.2,
+       "lat": -20.845,
+       "lng": -49.4,
+       "regex": "ID: 5826, (.+)$"
+      }
+     ],
+     "depois": [
+      {
+       "tipo": "toque",
+       "x": 852,
+       "y": 781,
+       "espera": 0.5
+      }
+     ],
+     "intervalo_min": 16,
+     "grupo": 1
+    },
+    {
+     "nome": "Max Eldorado Rio Preto Totem 7,2kw - 1 (busca pelo nome)",
+     "passos": [
+      {
+       "tipo": "fechar_ficha"
+      },
+      {
+       "tipo": "ir_ao_mapa"
+      },
+      {
+       "tipo": "tocar_texto",
+       "texto": "Pesquisar",
+       "espera": 1.5
+      },
+      {
+       "tipo": "digitar",
+       "texto": "Max Eldorado",
+       "espera": 3
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Max Eldorado Rio Preto Totem 7,2kw - 1",
+       "ate": 10,
+       "espera": 0.3
+      },
+      {
+       "tipo": "tocar_texto_rolando",
+       "texto": "Max Eldorado Rio Preto Totem 7,2kw - 1",
+       "rolagens": 4,
+       "espera": 0.5
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Clique na tomada",
+       "ate": 12,
+       "espera": 0
+      }
+     ],
+     "regras": [
+      {
+       "local_id": "Max Eldorado Rio Preto Totem 7,2kw - 1",
+       "local_nome": "Max Eldorado Rio Preto Totem 7,2kw - 1",
+       "conector": "5613",
+       "potencia_kw": 7.2,
+       "lat": -20.789,
+       "lng": -49.411,
+       "regex": "ID: 5613, (.+)$"
+      },
+      {
+       "local_id": "Max Eldorado Rio Preto Totem 7,2kw - 1",
+       "local_nome": "Max Eldorado Rio Preto Totem 7,2kw - 1",
+       "conector": "5660",
+       "potencia_kw": 7.2,
+       "lat": -20.789,
+       "lng": -49.411,
+       "regex": "ID: 5660, (.+)$"
+      }
+     ],
+     "depois": [
+      {
+       "tipo": "toque",
+       "x": 852,
+       "y": 781,
+       "espera": 0.5
+      }
+     ],
+     "intervalo_min": 16,
+     "grupo": 0
+    },
+    {
+     "nome": "SCP JK 7KW (busca pelo nome)",
+     "passos": [
+      {
+       "tipo": "fechar_ficha"
+      },
+      {
+       "tipo": "ir_ao_mapa"
+      },
+      {
+       "tipo": "tocar_texto",
+       "texto": "Pesquisar",
+       "espera": 1.5
+      },
+      {
+       "tipo": "digitar",
+       "texto": "SCP JK",
+       "espera": 3
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "SCP JK 7KW",
+       "ate": 10,
+       "espera": 0.3
+      },
+      {
+       "tipo": "tocar_texto_rolando",
+       "texto": "SCP JK 7KW",
+       "rolagens": 4,
+       "espera": 0.5
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Clique na tomada",
+       "ate": 12,
+       "espera": 0
+      }
+     ],
+     "regras": [
+      {
+       "local_id": "SCP JK 7KW",
+       "local_nome": "SCP JK 7KW",
+       "conector": "5078",
+       "potencia_kw": 40.0,
+       "lat": -20.851,
+       "lng": -49.413,
+       "regex": "ID: 5078, (.+)$"
+      },
+      {
+       "local_id": "SCP JK 7KW",
+       "local_nome": "SCP JK 7KW",
+       "conector": "5617",
+       "potencia_kw": 7.0,
+       "lat": -20.851,
+       "lng": -49.413,
+       "regex": "ID: 5617, (.+)$"
+      }
+     ],
+     "depois": [
+      {
+       "tipo": "toque",
+       "x": 852,
+       "y": 781,
+       "espera": 0.5
+      }
+     ]
+    },
+    {
+     "nome": "Brazilian Convenience Talhado 7kW (busca pelo nome)",
+     "passos": [
+      {
+       "tipo": "fechar_ficha"
+      },
+      {
+       "tipo": "ir_ao_mapa"
+      },
+      {
+       "tipo": "tocar_texto",
+       "texto": "Pesquisar",
+       "espera": 1.5
+      },
+      {
+       "tipo": "digitar",
+       "texto": "Talhado",
+       "espera": 3
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Brazilian Convenience Talhado 7kW",
+       "ate": 10,
+       "espera": 0.3
+      },
+      {
+       "tipo": "tocar_texto_rolando",
+       "texto": "Brazilian Convenience Talhado 7kW",
+       "rolagens": 4,
+       "espera": 0.5
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Clique na tomada",
+       "ate": 12,
+       "espera": 0
+      }
+     ],
+     "regras": [
+      {
+       "local_id": "Brazilian Convenience Talhado 7kW",
+       "local_nome": "Brazilian Convenience Talhado 7kW",
+       "conector": "5601",
+       "potencia_kw": 7.0,
+       "lat": -20.761,
+       "lng": -49.344,
+       "regex": "ID: 5601, (.+)$"
+      },
+      {
+       "local_id": "Brazilian Convenience Talhado 7kW",
+       "local_nome": "Brazilian Convenience Talhado 7kW",
+       "conector": "5757",
+       "potencia_kw": 40.0,
+       "lat": -20.761,
+       "lng": -49.344,
+       "regex": "ID: 5757, (.+)$"
+      }
+     ],
+     "depois": [
+      {
+       "tipo": "toque",
+       "x": 852,
+       "y": 781,
+       "espera": 0.5
+      }
+     ]
+    },
+    {
+     "nome": "Totem 7kW Supermercado Antunes Lj. 01 (busca pelo nome)",
+     "passos": [
+      {
+       "tipo": "fechar_ficha"
+      },
+      {
+       "tipo": "ir_ao_mapa"
+      },
+      {
+       "tipo": "tocar_texto",
+       "texto": "Pesquisar",
+       "espera": 1.5
+      },
+      {
+       "tipo": "digitar",
+       "texto": "Antunes Lj",
+       "espera": 3
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Totem 7kW Supermercado Antunes Lj. 01",
+       "ate": 10,
+       "espera": 0.3
+      },
+      {
+       "tipo": "tocar_texto_rolando",
+       "texto": "Totem 7kW Supermercado Antunes Lj. 01",
+       "rolagens": 4,
+       "espera": 0.5
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Clique na tomada",
+       "ate": 12,
+       "espera": 0
+      }
+     ],
+     "regras": [
+      {
+       "local_id": "Totem 7kW Supermercado Antunes Lj. 01",
+       "local_nome": "Totem 7kW Supermercado Antunes Lj. 01",
+       "conector": "5669",
+       "potencia_kw": 7.0,
+       "lat": -20.814,
+       "lng": -49.509,
+       "regex": "ID: 5669, (.+)$"
+      },
+      {
+       "local_id": "Totem 7kW Supermercado Antunes Lj. 01",
+       "local_nome": "Totem 7kW Supermercado Antunes Lj. 01",
+       "conector": "5977",
+       "potencia_kw": 7.0,
+       "lat": -20.814,
+       "lng": -49.509,
+       "regex": "ID: 5977, (.+)$"
+      }
+     ],
+     "depois": [
+      {
+       "tipo": "toque",
+       "x": 852,
+       "y": 781,
+       "espera": 0.5
+      }
+     ],
+     "intervalo_min": 16,
+     "grupo": 1
+    }
+   ]
+  }
+ ],
+ "limite_s": 420,
+ "max_falhas_seguidas": 3,
+ "ciclo_min": 8,
+ "cadencia_ativa": true
+}

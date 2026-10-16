@@ -1,0 +1,85 @@
+name: Eletropostos — deploy da estação de telas na VPS (VMOS)
+
+# Execução MANUAL (aba Actions → este workflow → "Run workflow").
+#
+# O que faz: confere o código Python de worker/estacao, sincroniza para
+# /opt/gdm-estacao na VPS e roda deploy/instalar.sh por SSH — que instala
+# python3, openssh-client e adb (se faltarem), grava o ambiente em
+# /etc/gdm-estacao/env e liga o timer systemd `gdm-estacao.timer` (um ciclo a
+# cada 8 min). A estação lê a Cury e o ATM EVs num celular na nuvem (VMOS
+# Cloud), por adb sobre túnel SSH aberto a cada ciclo.
+#
+# Segredos necessários (Settings → Secrets → Actions):
+#   VPS_HOST, VPS_USER, VPS_SSH_PORT, VPS_SSH_KEY, SUPABASE_URL,
+#   SUPABASE_SERVICE_ROLE_KEY  — os mesmos da Ludmilla e do gdm-eletropostos
+#   VMOS_ACCESS_KEY, VMOS_SECRET_KEY — chaves da Open API do VMOS (painel →
+#   Developer → API). Nunca no repositório, nunca na conversa.
+
+on:
+  workflow_dispatch:
+    inputs:
+      simular:
+        description: 'Só diagnosticar na VPS, sem instalar nada'
+        type: boolean
+        default: false
+
+concurrency:
+  group: estacao-worker
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Conferir o código (compila e lê o telas.json)
+        working-directory: worker/estacao
+        run: |
+          python3 -m py_compile *.py
+          python3 -c "import json; d=json.load(open('config/telas.json', encoding='utf-8')); print('telas.json ok:', ', '.join(a.get('fonte','?') for a in d.get('alvos', [])))"
+          # nenhum arquivo de segredo pode ter entrado no repositório
+          if ls config/*.env >/dev/null 2>&1; then echo "config/*.env no repositório — remova"; exit 1; fi
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p ${{ secrets.VPS_SSH_PORT }} -H "${{ secrets.VPS_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Sincronizar código
+        if: ${{ !inputs.simular }}
+        run: |
+          SSH="ssh -i ~/.ssh/deploy_key -p ${{ secrets.VPS_SSH_PORT }} -o StrictHostKeyChecking=no"
+          $SSH ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} 'mkdir -p /opt/gdm-estacao'
+          # dados/ (log, tranca) e config/*.env ficam na VPS: --delete não apaga excluídos
+          rsync -avz --delete -e "$SSH" \
+            --exclude='dados' --exclude='capturas' --exclude='ferramentas' --exclude='__pycache__' \
+            --exclude='config/*.env' --exclude='.gitignore' \
+            worker/estacao/ ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/opt/gdm-estacao/
+
+      - name: Instalar / ligar o timer
+        env:
+          SIMULAR: ${{ inputs.simular }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          VMOS_ACCESS_KEY: ${{ secrets.VMOS_ACCESS_KEY }}
+          VMOS_SECRET_KEY: ${{ secrets.VMOS_SECRET_KEY }}
+        run: |
+          # variáveis pelo STDIN, nunca na linha de comando do ssh; %q escapa qualquer valor
+          {
+            printf 'export SIMULAR=%q\n' "$SIMULAR"
+            printf 'export SUPABASE_URL=%q\n' "$SUPABASE_URL"
+            printf 'export SUPABASE_SERVICE_ROLE_KEY=%q\n' "$SUPABASE_SERVICE_ROLE_KEY"
+            printf 'export VMOS_ACCESS_KEY=%q\n' "$VMOS_ACCESS_KEY"
+            printf 'export VMOS_SECRET_KEY=%q\n' "$VMOS_SECRET_KEY"
+            cat worker/estacao/deploy/instalar.sh
+          } | ssh -i ~/.ssh/deploy_key -p ${{ secrets.VPS_SSH_PORT }} -o StrictHostKeyChecking=no \
+            ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} bash -s
+
+      - name: Limpar a chave
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
