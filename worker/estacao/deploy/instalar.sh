@@ -29,6 +29,21 @@ if [ "${SIMULAR:-false}" = "true" ]; then
   echo; echo "SIMULAÇÃO — nada foi alterado."; exit 0
 fi
 
+# só o timer (recalibração do aparelho: dois clientes adb brigam pela tela)
+case "${TIMER:-instalar}" in
+  pausar)
+    passo "pausando o timer (e o ciclo em andamento, se houver)"
+    systemctl disable --now gdm-estacao.timer 2>&1
+    systemctl stop gdm-estacao.service 2>&1
+    echo "timer: $(systemctl is-active gdm-estacao.timer) · serviço: $(systemctl is-active gdm-estacao.service)"
+    exit 0 ;;
+  religar)
+    passo "religando o timer"
+    systemctl enable --now gdm-estacao.timer 2>&1 || falhar "o timer não subiu"
+    systemctl list-timers gdm-estacao.timer --no-pager | head -3
+    exit 0 ;;
+esac
+
 [ -n "$SUPABASE_URL" ] || falhar "SUPABASE_URL vazio"
 [ -n "$SUPABASE_SERVICE_ROLE_KEY" ] || falhar "SUPABASE_SERVICE_ROLE_KEY vazio"
 [ -n "$VMOS_ACCESS_KEY" ] || falhar "VMOS_ACCESS_KEY vazio — cadastre o segredo no GitHub (Settings → Secrets → Actions)"

@@ -22,6 +22,14 @@ on:
         description: 'Só diagnosticar na VPS, sem instalar nada'
         type: boolean
         default: false
+      timer:
+        description: 'Só mexer no timer, sem reinstalar (pausar enquanto se recalibra o aparelho; religar depois)'
+        type: choice
+        default: 'instalar'
+        options:
+          - instalar
+          - pausar
+          - religar
 
 concurrency:
   group: estacao-worker
@@ -51,7 +59,7 @@ jobs:
           ssh-keyscan -p ${{ secrets.VPS_SSH_PORT }} -H "${{ secrets.VPS_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null || true
 
       - name: Sincronizar código
-        if: ${{ !inputs.simular }}
+        if: ${{ !inputs.simular && inputs.timer == 'instalar' }}
         run: |
           SSH="ssh -i ~/.ssh/deploy_key -p ${{ secrets.VPS_SSH_PORT }} -o StrictHostKeyChecking=no"
           $SSH ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} 'mkdir -p /opt/gdm-estacao'
@@ -64,6 +72,7 @@ jobs:
       - name: Instalar / ligar o timer
         env:
           SIMULAR: ${{ inputs.simular }}
+          TIMER: ${{ inputs.timer }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           VMOS_ACCESS_KEY: ${{ secrets.VMOS_ACCESS_KEY }}
@@ -72,6 +81,7 @@ jobs:
           # variáveis pelo STDIN, nunca na linha de comando do ssh; %q escapa qualquer valor
           {
             printf 'export SIMULAR=%q\n' "$SIMULAR"
+            printf 'export TIMER=%q\n' "$TIMER"
             printf 'export SUPABASE_URL=%q\n' "$SUPABASE_URL"
             printf 'export SUPABASE_SERVICE_ROLE_KEY=%q\n' "$SUPABASE_SERVICE_ROLE_KEY"
             printf 'export VMOS_ACCESS_KEY=%q\n' "$VMOS_ACCESS_KEY"
