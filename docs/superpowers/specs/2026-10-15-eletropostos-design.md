@@ -153,10 +153,23 @@ laço dos portais; vai para `eletroposto_varredura` com `ok=false`.
 - Variável `ELETROPOSTOS_DESLIGADO=true` desliga o tique (para a estação local
   da Ludmilla e para teste).
 
-## 6. Estação local (PC com o emulador)
+## 6. Estação local (PC com o BlueStacks)
 
-Fica em `C:\Users\luiza\Documents\monitor-eletropostos`, Python, stdlib.
-Mudanças:
+Informação do usuário em 15/10/2026: **o BlueStacks já está instalado neste
+computador, logado no app da Cury Energia e com o ATM EVs instalado.** Então o
+emulador do Android SDK (AVD "monitor"), o Java e a imagem `android-34` do
+`instalar.ps1` **saem do escopo** — o celular virtual é o BlueStacks. O
+`adb` fala com ele por `adb connect 127.0.0.1:5555` (exige "Android Debug
+Bridge" ligado em Configurações › Avançado do BlueStacks; a porta pode variar
+por instância e é lida da tela de configurações na primeira vez).
+
+Fica em `C:\Users\luiza\Documents\monitor-eletropostos`, Python, stdlib
+(o Python ainda **não está instalado** neste PC — o `instalar.ps1` continua
+cuidando disso). Mudanças:
+
+- `coletor_tela.py`: troca `adb -e` por `adb -s <host:porta>` após `adb
+  connect`; endereço em `config\supabase.env` (`ADB_ALVO`). Se o BlueStacks
+  não responder, a varredura grava `ok=false` com o motivo, sem travar.
 
 - `comum.py`: `conectar()`/`gravar()`/`registrar_local_fonte()` passam a
   falar com o Supabase por `urllib` (PostgREST `/rest/v1/rpc/...`). O
@@ -171,14 +184,18 @@ Mudanças:
   como fallback manual.
 - `servidor.py`, `web/`, `abrir_painel.bat`, `relatorio.py`: **aposentados**
   (movidos para `_aposentado\`), a tela passa a ser o console.
-- `instalar.ps1`: só ajusta o agendamento (`coletar.py` continua a cada 5 min;
-  o "Painel" sai). O resto (Python, Java, SDK, AVD `monitor`) permanece.
+- `instalar.ps1`: passa a instalar só Python e `platform-tools` (o `adb`) e a
+  criar um agendamento (`coletar.py` a cada 5 min). Saem Java, cmdline-tools,
+  emulador, imagem do sistema, AVD e as tarefas "Painel" e "Celular virtual".
+  `iniciar_celular.bat` passa a abrir o BlueStacks.
 - O usuário da estação é um **staff do tenant GD Manager** criado para isso
   (`eletropostos@…`), registrado em `eletroposto_estacao.operador`.
 
 A calibração dos apps (ATM EVs, Cury) **não muda**: `capturar_tela.bat` →
-`capturas\*.txt/.xml` → `config\telas.json`. Continua sendo feita com a
-pessoa logada nos apps; o GD Manager só recebe as leituras.
+`capturas\*.txt/.xml` → `config\telas.json`. O login nos apps já foi feito
+pelo usuário no BlueStacks (Cury); o do ATM EVs, se precisar, ele faz. O
+Claude só navega até a tela de disponibilidade, captura e escreve o
+`telas.json`; o GD Manager só recebe as leituras.
 
 ## 7. Tela no console
 
@@ -232,9 +249,10 @@ fora vermelho, sem leitura cinza.
    seed, 9 RPCs, seção com as 5 abas, tique da Tupi no worker, deploy. Já
    mostra dados reais dos 4 locais Tupi.
 2. **Estação local** — `comum.py`/`estacao.py` para o Supabase, usuário da
-   estação, `instalar.ps1` ajustado, emulador, calibração de ATM EVs e Cury
-   com o usuário (ele faz os logins; o Claude só captura e escreve o
-   `telas.json`).
+   estação, `instalar.ps1` enxuto (Python + adb), `adb connect` no
+   BlueStacks, calibração de ATM EVs e Cury (o usuário já está logado; o
+   Claude só captura e escreve o `telas.json`), primeira coleta gravada no
+   banco e visível em Coleta.
 
 Documentação a criar/atualizar na entrega 1: `docs/modules/eletropostos/`
 (overview, database, business-rules, flows), linha na tabela do `CLAUDE.md`
