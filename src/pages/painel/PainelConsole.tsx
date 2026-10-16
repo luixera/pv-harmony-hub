@@ -4,10 +4,11 @@ import MasterPanel from '@/pages/master/MasterPanel';
 import { OverviewSection, AccessSection, UsageSection, FinanceSection, AiSection } from './ConsoleSections';
 import { MonitoringSection } from './MonitoringSection';
 import { NetworkSection } from './NetworkSection';
-import { Crown, LogOut, Loader2, Building2, LayoutGrid, Activity, BarChart3, DollarSign, Lock, Sun, ShieldAlert, Bot, Zap } from 'lucide-react';
+import { EletropostosSection } from './EletropostosSection';
+import { Crown, LogOut, Loader2, Building2, LayoutGrid, Activity, BarChart3, DollarSign, Lock, Sun, ShieldAlert, Bot, Zap, PlugZap } from 'lucide-react';
 import { toast } from 'sonner';
 
-type Section = 'tenants' | 'overview' | 'access' | 'usage' | 'finance' | 'ai' | 'network' | 'monitoring';
+type Section = 'tenants' | 'overview' | 'access' | 'usage' | 'finance' | 'ai' | 'network' | 'eletropostos' | 'monitoring';
 
 const NAV: { key: Section; label: string; icon: React.ElementType }[] = [
   { key: 'overview', label: 'Visão geral', icon: LayoutGrid },
@@ -17,6 +18,7 @@ const NAV: { key: Section; label: string; icon: React.ElementType }[] = [
   { key: 'finance', label: 'Financeiro', icon: DollarSign },
   { key: 'ai', label: 'Agentes de IA', icon: Bot },
   { key: 'network', label: 'Capacidade de rede', icon: Zap },
+  { key: 'eletropostos', label: 'Eletropostos', icon: PlugZap },
   { key: 'monitoring', label: 'Monitoramento', icon: ShieldAlert },
 ];
 
@@ -93,6 +95,7 @@ export default function PainelConsole() {
         {section === 'finance' && <FinanceSection />}
         {section === 'ai' && <AiSection />}
         {section === 'network' && <NetworkSection />}
+        {section === 'eletropostos' && <EletropostosSection />}
         {section === 'monitoring' && <MonitoringSection />}
       </main>
     </div>

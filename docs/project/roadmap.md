@@ -28,6 +28,14 @@
      clickjacking. **Enquanto o workflow não rodar, essa brecha continua.**
 
 ## Tarefas de produto em aberto (do backlog de sessão)
+- **Eletropostos — entrega 2 (estação local)**: a entrega 1 (16/10/2026) pôs
+  banco, RPCs, seção no `/painel` e o coletor da Tupi na VPS
+  ([modules/eletropostos](../modules/eletropostos/overview.md)). Falta a estação
+  no PC do usuário: `comum.py` gravando por `eletropostos_gravar_local`,
+  `estacao.py` (login no terminal), `instalar.ps1` enxuto (Python + adb),
+  `adb connect` no BlueStacks já logado na Cury, calibração do ATM EVs e da Cury
+  (`telas.json`) e o usuário staff da estação em `eletroposto_estacao`. Sem
+  retenção de leituras ainda.
 - **Mobile / PWA — fase 2**: a fase 1 entregou o padrão (`src/mobile/`), a barra
   inferior, as telas do gestor e da empresa e o app instalável
   ([modules/mobile](../modules/mobile/overview.md)). Ficou de fora, de propósito:

@@ -8,6 +8,7 @@ import {
 import { executarCriacao } from './criacao/index.js';
 import { executarVarreduraEmail } from './email/index.js';
 import { avisar, carregarEnvDaEstacao, dirPerfilChrome, modoAtual, pedirLoginNoTerminal } from './local.js';
+import { agendarTupi, coletarTupi } from './eletropostos/tupi.js';
 
 /**
  * LUDMILLA — o laço.
@@ -282,6 +283,19 @@ async function principal() {
   const batimentoDisco: NodeJS.Timeout = setInterval(() => { void reportarDisco(); }, 15 * 60_000);
   await reportarDisco();
 
+  // Eletropostos: o coletor da Tupi (mapa público) a cada 5 min, alinhado à
+  // janela. Só na VPS — na estação local quem coleta é outro sistema (Python +
+  // BlueStacks). ELETROPOSTOS_DESLIGADO=true desarma. Erro aqui NUNCA derruba o
+  // laço dos portais: vira varredura com ok=false e um log.
+  let desarmarTupi: (() => void) | null = null;
+  if (modo === 'vps' && process.env.ELETROPOSTOS_DESLIGADO !== 'true') {
+    desarmarTupi = agendarTupi(async () => {
+      try { log('eletropostos: tupi ok', { conectores: await coletarTupi() }); }
+      catch (e) { log('eletropostos: tupi falhou', { erro: (e as Error).message }); }
+    });
+    log('eletropostos: coletor da Tupi armado (5 min)');
+  }
+
   let parar = false;
   const encerrar = () => { parar = true; log('encerrando'); };
   process.on('SIGTERM', encerrar);
@@ -329,6 +343,7 @@ async function principal() {
     await dormir(5_000);
   }
   if (batimento) clearInterval(batimento);
+  desarmarTupi?.();
   clearInterval(batimentoDisco);
   for (const chave of [...vivas.keys()]) await encerrarViva(chave, 'a estação está parando');
   await navegador?.close();
