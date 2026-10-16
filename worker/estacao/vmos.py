@@ -12,7 +12,7 @@ Configuração (variáveis de ambiente ou config/vmos.env, linhas CHAVE=valor):
   VMOS_API                           (opcional) https://api.vmoscloud.com
 
 Uso manual:
-  py -3 vmos.py estado     -> padDetail do aparelho (rodando? online?)
+  py -3 vmos.py estado     -> padDetails do aparelho (rodando? online?)
   py -3 vmos.py adb        -> abre o túnel, conecta o adb e mostra modelo/tela
   py -3 vmos.py gps        -> injeta a posição configurada
   py -3 vmos.py reiniciar  -> pede o reinício pela API
@@ -70,7 +70,7 @@ def api(acao, corpo=None, assinar_corpo=True, timeout=30):
 def estado():
     """{padStatus, online, ...} do aparelho (padStatus 10 = rodando)."""
     pad = config()["VMOS_PAD_CODE"]
-    d = api("padDetail", {"padCodes": [pad], "rows": 10}) or {}
+    d = api("padDetails", {"padCodes": [pad], "rows": 10}) or {}   # /padDetail (singular) dá 404
     for p in d.get("pageData") or []:
         if p.get("padCode") == pad:
             return p

@@ -1,0 +1,112 @@
+name: Eletropostos — descoberta das telas no celular da estação (VMOS)
+
+# Execução MANUAL (aba Actions → este workflow → "Run workflow").
+#
+# Roda worker/estacao/calibrar.py NA VPS, com o mesmo ambiente do serviço (/etc/gdm-estacao/env),
+# para descobrir as telas da Cury e do ATM EVs no celular na nuvem: captura cada tela (xml, png,
+# textos), lista os carregadores e lê as fichas. O resultado volta como artefato do workflow
+# ("calibracao-estacao") e serve para montar o config/telas.json.
+#
+# Só uso normal dos apps (abrir, tocar, rolar, ler a tela). Nada de senha, nada de dado de motorista.
+# Pausa o gdm-estacao.timer antes (dois clientes adb no mesmo aparelho brigam pela tela) e só
+# religa se `religar_timer` estiver marcado.
+
+on:
+  workflow_dispatch:
+    inputs:
+      raio_km:
+        description: 'Raio (km) dos carregadores do ATM EVs a abrir'
+        type: string
+        default: '15'
+      religar_timer:
+        description: 'Religar o timer da estação no fim'
+        type: boolean
+        default: false
+
+concurrency:
+  group: estacao-worker
+  cancel-in-progress: false
+
+jobs:
+  calibrar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Conferir o código
+        working-directory: worker/estacao
+        run: python3 -m py_compile *.py
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p ${{ secrets.VPS_SSH_PORT }} -H "${{ secrets.VPS_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Sincronizar código
+        run: |
+          SSH="ssh -i ~/.ssh/deploy_key -p ${{ secrets.VPS_SSH_PORT }} -o StrictHostKeyChecking=no"
+          rsync -avz --delete -e "$SSH" \
+            --exclude='dados' --exclude='capturas' --exclude='ferramentas' --exclude='__pycache__' \
+            --exclude='config/*.env' --exclude='.gitignore' \
+            worker/estacao/ ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/opt/gdm-estacao/
+
+      - name: Rodar a descoberta na VPS
+        env:
+          RAIO: ${{ inputs.raio_km }}
+          RELIGAR: ${{ inputs.religar_timer }}
+        run: |
+          {
+            printf 'export RAIO=%q\n' "$RAIO"
+            printf 'export RELIGAR=%q\n' "$RELIGAR"
+            cat <<'REMOTO'
+          APP=/opt/gdm-estacao
+          [ -f /etc/gdm-estacao/env ] || { echo "ERRO: /etc/gdm-estacao/env ausente (rode o deploy da estação antes)"; exit 1; }
+          echo "── pausando o timer da estação"
+          systemctl stop gdm-estacao.timer
+          for i in $(seq 1 90); do
+            st=$(systemctl is-active gdm-estacao.service 2>/dev/null)
+            [ "$st" = "activating" ] || [ "$st" = "active" ] || break
+            [ "$i" = 1 ] && echo "  ciclo em andamento; esperando terminar"
+            sleep 10
+          done
+          mkdir -p "$APP/capturas" && chown gdmestacao:gdmestacao "$APP/capturas"
+          rm -f /tmp/calibracao.tgz
+          echo "── descoberta (raio $RAIO km)"
+          systemd-run --wait --pipe --quiet --collect \
+            --uid=gdmestacao --gid=gdmestacao \
+            -p EnvironmentFile=/etc/gdm-estacao/env \
+            -p WorkingDirectory=$APP \
+            -p Environment=HOME=/home/gdmestacao \
+            -p RuntimeMaxSec=30min \
+            /usr/bin/python3 calibrar.py "$RAIO" </dev/null
+          rc=$?
+          ULT=$(ls -1dt "$APP"/capturas/calibracao-* 2>/dev/null | head -1)
+          [ -n "$ULT" ] && tar -C "$(dirname "$ULT")" -czf /tmp/calibracao.tgz "$(basename "$ULT")" && echo "pacote: $(du -h /tmp/calibracao.tgz | cut -f1)"
+          if [ "$RELIGAR" = "true" ]; then systemctl start gdm-estacao.timer; echo "timer religado"; else echo "timer continua PAUSADO"; fi
+          exit $rc
+          REMOTO
+          } | ssh -i ~/.ssh/deploy_key -p ${{ secrets.VPS_SSH_PORT }} -o StrictHostKeyChecking=no \
+            ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} bash -s
+
+      - name: Trazer as capturas
+        if: always()
+        run: |
+          scp -i ~/.ssh/deploy_key -P ${{ secrets.VPS_SSH_PORT }} -o StrictHostKeyChecking=no \
+            ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/tmp/calibracao.tgz ./calibracao.tgz || echo "sem pacote"
+
+      - name: Publicar artefato
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: calibracao-estacao
+          path: calibracao.tgz
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Limpar a chave
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
