@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
-import { Search, MapPin, Zap, Factory, GitBranch } from 'lucide-react';
+import { Search, MapPin, Zap, Factory, GitBranch, Crosshair } from 'lucide-react';
 import { useBuscaRede } from './consultas';
-import { mesclarSugestoes, prepararTermo, sugestoesDaRede, type Sugestao, type SugestaoLugar, type SugestaoRede } from './busca';
+import { coordenadaDe, mesclarSugestoes, prepararTermo, sugestoesDaRede, type Coordenada, type Sugestao, type SugestaoLugar, type SugestaoRede } from './busca';
 import { CORES, COR_SUBESTACAO } from './estilos';
 
 /**
@@ -10,7 +10,8 @@ import { CORES, COR_SUBESTACAO } from './estilos';
  * única navegável por teclado. Escolher um lugar enquadra a vista; escolher
  * um item da rede enquadra E abre o detalhe (quem chama decide como).
  */
-export function Busca({ mapa, aoEscolherRede }: { mapa: google.maps.Map | null; aoEscolherRede: (s: SugestaoRede) => void }) {
+export function Busca({ mapa, aoEscolherRede, aoEscolherCoordenada }:
+  { mapa: google.maps.Map | null; aoEscolherRede: (s: SugestaoRede) => void; aoEscolherCoordenada: (c: Coordenada) => void }) {
   const [texto, setTexto] = useState('');
   const [termo, setTermo] = useState<string | null>(null);
   const [lugares, setLugares] = useState<SugestaoLugar[]>([]);
@@ -47,13 +48,18 @@ export function Busca({ mapa, aoEscolherRede }: { mapa: google.maps.Map | null; 
     return () => { vivo = false; };
   }, [termo, mapa]);
 
-  const sugestoes: Sugestao[] = termo
-    ? mesclarSugestoes(termo, sugestoesDaRede(rede.data ?? []), lugares) : [];
-  const mostrar = aberto && termo !== null && (sugestoes.length > 0 || rede.isFetching);
+  // lat/long colada do orçamento (DMS) ou do Google (decimal) vai direto ao ponto
+  const coordenada = coordenadaDe(texto);
+  const sugestoes: Sugestao[] = coordenada
+    ? [{ tipo: 'coordenada', id: 'coord', coordenada, titulo: `Ir para ${coordenada.lat.toFixed(5)}, ${coordenada.lng.toFixed(5)}`,
+         subtitulo: 'Coordenada · abre o trafo mais próximo' }]
+    : termo ? mesclarSugestoes(termo, sugestoesDaRede(rede.data ?? []), lugares) : [];
+  const mostrar = aberto && (coordenada !== null || (termo !== null && (sugestoes.length > 0 || rede.isFetching)));
 
   const escolher = (s: Sugestao) => {
     setAberto(false);
     setTexto(s.titulo);
+    if (s.tipo === 'coordenada') { aoEscolherCoordenada(s.coordenada); return; }
     if (s.tipo === 'lugar') {
       if (!mapa) return;
       void new google.maps.Geocoder().geocode({ placeId: s.id }, (res, st) => {
@@ -76,6 +82,7 @@ export function Busca({ mapa, aoEscolherRede }: { mapa: google.maps.Map | null; 
 
   const Icone = ({ s }: { s: Sugestao }) => {
     if (s.tipo === 'lugar') return <MapPin size={14} style={{ color: '#9A9AA8', flexShrink: 0 }} />;
+    if (s.tipo === 'coordenada') return <Crosshair size={14} style={{ color: '#F5A800', flexShrink: 0 }} />;
     const cor = s.risco ? CORES[s.risco] : '#9A9AA8';
     if (s.tipo === 'subestacao') return <Factory size={14} style={{ color: COR_SUBESTACAO, flexShrink: 0 }} />;
     if (s.tipo === 'alimentador') return <GitBranch size={14} style={{ color: cor, flexShrink: 0 }} />;
@@ -85,12 +92,12 @@ export function Busca({ mapa, aoEscolherRede }: { mapa: google.maps.Map | null; 
   return (
     <div style={{ position: 'relative', width: '100%' }}>
       <label htmlFor={`${id}-busca`} style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)' }}>
-        Buscar município, endereço, trafo, alimentador ou subestação
+        Buscar município, endereço, coordenada, trafo, posto da distribuidora, alimentador ou subestação
       </label>
       <Search size={14} style={{ position: 'absolute', left: 11, top: 11, color: '#6B6B78', pointerEvents: 'none' }} />
       <input id={`${id}-busca`} type="search" role="combobox" aria-expanded={mostrar} autoComplete="off"
              aria-controls={`${id}-lista`} aria-activedescendant={mostrar ? `${id}-op-${ativo}` : undefined}
-             value={texto} placeholder="Município, endereço, trafo, alimentador ou SE"
+             value={texto} placeholder="Município, endereço, coordenada, trafo, posto, alimentador ou SE"
              onChange={e => { setTexto(e.target.value); setAberto(true); setAtivo(0); }}
              onFocus={() => setAberto(true)} onBlur={() => setTimeout(() => setAberto(false), 120)}
              onKeyDown={teclado}

@@ -1,10 +1,12 @@
 import { memo, useState } from 'react';
-import { AlertTriangle, ArrowLeft, Check, Copy, Crosshair, GitBranch, ShieldCheck } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
+import { AlertTriangle, ArrowLeft, Check, Copy, Crosshair, FileText, GitBranch, Scale, ShieldCheck } from 'lucide-react';
 import { GOLD } from '../ConsoleSections';
-import { useDetalheAlimentador, useDetalheTrafo, useFontes } from './consultas';
+import { anularParecer, enviarPdfParecer, registrarParecer, urlDoParecer, useDetalheAlimentador, useDetalheTrafo, useFontes } from './consultas';
+import { acertoDoModelo, FORMULARIO_VAZIO, montarRegistro, RESULTADOS, rotuloResultado, rotuloTipo, sha256DeArquivo, TIPOS, type Formulario } from './confronto';
 import { CORES, ORDEM, ROTULOS } from './estilos';
 import { bytesLegiveis, data, dataHora, hashCurto, inteiro, kva, kw, mesesDesde, pct, percentualDe, rotuloIdade } from './formato';
-import type { DetalheTrafo, FonteImportacao, Importacao, Mudancas, PropsAlimentador, PropsPonto, RegrasCompletas, RespostaMapa, Risco, Selecao } from './tipos';
+import type { DetalheTrafo, FonteImportacao, Importacao, Mudancas, Parecer, PropsAlimentador, PropsPonto, RegrasCompletas, RespostaMapa, Risco, Selecao } from './tipos';
 import type { Caixa } from './zoom';
 
 /**
@@ -198,6 +200,138 @@ function CamposBdgd({ bdgd }: { bdgd: DetalheTrafo['bdgd'] }) {
   );
 }
 
+// ── Confronto com a distribuidora (spec §13) ──────────────────────────────────
+const campo: React.CSSProperties = { width: '100%', padding: '7px 9px', borderRadius: 7, boxSizing: 'border-box', fontSize: 12,
+  border: '1px solid rgba(255,255,255,0.14)', background: '#0E0E14', color: '#fff', fontFamily: 'inherit', outline: 'none' };
+const rotuloCampo: React.CSSProperties = { display: 'block', fontSize: 10.5, color: '#9A9AA8', marginBottom: 3 };
+
+function Acerto({ acerto }: { acerto: boolean | null }) {
+  const [cor, texto] = acerto === null ? ['#8A8A96', 'sem conta (modelo sem dado)']
+    : acerto ? ['#5DD372', 'o modelo acertou'] : ['#FF7A6B', 'o modelo errou'];
+  return <span style={{ fontSize: 11, fontWeight: 700, color: cor, padding: '2px 8px', borderRadius: 20, background: `${cor}1F`, border: `1px solid ${cor}66` }}>{texto}</span>;
+}
+
+function ParecerView({ p, aoAnular }: { p: Parecer; aoAnular: (id: number) => void }) {
+  const dif = (k: string, deles: number | null, nosso: number | null, fmt: (v: number | null | undefined) => string) =>
+    deles == null ? null : (
+      <div key={k} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 11.5 }}>
+        <span style={{ color: '#9A9AA8' }}>{k}</span>
+        <span style={{ color: '#D5D5DD' }}>{fmt(deles)} <span style={{ color: '#6B6B78' }}>· base {fmt(nosso)}</span></span>
+      </div>);
+  return (
+    <div style={{ background: '#16161F', borderRadius: 10, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 7 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 12.5, fontWeight: 700, color: '#fff' }}>{rotuloTipo(p.tipo)}</span>
+        <span style={{ fontSize: 11, color: '#8A8A96' }}>{p.numero_estudo ?? ''}{p.data_documento ? ` · ${data(p.data_documento)}` : ''}</span>
+        <span style={{ marginLeft: 'auto' }}><Acerto acerto={p.acerto} /></span>
+      </div>
+      <p style={{ fontSize: 12, color: '#D5D5DD', margin: 0 }}>{rotuloResultado(p.resultado)}{p.potencia_injetavel_kw != null ? ` · injetável ${kw(p.potencia_injetavel_kw)}` : ''}</p>
+      <p style={{ ...nota }}>Na hora do registro o modelo dizia <strong style={{ color: CORES[p.risco_modelo] }}>{ROTULOS[p.risco_modelo]}</strong>{p.ocupacao_modelo != null ? ` (${pct(p.ocupacao_modelo)})` : ''}{p.importacao_id ? ` · carga #${p.importacao_id}` : ''}.</p>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+        {p.codigo_distribuidora && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5 }}><span style={{ color: '#9A9AA8' }}>Posto na distribuidora</span><span style={{ color: '#fff', fontWeight: 700 }}>{p.codigo_distribuidora}</span></div>}
+        {p.potencia_solicitada_kw != null && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5 }}><span style={{ color: '#9A9AA8' }}>Potência solicitada</span><span style={{ color: '#D5D5DD' }}>{kw(p.potencia_solicitada_kw)}</span></div>}
+        {dif('UCs', p.ucs_distribuidora, null, v => v == null ? '—' : inteiro(v))}
+        {dif('Unidades de GD', p.gd_unidades_distribuidora, null, v => v == null ? '—' : inteiro(v))}
+        {dif('GD conectada', p.gd_kw_distribuidora, p.gd_modelo_kw, kw)}
+        {dif('Carga mínima', p.carga_min_distribuidora_kw, p.carga_modelo_kw, kw)}
+      </div>
+      {p.observacoes && <p style={nota}>{p.observacoes}</p>}
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+        {p.arquivo_caminho && (
+          <button type="button" style={botaoLink} onClick={() => { void urlDoParecer(p.arquivo_caminho!).then(u => window.open(u, '_blank', 'noopener')); }}>
+            <FileText size={12} /> {p.arquivo_nome ?? 'PDF'}
+          </button>
+        )}
+        {p.arquivo_hash_sha256 && <span style={{ fontSize: 10.5, color: '#6B6B78', fontFamily: 'ui-monospace, monospace' }}>sha256 {hashCurto(p.arquivo_hash_sha256)}</span>}
+        <button type="button" style={{ ...botaoLink, marginLeft: 'auto', color: '#8A8A96', fontSize: 11 }}
+                onClick={() => { if (window.confirm('Anular este registro? Ele fica guardado, mas sai da conta.')) aoAnular(p.id); }}>anular</button>
+      </div>
+    </div>
+  );
+}
+
+function Confronto({ d }: { d: DetalheTrafo }) {
+  const fila = useQueryClient();
+  const [aberto, setAberto] = useState(false);
+  const [f, setF] = useState<Formulario>(FORMULARIO_VAZIO);
+  const [arquivo, setArquivo] = useState<File | null>(null);
+  const [enviando, setEnviando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const set = (k: keyof Formulario) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
+    setF(v => ({ ...v, [k]: e.target.value }));
+  const atualizar = () => { void fila.invalidateQueries({ queryKey: ['rede-trafo', d.id] }); void fila.invalidateQueries({ queryKey: ['rede-fontes'] }); void fila.invalidateQueries({ queryKey: ['rede-buscar'] }); };
+  const previsto = acertoDoModelo(d.risco, f.resultado);
+
+  const gravar = async (e: React.FormEvent) => {
+    e.preventDefault(); setErro(null); setEnviando(true);
+    try {
+      let anexo: { nome: string; hash: string; caminho: string } | undefined;
+      if (arquivo) {
+        const hash = await sha256DeArquivo(arquivo);
+        anexo = { nome: arquivo.name, hash, caminho: await enviarPdfParecer(d.id, hash, arquivo) };
+      }
+      await registrarParecer(montarRegistro(d.id, f, anexo));
+      setF(FORMULARIO_VAZIO); setArquivo(null); setAberto(false); atualizar();
+    } catch (x) {
+      setErro(x instanceof Error ? x.message : 'Não consegui registrar.');
+    } finally { setEnviando(false); }
+  };
+  const anular = (id: number) => { void anularParecer(id).then(atualizar).catch(x => setErro(x instanceof Error ? x.message : 'Não consegui anular.')); };
+
+  const campoNum = (k: keyof Formulario, rotulo: string, dica?: string) => (
+    <label style={{ display: 'block' }}><span style={rotuloCampo}>{rotulo}</span>
+      <input type="text" inputMode="decimal" value={f[k]} onChange={set(k)} placeholder={dica} style={campo} /></label>
+  );
+  const campoTxt = (k: keyof Formulario, rotulo: string, dica?: string, tipo = 'text') => (
+    <label style={{ display: 'block' }}><span style={rotuloCampo}>{rotulo}</span>
+      <input type={tipo} value={f[k]} onChange={set(k)} placeholder={dica} style={campo} /></label>
+  );
+
+  return (
+    <div style={{ border: '1px solid rgba(255,255,255,0.1)', borderRadius: 11, padding: 12, display: 'flex', flexDirection: 'column', gap: 9 }}>
+      <p style={{ ...rotuloSecao, display: 'flex', alignItems: 'center', gap: 6 }}><Scale size={12} /> Confronto com a distribuidora</p>
+      {d.pareceres.length === 0
+        ? <p style={nota}>Nenhum orçamento ou parecer registrado neste trafo. Registre o documento real da concessionária: o número do posto vira pesquisável e o modelo ganha uma conta de acertos.</p>
+        : d.pareceres.map(p => <ParecerView key={p.id} p={p} aoAnular={anular} />)}
+      {!aberto && <button type="button" onClick={() => setAberto(true)} style={botaoLink}><FileText size={12} /> Registrar orçamento ou parecer</button>}
+      {aberto && (
+        <form onSubmit={e => { void gravar(e); }} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            <label style={{ display: 'block' }}><span style={rotuloCampo}>Documento</span>
+              <select value={f.tipo} onChange={set('tipo')} style={campo}>{TIPOS.map(t => <option key={t} value={t}>{rotuloTipo(t)}</option>)}</select></label>
+            {campoTxt('data_documento', 'Data', undefined, 'date')}
+          </div>
+          <label style={{ display: 'block' }}><span style={rotuloCampo}>O que a distribuidora concluiu</span>
+            <select value={f.resultado} onChange={set('resultado')} style={campo}>{RESULTADOS.map(r => <option key={r} value={r}>{rotuloResultado(r)}</option>)}</select></label>
+          <p style={{ ...nota, margin: 0 }}>Com o modelo dizendo <strong style={{ color: CORES[d.risco] }}>{ROTULOS[d.risco]}</strong>, este resultado conta como {previsto === null ? 'sem conta' : previsto ? <strong style={{ color: '#5DD372' }}>acerto</strong> : <strong style={{ color: '#FF7A6B' }}>erro</strong>}.</p>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            {campoTxt('codigo_distribuidora', 'Posto de transformação (número da distribuidora)', '189049')}
+            {campoTxt('numero_estudo', 'Nº do estudo', 'OC00693/10-2026')}
+            {campoTxt('numero_pedido', 'Nº do pedido / atividade', '2248586925')}
+            {campoNum('potencia_solicitada_kw', 'Potência solicitada (kW)', '12')}
+            {campoNum('potencia_injetavel_kw', 'Injetável permitida (kW)', '4')}
+            {campoNum('ucs_distribuidora', 'UCs no posto (deles)', '45')}
+            {campoNum('gd_unidades_distribuidora', 'Unidades de GD (deles)', '5')}
+            {campoNum('gd_kw_distribuidora', 'GD conectada (deles, kW)', '18,85')}
+            {campoNum('carga_min_distribuidora_kw', 'Carga mínima (deles, kW)', '11')}
+          </div>
+          <label style={{ display: 'block' }}><span style={rotuloCampo}>Observações</span>
+            <textarea value={f.observacoes} onChange={set('observacoes')} rows={2} style={{ ...campo, resize: 'vertical' }} /></label>
+          <label style={{ display: 'block' }}><span style={rotuloCampo}>PDF do documento (opcional; guarda o arquivo e o SHA-256)</span>
+            <input type="file" accept="application/pdf" onChange={e => setArquivo(e.target.files?.[0] ?? null)} style={{ fontSize: 11.5, color: '#C6C6D0' }} /></label>
+          {erro && <p style={{ ...nota, color: '#FF7A6B' }}>{erro}</p>}
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            <button type="submit" disabled={enviando} style={{ padding: '8px 14px', borderRadius: 8, border: 'none', background: GOLD, color: '#0E0E14', fontWeight: 700, fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit', opacity: enviando ? 0.6 : 1 }}>
+              {enviando ? 'Registrando…' : 'Registrar'}
+            </button>
+            <button type="button" onClick={() => { setAberto(false); setErro(null); }} style={botaoLink}>Cancelar</button>
+          </div>
+        </form>
+      )}
+    </div>
+  );
+}
+
 function DetalheTrafoView({ id, props, base, aoVoltar, aoAbrirAlimentador, aoCentrar }:
   { id: number; props?: PropsPonto; base: RespostaMapa['base']; aoVoltar: () => void; aoAbrirAlimentador: (id: number) => void; aoCentrar: (lng: number, lat: number) => void }) {
   const q = useDetalheTrafo(id);
@@ -244,6 +378,7 @@ function DetalheTrafoView({ id, props, base, aoVoltar, aoAbrirAlimentador, aoCen
           <ContaAberta d={d} />
           <BarraOcupacao ocupacao={d.ocupacao_pct} risco={risco} limiarRisco={d.regras.risco} />
           <BaseAnterior d={d} />
+          <Confronto d={d} />
           {d.alimentador && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               <p style={rotuloSecao}>Contexto de média tensão</p>
@@ -419,6 +554,14 @@ function FichaDaFonte({ aoVoltar }: { aoVoltar: () => void }) {
                 <span>Alimentadores <strong>{inteiro(d.alimentadores.ativos)}</strong> · traçado {inteiro(d.alimentadores.com_tracado)}</span>
               </div>
               {d.trafos.com_ucs === 0 && <p style={nota}>UCs e unidades de GD por trafo entram na próxima carga.</p>}
+              <div style={{ border: '1px solid rgba(255,255,255,0.1)', borderRadius: 9, padding: '8px 10px', fontSize: 11.5, color: '#D5D5DD' }}>
+                <p style={{ ...rotuloSecao, marginBottom: 4 }}>Confronto com pareceres reais</p>
+                {d.confrontos.n === 0 ? <span style={{ color: '#8A8A96' }}>Nenhum orçamento ou parecer registrado ainda.</span> : (
+                  <span>{inteiro(d.confrontos.n)} registrados · <strong style={{ color: '#5DD372' }}>{inteiro(d.confrontos.acertos)} acertos</strong> · <strong style={{ color: '#FF7A6B' }}>{inteiro(d.confrontos.erros)} erros</strong>
+                    {d.confrontos.sem_conta > 0 ? ` · ${inteiro(d.confrontos.sem_conta)} sem conta` : ''}
+                    {d.confrontos.acertos + d.confrontos.erros > 0 ? ` · taxa de acerto ${percentualDe(d.confrontos.acertos, d.confrontos.acertos + d.confrontos.erros)}%` : ''}</span>
+                )}
+              </div>
               <p style={{ ...rotuloSecao, marginTop: 2 }}>Cargas</p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
                 {d.importacoes.map(i => <ImportacaoView key={i.id} i={i} />)}

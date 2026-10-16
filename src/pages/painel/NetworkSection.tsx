@@ -7,7 +7,7 @@ import { card, GOLD, Loading } from './ConsoleSections';
 import { Busca } from './rede/BarraDeBusca';
 import { Legenda } from './rede/Legenda';
 import { PainelLateral } from './rede/PainelLateral';
-import { useRedeNoMapa } from './rede/consultas';
+import { trafoMaisProximo, useRedeNoMapa } from './rede/consultas';
 import { useDeck } from './rede/useDeck';
 import { montarCamadas, type Alvo } from './rede/camadas';
 import { desenharAtlas, type Atlas } from './rede/atlas';
@@ -15,7 +15,7 @@ import { ROTULOS } from './rede/estilos';
 import { inteiro, mesesDesde, pct, rotuloIdade } from './rede/formato';
 import { caixaDeConsulta, contemCaixa, type Caixa } from './rede/zoom';
 import type { Camada, Selecao } from './rede/tipos';
-import type { SugestaoRede } from './rede/busca';
+import type { Coordenada, SugestaoRede } from './rede/busca';
 
 /**
  * Capacidade de rede em BAIXA TENSÃO e risco de inversão de fluxo — 3ª
@@ -179,6 +179,16 @@ export function NetworkSection() {
     }
   };
 
+  // coordenada do orçamento: vai ao ponto e abre o trafo mais próximo (raio de 300 m)
+  const escolherCoordenada = (c: Coordenada) => {
+    mapa?.panTo({ lat: c.lat, lng: c.lng });
+    if ((mapa?.getZoom() ?? 0) < 17) mapa?.setZoom(17);
+    void trafoMaisProximo(c.lng, c.lat).then(t => {
+      if (t) { setSelecao({ tipo: 'trafo', id: t.id }); setSobre(`Trafo mais próximo: ${t.codigo} a ${inteiro(t.dist_m)} m · ${ROTULOS[t.risco]}`); }
+      else setSobre('Nenhum trafo num raio de 300 m desta coordenada');
+    }).catch(() => setSobre('Não consegui procurar o trafo mais próximo'));
+  };
+
   const opcoesMapa = useMemo<google.maps.MapOptions>(() => ({
     mapTypeControl: false, streetViewControl: false, fullscreenControl: false, clickableIcons: false,
     gestureHandling: 'greedy',
@@ -257,7 +267,7 @@ export function NetworkSection() {
           {carregando && <div aria-hidden style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg, transparent, ${GOLD}, transparent)` }} />}
           {/* busca, atualização e avisos flutuantes */}
           <div style={{ position: 'absolute', top: 12, left: 12, right: 60, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-start', pointerEvents: 'none' }}>
-            <div style={{ pointerEvents: 'auto', flex: '0 1 360px', minWidth: 220 }}><Busca mapa={mapa} aoEscolherRede={escolherDaBusca} /></div>
+            <div style={{ pointerEvents: 'auto', flex: '0 1 360px', minWidth: 220 }}><Busca mapa={mapa} aoEscolherRede={escolherDaBusca} aoEscolherCoordenada={escolherCoordenada} /></div>
             <label style={{ ...flutuante, pointerEvents: 'auto', display: 'inline-flex', alignItems: 'center', gap: 7, color: '#C6C6D0', cursor: 'pointer' }}>
               <input type="checkbox" checked={autoAtualizar} onChange={e => setAutoAtualizar(e.target.checked)} style={{ width: 14, height: 14, accentColor: GOLD, cursor: 'pointer' }} />
               Atualizar ao mover o mapa

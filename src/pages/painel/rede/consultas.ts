@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import type { Camada, DetalheAlimentador, DetalheTrafo, Fontes, RespostaMapa, ResultadoBusca } from './tipos';
+import type { Camada, DetalheAlimentador, DetalheTrafo, Fontes, NovoParecer, Parecer, RespostaMapa, ResultadoBusca, TrafoProximo } from './tipos';
 import { chaveDaCaixa, type Caixa } from './zoom';
 
 export function useRedeNoMapa(p: { caixa: Caixa | null; zoom: number; soRisco: boolean; camadas: Camada[] }) {
@@ -72,4 +72,38 @@ export function useFontes(ligado: boolean) {
     },
     staleTime: 5 * 60_000,
   });
+}
+
+// ── Confronto com a distribuidora (spec §13) ─────────────────────────────────
+export async function trafoMaisProximo(lng: number, lat: number, raioM = 300): Promise<TrafoProximo | null> {
+  const { data, error } = await supabase.rpc('rede_trafo_mais_proximo' as never, { p_lng: lng, p_lat: lat, p_raio_m: raioM } as never);
+  if (error) throw error;
+  return (data as TrafoProximo | null) ?? null;
+}
+
+const BUCKET = 'rede-pareceres';
+
+/** Sobe o PDF para <trafo>/<sha256>.pdf. O mesmo arquivo duas vezes não vira dois objetos. */
+export async function enviarPdfParecer(transformadorId: number, hash: string, arquivo: File): Promise<string> {
+  const caminho = `${transformadorId}/${hash}.pdf`;
+  const { error } = await supabase.storage.from(BUCKET).upload(caminho, arquivo, { contentType: 'application/pdf', upsert: false });
+  if (error && !/exists|duplicate/i.test(error.message)) throw error;
+  return caminho;
+}
+
+export async function urlDoParecer(caminho: string): Promise<string> {
+  const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(caminho, 120);
+  if (error || !data) throw error ?? new Error('sem URL');
+  return data.signedUrl;
+}
+
+export async function registrarParecer(p: NovoParecer): Promise<Parecer> {
+  const { data, error } = await supabase.rpc('rede_parecer_registrar' as never, { p } as never);
+  if (error) throw error;
+  return data as Parecer;
+}
+
+export async function anularParecer(id: number): Promise<void> {
+  const { error } = await supabase.rpc('rede_parecer_anular' as never, { p_id: id } as never);
+  if (error) throw error;
 }
