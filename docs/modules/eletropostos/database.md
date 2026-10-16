@@ -80,6 +80,9 @@ INSERT INTO public.eletroposto_estacao (nome, operador)
 SELECT 'PC do Luiz (BlueStacks)', id FROM auth.users WHERE email = '<e-mail da estação>';
 ```
 
+Estação registrada em 16/10/2026: "PC do gestor (BlueStacks)", `operador` = conta
+do gestor (a mesma da estação da Ludmilla).
+
 `vista_em` é atualizado por `eletropostos_estacao_pulsa` (início de cada corrida)
 e por `eletropostos_gravar_local`; a aba Coleta mostra "parada" acima de 15 min.
 Para desligar uma estação: `ativa = false` (as RPCs passam a recusar).

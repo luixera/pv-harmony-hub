@@ -2,10 +2,11 @@
 
 > **Estado (16/10/2026):** 🟡 Entrega 1 pronta — banco, RPCs, seção no console
 > e coletor da Tupi na VPS (agente próprio `gdm-eletropostos`). Entrega 2 (estação
-> local com BlueStacks para os apps ATM EVs e Cury) **em andamento**: scripts
-> Python reescritos para o Supabase, instalador rodado e coleta agendada a cada
-> 5 min; falta ligar o ADB no BlueStacks, criar o usuário da estação e calibrar
-> as telas (`telas.json`). **Só GD Manager (master).**
+> local com BlueStacks para os apps ATM EVs e Cury) **calibrada em 16/10/2026**:
+> scripts Python no Supabase, instalador rodado, coleta agendada a cada 5 min, ADB
+> ligado, `telas.json` lendo 8 carregadores da Cury e 47 plugues da ATM em ensaio;
+> falta só a pessoa entrar uma vez (`entrar_estacao.bat`) para a primeira gravação.
+> **Só GD Manager (master).**
 > Spec: [2026-10-15-eletropostos-design.md](../../superpowers/specs/2026-10-15-eletropostos-design.md) ·
 > Plano: [2026-10-15-eletropostos.md](../../superpowers/plans/2026-10-15-eletropostos.md)
 
@@ -59,7 +60,7 @@ hora, conectores com linha do tempo de 48 h e o cadastro editável.
 | Fonte | Como | Onde roda | Estado |
 |---|---|---|---|
 | `tupi` | API pública do mapa (`stationsShortVersion`), por conector | VPS (serviço `gdm-eletropostos`, a cada 5 min alinhado ao relógio) | ✅ |
-| apps ATM EVs e Cury | leitura da tela no BlueStacks via `adb`/`uiautomator` (uso normal do app) | PC do usuário (estação local) | 🟡 estação pronta, calibração pendente |
+| apps ATM EVs e Cury | leitura da tela no BlueStacks via `adb`/`uiautomator` (uso normal do app) | PC do usuário (estação local) | 🟡 calibrada; aguarda o login da estação |
 | Spott, ChargeOn, EvoltBR, EZVolt | só app de celular / PlugShare | — | sem fonte |
 
 Regras firmes do usuário: **nunca** digitar senha nem dado de login (a pessoa
@@ -103,11 +104,36 @@ SQLite: tudo vai para o Supabase.
 | `.bat` | `entrar_estacao` (login), `coletar_agora`, `capturar_tela`, `iniciar_celular` (abre o BlueStacks) |
 | `_aposentado\` | `servidor.py`, `web\`, `relatorio.py`, `abrir_painel.bat` — o painel local morreu; a tela é o console |
 
-Formato de `telas.json`: `{"alvos": [{"fonte": "atm", "roteiros": [{"passos": [...],
-"regras": [...]}]}]}`. Passos: `abrir` (pacote), `toque` (x, y), `tocar_texto`,
-`esperar_texto` (até N s), `deslizar`, `voltar`; cada passo aceita `espera`.
-Regra: `local_id`, `local_nome`, `conector`, `potencia_kw`, `lat`, `lng` (para o
-vínculo automático), `ancora` (regex do nome na tela) e `regex` do status.
+Formato de `telas.json`: `{"orcamento_s": 270, "alvos": [{"fonte": "atm", "ordem": [...],
+"passo_lista_px": 160, "roteiros": [{"passos": [...], "regras": [...], "depois": [...],
+"opcional": true}]}]}`. Passos: `abrir` (pacote; com `activity` reinicia quente),
+`toque` (x, y), `tocar_texto`, `tocar_texto_rolando` (rola a lista na direção certa
+usando `ordem`), `esperar_texto` (até N s), `digitar`, `deslizar`, `voltar`; cada
+passo aceita `espera` e `opcional`. Regra: `local_id`, `local_nome`, `conector`,
+`potencia_kw`, `lat`, `lng` (vínculo automático) e `regex` cujo grupo 1 é o status
+no texto da ficha. `depois` roda após a leitura (fechar a ficha).
+
+**Calibração feita em 16/10/2026 (só pelo adb, sem controlar a tela do Windows):**
+
+| App | Caminho até a ficha | O que se lê | Tempo |
+|---|---|---|---|
+| Cury Energia (`eco.spott.curyenergia`, rede Spott) | abrir → "Lista" → tocar o local → ficha "Escolha um carregador" | nó combinado por carregador: `91748 - 1 / Autocharge / Ultra Rápido / 80kW / Livre / Usado há 3 horas…` → status = linha após a de kW | 5 locais públicos, 8 carregadores DC, ~126 s — a lista "Locais de Recarga" segue o mapa (depois de uma ficha só mostra o que está no mapa), então cada local reabre o app; HM 60 kW aproveita a tela do HM 80 kW |
+| ATM EVs (`br.com.atmoutsourcing.evscharger`, sem login) | abrir → "Pesquisar" + espaço (lista tudo por distância) → tocar o carregador → ficha → X (852,781) | nó combinado por plugue: `Tipo 2 - 32A, ID: 5838, DISPONÍVEL` | 30 carregadores públicos até 15 km / 47 plugues; os **13 do inventário são fixos** e os 16 restantes `opcional` em **rodízio** no tempo que sobra (`dados\rodizio.json`), ~147 s |
+
+Status vistos: ATM `DISPONÍVEL` e `LIBERADO` (= livre); Cury `Livre`. O `MAPA_STATUS` já
+cobre em uso/ocupado/indisponível/inativo/reservado; o que não casar vira `desconhecido`.
+Enumerações que geraram os roteiros: `capturas\atm_carregadores.json`,
+`capturas\cury_locais.json` (script `gera_telas.py` da sessão de calibração; o
+`telas.json` pode ser editado à mão). Calibrar de novo: `coletor_tela.py ver` /
+`ensaiar [fonte]` (não grava; `ELETROPOSTOS_DEPURAR=1` cronometra cada passo).
+
+Armadilhas: o `uiautomator dump` leva ~2,5 s (o coletor reaproveita o último dump até a
+próxima ação e guarda a lista em cache); `input tap` não funciona enquanto o app está
+"morto" depois de reiniciar o BlueStacks (relançar o app resolve); **não** zerar as
+animações do Android (`settings put global *_animation_scale 0` derrubou o
+`system_server` do BlueStacks). O interruptor de ADB da tela de configurações não
+obedeceu aos cliques sintéticos: ficou ligado trocando `bst.enable_adb_access` para
+`"1"` em `C:\ProgramData\BlueStacks_nxt\bluestacks.conf` com o BlueStacks fechado.
 
 Por que a sessão guarda também o access token (e não só o refresh token da
 spec): o Supabase **gira** o refresh token a cada uso e revoga a família
@@ -115,20 +141,22 @@ inteira se um token já usado volta depois de alguns segundos — exatamente o
 que aconteceria quando a coleta agendada e `coletar_agora.bat` rodassem
 juntas. Reaproveitando o access token por ~1 h, a renovação é rara.
 
-O usuário da estação é um **staff do tenant GD Manager** criado pelo app
-(Usuários), com a senha definida pela pessoa; o master registra o `id` em
-`eletroposto_estacao` ([database.md](database.md#estação-local)). O
+O operador da estação registrado em `eletroposto_estacao` ("PC do gestor
+(BlueStacks)", 16/10/2026) é a **conta do próprio gestor** — a mesma que opera a
+estação da Ludmilla; a alternativa (staff dedicado criado pelo app) continua
+válida, basta trocar o `operador` ([database.md](database.md#estação-local)). O
 `HD-Adb.exe` do BlueStacks (1.0.36) **não** serve: dá `error: closed` com o
 Android 11; por isso o `platform-tools` oficial.
 
 ## Pendências
 
-- **Entrega 2 — para fechar**: ligar "Android Debug Bridge" em Configurações ›
-  Avançado do BlueStacks (hoje `bst.enable_adb_access=0`: o shell do adb
-  responde `error: closed`); criar o usuário da estação e registrá-lo em
-  `eletroposto_estacao`; `entrar_estacao.bat`; calibrar ATM EVs e Cury
-  (ambos mostram a disponibilidade ao tocar no ícone do carregador no mapa) e
-  escrever `telas.json`; primeira coleta visível na aba Coleta.
+- **Entrega 2 — para fechar**: a pessoa roda `entrar_estacao.bat` (e-mail e senha
+  da conta do gestor, no terminal) e confere na aba Coleta a estação "Em dia" e as
+  fontes `cury` e `atm`; vincular na aba Coleta os carregadores lidos que não
+  estão no cadastro (hotéis, condomínios, lojas da ATM) ou cadastrá-los.
+- Os 16 carregadores opcionais da ATM são lidos a cada ~5 ciclos (rodízio): o
+  tempo de uso deles fica subestimado; se interessarem ao estudo, cortar a lista
+  ou dividir a ATM em duas estações.
 - Retenção das leituras (hoje nenhuma; ~2 M linhas/ano cabem).
 - Deploy do coletor: Actions → "Eletropostos — deploy do coletor na VPS"
   (`eletropostos-worker.yml`, manual). Log na VPS: `journalctl -u gdm-eletropostos`.

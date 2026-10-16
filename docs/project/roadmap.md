@@ -31,13 +31,12 @@
 - **Eletropostos — entrega 2 (estação local)**: a entrega 1 (16/10/2026) pôs
   banco, RPCs, seção no `/painel` e o coletor da Tupi na VPS
   ([modules/eletropostos](../modules/eletropostos/overview.md)). Em 16/10/2026
-  a estação no PC do usuário foi reescrita para o Supabase (`estacao.py`,
-  `comum.py` por `eletropostos_gravar_local`, `coletor_tela.py` com
-  `adb connect`, `instalar.ps1` enxuto rodado, tarefa de 5 min criada, painel
-  local aposentado). **Falta**: ADB ligado no BlueStacks, usuário da estação
-  criado pelo app e registrado em `eletroposto_estacao`, calibração do ATM EVs
-  e da Cury (`telas.json`) e a primeira coleta na aba Coleta. Sem retenção de
-  leituras ainda.
+  a estação no PC do usuário foi reescrita para o Supabase, instalada, agendada
+  (5 min) e **calibrada**: `telas.json` lê os 8 carregadores da Cury e os 47
+  plugues da ATM EVs (13 carregadores fixos + 16 em rodízio) em ~274 s por ciclo.
+  **Falta**: o login da estação pela pessoa (`entrar_estacao.bat`), a primeira
+  gravação conferida na aba Coleta e o vínculo/cadastro dos carregadores da ATM
+  que não estão no inventário. Sem retenção de leituras ainda.
 - **Mobile / PWA — fase 2**: a fase 1 entregou o padrão (`src/mobile/`), a barra
   inferior, as telas do gestor e da empresa e o app instalável
   ([modules/mobile](../modules/mobile/overview.md)). Ficou de fora, de propósito:

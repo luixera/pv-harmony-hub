@@ -96,6 +96,11 @@ nunca derruba o laço do worker.
   as fontes da estação.
 - Leitura de tela é texto visível (uiautomator): um status por regra; texto que
   não casa vira `desconhecido`, que sai do denominador.
+- O ciclo tem **orçamento de 270 s** (`telas.json`): roteiros fixos (Cury e os
+  carregadores da ATM que estão no inventário) sempre rodam; roteiros `opcional`
+  rodam em rodízio no tempo que sobra, continuando de onde o ciclo anterior parou.
+  Um carregador opcional lido a cada N ciclos tem o tempo de uso subestimado
+  (cada leitura vale 5 min) — a cobertura mostra isso.
 
 ## O que não se faz
 
