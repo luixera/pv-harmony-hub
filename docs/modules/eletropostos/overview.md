@@ -144,6 +144,7 @@ animações do Android (`settings put global *_animation_scale 0` derrubou o
 `system_server` do BlueStacks). O interruptor de ADB da tela de configurações não
 obedeceu aos cliques sintéticos: ficou ligado trocando `bst.enable_adb_access` para
 `"1"` em `C:\ProgramData\BlueStacks_nxt\bluestacks.conf` com o BlueStacks fechado.
+Toda chamada a programa de console (`adb`, `taskkill`) usa `creationflags=CREATE_NO_WINDOW`: a tarefa roda em `pythonw` (sem console) e, sem a flag, o Windows abria uma janela do Terminal para cada comando do `adb`, dezenas por ciclo (reclamação do usuário em 16/10/2026).
 O `adb` precisa ficar **dentro da pasta do monitor** (`ferramentas\platform-tools`):
 arquivos criados pelas ferramentas do Claude em `%LOCALAPPDATA%` ficaram só no
 sandbox e a tarefa agendada não os via.
