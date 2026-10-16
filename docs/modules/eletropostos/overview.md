@@ -156,6 +156,19 @@ log. A tarefa agora é liberada para a bateria, com uma execução por vez e tet
 30 min (`New-ScheduledTaskSettingsSet` no `instalar.ps1`). Para pausar a coleta fora
 da tomada, desativar a tarefa no Agendador.
 
+**Memória do PC.** Em 16/10/2026 à tarde o Android travou em quase todo ciclo, mesmo
+depois do reinício automático: o PC estava com ~350 MB de RAM livre e 46 de 50 GB
+de memória comprometida (Chrome, o app do Claude, BlueStacks, WSL/Docker, Steam).
+Reiniciar o BlueStacks não adianta nesse caso. A varredura anexa
+"[PC com pouca memória: X MB …]" ao erro quando a RAM livre cai abaixo de 1 GB ou a
+comprometível abaixo de 4 GB, para a aba Coleta mostrar a causa real.
+
+**Assertividade.** Cada gravação com leitura manda `p_falhas` (`[{nome, erro}]`,
+com `nome` = `local_nome`) com os locais que falharam e os fixos não lidos por limite
+do ciclo ou pelo disjuntor. Ciclo sem leitura nenhuma não manda (já conta como
+falha da fonte), e status ilegível por conector fica de fora (já conta como
+"ilegível" pela leitura `desconhecido`).
+
 **GPS do BlueStacks.** Horas depois de aberto, o BlueStacks pode parar de entregar
 posição; a lista da ATM vem com "0.00 km" e fora de ordem e os roteiros não acham
 os carregadores. O passo `escolher` do primeiro roteiro da ATM detecta isso e a
