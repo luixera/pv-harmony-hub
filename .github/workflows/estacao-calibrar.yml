@@ -18,6 +18,10 @@ on:
         description: 'Raio (km) dos carregadores do ATM EVs a abrir'
         type: string
         default: '15'
+      partes:
+        description: 'O que descobrir: atm, cury ou atm,cury'
+        type: string
+        default: 'atm,cury'
       religar_timer:
         description: 'Religar o timer da estação no fim'
         type: boolean
@@ -58,10 +62,12 @@ jobs:
         env:
           RAIO: ${{ inputs.raio_km }}
           RELIGAR: ${{ inputs.religar_timer }}
+          PARTES: ${{ inputs.partes }}
         run: |
           {
             printf 'export RAIO=%q\n' "$RAIO"
             printf 'export RELIGAR=%q\n' "$RELIGAR"
+            printf 'export PARTES=%q\n' "$PARTES"
             cat <<'REMOTO'
           APP=/opt/gdm-estacao
           [ -f /etc/gdm-estacao/env ] || { echo "ERRO: /etc/gdm-estacao/env ausente (rode o deploy da estação antes)"; exit 1; }
@@ -82,7 +88,7 @@ jobs:
             -p WorkingDirectory=$APP \
             -p Environment=HOME=/home/gdmestacao \
             -p RuntimeMaxSec=30min \
-            /usr/bin/python3 calibrar.py "$RAIO" </dev/null
+            /usr/bin/python3 calibrar.py "$RAIO" "$PARTES" </dev/null
           rc=$?
           ULT=$(ls -1dt "$APP"/capturas/calibracao-* 2>/dev/null | head -1)
           [ -n "$ULT" ] && tar -C "$(dirname "$ULT")" -czf /tmp/calibracao.tgz "$(basename "$ULT")" && echo "pacote: $(du -h /tmp/calibracao.tgz | cut -f1)"
