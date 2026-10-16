@@ -8,13 +8,14 @@ não grava dado de motorista. Salva tudo em capturas/calibracao-<data>/ para mon
   atm_fichas.json      plugues de cada carregador público até RAIO km (id, tipo, status) + o botão de fechar
   cury_locais.json     locais da lista "Locais de Recarga" da Cury e os carregadores de cada um
 
-Uso: python3 calibrar.py [raio_km]     (padrão 15)
+Uso: python3 calibrar.py [raio_km] [partes]     (padrão 15 e "atm,cury"; ex.: 15 cury)
 """
 import datetime as dt, json, re, sys, time
 from pathlib import Path
 import coletor_tela as c
 
 RAIO = float(sys.argv[1]) if len(sys.argv) > 1 else 15.0
+PARTES = set((sys.argv[2] if len(sys.argv) > 2 else "atm,cury").replace(" ", "").split(","))
 SAIDA = c.BASE / "capturas" / ("calibracao-" + dt.datetime.now().strftime("%Y%m%d-%H%M%S"))
 SAIDA.mkdir(parents=True, exist_ok=True)
 ATM, CURY = "br.com.atmoutsourcing.evscharger", "eco.spott.curyenergia"
@@ -91,6 +92,13 @@ def main():
         except Exception as e:
             nota(f"GPS não aplicado: {e}")
 
+    if "atm" in PARTES:
+        descobrir_atm(w, h)
+    if "cury" in PARTES:
+        descobrir_cury(w, h)
+
+
+def descobrir_atm(w, h):
     # ── ATM EVs ───────────────────────────────────────────────────────────────
     nota("ATM EVs: abrir")
     c.executar_passo({"tipo": "abrir", "pacote": ATM, "espera": 3})
@@ -131,7 +139,7 @@ def main():
         achou = False
         for _ in range(25):
             itens = c.textos(c.tela_xml())
-            b = next((b for t, b in itens if t == nome), None)
+            b = next((b for t, b in itens if t.strip() == nome.strip()), None)
             if b:
                 tocar_bounds(b); achou = True; break
             rolar(w, h, 0.3)
@@ -152,6 +160,7 @@ def main():
                  and not RE_PLUG.match(t) and t != nome]
         fichas.append({"nome": nome, "km": lista[nome]["km"], "plugues": plugs, "cards": cards})
         nota(f"  {nome}: {[(p['id'], p['status']) for p in plugs]}")
+        (SAIDA / "atm_fichas.json").write_text(json.dumps({"fechar_bounds": fechar, "fichas": fichas}, ensure_ascii=False, indent=1), encoding="utf-8")
         # fechar: o X é um botão sem texto no alto da ficha, à direita do título
         titulo = next((b for t, b in c.textos(xml) if t == nome), None)
         if fechar is None and titulo:
@@ -168,6 +177,8 @@ def main():
         time.sleep(1.5)
     (SAIDA / "atm_fichas.json").write_text(json.dumps({"fechar_bounds": fechar, "fichas": fichas}, ensure_ascii=False, indent=1), encoding="utf-8")
 
+
+def descobrir_cury(w, h):
     # ── Cury ──────────────────────────────────────────────────────────────────
     nota("Cury: abrir")
     c.executar_passo({"tipo": "abrir", "pacote": CURY, "espera": 3})
@@ -223,6 +234,7 @@ def main():
                     locais[nome]["carregadores"].append({"codigo": mm.group(1), "kw": kw, "status": st, "linhas": linhas[:7]})
             rolar(w, h, 0.4)
         nota(f"  {nome}: {[(x['codigo'], x['kw'], x['status']) for x in locais[nome]['carregadores']]}")
+        (SAIDA / "cury_locais.json").write_text(json.dumps([locais[n] for n in ordem_c], ensure_ascii=False, indent=1), encoding="utf-8")
     (SAIDA / "cury_locais.json").write_text(json.dumps([locais[n] for n in ordem_c], ensure_ascii=False, indent=1), encoding="utf-8")
 
 
