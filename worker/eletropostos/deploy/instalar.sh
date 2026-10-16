@@ -25,6 +25,7 @@ echo "host: $(hostname) · $(lsb_release -ds 2>/dev/null || head -1 /etc/os-rele
 echo "node: $(node -v 2>/dev/null || echo 'ausente')"
 echo "unit: $([ -f "$UNIT" ] && echo 'existe' || echo 'não existe')"
 echo "serviço: $(systemctl is-active gdm-eletropostos 2>/dev/null || echo 'inativo')"
+echo "navegadores: $(ls /home/$USUARIO/.cache/ms-playwright 2>/dev/null | tr '\n' ' ')"
 [ -d "$APP" ] && echo "código: $(ls "$APP" | tr '\n' ' ')" || echo "código: pasta ausente"
 echo "últimas linhas do log:"; journalctl -u gdm-eletropostos -n 12 --no-pager 2>/dev/null
 
@@ -56,6 +57,13 @@ cd "$APP" || falhar "sem $APP"
 # `env -u`: o npm roda como root e executa o `postinstall` de cada dependência;
 # só este comando perde a service role.
 env -u SUPABASE_SERVICE_ROLE_KEY npm ci --omit=dev --no-audit --no-fund </dev/null || falhar "npm ci falhou"
+# Chromium headless do Playwright (lê o mapa público da Tupi): libs de sistema
+# como root, o navegador no HOME do usuário do serviço (a unit aponta para lá).
+npx playwright install-deps chromium </dev/null || falhar "playwright install-deps falhou"
+mkdir -p "/home/$USUARIO/.cache" && chown -R "$USUARIO:$USUARIO" "/home/$USUARIO/.cache"
+sudo -u "$USUARIO" -H env PLAYWRIGHT_BROWSERS_PATH=/home/$USUARIO/.cache/ms-playwright \
+  npx --prefix "$APP" playwright install chromium </dev/null || falhar "download do Chromium falhou"
+echo "navegadores: $(ls /home/$USUARIO/.cache/ms-playwright 2>/dev/null | tr '\n' ' ')"
 chown -R root:root "$APP"
 chmod -R a+rX "$APP"
 

@@ -58,7 +58,7 @@ hora, conectores com linha do tempo de 48 h e o cadastro editável.
 
 | Fonte | Como | Onde roda | Estado |
 |---|---|---|---|
-| `tupi` | API pública do mapa (`stationsShortVersion`), por conector | VPS (serviço `gdm-eletropostos`, a cada 5 min alinhado ao relógio) | ✅ |
+| `tupi` | mapa público aberto num Chromium headless (Playwright); a API direta só como reserva — a API fechou para scripts em 16/10/2026 | VPS (serviço `gdm-eletropostos`, a cada 5 min alinhado ao relógio) | ✅ |
 | apps ATM EVs e Cury | leitura da tela no BlueStacks via `adb`/`uiautomator` (uso normal do app) | PC do usuário (estação local) | ✅ (precisa do PC e do BlueStacks abertos) |
 | Spott, ChargeOn, EvoltBR, EZVolt | só app de celular / PlugShare | — | sem fonte |
 

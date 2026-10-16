@@ -14,12 +14,18 @@ SuspendedEV/SuspendedEVSE/Occupied/Carregando/Em uso → ocupado`;
 `Faulted/Unavailable/Indisponível/Manutenção/Offline/Falha → fora`; o resto
 → `desconhecido`.
 
-## Janelas
+## Janelas e passo por fonte
+
+Cada fonte tem um **passo** de coleta (`eletroposto_fonte_config.passo_min`):
+Tupi 5 min; Cury e ATM EVs **8 min** (pedido do usuário em 16/10/2026 — o ciclo
+do ATM leva ~4,5 min). Fonte sem linha na tabela vale 5. Migração
+`20261016150000_eletropostos_passo_por_fonte.sql`.
 
 - O tempo é dividido em **janelas de 5 minutos** (UTC, arredondadas para
   baixo: `slot`). Uma leitura por (janela, fonte, local, conector); leitura
   repetida na mesma janela sobrescreve.
-- **Cada janela "ocupado" vale 5 minutos de uso.** Não há interpolação.
+- **Cada leitura "ocupado" vale o passo da sua fonte** (5 ou 8 min). Não há
+  interpolação. Para fontes de 5 min é a regra original (janela = 5 min).
 - **Janelas esperadas** no período = da primeira leitura do sistema (ou do
   início do período, o que vier depois) até agora (ou o fim do período).
 
@@ -27,13 +33,13 @@ SuspendedEV/SuspendedEVSE/Occupied/Carregando/Em uso → ocupado`;
 
 | Métrica | Fórmula |
 |---|---|
-| horas_ocupado | ocupado × 5 / 60 |
-| horas_observadas | (livre + ocupado) × 5 / 60 |
-| horas_fora | fora × 5 / 60 |
-| ocupacao | ocupado / (livre + ocupado) — **"fora" e "desconhecido" ficam fora do denominador** |
-| cobertura | min(1, (livre + ocupado + fora) / janelas esperadas) |
-| sessoes (recargas) | janelas "ocupado" cuja janela imediatamente anterior (≤ 5 min antes) **não** era "ocupado" — inclui a primeira leitura do período |
-| duracao_media_min | ocupado × 5 / sessoes |
+| horas_ocupado | Σ passo das leituras "ocupado" / 60 |
+| horas_observadas | Σ passo das leituras livre + ocupado / 60 |
+| horas_fora | Σ passo das leituras "fora" / 60 |
+| ocupacao | minutos ocupado / (minutos livre + ocupado) — **"fora" e "desconhecido" ficam fora do denominador** |
+| cobertura | min(1, minutos lidos (livre + ocupado + fora) / minutos do período) |
+| sessoes (recargas) | leituras "ocupado" cuja leitura anterior (≤ passo + 1 min antes) **não** era "ocupado" — inclui a primeira leitura do período |
+| duracao_media_min | minutos ocupado / sessoes |
 
 ## Métricas por local
 
@@ -76,6 +82,18 @@ Depois do primeiro avistamento, só o manual muda o vínculo.
 Datas da tela são **dias civis de Brasília** (`America/Sao_Paulo`); os perfis
 dia × hora e a série diária também. "Hoje" na tela é a data de Brasília, não a
 do navegador.
+
+## Tupi pelo navegador (16/10/2026)
+
+A API pública da Tupi passou a responder **403 do Cloudflare** a qualquer
+cliente fora de um navegador (VPS e PC, com ou sem identificador). Com
+autorização do usuário, o coletor abre o **mapa público**
+(`eletropostos-tupi.web.app`, o mesmo que tupimob.com embute) num Chromium
+headless (Playwright) e lê a resposta que a própria página recebe — uso normal
+do site, sem chamada nossa à API, sem cabeçalho forjado. A API direta fica
+como reserva, só se o navegador falhar. Se a página não carregar, a coleta
+falha e fica registrada. Depois de 3 recusas seguidas (403/429) o coletor
+tenta só uma vez por hora.
 
 ## Saúde da coleta
 

@@ -11,9 +11,12 @@
     "test": "tsc -p tsconfig.test.json && node scripts/testes.mjs",
     "start": "node dist/index.js"
   },
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "dependencies": {
-    "@supabase/supabase-js": "^2.45.0"
+    "@supabase/supabase-js": "^2.45.0",
+    "playwright": "^1.63.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

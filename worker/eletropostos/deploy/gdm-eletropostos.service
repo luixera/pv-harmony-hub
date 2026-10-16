@@ -10,6 +10,7 @@ Group=gdmeletropostos
 WorkingDirectory=/opt/gdm-eletropostos
 EnvironmentFile=/etc/gdm-eletropostos/env
 Environment=HOME=/home/gdmeletropostos
+Environment=PLAYWRIGHT_BROWSERS_PATH=/home/gdmeletropostos/.cache/ms-playwright
 Environment=PATH=/usr/local/bin:/usr/bin:/bin
 ExecStart=/usr/bin/node dist/index.js
 Restart=always
