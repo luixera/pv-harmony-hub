@@ -51,6 +51,8 @@ const STATUS_BADGE: Record<string, { bg: string; color: string }> = {
 const PAY_LABELS: Record<string, string> = {
   pending: 'Pendente', partial: 'Parc. Pago', paid: 'Quitado',
 };
+/** A ordem dos botoes: do que mais deve para o que ja foi quitado. */
+const PAY_OPTIONS = ['pending', 'partial', 'paid'] as const;
 
 interface FinancialReportModalProps {
   onClose: () => void;
@@ -69,12 +71,12 @@ export function FinancialReportModal({ onClose }: FinancialReportModalProps) {
 
   // Local form state — `statuses` é multi-seleção (lista vazia = todas as etapas)
   const [form, setForm] = useState<{
-    companyId: string; statuses: string[]; paymentStatus: string; dateFrom: string; dateTo: string;
+    companyId: string; statuses: string[]; paymentStatuses: string[]; dateFrom: string; dateTo: string;
     // Escondido por padrao: o extrato e sobre dinheiro, e o consumo da
     // franquia atrapalhava a leitura (pedido do usuario, set/2026).
     mostrarFranquia: boolean;
   }>({
-    companyId: '', statuses: [], paymentStatus: '', dateFrom: '', dateTo: '', mostrarFranquia: false,
+    companyId: '', statuses: [], paymentStatuses: [], dateFrom: '', dateTo: '', mostrarFranquia: false,
   });
 
   const toggleStatus = (status: string) => setForm(f => ({
@@ -84,13 +86,20 @@ export function FinancialReportModal({ onClose }: FinancialReportModalProps) {
       : [...f.statuses, status],
   }));
 
+  const togglePaymentStatus = (status: string) => setForm(f => ({
+    ...f,
+    paymentStatuses: f.paymentStatuses.includes(status)
+      ? f.paymentStatuses.filter(s => s !== status)
+      : [...f.paymentStatuses, status],
+  }));
+
   const { rows, summary, isLoading } = useFinancialReport(applied);
 
   const applyFilters = () => {
     const f: FinancialReportFilters = {};
     if (form.companyId) f.companyId = form.companyId;
     if (form.statuses.length) f.statuses = form.statuses;
-    if (form.paymentStatus) f.paymentStatus = form.paymentStatus;
+    if (form.paymentStatuses.length) f.paymentStatuses = form.paymentStatuses;
     if (form.dateFrom) f.dateFrom = form.dateFrom;
     if (form.dateTo) f.dateTo = form.dateTo;
     f.hideFranchiseUsage = !form.mostrarFranquia;
@@ -98,7 +107,7 @@ export function FinancialReportModal({ onClose }: FinancialReportModalProps) {
   };
 
   const clearFilters = () => {
-    setForm({ companyId: '', statuses: [], paymentStatus: '', dateFrom: '', dateTo: '', mostrarFranquia: false });
+    setForm({ companyId: '', statuses: [], paymentStatuses: [], dateFrom: '', dateTo: '', mostrarFranquia: false });
     setApplied({ hideFranchiseUsage: true });
   };
 
@@ -112,7 +121,10 @@ export function FinancialReportModal({ onClose }: FinancialReportModalProps) {
   for (const s of applied.statuses ?? []) {
     activeChips.push({ key: `status-${s}`, label: rotuloEtapa(s) });
   }
-  if (applied.paymentStatus) activeChips.push({ key: 'paymentStatus', label: PAY_LABELS[applied.paymentStatus] });
+  // uma tarja por situacao, como nas etapas: o PDF tem de dizer que recorte gerou o numero
+  for (const s of applied.paymentStatuses ?? []) {
+    activeChips.push({ key: `pay-${s}`, label: PAY_LABELS[s] ?? s });
+  }
   if (applied.dateFrom) activeChips.push({ key: 'dateFrom', label: `De: ${applied.dateFrom}` });
   if (applied.dateTo) activeChips.push({ key: 'dateTo', label: `Até: ${applied.dateTo}` });
 
@@ -303,14 +315,43 @@ export function FinancialReportModal({ onClose }: FinancialReportModalProps) {
                 </p>
               </div>
 
-              <div style={{ flex: isTablet ? '1 1 160px' : undefined }}>
-                <label style={labelStyle}>Status pagamento</label>
-                <select value={form.paymentStatus} onChange={e => setForm(f => ({ ...f, paymentStatus: e.target.value }))} style={inputStyle}>
-                  <option value="">Todos</option>
-                  <option value="pending">Pendente</option>
-                  <option value="partial">Parcial</option>
-                  <option value="paid">Quitado</option>
-                </select>
+              {/* Mesma mecanica das etapas, e pelo mesmo motivo: as situacoes se
+                  excluem entre si, e o extrato de cobranca pede "pendente + parcial"
+                  na mesma folha (pedido do usuario, out/2026). */}
+              <div style={{ flex: isTablet ? '1 1 200px' : undefined }}>
+                <label style={labelStyle}>
+                  Status pagamento
+                  {form.paymentStatuses.length > 0 && (
+                    <span style={{ color: '#B87A20', marginLeft: 5 }}>({form.paymentStatuses.length} selecionados)</span>
+                  )}
+                </label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                  {PAY_OPTIONS.map(k => {
+                    const on = form.paymentStatuses.includes(k);
+                    return (
+                      <button
+                        key={k}
+                        type="button"
+                        onClick={() => togglePaymentStatus(k)}
+                        aria-pressed={on}
+                        style={{
+                          padding: '5px 9px', borderRadius: 20, fontSize: 11, fontWeight: 600,
+                          cursor: 'pointer', lineHeight: 1.2,
+                          border: on ? '1px solid #F5A800' : '1px solid #E0E0E0',
+                          background: on ? '#FEF3D0' : '#fff',
+                          color: on ? '#854F0B' : '#777',
+                        }}
+                      >
+                        {PAY_LABELS[k]}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p style={{ fontSize: 10, color: '#aaa', margin: '5px 0 0' }}>
+                  {form.paymentStatuses.length === 0
+                    ? 'Nenhum marcado = todas as situações entram no extrato.'
+                    : 'Só as situações marcadas entram no extrato.'}
+                </p>
               </div>
 
               <div style={{ flex: isTablet ? '1 1 140px' : undefined }}>

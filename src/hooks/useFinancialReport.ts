@@ -1,23 +1,12 @@
 import { useMemo } from 'react';
 import { useFinancialDashboard, FinancialProjectRow, SubscriptionChargeRow } from './useFinancialDashboard';
-
-export interface FinancialReportFilters {
-  companyId?: string;
-  /** Etapas do projeto a incluir. Vazio/ausente = todas. É lista porque um
-   *  extrato costuma juntar etapas diferentes (aprovado + vistoria
-   *  solicitada + concluído que ainda não foi pago) — pedido do usuário. */
-  statuses?: string[];
-  paymentStatus?: string;
-  dateFrom?: string;
-  dateTo?: string;
-  /**
-   * Esconde o consumo da franquia ("7/10 projetos") na linha de mensalidade.
-   * Pedido do usuario (set/2026): esse numero atrapalha a leitura do extrato,
-   * que e sobre DINHEIRO. Ele continua no financeiro da empresa, onde explica
-   * por que um projeto do mes veio mais caro. Ligado por padrao.
-   */
-  hideFranchiseUsage?: boolean;
-}
+// Os recortes moram em `financialReportFilters.ts`, sem React e sem Supabase,
+// para poderem ser testados (este arquivo puxa o cliente, que le localStorage
+// no carregamento e derruba o vitest, que roda sem DOM). Reexportados aqui
+// para quem ja importava daqui nao precisar mudar.
+import { matchesReportFilters, matchesSubscriptionFilters, type FinancialReportFilters } from './financialReportFilters';
+export { matchesReportFilters, matchesSubscriptionFilters } from './financialReportFilters';
+export type { FinancialReportFilters } from './financialReportFilters';
 
 export interface FinancialReportRow {
   id: string;
@@ -41,38 +30,6 @@ export interface FinancialReportSummary {
   totalValue: number;
   totalPaid: number;
   totalBalance: number;
-}
-
-/** Um projeto entra no extrato? Pura e exportada pra ser testável fora do React.
- *  Filtro ausente (ou lista de etapas vazia) = não restringe nada. */
-export function matchesReportFilters(
-  p: Pick<FinancialProjectRow, 'companyId' | 'status' | 'paymentStatus' | 'createdAt'>,
-  filters: FinancialReportFilters,
-): boolean {
-  if (filters.companyId && p.companyId !== filters.companyId) return false;
-  if (filters.statuses?.length && !filters.statuses.includes(p.status)) return false;
-  if (filters.paymentStatus && p.paymentStatus !== filters.paymentStatus) return false;
-  if (filters.dateFrom && p.createdAt < filters.dateFrom) return false;
-  if (filters.dateTo && p.createdAt.slice(0, 10) > filters.dateTo) return false;
-  return true;
-}
-
-/** Uma MENSALIDADE entra no extrato? Pura e exportada pra ser testável.
- *  O filtro de ETAPA não se aplica (mensalidade não tem etapa de projeto);
- *  empresa, status de pagamento e período valem. O período considera o mês
- *  inteiro da competência: uma mensalidade de julho entra num extrato que
- *  pegue qualquer dia de julho. */
-export function matchesSubscriptionFilters(
-  a: Pick<SubscriptionChargeRow, 'companyId' | 'status' | 'competence'>,
-  filters: FinancialReportFilters,
-): boolean {
-  if (filters.companyId && a.companyId !== filters.companyId) return false;
-  if (filters.paymentStatus && a.status !== filters.paymentStatus) return false;
-  const [y, m] = a.competence.split('-').map(Number);
-  const fimMes = new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
-  if (filters.dateFrom && fimMes < filters.dateFrom) return false;
-  if (filters.dateTo && a.competence > filters.dateTo) return false;
-  return true;
 }
 
 export function useFinancialReport(filters: FinancialReportFilters) {

@@ -16,8 +16,29 @@
 - `src/components/financial/ReceivablesTable.tsx` — tabela de recebíveis.
 - `src/components/financial/FinancialReportModal.tsx` — **extrato financeiro**
   (pré-visualização + PDF/impressão). Filtros: empresa, **etapas do projeto
-  (multi-seleção)**, status de pagamento e período.
+  (multi-seleção)**, **status de pagamento (multi-seleção)** e período.
 - `CompanyPricingFields` (admin/empresas) define a regra que gera os valores.
+
+## Extrato: filtro de status de pagamento
+
+Mesma mecânica das etapas, e pelo mesmo motivo. As três situações se
+**excluem entre si**: `pending` é quem não recebeu nada, `partial` é quem
+recebeu parte, `paid` é quem quitou. Com um `select` de escolha única era
+impossível tirar o extrato que a cobrança mais usa — *tudo que ainda deve
+algo* —, que é `pending` **+** `partial` na mesma folha. Pedido do usuário,
+out/2026. **Nenhum marcado = todos entram**, e cada um marcado vira uma tarja
+no cabeçalho do PDF.
+
+Os recortes são `matchesReportFilters` e `matchesSubscriptionFilters`, e eles
+moram em `src/hooks/financialReportFilters.ts`, **não** no
+`useFinancialReport.ts`. O motivo é prático e vale lembrar antes de mover de
+volta: o hook importa o `useFinancialDashboard`, que importa o cliente do
+Supabase, que lê `localStorage` já no carregamento do módulo — e o vitest da
+casa roda com `environment: 'node'`, sem DOM. Enquanto as funções moravam
+lá, o comentário dizia que eram "puras e testáveis fora do React" e nenhum
+teste conseguia importá-las. Hoje têm 12, em
+`financialReportFilters.test.ts`. O `useFinancialReport.ts` reexporta as
+duas, então quem já importava de lá não precisou mudar.
 
 ## Extrato: filtro de etapas
 
