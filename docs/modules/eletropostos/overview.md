@@ -4,7 +4,7 @@
 > e coletor da Tupi na VPS (agente próprio `gdm-eletropostos`). Entrega 2 (estação
 > local com BlueStacks para os apps ATM EVs e Cury) **pronta em 16/10/2026**: a
 > estação entra com a conta do gestor, lê 8 carregadores da Cury e 47 plugues da
-> ATM a cada 5 min (Agendador do Windows) e grava por `eletropostos_gravar_local`;
+> ATM a cada 8 min (Agendador do Windows; passo por fonte desde 16/10/2026) e grava por `eletropostos_gravar_local`;
 > a primeira coleta agendada, às 08:56 de 16/10/2026, gravou 7 leituras da Cury e 25 da ATM. **Só GD Manager (master).**
 > Spec: [2026-10-15-eletropostos-design.md](../../superpowers/specs/2026-10-15-eletropostos-design.md) ·
 > Plano: [2026-10-15-eletropostos.md](../../superpowers/plans/2026-10-15-eletropostos.md)
@@ -96,9 +96,9 @@ SQLite: tudo vai para o Supabase.
 | `estacao.py` | sessão no GD Manager: `login` pede e-mail e senha **no terminal** (`getpass`), guarda só os tokens em `dados\sessao.json` e renova pelo refresh token quando o access token está a menos de 2 min de vencer; `testar` renova e chama `eletropostos_estacao_pulsa`; `rpc()` é a única porta para o PostgREST |
 | `comum.py` | `linha()` monta a leitura no formato da RPC; `gravar(fonte, linhas, erro)` chama `eletropostos_gravar_local`; `normalizar()` com o mesmo `MAPA_STATUS` do worker |
 | `coletor_tela.py` | `adb connect ADB_ALVO` + `adb -s`; roteiros de `config\telas.json`; modos `ver` (lista os textos da tela), `descobrir NOME` (salva xml/png/txt em `capturas\`) e `coletar` |
-| `coletar.py` | o que o Agendador roda: batimento → telas; registro em `dados\coleta.log`; tranca `dados\coleta.lock` (duas coletas nunca rodam juntas) |
+| `coletar.py` | o que o Agendador roda: batimento → telas; registro em `dados\coleta.log`; tranca `dados\coleta.lock` com o PID do dono (duas coletas nunca rodam juntas; a tranca só é tida como abandonada se o processo dono não existir ou após 45 min) |
 | `coletor_tupi.py` | reserva **manual** (a VPS cobre a Tupi) |
-| `instalar.ps1` | Python (via `py`, porque o `python` do PATH pode ser o atalho da Store), `platform-tools` oficial em `ferramentas\platform-tools` (dentro da pasta do monitor), pastas, tarefa `Eletropostos\Coleta a cada 5 min` (`pythonw coletar.py`); remove as tarefas antigas Painel/Celular virtual |
+| `instalar.ps1` | Python (via `py`, porque o `python` do PATH pode ser o atalho da Store), `platform-tools` oficial em `ferramentas\platform-tools` (dentro da pasta do monitor), pastas, tarefa `Eletropostos\Coleta a cada 8 min` (`pythonw coletar.py`); remove as tarefas antigas Painel/Celular virtual |
 | `config\supabase.env` | `SUPABASE_URL`, `SUPABASE_ANON_KEY` (públicos, os mesmos do site) e `ADB_ALVO` |
 | `.bat` | `entrar_estacao` (login), `coletar_agora`, `capturar_tela`, `iniciar_celular` (abre o BlueStacks) |
 | `_aposentado\` | `servidor.py`, `web\`, `relatorio.py`, `abrir_painel.bat` — o painel local morreu; a tela é o console |
@@ -126,6 +126,26 @@ Enumerações que geraram os roteiros: `capturas\atm_carregadores.json`,
 `capturas\cury_locais.json` (script `gera_telas.py` da sessão de calibração; o
 `telas.json` pode ser editado à mão). Calibrar de novo: `coletor_tela.py ver` /
 `ensaiar [fonte]` (não grava; `ELETROPOSTOS_DEPURAR=1` cronometra cada passo).
+
+**Android travado.** Visto em 16/10/2026: o `HD-Player.exe` aberto, mas o Android
+dentro dele parado (`adb devices` com o endereço "offline", shell em timeout,
+conexão recusada); `adb disconnect/connect` não resolve. O coletor trata isso como
+`AndroidTravado` (timeout de 30 s em qualquer `adb`, ou "device offline", "error:
+closed", "cannot connect", "actively refused"…): **reinicia o BlueStacks sozinho**
+(no máximo uma vez por ciclo, contando também o reinício por GPS), espera
+`sys.boot_completed = 1`, grava na varredura da fonte afetada `ok = false` com
+"BlueStacks reiniciado pela estação: …" e repete o alvo. A mensagem "ligue o
+Android Debug Bridge" só aparece se o `bluestacks.conf` disser `enable_adb_access`
+diferente de `"1"`.
+
+**Limites do ciclo** (`telas.json`): nenhum carregador novo começa depois de
+`limite_s` (420 s, porque a coleta roda a cada 8 min) e, com
+`max_falhas_seguidas` (3) carregadores seguidos falhando, o app é deixado para o
+próximo ciclo; os dois motivos vão no começo do erro da varredura. Antes disso, um
+app com problema chegou a prender a coleta por 22 min, e a coleta seguinte começou
+por cima dela (a tranca antiga "vencia" aos 10 min): as duas disputaram a tela e
+fizeram o Android parecer travado. Apagar ou trocar a tarefa agendada também mata
+a coleta em andamento (aconteceu na troca de 5 para 8 min).
 
 **GPS do BlueStacks.** Horas depois de aberto, o BlueStacks pode parar de entregar
 posição; a lista da ATM vem com "0.00 km" e fora de ordem e os roteiros não acham
