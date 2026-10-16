@@ -95,3 +95,24 @@ export function linhasDaTupi(dados: unknown): { linhas: Linha[]; estacoes: numbe
 export function atrasoAteProximaJanela(agora = Date.now(), passoMs = 5 * 60_000, folgaMs = 5_000): number {
   return passoMs - (agora % passoMs) + folgaMs;
 }
+
+/**
+ * Recuo diante de recusa da fonte (HTTP 403/429). Depois de `LIMIAR` recusas
+ * seguidas, só uma tentativa por `PAUSA`; qualquer sucesso zera. A ideia é
+ * não martelar quem nos bloqueou — e nunca contornar o bloqueio.
+ */
+export interface Recuo { recusasSeguidas: number; ultimaTentativa: number }
+export const RECUO_LIMIAR = 3;
+export const RECUO_PAUSA_MS = 60 * 60_000;
+
+export const ehRecusa = (erro: string | undefined): boolean => /HTTP (403|429)/.test(erro ?? '');
+
+export function deveTentar(r: Recuo, agora: number): boolean {
+  if (r.recusasSeguidas < RECUO_LIMIAR) return true;
+  return agora - r.ultimaTentativa >= RECUO_PAUSA_MS;
+}
+
+export function registrarResultado(r: Recuo, ok: boolean, quando: number, erro?: string): Recuo {
+  if (ok) return { recusasSeguidas: 0, ultimaTentativa: quando };
+  return { recusasSeguidas: ehRecusa(erro) ? r.recusasSeguidas + 1 : 0, ultimaTentativa: quando };
+}

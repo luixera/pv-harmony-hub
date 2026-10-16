@@ -1,5 +1,5 @@
 import { coletarTupi } from './tupi.js';
-import { atrasoAteProximaJanela } from './status.js';
+import { atrasoAteProximaJanela, deveTentar, registrarResultado, type Recuo } from './status.js';
 
 /**
  * ELETROPOSTOS — o laço do coletor (agente próprio, separado da Ludmilla por
@@ -11,6 +11,11 @@ import { atrasoAteProximaJanela } from './status.js';
  * Um tique nunca espera o anterior: se o anterior ainda está rodando (todas
  * as chamadas têm teto, então é raro), o novo é pulado e isso vai para o log.
  *
+ * Recuo: quando a Tupi passa a recusar (HTTP 403 — aconteceu em 16/10/2026,
+ * bloqueio do Cloudflare na API), o coletor NÃO insiste a cada 5 min: depois
+ * de 3 recusas seguidas tenta só uma vez por hora, e volta ao normal na
+ * primeira leitura boa. A casa não disfarça automação nem contorna bloqueio.
+ *
  * Ambiente (de /etc/gdm-eletropostos/env na VPS): SUPABASE_URL,
  * SUPABASE_SERVICE_ROLE_KEY, ELETROPOSTOS_PASSO_MIN (padrão 5).
  */
@@ -20,16 +25,26 @@ const log = (msg: string, extra: Record<string, unknown> = {}) =>
   console.log(JSON.stringify({ t: new Date().toISOString(), msg, ...extra }));
 
 let rodando = false;
+let recuo: Recuo = { recusasSeguidas: 0, ultimaTentativa: 0 };
+
 async function tique(): Promise<void> {
   if (rodando) { log('tique pulado: o anterior ainda roda'); return; }
+  const agora = Date.now();
+  if (!deveTentar(recuo, agora)) {
+    log('tique pulado: em recuo após recusas da Tupi', { recusas_seguidas: recuo.recusasSeguidas });
+    return;
+  }
   rodando = true;
-  const t0 = Date.now();
+  const t0 = agora;
   log('coleta iniciada');
   try {
     const n = await coletarTupi(log);
+    recuo = registrarResultado(recuo, true, t0);
     log('tupi ok', { conectores: n, ms: Date.now() - t0 });
   } catch (e) {
-    log('tupi falhou', { erro: (e as Error).message, ms: Date.now() - t0 });
+    const msg = (e as Error).message;
+    recuo = registrarResultado(recuo, false, t0, msg);
+    log('tupi falhou', { erro: msg, ms: Date.now() - t0, recusas_seguidas: recuo.recusasSeguidas });
   } finally {
     rodando = false;
   }

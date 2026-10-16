@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { atrasoAteProximaJanela, normalizar, dentroDaCaixa, linhasDaTupi } from '../src/status.js';
+import { atrasoAteProximaJanela, deveTentar, normalizar, dentroDaCaixa, linhasDaTupi, registrarResultado } from '../src/status.js';
 
 /**
  * O coletor da Tupi é a parte pura do monitor de eletropostos: dado o JSON do
@@ -69,4 +69,19 @@ test('o tique alinha à próxima virada de 5 min, com folga de 5 s', () => {
   assert.equal(atrasoAteProximaJanela(t), 100_000 + 5_000);
   const naVirada = Date.UTC(2026, 9, 16, 12, 5, 0);    // exatamente na virada: espera o passo inteiro
   assert.equal(atrasoAteProximaJanela(naVirada), 300_000 + 5_000);
+});
+
+test('recuo: 3 recusas seguidas → uma tentativa por hora; sucesso zera; outro erro não conta', () => {
+  let r = { recusasSeguidas: 0, ultimaTentativa: 0 };
+  const t = Date.UTC(2026, 9, 16, 16, 0, 0);
+  r = registrarResultado(r, false, t, 'Tupi respondeu HTTP 403');
+  r = registrarResultado(r, false, t + 300_000, 'Tupi respondeu HTTP 403');
+  assert.equal(deveTentar(r, t + 600_000), true);                  // 2 recusas: ainda tenta
+  r = registrarResultado(r, false, t + 600_000, 'Tupi respondeu HTTP 403');
+  assert.equal(deveTentar(r, t + 900_000), false);                 // 3 recusas: em recuo
+  assert.equal(deveTentar(r, t + 600_000 + 60 * 60_000), true);    // 1 h depois: tenta de novo
+  r = registrarResultado(r, false, t + 4_200_000, 'fetch failed'); // erro de rede não é recusa
+  assert.equal(r.recusasSeguidas, 0);
+  r = registrarResultado(r, true, t + 4_500_000);
+  assert.equal(r.recusasSeguidas, 0);
 });
