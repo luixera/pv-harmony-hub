@@ -1,4 +1,4 @@
-name: Nginx — cache do index.html
+name: Nginx — cabeçalhos da casca (index.html, sw.js, manifest)
 
 # Execução MANUAL (aba Actions → este workflow → "Run workflow").
 #
@@ -9,8 +9,25 @@ name: Nginx — cache do index.html
 # velho e funcionando, silenciosamente desatualizada. Isso já fez três
 # publicações "não chegarem" ao usuário (set/2026).
 #
-# O que faz: garante `Cache-Control: no-cache, must-revalidate` no index.html,
-# mantendo o cache eterno de /assets (que têm hash no nome). Idempotente.
+# O que faz hoje (out/2026, depois que o app virou PWA):
+#   1. `index.html` → `Cache-Control: no-cache, must-revalidate`.
+#   2. `sw.js` → o mesmo. O Chrome já ignora o cache HTTP do script do service
+#      worker, mas Safari e proxies não prometem isso. Service worker velho
+#      preso em cache é a pior falha possível: ele controla todas as páginas.
+#   3. `manifest.webmanifest` → `application/manifest+json`. O Nginx o servia
+#      como `application/octet-stream`, porque `.webmanifest` não está no
+#      mime.types padrão.
+#   4. Devolve os três cabeçalhos de segurança ao `index.html`. Esta é a
+#      correção mais importante desta volta: no Nginx, um `add_header` dentro
+#      de um `location` CANCELA todos os `add_header` herdados do `server`. O
+#      bloco que esta automação criou em set/2026 para o cache acabou tirando
+#      `X-Content-Type-Options`, `X-Frame-Options` e `Referrer-Policy` do
+#      documento HTML — justo onde o `X-Frame-Options` protege de clickjacking.
+#      Medido em 16/10/2026: `/sw.js` vinha com os três, `/` vinha sem nenhum.
+#
+# Idempotente e atualizável: remove o bloco que ele mesmo tenha inserido antes
+# (tanto o formato de set/2026 quanto o atual) e insere a versão de agora.
+# Rodar duas vezes seguidas não duplica nada.
 #
 # Segurança: backup datado, `nginx -t` ANTES de recarregar e restauração
 # automática se a validação falhar — o site nunca fica com config quebrada.
@@ -59,7 +76,9 @@ jobs:
             "DESFAZER='$DESFAZER' SIMULAR='$SIMULAR' bash -s" <<'REMOTO'
           # SEM `set -e`: o diagnóstico precisa sobreviver a comandos que falham.
           set -uo pipefail
-          MARCA="GD-MANAGER-CACHE-INDEX"
+          MARCA_VELHA="GD-MANAGER-CACHE-INDEX"
+          INICIO="GD-MANAGER-CASCA-INICIO"
+          FIM="GD-MANAGER-CASCA-FIM"
 
           # root ou sudo?
           if [ "$(id -u)" = "0" ]; then S=""; else S="sudo"; fi
@@ -98,14 +117,21 @@ jobs:
             exit 0
           fi
 
-          # ── 3. Já aplicado? ─────────────────────────────────────────────────
-          if $S grep -q "$MARCA" "$CONF"; then
-            echo "Bloco já presente — nada a fazer."
+          # ── 3. Já está na versão de agora? ──────────────────────────────────
+          # O marcador de fim só existe no formato atual. O de set/2026 não tem,
+          # e por isso cai no caminho de atualização logo abaixo.
+          if $S grep -q "$FIM" "$CONF"; then
+            echo "Bloco já está na versão atual — nada a fazer."
             exit 0
           fi
 
+          if $S grep -q "$MARCA_VELHA" "$CONF"; then
+            echo "Encontrei o bloco de set/2026 (só o cache do index, e sem os"
+            echo "cabeçalhos de segurança). Vou substituí-lo pelo atual."
+          fi
+
           if [ "${SIMULAR:-false}" = "true" ]; then
-            echo "SIMULAÇÃO: pararia aqui e inseriria o bloco em $CONF."
+            echo "SIMULAÇÃO: pararia aqui e reescreveria o bloco em $CONF."
             exit 0
           fi
 
@@ -118,25 +144,68 @@ jobs:
           # e as duas importam: bater a PISTA e ter uma diretiva `root`. Só a
           # pista escolheria o server de redirecionamento (que tem o mesmo
           # server_name e nenhum conteúdo) — testado, acontecia mesmo.
-          $S awk -v marca="$MARCA" -v pista="$PISTA" '
-            $0 ~ marca { feito = 1 }
+          #
+          # Antes de inserir, o awk DESCARTA o bloco anterior, nos dois
+          # formatos: o atual (entre os marcadores) e o de set/2026 (do
+          # comentário da marca velha até o `}` que fecha o location, contando
+          # chaves).
+          $S awk -v velha="$MARCA_VELHA" -v ini="$INICIO" -v fim="$FIM" -v pista="$PISTA" '
+            $0 ~ ini { pulando_novo = 1 }
+            pulando_novo { if ($0 ~ fim) pulando_novo = 0; next }
+
+            $0 ~ velha { pulando_velho = 1; chaves = 0; viu_chave = 0 }
+            pulando_velho {
+              chaves += gsub(/{/, "{"); chaves -= gsub(/}/, "}")
+              if (chaves > 0) viu_chave = 1
+              if (viu_chave && chaves == 0) pulando_velho = 0
+              next
+            }
+
             /server[[:space:]]*{/ && depth == 0 { inserver = 1; tem_root = 0; tem_pista = 0 }
             inserver { depth += gsub(/{/, "{"); depth -= gsub(/}/, "}") }
             inserver && /^[[:space:]]*root[[:space:]]/ { tem_root = 1 }
             inserver && $0 ~ pista { tem_pista = 1 }
             {
               if (inserver && tem_root && tem_pista && depth == 0 && !feito) {
-                print "    # " marca
+                print "    # " ini
                 print "    # A casca do app nao pode ficar em cache: os arquivos de"
                 print "    # /assets tem hash no nome e sao imutaveis, mas e o index.html"
                 print "    # que aponta para eles. Sem isto o navegador servia por horas"
-                print "    # uma versao antiga do sistema."
-                print "    # ATENCAO: add_header aqui cancela os add_header herdados do"
-                print "    # server; ao criar CSP/HSTS no server, repetir dentro deste bloco."
+                print "    # uma versao antiga do sistema. O mesmo vale para o sw.js, que"
+                print "    # controla TODAS as paginas quando fica preso velho."
+                print "    #"
+                print "    # Os tres add_header de seguranca estao repetidos dentro de"
+                print "    # cada location DE PROPOSITO: no Nginx, um add_header no"
+                print "    # location cancela todos os herdados do server. Sem repetir,"
+                print "    # o index.html fica sem X-Frame-Options — foi o que aconteceu"
+                print "    # entre set/2026 e out/2026. Ao criar CSP ou HSTS no server,"
+                print "    # repita aqui tambem."
                 print "    location = /index.html {"
                 print "        add_header Cache-Control \"no-cache, must-revalidate\" always;"
+                print "        add_header X-Content-Type-Options \"nosniff\" always;"
+                print "        add_header X-Frame-Options \"SAMEORIGIN\" always;"
+                print "        add_header Referrer-Policy \"strict-origin-when-cross-origin\" always;"
                 print "        expires off;"
                 print "    }"
+                print "    location = /sw.js {"
+                print "        add_header Cache-Control \"no-cache, must-revalidate\" always;"
+                print "        add_header X-Content-Type-Options \"nosniff\" always;"
+                print "        add_header X-Frame-Options \"SAMEORIGIN\" always;"
+                print "        add_header Referrer-Policy \"strict-origin-when-cross-origin\" always;"
+                print "        expires off;"
+                print "    }"
+                print "    location = /manifest.webmanifest {"
+                print "        # .webmanifest nao esta no mime.types padrao do Nginx, entao"
+                print "        # ele sai como application/octet-stream."
+                print "        types { }"
+                print "        default_type application/manifest+json;"
+                print "        add_header Cache-Control \"no-cache, must-revalidate\" always;"
+                print "        add_header X-Content-Type-Options \"nosniff\" always;"
+                print "        add_header X-Frame-Options \"SAMEORIGIN\" always;"
+                print "        add_header Referrer-Policy \"strict-origin-when-cross-origin\" always;"
+                print "        expires off;"
+                print "    }"
+                print "    # " fim
                 feito = 1
               }
               print
@@ -144,7 +213,7 @@ jobs:
             inserver && depth == 0 { inserver = 0 }
           ' "$BACKUP" | $S tee "$CONF" > /dev/null
 
-          if ! $S grep -q "$MARCA" "$CONF"; then
+          if ! $S grep -q "$FIM" "$CONF"; then
             echo "ERRO: não consegui inserir o bloco — restaurando."
             $S cp "$BACKUP" "$CONF"
             exit 1
@@ -163,11 +232,26 @@ jobs:
       - name: Prova — cabeçalhos servidos agora
         if: always()
         run: |
-          echo "--- index.html (esperado: no-cache, must-revalidate) ---"
-          curl -sI -m 20 https://homologamanager.com.br/ | grep -i 'cache-control\|last-modified' || echo "(sem Cache-Control)"
+          falhou=0
+          checar() { # $1 url · $2 regex esperado · $3 descrição
+            saida=$(curl -sI -m 20 "https://homologamanager.com.br$1")
+            echo "--- $1"
+            echo "$saida" | grep -iE 'cache-control|content-type|x-content-type|x-frame|referrer' || echo "(nenhum cabeçalho relevante)"
+            if echo "$saida" | grep -qiE "$2"; then
+              echo "    OK: $3"
+            else
+              echo "    FALHOU: esperava $3"
+              falhou=1
+            fi
+          }
+          checar "/"                      'cache-control:.*no-cache'            'index.html sem cache'
+          checar "/"                      'x-frame-options'                     'index.html com X-Frame-Options'
+          checar "/sw.js"                 'cache-control:.*no-cache'            'sw.js sem cache'
+          checar "/manifest.webmanifest"  'content-type:.*application/manifest' 'manifest com o MIME certo'
           ASSET=$(curl -s -m 20 https://homologamanager.com.br/ | grep -o 'assets/index-[A-Za-z0-9._-]*\.js' | head -1)
-          echo "--- $ASSET (esperado: seguir imutável) ---"
+          echo "--- /$ASSET (deve seguir imutável, com cache longo)"
           curl -sI -m 20 "https://homologamanager.com.br/$ASSET" | grep -i 'cache-control' || true
+          exit $falhou
 
       - name: Cleanup
         if: always()
