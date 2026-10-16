@@ -21,6 +21,14 @@ Tupi 5 min; Cury e ATM EVs **8 min** (pedido do usuário em 16/10/2026 — o cic
 do ATM leva ~4,5 min). Fonte sem linha na tabela vale 5. Migração
 `20261016150000_eletropostos_passo_por_fonte.sql`.
 
+**Passo por leitura** (`eletroposto_leitura.passo_min`, migração
+`20261016210000_eletropostos_passo_por_leitura.sql`): uma linha pode trazer o seu
+próprio passo — é o caso dos carregadores **AC de 7 kW do ATM EVs, lidos a cada
+16 min** (duas metades alternadas a cada ciclo de 8). A conta usa o passo da
+leitura e, sem ele, o da fonte. Na assertividade, as tentativas esperadas de um
+local = minutos em que a fonte leu ÷ passo do local (um AC lido em 1 de cada 2
+ciclos não sai com 50 %).
+
 - O tempo é dividido em **janelas de 5 minutos** (UTC, arredondadas para
   baixo: `slot`). Uma leitura por (janela, fonte, local, conector); leitura
   repetida na mesma janela sobrescreve.

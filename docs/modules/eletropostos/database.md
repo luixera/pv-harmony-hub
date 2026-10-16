@@ -12,7 +12,7 @@ tabelas têm `tenant_id` (padrão `eletropostos_tenant()` = tenant
 |---|---|---|
 | `eletroposto_local` | `id uuid` | cadastro (nome, operadora, cidade, endereço, lat/lng, tipo DC/AC, potência por conector, nº de conectores, preço e custo R$/kWh, fonte de status, observações, ativo). Seed: 72 locais do `inventario.csv`. |
 | `eletroposto_fonte_local` | `(fonte, local_fonte)` | como cada fonte chama um local; `local_id` = vínculo com o cadastro (nulo = sem vínculo); `visto_em` |
-| `eletroposto_leitura` | `id bigint`; `UNIQUE (slot, fonte, local_fonte, conector)` | leituras cruas: `ts_utc`, `slot` (janela de 5 min UTC), `conector` (`'*'` = só o local), `potencia_kw`, `status_bruto`, `status`, `upstream_ts`. Índices em `(slot)` e `(fonte, local_fonte, slot)`. |
+| `eletroposto_leitura` | `id bigint`; `UNIQUE (slot, fonte, local_fonte, conector)` | leituras cruas: `ts_utc`, `slot` (janela de 5 min UTC), `conector` (`'*'` = só o local), `potencia_kw`, `status_bruto`, `status`, `upstream_ts`, `passo_min` (passo da leitura em min, opcional; sem ele vale o da fonte). Índices em `(slot)` e `(fonte, local_fonte, slot)`. |
 | `eletroposto_varredura` | `id` | uma linha por coleta: fonte, `ok`, `n` linhas, `erro`, `falhas jsonb` (falhas por local `[{nome, erro, conector?}]`, desde 16/10/2026) |
 | `eletroposto_premissas` | `tenant_id` | `valores jsonb` (só o que difere do padrão; `eletropostos_premissas()` devolve padrão ∪ valores) |
 | `eletroposto_estacao` | `id` | estação local: `nome`, `operador` (auth.users do staff da estação), `vista_em`, `ativa` |
