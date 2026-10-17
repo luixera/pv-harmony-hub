@@ -96,6 +96,8 @@ def main():
         descobrir_atm(w, h)
     if "cury" in PARTES:
         descobrir_cury(w, h)
+    if "tupi_busca" in PARTES:
+        buscar_tupi(["BYD", "Monte Carlo", "Madero", "Jota", "Iguatemi"], w, h)   # sem acento: o input text do adb não aceita
     for parte in [p for p in PARTES if p.startswith("explorar:")]:
         explorar_app(parte.split(":", 1)[1], w, h)
     if "atm_busca" in PARTES:
@@ -130,6 +132,7 @@ CANDIDATOS = ("Lista", "Ver lista", "Listar", "Buscar", "Pesquisar", "Procurar",
 AVISOS = (("notificaç", ("Cancelar", "Agora não", "Não permitir")),
           ("localiza", ("Durante o uso do app", "Ao usar o app", "Permitir apenas durante o uso", "Permitir")),
           ("location", ("While using the app", "Allow")),
+          ("cadastre-se para carregar", ("Agora não",)),     # Tupi: convite, não é login
           ("tutorial", ("Pular", "Fechar")),
           ("bem-vindo", ("Pular", "Fechar", "Começar")))
 
@@ -149,6 +152,35 @@ def passar_avisos(termo, rodadas=5):
                     break
         if not tocou:
             return
+
+
+def buscar_tupi(termos, w, h):
+    """Tupi: abre o app, passa os avisos, busca cada termo no campo do topo, captura os resultados,
+    abre o 1º e captura a ficha (rolada também). Volta ao mapa entre um termo e outro."""
+    pkg = "com.tupinamba"
+    for n, termo in enumerate(termos):
+        c.executar_passo({"tipo": "abrir", "pacote": pkg, "espera": 10})
+        passar_avisos("tupi")
+        campo = next((b for t, b in c.textos(c.tela_xml()) if t.strip() in ("Pesquisar endereço", "Nome do local, estação ou endereço")), None)
+        if not campo:
+            capturar(f"tupi_b{n}_sem_campo"); nota(f"  {termo}: campo de busca não achado"); continue
+        tocar_bounds(campo); time.sleep(2)
+        capturar(f"tupi_b{n}_1_campo")
+        c.executar_passo({"tipo": "limpar_campo", "espera": 0.5})
+        c.executar_passo({"tipo": "digitar", "texto": termo, "espera": 5})
+        c.executar_passo({"tipo": "esconder_teclado", "espera": 1})
+        itens = capturar(f"tupi_b{n}_2_resultados")
+        # 1º resultado que contém o termo e não é o próprio campo
+        res = next((b for t, b in itens if termo.lower() in t.lower() and not t.strip().lower() == termo.lower()), None)
+        if not res:
+            nota(f"  {termo}: nenhum resultado com o termo"); continue
+        nota(f"  {termo}: tocando o 1º resultado {[t for t, b in itens if b == res][:1]}")
+        tocar_bounds(res); time.sleep(6)
+        passar_avisos("tupi")
+        capturar(f"tupi_b{n}_3_ficha")
+        (SAIDA / f"tupi_b{n}_3_ficha_botoes.json").write_text(
+            json.dumps(nos_clicaveis_sem_texto(c.ULTIMO_XML), ensure_ascii=False, indent=1), encoding="utf-8")
+        rolar(w, h, 0.35); capturar(f"tupi_b{n}_4_ficha_rolada")
 
 
 def explorar_app(termo, w, h):
