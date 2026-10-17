@@ -97,13 +97,9 @@ def main():
     if "cury" in PARTES:
         descobrir_cury(w, h)
     if "ensaio" in PARTES:
-        nota("ENSAIO: ciclo completo com o telas.json, sem gravar")
-        import io, contextlib
-        buf = io.StringIO()
-        with contextlib.redirect_stdout(buf):
-            r = c.coletar(ensaio=True)
-        for linha in buf.getvalue().splitlines():
-            nota("  " + linha)
+        nota("ENSAIO: ciclo completo com o telas.json, sem gravar (cada passo sai na hora)")
+        c.DEPURAR = True          # imprime cada passo com o tempo: mantém a conexão viva e mostra o caminho
+        r = c.coletar(ensaio=True)
         nota(f"ENSAIO resumo: {r}")
 
 
