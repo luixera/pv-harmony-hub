@@ -8,7 +8,8 @@ import { comparavelTitular, semAcento } from '../util.js';
  * nunca trata um número qualquer do e-mail como protocolo. As respostas da ENEL
  * trazem NT (9 dígitos), instalação (10), nota de serviço (12), protocolo de
  * contato (10) e número SF; o protocolo de contato tem o MESMO tamanho da UC.
- * Só casa o número que for exatamente o de um projeto nosso, como número inteiro.
+ * Só casa o número que for exatamente o de um projeto nosso, como número inteiro:
+ * protocolo/NT com 9+ dígitos; UC com 7+ (sem os zeros à esquerda).
  *
  * Puro: sem banco, sem rede.
  */
@@ -33,18 +34,28 @@ export type Identificacao =
   | { tipo: 'conflito'; motivo: string; codigos: string[] }
   | { tipo: 'nenhum' };
 
-/** A NT tem 9 dígitos; nada menor é aceito como identificador (data tem 8, CEP tem 8). */
+/** NT e protocolo: 9 dígitos; nada menor é aceito como protocolo (data tem 8, CEP tem 8). */
 export const MIN_DIGITOS = 9;
 
-/** As sequências de dígitos com 9+ dígitos, sem zero à esquerda. */
-export function numerosDoTexto(texto: string | null | undefined): Set<string> {
+/**
+ * UC: 7 dígitos, sem os zeros à esquerda. Metade das UCs da ENEL tem 7 ou 8 dígitos
+ * ("0088101266" no cadastro, "Instalação: 88101266" na Carta). Um número qualquer de 7 ou 8
+ * dígitos no e-mail só conta se for EXATAMENTE a UC de um projeto nosso.
+ */
+export const MIN_DIGITOS_UC = 7;
+
+/** As sequências de dígitos com `minimo`+ dígitos (9, o da NT, por padrão), sem zero à esquerda. */
+export function numerosDoTexto(texto: string | null | undefined, minimo = MIN_DIGITOS): Set<string> {
   const s = new Set<string>();
   for (const bruto of (texto ?? '').match(/\d+/g) ?? []) {
     const n = bruto.replace(/^0+/, '');
-    if (n.length >= MIN_DIGITOS) s.add(n);
+    if (n.length >= minimo) s.add(n);
   }
   return s;
 }
+
+/** Os números que podem ser UC: 7+ dígitos, sem zero à esquerda. */
+const numerosDeUc = (texto: string | null | undefined): Set<string> => numerosDoTexto(texto, MIN_DIGITOS_UC);
 
 const algumEm = (a: Set<string>, b: Set<string>): boolean => {
   for (const x of a) if (b.has(x)) return true;
@@ -224,9 +235,11 @@ function decidir(porProtocolo: ProjetoEnel[], porUc: ProjetoEnel[], porTitular: 
  * a assinatura de funcionário da ENEL, e um cliente homônimo casaria com ela.
  */
 export function identificarPorTexto(m: { assunto: string; corpo: string }, projetos: ProjetoEnel[]): Identificacao {
-  const nums = numerosDoTexto(`${m.assunto ?? ''}\n${m.corpo ?? ''}`);
+  const texto = `${m.assunto ?? ''}\n${m.corpo ?? ''}`;
+  const nums = numerosDoTexto(texto);
+  const numsUc = numerosDeUc(texto);
   const porProtocolo = projetos.filter(p => algumEm(numerosDoTexto(p.protocolo), nums));
-  const porUc = projetos.filter(p => algumEm(numerosDoTexto(p.uc), nums));
+  const porUc = projetos.filter(p => algumEm(numerosDeUc(p.uc), numsUc));
   const porTitular = projetos.filter(p => p.titular !== null && titularNoAssunto(m.assunto ?? '', p.titular));
   return decidir(porProtocolo, porUc, porTitular);
 }
@@ -239,8 +252,9 @@ export function identificarPorDocumento(
   doc: { nt: string | null; uc: string | null; titular: string | null }, projetos: ProjetoEnel[],
 ): Identificacao {
   const nums = new Set([...numerosDoTexto(doc.nt), ...numerosDoTexto(doc.uc)]);
+  const numsUc = new Set([...numerosDeUc(doc.nt), ...numerosDeUc(doc.uc)]);
   const porProtocolo = projetos.filter(p => algumEm(numerosDoTexto(p.protocolo), nums));
-  const porUc = projetos.filter(p => algumEm(numerosDoTexto(p.uc), nums));
+  const porUc = projetos.filter(p => algumEm(numerosDeUc(p.uc), numsUc));
   const titular = doc.titular;
   const porTitular = titular && comparavelTitular(titular)
     ? projetos.filter(p => p.titular !== null && comparavelTitular(p.titular) && mesmoTitular(p.titular, titular))
@@ -271,13 +285,14 @@ export function combinar(texto: Identificacao, documento: Identificacao): Identi
  * O nome do arquivo traz o número (protocolo ou UC) de OUTRO projeto — ativo ou
  * não? Então não vai para este card. É o "procurar os nossos números" aplicado ao
  * nome do arquivo: número que não é de projeto nenhum (nota de serviço, protocolo
- * de contato) não barra.
+ * de contato) não barra. Protocolo com 9+ dígitos; UC com 7+ (a UC curta de outro projeto também barra).
  */
 export function nomeTrazOutroProjeto(nome: string, projeto: ProjetoEnel, projetos: ProjetoEnel[]): boolean {
   const nums = numerosDoTexto(nome);
-  if (nums.size === 0) return false;
+  const numsUc = numerosDeUc(nome); // contém `nums`: 7 < 9
+  if (numsUc.size === 0) return false;
   return projetos.some(p => p.project_id !== projeto.project_id
-    && (algumEm(numerosDoTexto(p.protocolo), nums) || algumEm(numerosDoTexto(p.uc), nums)));
+    && (algumEm(numerosDoTexto(p.protocolo), nums) || algumEm(numerosDeUc(p.uc), numsUc)));
 }
 
 /**

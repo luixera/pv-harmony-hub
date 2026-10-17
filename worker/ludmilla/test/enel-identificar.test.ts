@@ -592,3 +592,63 @@ test('inicial vale só para nome do meio: o primeiro e o último nome vêm intei
   assert.equal(titularNoAssunto('PROJETO GD - JOSE CARLOS S', 'JOSE CARLOS SANTOS'), false);
   assert.equal(mesmoTitular('JOSE CARLOS SANTOS', 'J. C. SANTOS'), false);
 });
+
+// ── Reabertura: UC de 7–8 dígitos (sem os zeros à esquerda). NT e protocolo seguem com 9 ──
+// Caso real: o cadastro tem "0088101266" e a Carta da ENEL traz "Instalação: 88101266".
+const UC8 = P({ project_id: 'u8', codigo: 'PRJ-U8', protocolo: 'aguardando protocolo', uc: '0088101266', titular: 'RENATA SOUZA OLIVEIRA' });
+const UC7 = P({ project_id: 'u7', codigo: 'PRJ-U7', uc: '0001234567', titular: 'PEDRO ALVES COSTA' });
+const UC6 = P({ project_id: 'u6', codigo: 'PRJ-U6', uc: '0000123456', titular: 'LUCAS PRADO LIMA' });
+const COM_UC_CURTA = [...TODOS, UC8, UC7, UC6];
+
+test('UC de 8 dígitos no corpo ("Instalação: 88101266") casa o cadastro "0088101266"', () => {
+  const id = identificarPorTexto(txt('RE: Carta', 'Prezado cliente, Instalação: 88101266. Atenciosamente'), COM_UC_CURTA);
+  assert.equal(id.tipo === 'achado' && id.projeto.codigo, 'PRJ-U8');
+  assert.equal(id.tipo === 'achado' && id.por, 'uc');
+  // com os zeros à esquerda também
+  const id2 = identificarPorTexto(txt('RE: Carta', 'Instalação: 0088101266'), COM_UC_CURTA);
+  assert.equal(id2.tipo === 'achado' && id2.projeto.codigo, 'PRJ-U8');
+});
+
+test('UC de 7 dígitos casa', () => {
+  const id = identificarPorTexto(txt('TROCA DE RELÓGIO - instalação 1234567'), COM_UC_CURTA);
+  assert.equal(id.tipo === 'achado' && id.projeto.codigo, 'PRJ-U7');
+  assert.equal(id.tipo === 'achado' && id.por, 'uc');
+});
+
+test('número de 6 dígitos não casa, nem com a UC de 6 dígitos do cadastro', () => {
+  assert.equal(identificarPorTexto(txt('RE: Carta', 'Instalação: 123456'), COM_UC_CURTA).tipo, 'nenhum');
+  assert.equal(identificarPorDocumento({ nt: null, uc: '123456', titular: null }, COM_UC_CURTA).tipo, 'nenhum');
+});
+
+test('UC curta casa só como número inteiro e igual (1234567 não é 12345678)', () => {
+  const U = P({ project_id: 'u', codigo: 'PRJ-U', uc: '12345678' });
+  assert.equal(identificarPorTexto(txt('RE: Carta', 'Instalação: 1234567'), [U]).tipo, 'nenhum');
+  assert.equal(identificarPorTexto(txt('RE: Carta', 'Instalação: 123456789'), [U]).tipo, 'nenhum');
+  assert.equal(identificarPorTexto(txt('RE: Carta', 'Instalação: 12345678'), [U]).tipo, 'achado');
+});
+
+test('número de 8 dígitos igual a uma UC não casa como protocolo/NT de outro projeto (protocolo segue com 9)', () => {
+  // protocolo de 8 dígitos no cadastro de outro projeto: não é identificador
+  const PROT8 = P({ project_id: 'p8', codigo: 'PRJ-P8', protocolo: '88101266', titular: 'CARLA MENDES ROCHA' });
+  const id = identificarPorTexto(txt('RE: Carta', 'Instalação: 88101266'), [...COM_UC_CURTA, PROT8]);
+  assert.equal(id.tipo === 'achado' && id.projeto.codigo, 'PRJ-U8');
+  assert.equal(id.tipo === 'achado' && id.por, 'uc');
+  const doc = identificarPorDocumento({ nt: '88101266', uc: null, titular: null }, [...COM_UC_CURTA, PROT8]);
+  assert.equal(doc.tipo === 'achado' && doc.projeto.codigo, 'PRJ-U8');
+  assert.equal(doc.tipo === 'achado' && doc.por, 'uc');
+});
+
+test('documento: uc de 8 dígitos identifica (também quando a IA põe no campo da NT)', () => {
+  const id = identificarPorDocumento({ nt: null, uc: '88101266', titular: null }, COM_UC_CURTA);
+  assert.equal(id.tipo === 'achado' && id.projeto.codigo, 'PRJ-U8');
+  assert.equal(id.tipo === 'achado' && id.por, 'uc');
+  const trocado = identificarPorDocumento({ nt: '1234567', uc: null, titular: null }, COM_UC_CURTA);
+  assert.equal(trocado.tipo === 'achado' && trocado.projeto.codigo, 'PRJ-U7');
+});
+
+test('nomeTrazOutroProjeto vê a UC de 7 ou 8 dígitos de outro projeto', () => {
+  assert.equal(nomeTrazOutroProjeto('CARTA_88101266.pdf', A, COM_UC_CURTA), true);
+  assert.equal(nomeTrazOutroProjeto('CARTA_1234567.pdf', A, COM_UC_CURTA), true);
+  assert.equal(nomeTrazOutroProjeto('CARTA_88101266.pdf', UC8, COM_UC_CURTA), false); // a própria UC
+  assert.equal(nomeTrazOutroProjeto('CARTA_123456.pdf', A, COM_UC_CURTA), false);    // 6 dígitos não conta
+});
