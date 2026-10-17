@@ -121,6 +121,24 @@ pasta do PC é a versão antiga) e o deploy é o workflow `estacao-worker.yml`.
 
 Ensaio limpo às 21:48: Cury 8/8, ATM 18 leituras, ciclo de ~6 min.
 
+### Foco nos grandes (17/10/2026)
+
+Pedido do usuário: ler os carregadores de 40 kW para cima o mais perto possível
+de 8 min e monitorar os de 7 kW só parcialmente. Ciclo antes: ~12 min (Cury
+~3 min, ATM ~4 min, Tupi ~3,5 min, mais 1 min de pausa do timer). Mudanças:
+
+- **Faixa até 22 kW = 60 min** no GD e **rodízio parcial** dos pequenos (ver
+  [business-rules.md](business-rules.md#rodízio-parcial-dos-pequenos-17102026)).
+- **Cury continua reabrindo o app a cada posto.** Testado em 17/10/2026: a
+  "Lista" da Cury só mostra os postos perto de onde o mapa parou, então voltar
+  da ficha só serve entre carregadores do mesmo posto (Ernani 80 → 60). O passo
+  `voltar` ganhou `se_texto` (só volta se o texto estiver na tela) para usos
+  futuros.
+- **Tupi abre quente** (`abrir` com `quente: true`: traz o app para a frente
+  sem matar o processo, então sem os avisos de abertura). `recuperar` continua
+  frio.
+- **Timer:** a pausa entre ciclos caiu de 1 min para 15 s.
+
 ### Tupi pelo app (`tupi_app`, 17/10/2026)
 
 A API da Tupi passou a responder 403 do Cloudflare; não se contorna. O app da

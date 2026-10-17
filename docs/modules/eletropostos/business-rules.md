@@ -146,7 +146,28 @@ potência, e as cidades monitoradas. Tabela `eletroposto_coleta_config`
   "acima de tudo" (`ate_kw` nulo). A estação escolhe a faixa pela **maior**
   potência do carregador (misto 7+40 cai na faixa do 40) e arredonda o
   intervalo a múltiplos do ciclo de 8 min; a Tupi (VPS, API) segue em 5 min.
-  Padrão inicial: até 22 kW → 16 min; acima → 8 min.
+  Padrão inicial: até 22 kW → 16 min; acima → 8 min. **Desde 17/10/2026: até
+  22 kW → 60 min**, por decisão do usuário (o foco são os grandes, de 40 kW
+  para cima).
+
+### Rodízio parcial dos pequenos (17/10/2026)
+
+Pedido do usuário: monitorar os de 7 kW **parcialmente**, sem atrapalhar a
+rotina dos grandes. Bloco `rodizio_pequenos` do `telas.json` (`ate_kw` 22,
+`segundos_por_ciclo` 60):
+
+- Os grandes rodam **sempre e primeiro**, em todo ciclo.
+- A cada ciclo, **um app só** (o que tem o pequeno vencido mais antigo) lê os
+  seus pequenos depois dos grandes. Assim nenhum app precisa ser reaberto.
+- Um pequeno está **vencido** quando passou o intervalo da faixa do GD (60 min)
+  desde a última leitura dele. Os vencidos entram do mais antigo para o mais
+  novo, enquanto a fatia de `segundos_por_ciclo` não acaba.
+- Pequeno que ficou para depois **não é falha** (não entra em `falhas` nem na
+  assertividade). O resumo do ciclo mostra "N pequenos esperando a vez".
+- Cada leitura de pequeno vale o tempo real desde a anterior (teto 2× o
+  intervalo). A conta de horas não fica viesada, mas tem mais variância, e
+  recargas curtas (menos de ~1 h) podem não aparecer. Os números dos pequenos
+  são **estimativas parciais**.
 - **cidades**: só os locais de cidade marcada são lidos. A RPC
   `eletropostos_coleta_config()` (master, operador da estação ou service role)
   devolve também `fora`: os vínculos cujo cadastro é de cidade não monitorada —

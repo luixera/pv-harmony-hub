@@ -1,5 +1,5 @@
 {
- "_sobre": "Roteiros de leitura dos apps no BlueStacks (gerado em 16/10/2026 por gera_telas.py a partir de capturas/*.json). Passos: abrir, toque, tocar_texto, tocar_texto_rolando, esperar_texto, digitar, deslizar, voltar, escolher; 'opcional' não falha. Regras: uma por plugue/carregador; o status é o grupo 1 do regex no texto da ficha. Roteiros 'opcional' rodam em rodízio no tempo que sobrar do orçamento (orcamento_s). Na ATM, sem GPS (lista com 0.00 km) o alvo troca para roteiros_sem_gps (busca pelo nome, só os fixos). limite_s: nenhum roteiro novo começa depois disso (780 s desde a Tupi pelo app, 17/10/2026: Cury + ATM + Tupi passam de 10 min; o timer dispara 1 min após o fim, então o ciclo pode passar de 8 min sem perder carregador fixo); max_falhas_seguidas: desiste do app no ciclo. Cadência: roteiros com intervalo_min (AC de 7 kW: 16) rodam em 1 de cada intervalo/ciclo_min ciclos, no grupo indicado; só vale com cadencia_ativa. Tupi (fonte tupi_app): sem lista fixa; cada local é buscado pelo campo do topo (toque em coordenada), a ficha mostra 'Tomada N' + status (Bitcharge: 'Plug:' + status); 'recuperar' reabre o app quando um local falha. rodizio_pequenos (17/10/2026): carregadores de até ate_kw saem da cadência por ciclo; a cada ciclo UM app (o do pequeno mais atrasado) lê seus pequenos vencidos (sem leitura há intervalo_min da faixa do GD) do mais antigo ao mais novo, só dentro de segundos_por_ciclo, depois dos grandes. Pequeno pulado não conta como falha.",
+ "_sobre": "Roteiros de leitura dos apps no BlueStacks (gerado em 16/10/2026 por gera_telas.py a partir de capturas/*.json). Passos: abrir, toque, tocar_texto, tocar_texto_rolando, esperar_texto, digitar, deslizar, voltar, escolher; 'opcional' não falha. Regras: uma por plugue/carregador; o status é o grupo 1 do regex no texto da ficha. Roteiros 'opcional' rodam em rodízio no tempo que sobrar do orçamento (orcamento_s). Na ATM, sem GPS (lista com 0.00 km) o alvo troca para roteiros_sem_gps (busca pelo nome, só os fixos). limite_s: nenhum roteiro novo começa depois disso (780 s desde a Tupi pelo app, 17/10/2026: Cury + ATM + Tupi passam de 10 min; o timer dispara 1 min após o fim, então o ciclo pode passar de 8 min sem perder carregador fixo); max_falhas_seguidas: desiste do app no ciclo. Cadência: roteiros com intervalo_min (AC de 7 kW: 16) rodam em 1 de cada intervalo/ciclo_min ciclos, no grupo indicado; só vale com cadencia_ativa. Tupi (fonte tupi_app): sem lista fixa; cada local é buscado pelo campo do topo (toque em coordenada), a ficha mostra 'Tomada N' + status (Bitcharge: 'Plug:' + status); 'recuperar' reabre o app quando um local falha. rodizio_pequenos (17/10/2026): carregadores de até ate_kw saem da cadência por ciclo; a cada ciclo UM app (o do pequeno mais atrasado) lê seus pequenos vencidos (sem leitura há intervalo_min da faixa do GD) do mais antigo ao mais novo, só dentro de segundos_por_ciclo, depois dos grandes. Pequeno pulado não conta como falha. Cury: cada local de outro posto reabre o app (abrir frio) — a 'Lista' da Cury só mostra os postos perto de onde o mapa parou; voltar só serve entre carregadores do mesmo posto (Ernani 80 → 60).",
  "orcamento_s": 360,
  "guardar_capturas": false,
  "alvos": [
@@ -19,7 +19,7 @@
    "passo_lista_px": 480,
    "roteiros": [
     {
-     "nome": "abrir a Cury (uma vez por ciclo)",
+     "nome": "Posto HM Ernani Pires 80Kw - Cury Energia",
      "passos": [
       {
        "tipo": "abrir",
@@ -30,17 +30,6 @@
        "tipo": "esperar_texto",
        "texto": "Lista",
        "ate": 40,
-       "espera": 1.5
-      }
-     ],
-     "regras": []
-    },
-    {
-     "nome": "Posto HM Ernani Pires 80Kw - Cury Energia",
-     "passos": [
-      {
-       "tipo": "voltar",
-       "se_texto": "Escolha um carregador",
        "espera": 1.5
       },
       {
@@ -111,7 +100,6 @@
      "passos": [
       {
        "tipo": "voltar",
-       "se_texto": "Escolha um carregador",
        "espera": 1.5
       },
       {
@@ -181,8 +169,14 @@
      "nome": "THE WEEK JK 80KW CURY ENERGIA",
      "passos": [
       {
-       "tipo": "voltar",
-       "se_texto": "Escolha um carregador",
+       "tipo": "abrir",
+       "pacote": "eco.spott.curyenergia",
+       "espera": 2
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Lista",
+       "ate": 40,
        "espera": 1.5
       },
       {
@@ -252,8 +246,14 @@
      "nome": "Posto HM Bady Bassit - Cury Energia",
      "passos": [
       {
-       "tipo": "voltar",
-       "se_texto": "Escolha um carregador",
+       "tipo": "abrir",
+       "pacote": "eco.spott.curyenergia",
+       "espera": 2
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Lista",
+       "ate": 40,
        "espera": 1.5
       },
       {
@@ -314,8 +314,14 @@
      "nome": "Posto HM Mirassol - Cury Energia",
      "passos": [
       {
-       "tipo": "voltar",
-       "se_texto": "Escolha um carregador",
+       "tipo": "abrir",
+       "pacote": "eco.spott.curyenergia",
+       "espera": 2
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Lista",
+       "ate": 40,
        "espera": 1.5
       },
       {
@@ -371,19 +377,6 @@
        "regex": "^65497\\ \\-\\ 1\\n(?:[^\\n]*\\n){0,5}?[0-9.,]+\\s*kW\\n([^\\n]+)"
       }
      ]
-    }
-   ],
-   "recuperar": [
-    {
-     "tipo": "abrir",
-     "pacote": "eco.spott.curyenergia",
-     "espera": 2
-    },
-    {
-     "tipo": "esperar_texto",
-     "texto": "Lista",
-     "ate": 40,
-     "espera": 1.5
     }
    ]
   },
