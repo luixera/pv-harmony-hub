@@ -79,10 +79,14 @@ jobs:
             [ "$i" = 1 ] && echo "  ciclo em andamento; esperando terminar"
             sleep 10
           done
+          # sobras de descobertas anteriores (cancelar o run no GitHub não para o processo na VPS):
+          # duas ao mesmo tempo brigam pela tela e uma derruba o adb da outra
+          systemctl stop gdm-estacao-calibrar.service 2>/dev/null; systemctl reset-failed gdm-estacao-calibrar.service 2>/dev/null
+          pkill -f "python3 calibrar.py" 2>/dev/null && { echo "  descoberta antiga encerrada"; sleep 3; }
           mkdir -p "$APP/capturas" && chown gdmestacao:gdmestacao "$APP/capturas"
           rm -f /tmp/calibracao.tgz
           echo "── descoberta (raio $RAIO km)"
-          systemd-run --wait --pipe --quiet --collect \
+          systemd-run --unit=gdm-estacao-calibrar --wait --pipe --quiet --collect \
             --uid=gdmestacao --gid=gdmestacao \
             -p EnvironmentFile=/etc/gdm-estacao/env \
             -p WorkingDirectory=$APP \

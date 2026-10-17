@@ -104,6 +104,8 @@ def nota_memoria():
     livre, comprometivel = memoria_do_pc()
     if livre is None:
         return ""
+    if os.name != "nt":   # Linux promete mais memória do que tem: o "comprometível" negativo é normal
+        return f" [servidor com pouca memória: {livre} MB disponíveis]" if livre < 512 else ""
     if livre < 1024 or comprometivel < 4096:
         return f" [PC com pouca memória: {livre} MB de RAM livre, {comprometivel} MB comprometíveis — feche programas]"
     return ""
