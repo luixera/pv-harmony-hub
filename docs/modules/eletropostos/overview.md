@@ -139,6 +139,12 @@ de 8 min e monitorar os de 7 kW só parcialmente. Ciclo antes: ~12 min (Cury
   frio.
 - **Timer:** a pausa entre ciclos caiu de 1 min para 15 s.
 
+Resultado medido (ciclos de 19:01 a 19:21): ciclo de ~10 min (Cury ~190 s,
+ATM ~240 s com a fatia dos pequenos, Tupi ~150 s). Passo real dos grandes:
+**10 min** na Cury e na ATM, 10–12 na Tupi (antes ~12). Pequenos da ATM: ~1×
+por hora. Para chegar a 8 min nos grandes com um aparelho só não sobra folga;
+o caminho seria um segundo aparelho VMOS lendo um dos apps em paralelo.
+
 ### Tupi pelo app (`tupi_app`, 17/10/2026)
 
 A API da Tupi passou a responder 403 do Cloudflare; não se contorna. O app da
