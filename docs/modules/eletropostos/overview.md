@@ -65,6 +65,7 @@ hora, conectores com linha do tempo de 48 h e o cadastro editável.
 |---|---|---|---|
 | `tupi` | mapa público aberto num Chromium headless (Playwright); a API direta só como reserva — a API fechou para scripts em 16/10/2026 | VPS (serviço `gdm-eletropostos`, a cada 5 min alinhado ao relógio) | ✅ |
 | apps ATM EVs e Cury | leitura da tela no BlueStacks via `adb`/`uiautomator` (uso normal do app) | PC do usuário (estação local) | ✅ (precisa do PC e do BlueStacks abertos) |
+| `tupi_app` | leitura da tela do app da Tupi no VMOS (mesma estação da ATM e da Cury) | VPS + VMOS | 🟡 17/10/2026 |
 | Spott, ChargeOn, EvoltBR, EZVolt | só app de celular / PlugShare | — | sem fonte |
 
 Regras firmes do usuário: **nunca** digitar senha nem dado de login (a pessoa
@@ -119,6 +120,43 @@ pasta do PC é a versão antiga) e o deploy é o workflow `estacao-worker.yml`.
   disponível.
 
 Ensaio limpo às 21:48: Cury 8/8, ATM 18 leituras, ciclo de ~6 min.
+
+### Tupi pelo app (`tupi_app`, 17/10/2026)
+
+A API da Tupi passou a responder 403 do Cloudflare; não se contorna. O app da
+Tupi (`com.tupinamba`) foi instalado no VMOS e é lido pela tela como as outras
+fontes, no alvo `tupi_app` do `telas.json` (7 estações da região).
+
+- **Abertura:** a cada abertura o app pede notificação (toca **Cancelar**) e
+  mostra o convite "Cadastre-se para carregar" (toca **Agora não**). O convite
+  **não** é login: o mapa e as fichas abrem sem conta. Se um dia aparecer tela de
+  login de verdade, a estação para e a pessoa é avisada.
+- **Sem lista fixa:** cada local é buscado pelo campo do topo, que muda de texto
+  (mapa, resultados, ficha). Por isso o toque é por coordenada de referência
+  (250, 220), e o item é tocado pela linha "Nome, status, endereço…". A busca é
+  nacional: os termos são específicos e sem acento (o `input text` do adb não
+  aceita acento).
+- **Ficha:** "Tomada N" seguido do status. Nas estações de plugue único
+  (Bitcharge) a ficha mostra "Plug:" seguido do status. O status vai cru em
+  `status_bruto`.
+- **Gravação:** `local_fonte` = `stationID` da API (o mesmo do cadastro já
+  vinculado), conector `"<stationID> - <n>"`, lat/lng da API. DC 60 kW a cada
+  8 min; Bitcharge (AC 7,4 kW) a cada 16 min.
+- **Recuperação:** o alvo tem `recuperar` (reabre o app e passa os avisos) quando
+  um local falha, porque a tela em que ele parou é imprevisível.
+- **Ensaio só de uma fonte:** parte `ensaio:tupi_app` no `estacao-calibrar`.
+- **Convite atrasado:** o "Cadastre-se para carregar" surge alguns segundos
+  **depois** do mapa e cobre a busca (o texto digitado se perde). A abertura
+  espera 4 s e olha de novo; cada busca começa com um `passar_avisos` de
+  conferência (`folga: 0`, um único dump).
+- **BYD Allma SJRP 02** é plugue único Tipo 2 de **7,4 kW** no app, embora o
+  nome sugira irmã da 01 (DC 60 kW, duas tomadas).
+- **Tempo:** ~4,5 min por ciclo com as 7 estações (a abertura com os avisos
+  leva ~45 s). Com Cury + ATM + Tupi o ciclo passa de 10 min, então `limite_s`
+  subiu para 780 s e o timeout do serviço para 20 min. O passo real dos DC fica
+  perto de 12 min, não 8: um aparelho só não lê tudo em 8 min.
+
+Ensaio de 17/10/2026 15:10: 9 de 10 leituras (a falha era a BYD 02, corrigida).
 
 ## Estação local (PC com BlueStacks — substituída pela VMOS)
 
