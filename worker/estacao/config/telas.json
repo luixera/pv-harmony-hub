@@ -1,5 +1,5 @@
 {
- "_sobre": "Roteiros de leitura dos apps no BlueStacks (gerado em 16/10/2026 por gera_telas.py a partir de capturas/*.json). Passos: abrir, toque, tocar_texto, tocar_texto_rolando, esperar_texto, digitar, deslizar, voltar, escolher; 'opcional' não falha. Regras: uma por plugue/carregador; o status é o grupo 1 do regex no texto da ficha. Roteiros 'opcional' rodam em rodízio no tempo que sobrar do orçamento (orcamento_s). Na ATM, sem GPS (lista com 0.00 km) o alvo troca para roteiros_sem_gps (busca pelo nome, só os fixos). limite_s: nenhum roteiro novo começa depois disso (600 s: o timer dispara 1 min após o fim, então o ciclo pode passar de 8 min sem perder carregador fixo); max_falhas_seguidas: desiste do app no ciclo. Cadência: roteiros com intervalo_min (AC de 7 kW: 16) rodam em 1 de cada intervalo/ciclo_min ciclos, no grupo indicado; só vale com cadencia_ativa.",
+ "_sobre": "Roteiros de leitura dos apps no BlueStacks (gerado em 16/10/2026 por gera_telas.py a partir de capturas/*.json). Passos: abrir, toque, tocar_texto, tocar_texto_rolando, esperar_texto, digitar, deslizar, voltar, escolher; 'opcional' não falha. Regras: uma por plugue/carregador; o status é o grupo 1 do regex no texto da ficha. Roteiros 'opcional' rodam em rodízio no tempo que sobrar do orçamento (orcamento_s). Na ATM, sem GPS (lista com 0.00 km) o alvo troca para roteiros_sem_gps (busca pelo nome, só os fixos). limite_s: nenhum roteiro novo começa depois disso (600 s: o timer dispara 1 min após o fim, então o ciclo pode passar de 8 min sem perder carregador fixo); max_falhas_seguidas: desiste do app no ciclo. Cadência: roteiros com intervalo_min (AC de 7 kW: 16) rodam em 1 de cada intervalo/ciclo_min ciclos, no grupo indicado; só vale com cadencia_ativa. Tupi (fonte tupi_app): sem lista fixa; cada local é buscado pelo campo do topo (toque em coordenada), a ficha mostra 'Tomada N' + status (Bitcharge: 'Plug:' + status); 'recuperar' reabre o app quando um local falha.",
  "orcamento_s": 360,
  "guardar_capturas": false,
  "alvos": [
@@ -2939,6 +2939,614 @@
      ],
      "intervalo_min": 16,
      "grupo": 1
+    }
+   ]
+  },
+  {
+   "fonte": "tupi_app",
+   "app": "Tupi (com.tupinamba) — API bloqueada pelo Cloudflare, leitura pela tela",
+   "passo_lista_px": 160,
+   "roteiros": [
+    {
+     "nome": "abrir a Tupi (avisos de abertura)",
+     "passos": [
+      {
+       "tipo": "abrir",
+       "pacote": "com.tupinamba",
+       "espera": 4
+      },
+      {
+       "tipo": "passar_avisos",
+       "avisos": [
+        [
+         "notificaç",
+         [
+          "Cancelar",
+          "Agora não",
+          "Não permitir"
+         ]
+        ],
+        [
+         "cadastre-se para carregar",
+         [
+          "Agora não"
+         ]
+        ],
+        [
+         "localização",
+         [
+          "Durante o uso do app",
+          "Ao usar o app",
+          "Permitir"
+         ]
+        ]
+       ],
+       "ate_texto": "Pesquisar endereço",
+       "ate": 40,
+       "espera": 1
+      }
+     ],
+     "regras": []
+    },
+    {
+     "nome": "BYD | Allma Millazo - SJRP - 01",
+     "passos": [
+      {
+       "tipo": "toque",
+       "x": 250,
+       "y": 220,
+       "espera": 1.5
+      },
+      {
+       "tipo": "limpar_campo",
+       "espera": 0.5
+      },
+      {
+       "tipo": "digitar",
+       "texto": "Millazo - SJRP",
+       "espera": 3
+      },
+      {
+       "tipo": "esconder_teclado",
+       "espera": 1
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "RESULTADO",
+       "ate": 12,
+       "espera": 0.5
+      },
+      {
+       "tipo": "tocar_texto_rolando",
+       "texto": "BYD | Allma Millazo - SJRP - 01,",
+       "rolagens": 6,
+       "espera": 0.5
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Tomada 1",
+       "ate": 15,
+       "espera": 1
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "BYD | Allma Millazo - SJRP - 01",
+       "ate": 4,
+       "espera": 0,
+       "conferir": true
+      }
+     ],
+     "regras": [
+      {
+       "local_id": "CPBYDEUNAR",
+       "local_nome": "BYD | Allma Millazo - SJRP - 01",
+       "conector": "CPBYDEUNAR - 1",
+       "potencia_kw": 60.0,
+       "lat": -20.8205196518591,
+       "lng": -49.3988387404146,
+       "ancora": "^Tomada 1$",
+       "regex": "^(Dispon[ií]vel|Ocupad[ao]|Indispon[ií]vel|Off-?line|Reservad[ao]|(?:Em )?manuten[çc][ãa]o|Em prepara[çc][ãa]o|Preparando|Carregando|Em uso|Finalizando|Suspens[ao]|Inativ[ao]|Fora de servi[çc]o|Desconhecid[ao]|Bloquead[ao]|Erro|Falha)$"
+      },
+      {
+       "local_id": "CPBYDEUNAR",
+       "local_nome": "BYD | Allma Millazo - SJRP - 01",
+       "conector": "CPBYDEUNAR - 2",
+       "potencia_kw": 60.0,
+       "lat": -20.8205196518591,
+       "lng": -49.3988387404146,
+       "ancora": "^Tomada 2$",
+       "regex": "^(Dispon[ií]vel|Ocupad[ao]|Indispon[ií]vel|Off-?line|Reservad[ao]|(?:Em )?manuten[çc][ãa]o|Em prepara[çc][ãa]o|Preparando|Carregando|Em uso|Finalizando|Suspens[ao]|Inativ[ao]|Fora de servi[çc]o|Desconhecid[ao]|Bloquead[ao]|Erro|Falha)$"
+      }
+     ],
+     "depois": [
+      {
+       "tipo": "voltar",
+       "espera": 2
+      }
+     ]
+    },
+    {
+     "nome": "BYD | Allma Millazo - SJRP - 02",
+     "passos": [
+      {
+       "tipo": "toque",
+       "x": 250,
+       "y": 220,
+       "espera": 1.5
+      },
+      {
+       "tipo": "limpar_campo",
+       "espera": 0.5
+      },
+      {
+       "tipo": "digitar",
+       "texto": "Millazo - SJRP",
+       "espera": 3
+      },
+      {
+       "tipo": "esconder_teclado",
+       "espera": 1
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "RESULTADO",
+       "ate": 12,
+       "espera": 0.5
+      },
+      {
+       "tipo": "tocar_texto_rolando",
+       "texto": "BYD | Allma Millazo - SJRP - 02,",
+       "rolagens": 6,
+       "espera": 0.5
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Tomada 1",
+       "ate": 15,
+       "espera": 1
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "BYD | Allma Millazo - SJRP - 02",
+       "ate": 4,
+       "espera": 0,
+       "conferir": true
+      }
+     ],
+     "regras": [
+      {
+       "local_id": "CPBYDWNTMP",
+       "local_nome": "BYD | Allma Millazo - SJRP - 02",
+       "conector": "CPBYDWNTMP - 1",
+       "potencia_kw": 60.0,
+       "lat": -20.8204027263737,
+       "lng": -49.3988592528833,
+       "ancora": "^Tomada 1$",
+       "regex": "^(Dispon[ií]vel|Ocupad[ao]|Indispon[ií]vel|Off-?line|Reservad[ao]|(?:Em )?manuten[çc][ãa]o|Em prepara[çc][ãa]o|Preparando|Carregando|Em uso|Finalizando|Suspens[ao]|Inativ[ao]|Fora de servi[çc]o|Desconhecid[ao]|Bloquead[ao]|Erro|Falha)$"
+      },
+      {
+       "local_id": "CPBYDWNTMP",
+       "local_nome": "BYD | Allma Millazo - SJRP - 02",
+       "conector": "CPBYDWNTMP - 2",
+       "potencia_kw": 60.0,
+       "lat": -20.8204027263737,
+       "lng": -49.3988592528833,
+       "ancora": "^Tomada 2$",
+       "regex": "^(Dispon[ií]vel|Ocupad[ao]|Indispon[ií]vel|Off-?line|Reservad[ao]|(?:Em )?manuten[çc][ãa]o|Em prepara[çc][ãa]o|Preparando|Carregando|Em uso|Finalizando|Suspens[ao]|Inativ[ao]|Fora de servi[çc]o|Desconhecid[ao]|Bloquead[ao]|Erro|Falha)$"
+      }
+     ],
+     "depois": [
+      {
+       "tipo": "voltar",
+       "espera": 2
+      }
+     ]
+    },
+    {
+     "nome": "Charger Pro - Emporio Jota - SJRP",
+     "passos": [
+      {
+       "tipo": "toque",
+       "x": 250,
+       "y": 220,
+       "espera": 1.5
+      },
+      {
+       "tipo": "limpar_campo",
+       "espera": 0.5
+      },
+      {
+       "tipo": "digitar",
+       "texto": "Emporio Jota",
+       "espera": 3
+      },
+      {
+       "tipo": "esconder_teclado",
+       "espera": 1
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "RESULTADO",
+       "ate": 12,
+       "espera": 0.5
+      },
+      {
+       "tipo": "tocar_texto_rolando",
+       "texto": "Charger Pro - Emporio Jota - SJRP,",
+       "rolagens": 6,
+       "espera": 0.5
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Tomada 1",
+       "ate": 15,
+       "espera": 1
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Charger Pro - Emporio Jota - SJRP",
+       "ate": 4,
+       "espera": 0,
+       "conferir": true
+      }
+     ],
+     "regras": [
+      {
+       "local_id": "CPCHARGERPRO06",
+       "local_nome": "Charger Pro - Emporio Jota - SJRP",
+       "conector": "CPCHARGERPRO06 - 1",
+       "potencia_kw": 60.0,
+       "lat": -20.8079986760353,
+       "lng": -49.3477268741974,
+       "ancora": "^Tomada 1$",
+       "regex": "^(Dispon[ií]vel|Ocupad[ao]|Indispon[ií]vel|Off-?line|Reservad[ao]|(?:Em )?manuten[çc][ãa]o|Em prepara[çc][ãa]o|Preparando|Carregando|Em uso|Finalizando|Suspens[ao]|Inativ[ao]|Fora de servi[çc]o|Desconhecid[ao]|Bloquead[ao]|Erro|Falha)$"
+      },
+      {
+       "local_id": "CPCHARGERPRO06",
+       "local_nome": "Charger Pro - Emporio Jota - SJRP",
+       "conector": "CPCHARGERPRO06 - 2",
+       "potencia_kw": 60.0,
+       "lat": -20.8079986760353,
+       "lng": -49.3477268741974,
+       "ancora": "^Tomada 2$",
+       "regex": "^(Dispon[ií]vel|Ocupad[ao]|Indispon[ií]vel|Off-?line|Reservad[ao]|(?:Em )?manuten[çc][ãa]o|Em prepara[çc][ãa]o|Preparando|Carregando|Em uso|Finalizando|Suspens[ao]|Inativ[ao]|Fora de servi[çc]o|Desconhecid[ao]|Bloquead[ao]|Erro|Falha)$"
+      }
+     ],
+     "depois": [
+      {
+       "tipo": "voltar",
+       "espera": 2
+      }
+     ]
+    },
+    {
+     "nome": "Cia Charge | Madero Mirassol | Sao Jose do Rio Preto",
+     "passos": [
+      {
+       "tipo": "toque",
+       "x": 250,
+       "y": 220,
+       "espera": 1.5
+      },
+      {
+       "tipo": "limpar_campo",
+       "espera": 0.5
+      },
+      {
+       "tipo": "digitar",
+       "texto": "Madero Mirassol",
+       "espera": 3
+      },
+      {
+       "tipo": "esconder_teclado",
+       "espera": 1
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "RESULTADO",
+       "ate": 12,
+       "espera": 0.5
+      },
+      {
+       "tipo": "tocar_texto_rolando",
+       "texto": "Cia Charge | Madero Mirassol | Sao Jose do Rio Preto,",
+       "rolagens": 6,
+       "espera": 0.5
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Tomada 1",
+       "ate": 15,
+       "espera": 1
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Cia Charge | Madero Mirassol | Sao Jose do Rio Preto",
+       "ate": 4,
+       "espera": 0,
+       "conferir": true
+      }
+     ],
+     "regras": [
+      {
+       "local_id": "CPCIACHARGE039",
+       "local_nome": "Cia Charge | Madero Mirassol | Sao Jose do Rio Preto",
+       "conector": "CPCIACHARGE039 - 1",
+       "potencia_kw": 60.0,
+       "lat": -20.8144994703726,
+       "lng": -49.4579850220892,
+       "ancora": "^Tomada 1$",
+       "regex": "^(Dispon[ií]vel|Ocupad[ao]|Indispon[ií]vel|Off-?line|Reservad[ao]|(?:Em )?manuten[çc][ãa]o|Em prepara[çc][ãa]o|Preparando|Carregando|Em uso|Finalizando|Suspens[ao]|Inativ[ao]|Fora de servi[çc]o|Desconhecid[ao]|Bloquead[ao]|Erro|Falha)$"
+      },
+      {
+       "local_id": "CPCIACHARGE039",
+       "local_nome": "Cia Charge | Madero Mirassol | Sao Jose do Rio Preto",
+       "conector": "CPCIACHARGE039 - 2",
+       "potencia_kw": 60.0,
+       "lat": -20.8144994703726,
+       "lng": -49.4579850220892,
+       "ancora": "^Tomada 2$",
+       "regex": "^(Dispon[ií]vel|Ocupad[ao]|Indispon[ií]vel|Off-?line|Reservad[ao]|(?:Em )?manuten[çc][ãa]o|Em prepara[çc][ãa]o|Preparando|Carregando|Em uso|Finalizando|Suspens[ao]|Inativ[ao]|Fora de servi[çc]o|Desconhecid[ao]|Bloquead[ao]|Erro|Falha)$"
+      }
+     ],
+     "depois": [
+      {
+       "tipo": "voltar",
+       "espera": 2
+      }
+     ]
+    },
+    {
+     "nome": "HS/RM Recharge - Posto Monte Carlo Interior Eventos - Mirassol",
+     "passos": [
+      {
+       "tipo": "toque",
+       "x": 250,
+       "y": 220,
+       "espera": 1.5
+      },
+      {
+       "tipo": "limpar_campo",
+       "espera": 0.5
+      },
+      {
+       "tipo": "digitar",
+       "texto": "Interior Eventos",
+       "espera": 3
+      },
+      {
+       "tipo": "esconder_teclado",
+       "espera": 1
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "RESULTADO",
+       "ate": 12,
+       "espera": 0.5
+      },
+      {
+       "tipo": "tocar_texto_rolando",
+       "texto": "HS/RM Recharge - Posto Monte Carlo Interior Eventos - Mirassol,",
+       "rolagens": 6,
+       "espera": 0.5
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Tomada 1",
+       "ate": 15,
+       "espera": 1
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "HS/RM Recharge - Posto Monte Carlo Interior Eventos - Mirassol",
+       "ate": 4,
+       "espera": 0,
+       "conferir": true
+      }
+     ],
+     "regras": [
+      {
+       "local_id": "HSRMMC003",
+       "local_nome": "HS/RM Recharge - Posto Monte Carlo Interior Eventos - Mirassol",
+       "conector": "HSRMMC003 - 1",
+       "potencia_kw": 60.0,
+       "lat": -20.8137920166141,
+       "lng": -49.4817502925997,
+       "ancora": "^Tomada 1$",
+       "regex": "^(Dispon[ií]vel|Ocupad[ao]|Indispon[ií]vel|Off-?line|Reservad[ao]|(?:Em )?manuten[çc][ãa]o|Em prepara[çc][ãa]o|Preparando|Carregando|Em uso|Finalizando|Suspens[ao]|Inativ[ao]|Fora de servi[çc]o|Desconhecid[ao]|Bloquead[ao]|Erro|Falha)$"
+      },
+      {
+       "local_id": "HSRMMC003",
+       "local_nome": "HS/RM Recharge - Posto Monte Carlo Interior Eventos - Mirassol",
+       "conector": "HSRMMC003 - 2",
+       "potencia_kw": 60.0,
+       "lat": -20.8137920166141,
+       "lng": -49.4817502925997,
+       "ancora": "^Tomada 2$",
+       "regex": "^(Dispon[ií]vel|Ocupad[ao]|Indispon[ií]vel|Off-?line|Reservad[ao]|(?:Em )?manuten[çc][ãa]o|Em prepara[çc][ãa]o|Preparando|Carregando|Em uso|Finalizando|Suspens[ao]|Inativ[ao]|Fora de servi[çc]o|Desconhecid[ao]|Bloquead[ao]|Erro|Falha)$"
+      }
+     ],
+     "depois": [
+      {
+       "tipo": "voltar",
+       "espera": 2
+      }
+     ]
+    },
+    {
+     "nome": "Bitcharge - Alameda Iguatemi 01",
+     "passos": [
+      {
+       "tipo": "toque",
+       "x": 250,
+       "y": 220,
+       "espera": 1.5
+      },
+      {
+       "tipo": "limpar_campo",
+       "espera": 0.5
+      },
+      {
+       "tipo": "digitar",
+       "texto": "Alameda Iguatemi",
+       "espera": 3
+      },
+      {
+       "tipo": "esconder_teclado",
+       "espera": 1
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "RESULTADO",
+       "ate": 12,
+       "espera": 0.5
+      },
+      {
+       "tipo": "tocar_texto_rolando",
+       "texto": "Bitcharge - Alameda Iguatemi 01,",
+       "rolagens": 6,
+       "espera": 0.5
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Plug:",
+       "ate": 15,
+       "espera": 1
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Bitcharge - Alameda Iguatemi 01",
+       "ate": 4,
+       "espera": 0,
+       "conferir": true
+      }
+     ],
+     "regras": [
+      {
+       "local_id": "0312209102324230968",
+       "local_nome": "Bitcharge - Alameda Iguatemi 01",
+       "conector": "0312209102324230968 - 1",
+       "potencia_kw": 7.4,
+       "lat": -20.8676516751615,
+       "lng": -49.4163917468126,
+       "ancora": "^Plug:$",
+       "regex": "^(Dispon[ií]vel|Ocupad[ao]|Indispon[ií]vel|Off-?line|Reservad[ao]|(?:Em )?manuten[çc][ãa]o|Em prepara[çc][ãa]o|Preparando|Carregando|Em uso|Finalizando|Suspens[ao]|Inativ[ao]|Fora de servi[çc]o|Desconhecid[ao]|Bloquead[ao]|Erro|Falha)$"
+      }
+     ],
+     "depois": [
+      {
+       "tipo": "voltar",
+       "espera": 2
+      }
+     ],
+     "intervalo_min": 16,
+     "grupo": 0
+    },
+    {
+     "nome": "Bitcharge - Alameda Iguatemi 02",
+     "passos": [
+      {
+       "tipo": "toque",
+       "x": 250,
+       "y": 220,
+       "espera": 1.5
+      },
+      {
+       "tipo": "limpar_campo",
+       "espera": 0.5
+      },
+      {
+       "tipo": "digitar",
+       "texto": "Alameda Iguatemi",
+       "espera": 3
+      },
+      {
+       "tipo": "esconder_teclado",
+       "espera": 1
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "RESULTADO",
+       "ate": 12,
+       "espera": 0.5
+      },
+      {
+       "tipo": "tocar_texto_rolando",
+       "texto": "Bitcharge - Alameda Iguatemi 02,",
+       "rolagens": 6,
+       "espera": 0.5
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Plug:",
+       "ate": 15,
+       "espera": 1
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Bitcharge - Alameda Iguatemi 02",
+       "ate": 4,
+       "espera": 0,
+       "conferir": true
+      }
+     ],
+     "regras": [
+      {
+       "local_id": "0312209102324230414",
+       "local_nome": "Bitcharge - Alameda Iguatemi 02",
+       "conector": "0312209102324230414 - 1",
+       "potencia_kw": 7.4,
+       "lat": -20.8676516751615,
+       "lng": -49.4163917468126,
+       "ancora": "^Plug:$",
+       "regex": "^(Dispon[ií]vel|Ocupad[ao]|Indispon[ií]vel|Off-?line|Reservad[ao]|(?:Em )?manuten[çc][ãa]o|Em prepara[çc][ãa]o|Preparando|Carregando|Em uso|Finalizando|Suspens[ao]|Inativ[ao]|Fora de servi[çc]o|Desconhecid[ao]|Bloquead[ao]|Erro|Falha)$"
+      }
+     ],
+     "depois": [
+      {
+       "tipo": "voltar",
+       "espera": 2
+      }
+     ],
+     "intervalo_min": 16,
+     "grupo": 1
+    }
+   ],
+   "recuperar": [
+    {
+     "tipo": "abrir",
+     "pacote": "com.tupinamba",
+     "espera": 4
+    },
+    {
+     "tipo": "passar_avisos",
+     "avisos": [
+      [
+       "notificaç",
+       [
+        "Cancelar",
+        "Agora não",
+        "Não permitir"
+       ]
+      ],
+      [
+       "cadastre-se para carregar",
+       [
+        "Agora não"
+       ]
+      ],
+      [
+       "localização",
+       [
+        "Durante o uso do app",
+        "Ao usar o app",
+        "Permitir"
+       ]
+      ]
+     ],
+     "ate_texto": "Pesquisar endereço",
+     "ate": 40,
+     "espera": 1
     }
    ]
   }

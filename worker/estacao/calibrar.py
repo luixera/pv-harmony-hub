@@ -118,11 +118,12 @@ def main():
         c.executar_passo({"tipo": "limpar_campo", "espera": 2})
         c.executar_passo({"tipo": "digitar", "texto": " ", "espera": 5})
         capturar("busca_4_espaco_texto")
-    if "ensaio" in PARTES:
-        nota("ENSAIO: ciclo completo com o telas.json, sem gravar (cada passo sai na hora)")
+    so = next((p.split(":", 1)[1] for p in PARTES if p.startswith("ensaio:")), None)
+    if "ensaio" in PARTES or so:
+        nota(f"ENSAIO: {'só ' + so if so else 'ciclo completo'} com o telas.json, sem gravar (cada passo sai na hora)")
         c.DEPURAR = True          # imprime cada passo com o tempo: mantém a conexão viva e mostra o caminho
         c.DIR_FALHAS = SAIDA      # tela de cada falha e de cada leitura vazia vai para o artefato
-        r = c.coletar(ensaio=True)
+        r = c.coletar(ensaio=True, so_fonte=so)
         nota(f"ENSAIO resumo: {r}")
 
 

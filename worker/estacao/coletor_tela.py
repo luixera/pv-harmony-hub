@@ -802,6 +802,14 @@ def coletar(ensaio=False, so_fonte=None):
                     seguidas += 1
                     print(f"  roteiro falhou: {falhas[-1]}", flush=True)
                     CACHE_LISTA = ""
+                    # app sem tela-base fixa (Tupi): volta ao ponto de partida antes do próximo local
+                    for p in alvo.get("recuperar", []):
+                        try:
+                            executar_passo(p)
+                        except AndroidTravado:
+                            raise
+                        except Exception as e2:
+                            print(f"  recuperação falhou: {repr(e2)[:80]}", flush=True); break
             if cfg.get("guardar_capturas"):
                 salvar_captura(alvo["fonte"])
             erro = ("; ".join(falhas))[:300] if falhas else None
