@@ -3164,7 +3164,7 @@
       },
       {
        "tipo": "esperar_texto",
-       "texto": "Tomada 1",
+       "texto": "Plug:",
        "ate": 15,
        "espera": 1
       },
@@ -3181,20 +3181,10 @@
        "local_id": "CPBYDWNTMP",
        "local_nome": "BYD | Allma Millazo - SJRP - 02",
        "conector": "CPBYDWNTMP - 1",
-       "potencia_kw": 60.0,
+       "potencia_kw": 7.4,
        "lat": -20.8204027263737,
        "lng": -49.3988592528833,
-       "ancora": "^Tomada 1$",
-       "regex": "^(Dispon[ií]vel|Ocupad[ao]|Indispon[ií]vel|Off-?line|Reservad[ao]|(?:Em )?manuten[çc][ãa]o|Em prepara[çc][ãa]o|Preparando|Carregando|Em uso|Finalizando|Suspens[ao]|Inativ[ao]|Fora de servi[çc]o|Desconhecid[ao]|Bloquead[ao]|Erro|Falha)$"
-      },
-      {
-       "local_id": "CPBYDWNTMP",
-       "local_nome": "BYD | Allma Millazo - SJRP - 02",
-       "conector": "CPBYDWNTMP - 2",
-       "potencia_kw": 60.0,
-       "lat": -20.8204027263737,
-       "lng": -49.3988592528833,
-       "ancora": "^Tomada 2$",
+       "ancora": "^Plug:$",
        "regex": "^(Dispon[ií]vel|Ocupad[ao]|Indispon[ií]vel|Off-?line|Reservad[ao]|(?:Em )?manuten[çc][ãa]o|Em prepara[çc][ãa]o|Preparando|Carregando|Em uso|Finalizando|Suspens[ao]|Inativ[ao]|Fora de servi[çc]o|Desconhecid[ao]|Bloquead[ao]|Erro|Falha)$"
       }
      ],
@@ -3203,7 +3193,9 @@
        "tipo": "voltar",
        "espera": 2
       }
-     ]
+     ],
+     "intervalo_min": 16,
+     "grupo": 0
     },
     {
      "nome": "Charger Pro - Emporio Jota - SJRP",
@@ -3627,7 +3619,7 @@
       }
      ],
      "intervalo_min": 16,
-     "grupo": 0
+     "grupo": 1
     },
     {
      "nome": "Bitcharge - Alameda Iguatemi 02",
@@ -3727,7 +3719,7 @@
       }
      ],
      "intervalo_min": 16,
-     "grupo": 1
+     "grupo": 0
     }
    ],
    "recuperar": [
