@@ -96,6 +96,8 @@ def main():
         descobrir_atm(w, h)
     if "cury" in PARTES:
         descobrir_cury(w, h)
+    for parte in [p for p in PARTES if p.startswith("explorar:")]:
+        explorar_app(parte.split(":", 1)[1], w, h)
     if "atm_busca" in PARTES:
         # como a busca da ATM se comporta neste aparelho (teclado com sugestão pode alterar o texto)
         c.executar_passo({"tipo": "abrir", "pacote": ATM, "espera": 3})
@@ -116,6 +118,51 @@ def main():
         c.DIR_FALHAS = SAIDA      # tela de cada falha e de cada leitura vazia vai para o artefato
         r = c.coletar(ensaio=True)
         nota(f"ENSAIO resumo: {r}")
+
+
+PALAVRAS_LOGIN = ("senha", "password", "entrar com", "fazer login", "login", "cadastre-se", "criar conta", "e-mail")
+CANDIDATOS = ("Lista", "Ver lista", "Listar", "Buscar", "Pesquisar", "Procurar", "Estações", "Pontos", "Carregadores",
+              "Próximos", "Perto de mim", "Mapa")
+
+
+def explorar_app(termo, w, h):
+    """Primeira visita a um app novo: acha o pacote pelo termo, abre, captura e toca nos botões que
+    parecem levar à lista de carregadores (um de cada vez, capturando e voltando). Para em tela de login."""
+    pacotes = [l.replace("package:", "").strip() for l in c.adb("shell", "pm list packages -3").splitlines()]
+    nota(f"pacotes de terceiros: {pacotes}")
+    alvo = [p for p in pacotes if termo.lower() in p.lower()]
+    if not alvo:
+        nota(f"nenhum pacote com '{termo}'"); return
+    pkg = alvo[0]
+    nota(f"{termo}: pacote {pkg}")
+    c.executar_passo({"tipo": "abrir", "pacote": pkg, "espera": 12})
+    itens = capturar(f"{termo}_01_inicio")
+    (SAIDA / f"{termo}_01_inicio_botoes.json").write_text(
+        json.dumps(nos_clicaveis_sem_texto(c.ULTIMO_XML), ensure_ascii=False, indent=1), encoding="utf-8")
+    textos_baixos = " ".join(t.lower() for t, _ in itens)
+    if any(p in textos_baixos for p in PALAVRAS_LOGIN) and not any(t.strip() in CANDIDATOS for t, _ in itens):
+        nota(f"ATENÇÃO: {termo} parece pedir LOGIN — parar e pedir à pessoa"); return
+    for i, alvo_txt in enumerate(CANDIDATOS):
+        b = next((b for t, b in c.textos(c.tela_xml()) if t.strip().lower() == alvo_txt.lower()), None)
+        if not b:
+            continue
+        nota(f"  tocando '{alvo_txt}'")
+        tocar_bounds(b); time.sleep(5)
+        itens2 = capturar(f"{termo}_02_{i:02d}_{alvo_txt.replace(' ', '_')}")
+        (SAIDA / f"{termo}_02_{i:02d}_botoes.json").write_text(
+            json.dumps(nos_clicaveis_sem_texto(c.ULTIMO_XML), ensure_ascii=False, indent=1), encoding="utf-8")
+        if any(p in " ".join(t.lower() for t, _ in itens2) for p in PALAVRAS_LOGIN):
+            nota(f"  ATENÇÃO: depois de '{alvo_txt}' apareceu LOGIN — parar")
+            c.entrada("keyevent", "4"); time.sleep(2)
+            continue
+        rolar(w, h); capturar(f"{termo}_02_{i:02d}_rolado")
+        c.entrada("keyevent", "4"); time.sleep(3)
+    # toque no 1º marcador do mapa, se houver (fichas de estação costumam abrir assim)
+    marcador = next((b for t, b in c.textos(c.tela_xml()) if "marker" in t.lower() or "marcador" in t.lower()), None)
+    if marcador:
+        nota("  tocando no 1º marcador do mapa")
+        tocar_bounds(marcador); time.sleep(5)
+        capturar(f"{termo}_03_marcador")
 
 
 def descobrir_atm(w, h):
