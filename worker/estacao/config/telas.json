@@ -1,5 +1,5 @@
 {
- "_sobre": "Roteiros de leitura dos apps no BlueStacks (gerado em 16/10/2026 por gera_telas.py a partir de capturas/*.json). Passos: abrir, toque, tocar_texto, tocar_texto_rolando, esperar_texto, digitar, deslizar, voltar, escolher; 'opcional' não falha. Regras: uma por plugue/carregador; o status é o grupo 1 do regex no texto da ficha. Roteiros 'opcional' rodam em rodízio no tempo que sobrar do orçamento (orcamento_s). Na ATM, sem GPS (lista com 0.00 km) o alvo troca para roteiros_sem_gps (busca pelo nome, só os fixos). limite_s: nenhum roteiro novo começa depois disso (coleta a cada 8 min); max_falhas_seguidas: desiste do app no ciclo. Cadência: roteiros com intervalo_min (AC de 7 kW: 16) rodam em 1 de cada intervalo/ciclo_min ciclos, no grupo indicado; só vale com cadencia_ativa.",
+ "_sobre": "Roteiros de leitura dos apps no BlueStacks (gerado em 16/10/2026 por gera_telas.py a partir de capturas/*.json). Passos: abrir, toque, tocar_texto, tocar_texto_rolando, esperar_texto, digitar, deslizar, voltar, escolher; 'opcional' não falha. Regras: uma por plugue/carregador; o status é o grupo 1 do regex no texto da ficha. Roteiros 'opcional' rodam em rodízio no tempo que sobrar do orçamento (orcamento_s). Na ATM, sem GPS (lista com 0.00 km) o alvo troca para roteiros_sem_gps (busca pelo nome, só os fixos). limite_s: nenhum roteiro novo começa depois disso (600 s: o timer dispara 1 min após o fim, então o ciclo pode passar de 8 min sem perder carregador fixo); max_falhas_seguidas: desiste do app no ciclo. Cadência: roteiros com intervalo_min (AC de 7 kW: 16) rodam em 1 de cada intervalo/ciclo_min ciclos, no grupo indicado; só vale com cadencia_ativa.",
  "orcamento_s": 360,
  "guardar_capturas": false,
  "alvos": [
@@ -2943,7 +2943,7 @@
    ]
   }
  ],
- "limite_s": 420,
+ "limite_s": 600,
  "max_falhas_seguidas": 3,
  "ciclo_min": 8,
  "cadencia_ativa": true,
