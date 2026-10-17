@@ -62,6 +62,12 @@
        "conferir": true
       },
       {
+       "tipo": "esperar_texto",
+       "texto": "91748 - 1",
+       "ate": 15,
+       "espera": 0.5
+      },
+      {
        "tipo": "tocar_texto",
        "texto": "Encerrar",
        "opcional": true,
@@ -124,6 +130,12 @@
        "ate": 4,
        "espera": 0,
        "conferir": true
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "91747 - 1",
+       "ate": 15,
+       "espera": 0.5
       },
       {
        "tipo": "tocar_texto",
@@ -197,6 +209,12 @@
        "conferir": true
       },
       {
+       "tipo": "esperar_texto",
+       "texto": "13113 - 1",
+       "ate": 15,
+       "espera": 0.5
+      },
+      {
        "tipo": "tocar_texto",
        "texto": "Encerrar",
        "opcional": true,
@@ -268,6 +286,12 @@
        "conferir": true
       },
       {
+       "tipo": "esperar_texto",
+       "texto": "43036 - 1",
+       "ate": 15,
+       "espera": 0.5
+      },
+      {
        "tipo": "tocar_texto",
        "texto": "Encerrar",
        "opcional": true,
@@ -328,6 +352,12 @@
        "ate": 4,
        "espera": 0,
        "conferir": true
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "65497 - 1",
+       "ate": 15,
+       "espera": 0.5
       },
       {
        "tipo": "tocar_texto",
@@ -408,6 +438,10 @@
        "tipo": "tocar_texto",
        "texto": "Pesquisar",
        "espera": 2
+      },
+      {
+       "tipo": "limpar_campo",
+       "espera": 0.5
       },
       {
        "tipo": "digitar",
@@ -1870,6 +1904,10 @@
        "espera": 1.5
       },
       {
+       "tipo": "limpar_campo",
+       "espera": 0.5
+      },
+      {
        "tipo": "digitar",
        "texto": "Fernando Costa",
        "espera": 3
@@ -1940,6 +1978,10 @@
        "tipo": "tocar_texto",
        "texto": "Pesquisar",
        "espera": 1.5
+      },
+      {
+       "tipo": "limpar_campo",
+       "espera": 0.5
       },
       {
        "tipo": "digitar",
@@ -2016,6 +2058,10 @@
        "espera": 1.5
       },
       {
+       "tipo": "limpar_campo",
+       "espera": 0.5
+      },
+      {
        "tipo": "digitar",
        "texto": "Potirendaba",
        "espera": 3
@@ -2088,6 +2134,10 @@
        "tipo": "tocar_texto",
        "texto": "Pesquisar",
        "espera": 1.5
+      },
+      {
+       "tipo": "limpar_campo",
+       "espera": 0.5
       },
       {
        "tipo": "digitar",
@@ -2164,6 +2214,10 @@
        "espera": 1.5
       },
       {
+       "tipo": "limpar_campo",
+       "espera": 0.5
+      },
+      {
        "tipo": "digitar",
        "texto": "Muffato Damha Totem",
        "espera": 3
@@ -2238,6 +2292,10 @@
        "espera": 1.5
       },
       {
+       "tipo": "limpar_campo",
+       "espera": 0.5
+      },
+      {
        "tipo": "digitar",
        "texto": "Muffato Damha 40",
        "espera": 3
@@ -2299,6 +2357,10 @@
        "tipo": "tocar_texto",
        "texto": "Pesquisar",
        "espera": 1.5
+      },
+      {
+       "tipo": "limpar_campo",
+       "espera": 0.5
       },
       {
        "tipo": "digitar",
@@ -2375,6 +2437,10 @@
        "espera": 1.5
       },
       {
+       "tipo": "limpar_campo",
+       "espera": 0.5
+      },
+      {
        "tipo": "digitar",
        "texto": "Conchego",
        "espera": 3
@@ -2445,6 +2511,10 @@
        "tipo": "tocar_texto",
        "texto": "Pesquisar",
        "espera": 1.5
+      },
+      {
+       "tipo": "limpar_campo",
+       "espera": 0.5
       },
       {
        "tipo": "digitar",
@@ -2521,6 +2591,10 @@
        "espera": 1.5
       },
       {
+       "tipo": "limpar_campo",
+       "espera": 0.5
+      },
+      {
        "tipo": "digitar",
        "texto": "Max Eldorado",
        "espera": 3
@@ -2595,6 +2669,10 @@
        "espera": 1.5
       },
       {
+       "tipo": "limpar_campo",
+       "espera": 0.5
+      },
+      {
        "tipo": "digitar",
        "texto": "SCP JK",
        "espera": 3
@@ -2667,6 +2745,10 @@
        "espera": 1.5
       },
       {
+       "tipo": "limpar_campo",
+       "espera": 0.5
+      },
+      {
        "tipo": "digitar",
        "texto": "Talhado",
        "espera": 3
@@ -2737,6 +2819,10 @@
        "tipo": "tocar_texto",
        "texto": "Pesquisar",
        "espera": 1.5
+      },
+      {
+       "tipo": "limpar_campo",
+       "espera": 0.5
       },
       {
        "tipo": "digitar",

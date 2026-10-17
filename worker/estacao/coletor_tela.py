@@ -336,6 +336,8 @@ def executar_passo(p):
         entrada("swipe", *px(p["x1"], p["y1"]), *px(p["x2"], p["y2"]), str(p.get("ms", 400)))
     elif tipo == "voltar":
         entrada("keyevent", "4")
+    elif tipo == "limpar_campo":   # apaga o que já estiver no campo focado (fim + 40 backspaces)
+        entrada("keyevent", "123", *(["67"] * p.get("teclas", 40)))
     elif tipo == "digitar":      # texto num campo já focado (sem acento: o input text não aceita)
         entrada("text", p["texto"].replace(" ", "%s"))
     elif tipo == "fechar_ficha":   # X da ficha da ATM, só se a ficha estiver aberta
@@ -403,8 +405,9 @@ def executar_passo(p):
             for t, b in textos(xml):
                 if alvo_txt in t.lower() and not re.search(r", [0-9]+[.][0-9]+ km, ", t):
                     y1, y2 = map(int, re.findall(r"-?\d+", b)[1::2])
-                    if y2 >= h * 0.985 or y1 <= h * 0.03:
-                        return None            # cortado: rola e tenta de novo
+                    item_px = PASSO_LISTA * h / TELA_REF[1]
+                    if (y2 >= h * 0.985 or y1 <= h * 0.03) and (y2 - y1) < 0.6 * item_px:
+                        return None            # cortado na borda: rola e tenta de novo
                     return b
             return None
         def _visiveis(xml):
