@@ -125,6 +125,32 @@ CANDIDATOS = ("Lista", "Ver lista", "Listar", "Buscar", "Pesquisar", "Procurar",
               "Próximos", "Perto de mim", "Mapa")
 
 
+# Avisos de primeiro uso: (texto que identifica o aviso, botão a tocar). Notificação = recusar;
+# localização = só durante o uso (o app precisa dela para listar as estações próximas).
+AVISOS = (("notificaç", ("Cancelar", "Agora não", "Não permitir")),
+          ("localiza", ("Durante o uso do app", "Ao usar o app", "Permitir apenas durante o uso", "Permitir")),
+          ("location", ("While using the app", "Allow")),
+          ("tutorial", ("Pular", "Fechar")),
+          ("bem-vindo", ("Pular", "Fechar", "Começar")))
+
+
+def passar_avisos(termo, rodadas=5):
+    for k in range(rodadas):
+        itens = c.textos(c.tela_xml())
+        baixo = " ".join(t.lower() for t, _ in itens)
+        tocou = False
+        for chave, botoes in AVISOS:
+            if chave in baixo:
+                b = next((b for t, b in itens for bt in botoes if t.strip().lower() == bt.lower()), None)
+                if b:
+                    capturar(f"{termo}_00_aviso_{k}")
+                    nota(f"  aviso '{chave}': tocando {[t for t, bb in itens if bb == b][:1]}")
+                    tocar_bounds(b); time.sleep(3); tocou = True
+                    break
+        if not tocou:
+            return
+
+
 def explorar_app(termo, w, h):
     """Primeira visita a um app novo: acha o pacote pelo termo, abre, captura e toca nos botões que
     parecem levar à lista de carregadores (um de cada vez, capturando e voltando). Para em tela de login."""
@@ -136,6 +162,7 @@ def explorar_app(termo, w, h):
     pkg = alvo[0]
     nota(f"{termo}: pacote {pkg}")
     c.executar_passo({"tipo": "abrir", "pacote": pkg, "espera": 12})
+    passar_avisos(termo)
     itens = capturar(f"{termo}_01_inicio")
     (SAIDA / f"{termo}_01_inicio_botoes.json").write_text(
         json.dumps(nos_clicaveis_sem_texto(c.ULTIMO_XML), ensure_ascii=False, indent=1), encoding="utf-8")
