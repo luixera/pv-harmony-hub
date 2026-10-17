@@ -98,6 +98,8 @@ cp "$APP/deploy/gdm-estacao.service" /etc/systemd/system/gdm-estacao.service || 
 cp "$APP/deploy/gdm-estacao.timer" /etc/systemd/system/gdm-estacao.timer || falhar "não copiei o timer"
 systemctl daemon-reload
 systemctl enable --now gdm-estacao.timer >/dev/null 2>&1 || falhar "o timer não subiu"
+# reinicia o timer para valer a regra nova de disparo (o daemon-reload só não basta)
+systemctl restart gdm-estacao.timer || falhar "o timer não reiniciou"
 systemctl list-timers gdm-estacao.timer --no-pager | head -3
 
 passo "fumaça: estado do aparelho pela API do VMOS (sem abrir o túnel)"

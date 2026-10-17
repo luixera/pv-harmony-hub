@@ -1,10 +1,14 @@
 [Unit]
-Description=Eletropostos — dispara a estação de telas a cada 8 minutos
+Description=Eletropostos — dispara a estação de telas: 1 min depois do fim do ciclo anterior
 
 [Timer]
-OnCalendar=*:0/8
-AccuracySec=15s
-Persistent=false
+# Não OnCalendar=*:0/8: ele dispara nos minutos 0,8,…,56 e a virada :56→:00 tem só
+# 4 min — com ciclos de ~7 min, o disparo das :00 caía com o anterior rodando e se
+# perdia 1 ciclo por hora (visto em 16/10/2026). Contando do FIM do ciclo não há
+# buraco nem sobreposição; o intervalo entre inícios fica ~ duração + 1 min (7–8 min).
+OnActiveSec=15s
+OnUnitInactiveSec=1min
+AccuracySec=5s
 Unit=gdm-estacao.service
 
 [Install]
