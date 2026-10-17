@@ -3077,7 +3077,7 @@
        "lat": -20.8205196518591,
        "lng": -49.3988387404146,
        "ancora": "^Tomada 1$",
-       "regex": "^(Dispon[ií]vel|Ocupad[ao]|Indispon[ií]vel|Off-?line|Reservad[ao]|(?:Em )?manuten[çc][ãa]o|Em prepara[çc][ãa]o|Preparando|Carregando|Em uso|Finalizando|Suspens[ao]|Inativ[ao]|Fora de servi[çc]o|Desconhecid[ao]|Bloquead[ao]|Erro|Falha)$"
+       "regex": "^(?!Plug:|Pot[êe]ncia:|Tomada \\d|\\(|CCS|Tipo \\d|CHAdeMO|GB/?T|[\\d.,]+ ?kW|R[áa]pida|Ultra|Lenta|Carga|Reserva|Ociosidade|R\\$|Tra[çc]ar rota|Iniciar)(.{2,40})$"
       },
       {
        "local_id": "CPBYDEUNAR",
@@ -3087,7 +3087,7 @@
        "lat": -20.8205196518591,
        "lng": -49.3988387404146,
        "ancora": "^Tomada 2$",
-       "regex": "^(Dispon[ií]vel|Ocupad[ao]|Indispon[ií]vel|Off-?line|Reservad[ao]|(?:Em )?manuten[çc][ãa]o|Em prepara[çc][ãa]o|Preparando|Carregando|Em uso|Finalizando|Suspens[ao]|Inativ[ao]|Fora de servi[çc]o|Desconhecid[ao]|Bloquead[ao]|Erro|Falha)$"
+       "regex": "^(?!Plug:|Pot[êe]ncia:|Tomada \\d|\\(|CCS|Tipo \\d|CHAdeMO|GB/?T|[\\d.,]+ ?kW|R[áa]pida|Ultra|Lenta|Carga|Reserva|Ociosidade|R\\$|Tra[çc]ar rota|Iniciar)(.{2,40})$"
       }
      ],
      "depois": [
@@ -3185,7 +3185,7 @@
        "lat": -20.8204027263737,
        "lng": -49.3988592528833,
        "ancora": "^Plug:$",
-       "regex": "^(Dispon[ií]vel|Ocupad[ao]|Indispon[ií]vel|Off-?line|Reservad[ao]|(?:Em )?manuten[çc][ãa]o|Em prepara[çc][ãa]o|Preparando|Carregando|Em uso|Finalizando|Suspens[ao]|Inativ[ao]|Fora de servi[çc]o|Desconhecid[ao]|Bloquead[ao]|Erro|Falha)$"
+       "regex": "^(?!Plug:|Pot[êe]ncia:|Tomada \\d|\\(|CCS|Tipo \\d|CHAdeMO|GB/?T|[\\d.,]+ ?kW|R[áa]pida|Ultra|Lenta|Carga|Reserva|Ociosidade|R\\$|Tra[çc]ar rota|Iniciar)(.{2,40})$"
       }
      ],
      "depois": [
@@ -3285,7 +3285,7 @@
        "lat": -20.8079986760353,
        "lng": -49.3477268741974,
        "ancora": "^Tomada 1$",
-       "regex": "^(Dispon[ií]vel|Ocupad[ao]|Indispon[ií]vel|Off-?line|Reservad[ao]|(?:Em )?manuten[çc][ãa]o|Em prepara[çc][ãa]o|Preparando|Carregando|Em uso|Finalizando|Suspens[ao]|Inativ[ao]|Fora de servi[çc]o|Desconhecid[ao]|Bloquead[ao]|Erro|Falha)$"
+       "regex": "^(?!Plug:|Pot[êe]ncia:|Tomada \\d|\\(|CCS|Tipo \\d|CHAdeMO|GB/?T|[\\d.,]+ ?kW|R[áa]pida|Ultra|Lenta|Carga|Reserva|Ociosidade|R\\$|Tra[çc]ar rota|Iniciar)(.{2,40})$"
       },
       {
        "local_id": "CPCHARGERPRO06",
@@ -3295,7 +3295,7 @@
        "lat": -20.8079986760353,
        "lng": -49.3477268741974,
        "ancora": "^Tomada 2$",
-       "regex": "^(Dispon[ií]vel|Ocupad[ao]|Indispon[ií]vel|Off-?line|Reservad[ao]|(?:Em )?manuten[çc][ãa]o|Em prepara[çc][ãa]o|Preparando|Carregando|Em uso|Finalizando|Suspens[ao]|Inativ[ao]|Fora de servi[çc]o|Desconhecid[ao]|Bloquead[ao]|Erro|Falha)$"
+       "regex": "^(?!Plug:|Pot[êe]ncia:|Tomada \\d|\\(|CCS|Tipo \\d|CHAdeMO|GB/?T|[\\d.,]+ ?kW|R[áa]pida|Ultra|Lenta|Carga|Reserva|Ociosidade|R\\$|Tra[çc]ar rota|Iniciar)(.{2,40})$"
       }
      ],
      "depois": [
@@ -3393,7 +3393,7 @@
        "lat": -20.8144994703726,
        "lng": -49.4579850220892,
        "ancora": "^Tomada 1$",
-       "regex": "^(Dispon[ií]vel|Ocupad[ao]|Indispon[ií]vel|Off-?line|Reservad[ao]|(?:Em )?manuten[çc][ãa]o|Em prepara[çc][ãa]o|Preparando|Carregando|Em uso|Finalizando|Suspens[ao]|Inativ[ao]|Fora de servi[çc]o|Desconhecid[ao]|Bloquead[ao]|Erro|Falha)$"
+       "regex": "^(?!Plug:|Pot[êe]ncia:|Tomada \\d|\\(|CCS|Tipo \\d|CHAdeMO|GB/?T|[\\d.,]+ ?kW|R[áa]pida|Ultra|Lenta|Carga|Reserva|Ociosidade|R\\$|Tra[çc]ar rota|Iniciar)(.{2,40})$"
       },
       {
        "local_id": "CPCIACHARGE039",
@@ -3403,7 +3403,7 @@
        "lat": -20.8144994703726,
        "lng": -49.4579850220892,
        "ancora": "^Tomada 2$",
-       "regex": "^(Dispon[ií]vel|Ocupad[ao]|Indispon[ií]vel|Off-?line|Reservad[ao]|(?:Em )?manuten[çc][ãa]o|Em prepara[çc][ãa]o|Preparando|Carregando|Em uso|Finalizando|Suspens[ao]|Inativ[ao]|Fora de servi[çc]o|Desconhecid[ao]|Bloquead[ao]|Erro|Falha)$"
+       "regex": "^(?!Plug:|Pot[êe]ncia:|Tomada \\d|\\(|CCS|Tipo \\d|CHAdeMO|GB/?T|[\\d.,]+ ?kW|R[áa]pida|Ultra|Lenta|Carga|Reserva|Ociosidade|R\\$|Tra[çc]ar rota|Iniciar)(.{2,40})$"
       }
      ],
      "depois": [
@@ -3501,7 +3501,7 @@
        "lat": -20.8137920166141,
        "lng": -49.4817502925997,
        "ancora": "^Tomada 1$",
-       "regex": "^(Dispon[ií]vel|Ocupad[ao]|Indispon[ií]vel|Off-?line|Reservad[ao]|(?:Em )?manuten[çc][ãa]o|Em prepara[çc][ãa]o|Preparando|Carregando|Em uso|Finalizando|Suspens[ao]|Inativ[ao]|Fora de servi[çc]o|Desconhecid[ao]|Bloquead[ao]|Erro|Falha)$"
+       "regex": "^(?!Plug:|Pot[êe]ncia:|Tomada \\d|\\(|CCS|Tipo \\d|CHAdeMO|GB/?T|[\\d.,]+ ?kW|R[áa]pida|Ultra|Lenta|Carga|Reserva|Ociosidade|R\\$|Tra[çc]ar rota|Iniciar)(.{2,40})$"
       },
       {
        "local_id": "HSRMMC003",
@@ -3511,7 +3511,7 @@
        "lat": -20.8137920166141,
        "lng": -49.4817502925997,
        "ancora": "^Tomada 2$",
-       "regex": "^(Dispon[ií]vel|Ocupad[ao]|Indispon[ií]vel|Off-?line|Reservad[ao]|(?:Em )?manuten[çc][ãa]o|Em prepara[çc][ãa]o|Preparando|Carregando|Em uso|Finalizando|Suspens[ao]|Inativ[ao]|Fora de servi[çc]o|Desconhecid[ao]|Bloquead[ao]|Erro|Falha)$"
+       "regex": "^(?!Plug:|Pot[êe]ncia:|Tomada \\d|\\(|CCS|Tipo \\d|CHAdeMO|GB/?T|[\\d.,]+ ?kW|R[áa]pida|Ultra|Lenta|Carga|Reserva|Ociosidade|R\\$|Tra[çc]ar rota|Iniciar)(.{2,40})$"
       }
      ],
      "depois": [
@@ -3609,7 +3609,7 @@
        "lat": -20.8676516751615,
        "lng": -49.4163917468126,
        "ancora": "^Plug:$",
-       "regex": "^(Dispon[ií]vel|Ocupad[ao]|Indispon[ií]vel|Off-?line|Reservad[ao]|(?:Em )?manuten[çc][ãa]o|Em prepara[çc][ãa]o|Preparando|Carregando|Em uso|Finalizando|Suspens[ao]|Inativ[ao]|Fora de servi[çc]o|Desconhecid[ao]|Bloquead[ao]|Erro|Falha)$"
+       "regex": "^(?!Plug:|Pot[êe]ncia:|Tomada \\d|\\(|CCS|Tipo \\d|CHAdeMO|GB/?T|[\\d.,]+ ?kW|R[áa]pida|Ultra|Lenta|Carga|Reserva|Ociosidade|R\\$|Tra[çc]ar rota|Iniciar)(.{2,40})$"
       }
      ],
      "depois": [
@@ -3709,7 +3709,7 @@
        "lat": -20.8676516751615,
        "lng": -49.4163917468126,
        "ancora": "^Plug:$",
-       "regex": "^(Dispon[ií]vel|Ocupad[ao]|Indispon[ií]vel|Off-?line|Reservad[ao]|(?:Em )?manuten[çc][ãa]o|Em prepara[çc][ãa]o|Preparando|Carregando|Em uso|Finalizando|Suspens[ao]|Inativ[ao]|Fora de servi[çc]o|Desconhecid[ao]|Bloquead[ao]|Erro|Falha)$"
+       "regex": "^(?!Plug:|Pot[êe]ncia:|Tomada \\d|\\(|CCS|Tipo \\d|CHAdeMO|GB/?T|[\\d.,]+ ?kW|R[áa]pida|Ultra|Lenta|Carga|Reserva|Ociosidade|R\\$|Tra[çc]ar rota|Iniciar)(.{2,40})$"
       }
      ],
      "depois": [

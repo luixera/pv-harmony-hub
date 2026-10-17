@@ -788,6 +788,11 @@ def coletar(ensaio=False, so_fonte=None):
                                             bruto, r.get("lat"), r.get("lng"), passo_min=passo_de(roteiro, alvo["fonte"], r)))
                     if vazias:
                         capturar_falha(f"{alvo['fonte']}_vazia_{roteiro['regras'][0]['local_nome']}")
+                        # na VPS não há DIR_FALHAS: a foto e os textos da tela vão para o quadro ao vivo
+                        sem = [r.get("conector", "*") for r in roteiro["regras"] if ler(r, itens) is None]
+                        tela_txt = " | ".join(t for t, _ in itens if "Marcador" not in t and len(t) < 60)
+                        _espelho(f"leitura vazia em {roteiro['regras'][0]['local_nome'].strip()}", "falha", alvo["fonte"],
+                                 f"sem status: {', '.join(sem)} · tela: {tela_txt}"[:300])
                     for p in roteiro.get("depois", []):
                         executar_passo(p)
                     if roteiro.get("regras"):
