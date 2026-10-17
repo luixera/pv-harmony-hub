@@ -132,7 +132,7 @@ export function PainelLateral({ id, de, ate, premissas: P, fechar, irParaColeta 
               {fontesDoLocal.length > 1 && (
                 <label style={rotulo}>Fonte que entra na conta
                   <select value={form.fonte_principal ?? ''} onChange={e => setForm({ ...form, fonte_principal: e.target.value })} style={input}>
-                    <option value="">Automática (a que mais leu{d?.fonte_na_conta ? `: ${d.fonte_na_conta}` : ''})</option>
+                    <option value="">Automática: por dia, a que mais leu{d?.fonte_na_conta ? ` (${d.fonte_na_conta})` : ''}</option>
                     {fontesDoLocal.map(f => <option key={f} value={f}>{f}</option>)}
                   </select>
                 </label>

@@ -58,7 +58,7 @@ export interface Cadastro {
   fonte_status: string | null;
   observacoes: string | null;
   ativo: boolean;
-  /** fonte que entra na conta quando o local é lido por mais de uma (null = a que mais leu) */
+  /** fonte que entra na conta quando o local é lido por mais de uma (null = por dia, a que mais leu) */
   fonte_principal: string | null;
 }
 
@@ -132,7 +132,7 @@ export interface Detalhe {
   /** nome do conector → [[ 'YYYY-MM-DDTHH:MM' (Brasília), status ], …] das últimas 48 h */
   linha_do_tempo: Record<string, [string, Status][]>;
   vinculos: { fonte: string; local_fonte: string; nome: string | null; na_conta?: boolean }[];
-  /** fonte usada nas contas do período */
+  /** fontes usadas nas contas do período (a escolha é por dia), separadas por vírgula */
   fonte_na_conta?: string | null;
 }
 

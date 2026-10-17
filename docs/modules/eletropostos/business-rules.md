@@ -98,11 +98,15 @@ Migração `20261017120000_eletropostos_casamento`.
 - **Ocupação e recargas seguem por plugue.** Cada carro conta como recarga e
   como hora ocupada; só a energia (e com ela receita e margem) usa a potência
   dividida (`horas_energia` na métrica do conector).
-- **Um local, uma fonte na conta.** Quando o mesmo cadastro está ligado a duas
-  fontes (casadas pela localização, < 150 m), só uma entra nas contas: a
-  escolhida no cadastro ("Fonte que entra na conta" →
-  `eletroposto_local.fonte_principal`) ou, sem escolha, a que mais leu no
-  período. As outras continuam gravando e aparecem como "fora da conta".
+- **Um local, uma fonte na conta, escolhida por dia.** Quando o mesmo cadastro
+  está ligado a duas fontes (casadas pela localização, < 150 m), em cada dia de
+  Brasília só uma entra nas contas: a escolhida no cadastro ("Fonte que entra na
+  conta" → `eletroposto_local.fonte_principal`), se ela leu naquele dia; senão a
+  que somou mais minutos válidos no dia (`eletropostos_fontes_por_dia`). A
+  escolha é por dia porque, pelo período inteiro, a Tupi pela API (que parou)
+  ainda ganhava do app da Tupi e as leituras novas ficavam fora (migração
+  `20261017140000_eletropostos_casamento_por_dia`). As outras fontes continuam
+  gravando e aparecem como "fora da conta".
 - Efeito medido em 7 dias (17/10/2026): Cury −37% de horas de energia, Tupi
   −22%, ATM −1,5% (só os "em preparação").
 

@@ -29,10 +29,10 @@ tabelas têm `tenant_id` (padrão `eletropostos_tenant()` = tenant
 | `eletropostos_distancia_m(lat1, lng1, lat2, lng2)` | haversine, para o vínculo automático (< 150 m) |
 | `eletropostos_energia(horas, kw, tipo, premissas) → numeric[2]` | [kWh min, kWh max] |
 | `eletropostos_periodo(de, ate) → (a, b, esperadas, dias)` | dias civis de Brasília → `[a, b)` UTC, janelas esperadas e dias efetivos |
-| `eletropostos_conectores(a, b, local?) → SETOF eletroposto_conector_agg` | contagens por status, sessões (`lag`), último status/potência por conector e `energia_min` (passo × parte da potência no grupo); só a fonte escolhida de cada local |
+| `eletropostos_conectores(a, b, local?) → SETOF eletroposto_conector_agg` | contagens por status, sessões (`lag`), último status/potência por conector e `energia_min` (passo × parte da potência no grupo); só a fonte escolhida de cada local em cada dia |
 | `eletropostos_carregando(status, bruto)` | ocupado e não em preparação/fim/suspenso |
 | `eletropostos_grupo(agrupar, conector)` | a que carregador o plugue pertence (`conector`, `estacao` ou `prefixo`) |
-| `eletropostos_fonte_escolhida(local, a, b)` | `fonte_principal` do cadastro ou a fonte que mais leu no período |
+| `eletropostos_fontes_por_dia(a, b, local?) → (cad, dia, fonte)` | por local e dia de Brasília: `fonte_principal` se leu no dia, senão a fonte com mais minutos válidos |
 | `eletropostos_metricas(conector_agg, esperadas) → jsonb` | o dicionário de métricas do conector |
 | `eletropostos_montar_local(local, conectores jsonb, premissas, dias) → jsonb` | local + agregados + energia/receita/margem |
 | `eletropostos_estacao_ok()` | `auth.uid()` é operador de estação ativa do seu tenant |
