@@ -336,6 +336,31 @@ def executar_passo(p):
         entrada("swipe", *px(p["x1"], p["y1"]), *px(p["x2"], p["y2"]), str(p.get("ms", 400)))
     elif tipo == "voltar":
         entrada("keyevent", "4")
+    elif tipo == "passar_avisos":   # avisos de abertura (notificação, convite de cadastro…) até o texto final aparecer
+        # p["avisos"] = [[trecho do aviso, [botões possíveis]], ...]; p["ate_texto"] = texto da tela pronta
+        fim = time.time() + p.get("ate", 30)
+        while time.time() < fim:
+            itens = textos(tela_xml())
+            baixo = " ".join(t.lower() for t, _ in itens)
+            botao = None
+            for trecho, botoes in p.get("avisos", []):
+                if trecho.lower() in baixo:
+                    botao = next((b for t, b in itens for bt in botoes if t.strip().lower() == bt.lower()), None)
+                    if botao:
+                        break
+            if botao:
+                entrada("tap", *map(str, centro(botao))); time.sleep(2); continue
+            if p.get("ate_texto") and any(p["ate_texto"].lower() in t.lower() for t, _ in itens):
+                time.sleep(p.get("folga", 2))
+                # um aviso pode surgir logo depois (convite de cadastro por cima do mapa): mais uma olhada
+                itens = textos(tela_xml()); baixo = " ".join(t.lower() for t, _ in itens)
+                if not any(trecho.lower() in baixo for trecho, _ in p.get("avisos", [])):
+                    break
+                continue
+            time.sleep(1.5)
+        else:
+            if p.get("ate_texto") and not p.get("opcional"):
+                raise RuntimeError(f"'{p['ate_texto']}' não apareceu em {p.get('ate', 30)} s")
     elif tipo == "esconder_teclado":   # teclado na tela: rolagem em cima dele vira digitação por deslize
         try:
             if "mInputShown=true" in adb("shell", "dumpsys input_method | grep mInputShown", timeout=15):

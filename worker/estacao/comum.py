@@ -30,6 +30,7 @@ MAPA_STATUS = {
     # palavras vistas nos apps (ATM EVs / Cury)
     "liberado": "livre", "liberada": "livre",
     "em carga": "ocupado", "em preparação": "ocupado", "em preparacao": "ocupado", "preparando": "ocupado", "reservado": "ocupado", "reservada": "ocupado",
+    "ocupada": "ocupado", "preparando": "ocupado", "finalizando": "ocupado", "suspenso": "ocupado",
     "inativo": "fora", "inativa": "fora", "em manutenção": "fora", "em manutencao": "fora",
     "fora de serviço": "fora", "fora de servico": "fora", "desconectado": "fora",
 }

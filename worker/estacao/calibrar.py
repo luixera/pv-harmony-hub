@@ -96,6 +96,8 @@ def main():
         descobrir_atm(w, h)
     if "cury" in PARTES:
         descobrir_cury(w, h)
+    if "tupi_fichas" in PARTES:
+        tupi_fichas(TUPI_ESTACOES, w, h)
     if "tupi_regiao" in PARTES:
         tupi_regiao(["Rio Preto", "Mirassol", "Bady"], w, h)
     if "tupi_busca" in PARTES:
@@ -216,6 +218,51 @@ def abrir_busca_tupi(termo):
     c.executar_passo({"tipo": "digitar", "texto": termo, "espera": 5})
     c.executar_passo({"tipo": "esconder_teclado", "espera": 1})
     return c.textos(c.tela_xml())
+
+
+# Estações da Tupi na região (nomes iguais aos da API; termo de busca próprio, sem acento)
+TUPI_ESTACOES = [
+    ("Allma", "BYD | Allma Millazo - SJRP - 01"),
+    ("Allma", "BYD | Allma Millazo - SJRP - 02"),
+    ("Emporio Jota", "Charger Pro - Emporio Jota - SJRP"),
+    ("Cia Charge", "Cia Charge | Madero Mirassol | Sao Jose do Rio Preto"),
+    ("Interior Eventos", "HS/RM Recharge - Posto Monte Carlo Interior Eventos - Mirassol"),
+    ("Alameda Iguatemi", "Bitcharge - Alameda Iguatemi 01"),
+    ("Alameda Iguatemi", "Bitcharge - Alameda Iguatemi 02"),
+]
+
+
+def tupi_fichas(estacoes, w, h):
+    """Abre a ficha de cada estação pelo termo próprio (o voltar leva ao mapa, com o campo de busca)."""
+    out = []
+    primeira = True
+    for i, (termo, nome) in enumerate(estacoes):
+        try:
+            if primeira:
+                abrir_busca_tupi(termo); primeira = False
+            else:
+                campo = next((b for t, b in c.textos(c.tela_xml()) if t.strip() in ("Pesquisar endereço", "Nome do local, estação ou endereço")
+                              or t.strip().startswith(("Allma", "Emporio", "Cia Charge", "Interior", "Alameda"))), None)
+                if not campo:
+                    abrir_busca_tupi(termo)
+                else:
+                    tocar_bounds(campo); time.sleep(2)
+                    c.executar_passo({"tipo": "limpar_campo", "espera": 0.5})
+                    c.executar_passo({"tipo": "digitar", "texto": termo, "espera": 5})
+                    c.executar_passo({"tipo": "esconder_teclado", "espera": 1})
+        except RuntimeError as e:
+            nota(f"  {nome}: {e}"); continue
+        itens = c.textos(c.tela_xml())
+        b = next((b for t, b in itens if t.strip().startswith(nome + ",")), None)
+        if not b:
+            capturar(f"tupi_f{i}_sem_resultado"); nota(f"  {nome}: não está nos resultados de '{termo}'"); continue
+        tocar_bounds(b); time.sleep(5)
+        itens = capturar(f"tupi_f{i}_ficha")
+        tomadas = [t.strip() for t, _ in itens if re.match(r"^Tomada", t.strip())]
+        nota(f"  {nome}: tomadas {tomadas}")
+        out.append({"termo": termo, "nome": nome, "textos": [t for t, _ in itens if "Marcador" not in t][:60]})
+        c.entrada("keyevent", "4"); time.sleep(2.5)
+    (SAIDA / "tupi_fichas.json").write_text(json.dumps(out, ensure_ascii=False, indent=1), encoding="utf-8")
 
 
 def tupi_regiao(termos, w, h):
