@@ -159,9 +159,17 @@ def buscar_tupi(termos, w, h):
     abre o 1º e captura a ficha (rolada também). Volta ao mapa entre um termo e outro."""
     pkg = "com.tupinamba"
     for n, termo in enumerate(termos):
-        c.executar_passo({"tipo": "abrir", "pacote": pkg, "espera": 10})
-        passar_avisos("tupi")
-        campo = next((b for t, b in c.textos(c.tela_xml()) if t.strip() in ("Pesquisar endereço", "Nome do local, estação ou endereço")), None)
+        c.executar_passo({"tipo": "abrir", "pacote": pkg, "espera": 4})
+        campo = None
+        fim = time.time() + 30                     # os avisos chegam alguns segundos depois de abrir
+        while time.time() < fim and not campo:
+            passar_avisos("tupi")
+            campo = next((b for t, b in c.textos(c.tela_xml()) if t.strip() in ("Pesquisar endereço", "Nome do local, estação ou endereço")), None)
+            if campo:
+                time.sleep(2); passar_avisos("tupi")   # o convite de cadastro pode surgir por cima do mapa
+                campo = next((b for t, b in c.textos(c.tela_xml()) if t.strip() in ("Pesquisar endereço", "Nome do local, estação ou endereço")), None)
+            else:
+                time.sleep(2)
         if not campo:
             capturar(f"tupi_b{n}_sem_campo"); nota(f"  {termo}: campo de busca não achado"); continue
         tocar_bounds(campo); time.sleep(2)
