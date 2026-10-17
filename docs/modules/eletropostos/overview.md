@@ -156,7 +156,7 @@ fontes, no alvo `tupi_app` do `telas.json` (7 estações da região).
   subiu para 780 s e o timeout do serviço para 20 min. O passo real dos DC fica
   perto de 12 min, não 8: um aparelho só não lê tudo em 8 min.
 
-Ensaio de 17/10/2026 15:10: 9 de 10 leituras (a falha era a BYD 02, corrigida).
+Ensaio de 17/10/2026 15:10: 9 de 10 leituras (a falha era a BYD 02, corrigida). Primeira gravação real às 15:25; ciclos completos às 15:37 e 15:50 com 9 leituras cada. Leitura vazia agora aparece como falha no quadro "Estação ao vivo", com foto e textos da tela.
 
 ## Estação local (PC com BlueStacks — substituída pela VMOS)
 
