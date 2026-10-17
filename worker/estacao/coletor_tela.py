@@ -547,6 +547,8 @@ def _espelho(*args, **kw):
 
 
 ESPELHO_DESLIGADO = False
+ULTIMA_ARQ = BASE / "dados" / "ultima_leitura.json"   # último início de ciclo em que cada conector foi lido
+CICLO_ARQ = BASE / "dados" / "ciclo.json"              # contador de ciclos (alterna as metades dos AC)
 DIR_FALHAS = None        # calibração/ensaio: pasta onde guardar a tela de cada falha (xml, png, txt)
 _n_falha_capt = [0]
 
@@ -589,7 +591,13 @@ def coletar(ensaio=False, so_fonte=None):
     # carga. O índice do ciclo vem do relógio (a tarefa roda a cada ciclo_min), então não guarda estado.
     ciclo_min = cfg.get("ciclo_min", 8)
     cadencia = bool(cfg.get("cadencia_ativa"))
-    ciclo_idx = int(inicio // (ciclo_min * 60))
+    # Índice do ciclo = contador guardado em dados/ (o timer dispara 1 min depois do fim de cada ciclo,
+    # então janelas fixas de relógio não servem: dois ciclos podiam cair na mesma janela e a mesma
+    # metade dos AC seria lida duas vezes). O ensaio usa o contador sem avançar.
+    try:
+        ciclo_idx = int(json.loads(Path(CICLO_ARQ).read_text(encoding="utf-8")).get("n", 0))
+    except Exception:
+        ciclo_idx = int(inicio // (ciclo_min * 60))
 
     def na_vez(roteiro):
         if not cadencia or not roteiro.get("intervalo_min"):
@@ -597,8 +605,26 @@ def coletar(ensaio=False, so_fonte=None):
         k = max(1, round(roteiro["intervalo_min"] / ciclo_min))
         return ciclo_idx % k == roteiro.get("grupo", 0) % k
 
-    def passo_de(roteiro):
-        return roteiro.get("intervalo_min") if cadencia and roteiro.get("intervalo_min") else None
+    # Passo de cada leitura = minutos reais desde o início do ciclo anterior em que AQUELE conector
+    # foi lido (o timer dispara 1 min depois do fim do ciclo, então o intervalo varia: ~7–8 min nos DC,
+    # ~15–16 nos AC). Arredondado ao minuto, piso 5 e teto 2× o intervalo configurado; sem histórico
+    # (1ª leitura, reinício, buraco acima do teto) vale o intervalo configurado.
+    try:
+        ultimas = json.loads(Path(ULTIMA_ARQ).read_text(encoding="utf-8"))
+    except Exception:
+        ultimas = {}
+
+    def passo_de(roteiro, fonte, regra):
+        cfg_int = roteiro.get("intervalo_min") if cadencia and roteiro.get("intervalo_min") else ciclo_min
+        chave = f"{fonte}|{regra['local_id']}|{regra.get('conector', '*')}"
+        ant = ultimas.get(chave)
+        ultimas[chave] = inicio
+        if not ant:
+            return cfg_int
+        minutos = round((inicio - float(ant)) / 60)
+        if minutos > 2 * cfg_int:
+            return cfg_int
+        return max(5, minutos)
     max_falhas_seguidas = cfg.get("max_falhas_seguidas", 3)
     resumo = list(resumo_inicial)
 
@@ -732,7 +758,7 @@ def coletar(ensaio=False, so_fonte=None):
                         bruto = ler(r, itens)
                         vazias += bruto is None
                         linhas.append(linha(r["local_id"], r["local_nome"], r.get("conector", "*"), r.get("potencia_kw"),
-                                            bruto, r.get("lat"), r.get("lng"), passo_min=passo_de(roteiro)))
+                                            bruto, r.get("lat"), r.get("lng"), passo_min=passo_de(roteiro, alvo["fonte"], r)))
                     if vazias:
                         capturar_falha(f"{alvo['fonte']}_vazia_{roteiro['regras'][0]['local_nome']}")
                     for p in roteiro.get("depois", []):
@@ -787,6 +813,15 @@ def coletar(ensaio=False, so_fonte=None):
         try:
             rodizio_arq.parent.mkdir(exist_ok=True)
             rodizio_arq.write_text(json.dumps(rodizio), encoding="utf-8")
+        except Exception:
+            pass
+        try:
+            Path(ULTIMA_ARQ).parent.mkdir(exist_ok=True)
+            Path(ULTIMA_ARQ).write_text(json.dumps(ultimas), encoding="utf-8")
+        except Exception:
+            pass
+        try:
+            Path(CICLO_ARQ).write_text(json.dumps({"n": ciclo_idx + 1}), encoding="utf-8")
         except Exception:
             pass
     return "; ".join(resumo)
