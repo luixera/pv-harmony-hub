@@ -96,6 +96,20 @@ def main():
         descobrir_atm(w, h)
     if "cury" in PARTES:
         descobrir_cury(w, h)
+    if "atm_busca" in PARTES:
+        # como a busca da ATM se comporta neste aparelho (teclado com sugestão pode alterar o texto)
+        c.executar_passo({"tipo": "abrir", "pacote": ATM, "espera": 3})
+        esperar("Pesquisar", 40); time.sleep(2)
+        c.executar_passo({"tipo": "tocar_texto", "texto": "Pesquisar", "espera": 4})
+        capturar("busca_1_so_tocar")
+        nota("  IME: " + c.adb("shell", "settings get secure default_input_method").strip())
+        c.executar_passo({"tipo": "limpar_campo", "espera": 2})
+        capturar("busca_2_limpo")
+        c.entrada("keyevent", "62"); time.sleep(5)
+        capturar("busca_3_espaco_tecla")
+        c.executar_passo({"tipo": "limpar_campo", "espera": 2})
+        c.executar_passo({"tipo": "digitar", "texto": " ", "espera": 5})
+        capturar("busca_4_espaco_texto")
     if "ensaio" in PARTES:
         nota("ENSAIO: ciclo completo com o telas.json, sem gravar (cada passo sai na hora)")
         c.DEPURAR = True          # imprime cada passo com o tempo: mantém a conexão viva e mostra o caminho
