@@ -336,6 +336,12 @@ def executar_passo(p):
         entrada("swipe", *px(p["x1"], p["y1"]), *px(p["x2"], p["y2"]), str(p.get("ms", 400)))
     elif tipo == "voltar":
         entrada("keyevent", "4")
+    elif tipo == "esconder_teclado":   # teclado na tela: rolagem em cima dele vira digitação por deslize
+        try:
+            if "mInputShown=true" in adb("shell", "dumpsys input_method | grep mInputShown", timeout=15):
+                entrada("keyevent", "4")
+        except Exception:
+            pass
     elif tipo == "limpar_campo":   # apaga o que já estiver no campo focado (fim + 40 backspaces)
         entrada("keyevent", "123", *(["67"] * p.get("teclas", 40)))
     elif tipo == "digitar":      # texto num campo já focado (sem acento: o input text não aceita)

@@ -449,6 +449,10 @@
        "espera": 6
       },
       {
+       "tipo": "esconder_teclado",
+       "espera": 1
+      },
+      {
        "tipo": "escolher",
        "regex": ", 0\\.00 km, ",
        "se_casar": "reiniciar_bluestacks",
@@ -1913,6 +1917,10 @@
        "espera": 3
       },
       {
+       "tipo": "esconder_teclado",
+       "espera": 1
+      },
+      {
        "tipo": "esperar_texto",
        "texto": "Brazilian Convenience (Av. Fernando Costa) 7kW",
        "ate": 10,
@@ -1987,6 +1995,10 @@
        "tipo": "digitar",
        "texto": "Eko Business",
        "espera": 3
+      },
+      {
+       "tipo": "esconder_teclado",
+       "espera": 1
       },
       {
        "tipo": "esperar_texto",
@@ -2067,6 +2079,10 @@
        "espera": 3
       },
       {
+       "tipo": "esconder_teclado",
+       "espera": 1
+      },
+      {
        "tipo": "esperar_texto",
        "texto": "Max Potirendaba Totem 7,2kW - 1",
        "ate": 10,
@@ -2143,6 +2159,10 @@
        "tipo": "digitar",
        "texto": "Philadelpho",
        "espera": 3
+      },
+      {
+       "tipo": "esconder_teclado",
+       "espera": 1
       },
       {
        "tipo": "esperar_texto",
@@ -2223,6 +2243,10 @@
        "espera": 3
       },
       {
+       "tipo": "esconder_teclado",
+       "espera": 1
+      },
+      {
        "tipo": "esperar_texto",
        "texto": "Muffato Damha Totem 7,2kW - 1",
        "ate": 10,
@@ -2301,6 +2325,10 @@
        "espera": 3
       },
       {
+       "tipo": "esconder_teclado",
+       "espera": 1
+      },
+      {
        "tipo": "esperar_texto",
        "texto": "Eletroposto Muffato Damha 40kW",
        "ate": 10,
@@ -2366,6 +2394,10 @@
        "tipo": "digitar",
        "texto": "Muffato JK",
        "espera": 3
+      },
+      {
+       "tipo": "esconder_teclado",
+       "espera": 1
       },
       {
        "tipo": "esperar_texto",
@@ -2446,6 +2478,10 @@
        "espera": 3
       },
       {
+       "tipo": "esconder_teclado",
+       "espera": 1
+      },
+      {
        "tipo": "esperar_texto",
        "texto": "Georgina Café Conchego",
        "ate": 10,
@@ -2520,6 +2556,10 @@
        "tipo": "digitar",
        "texto": "Georgina BMW",
        "espera": 3
+      },
+      {
+       "tipo": "esconder_teclado",
+       "espera": 1
       },
       {
        "tipo": "esperar_texto",
@@ -2600,6 +2640,10 @@
        "espera": 3
       },
       {
+       "tipo": "esconder_teclado",
+       "espera": 1
+      },
+      {
        "tipo": "esperar_texto",
        "texto": "Max Eldorado Rio Preto Totem 7,2kw - 1",
        "ate": 10,
@@ -2678,6 +2722,10 @@
        "espera": 3
       },
       {
+       "tipo": "esconder_teclado",
+       "espera": 1
+      },
+      {
        "tipo": "esperar_texto",
        "texto": "SCP JK 7KW",
        "ate": 10,
@@ -2754,6 +2802,10 @@
        "espera": 3
       },
       {
+       "tipo": "esconder_teclado",
+       "espera": 1
+      },
+      {
        "tipo": "esperar_texto",
        "texto": "Brazilian Convenience Talhado 7kW",
        "ate": 10,
@@ -2828,6 +2880,10 @@
        "tipo": "digitar",
        "texto": "Antunes Lj",
        "espera": 3
+      },
+      {
+       "tipo": "esconder_teclado",
+       "espera": 1
       },
       {
        "tipo": "esperar_texto",
