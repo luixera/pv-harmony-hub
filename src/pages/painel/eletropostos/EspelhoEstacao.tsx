@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useWindowSize } from '@/hooks/useWindowSize';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { card, GOLD } from '../ConsoleSections';
@@ -73,12 +74,13 @@ function Miniatura({ caminho }: { caminho: string }) {
 
 function PainelEstacao({ e, ativo }: { e: Estacao; ativo: boolean }) {
   const { data: url } = useFoto(e.foto_atual, e.foto_atual_em);
+  const { isMobile } = useWindowSize();
   const agora = Date.now();
   const passos = [...e.passos].reverse();   // mais recente primeiro
   const falhas = e.passos.filter(p => p.situacao === 'falha').length;
   return (
-    <div style={{ ...card, display: 'grid', gridTemplateColumns: 'minmax(180px, 240px) 1fr', gap: 16, alignItems: 'start' }}>
-      <div>
+    <div style={{ ...card, display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'minmax(180px, 240px) 1fr', gap: 16, alignItems: 'start' }}>
+      <div style={isMobile ? { width: 'min(240px, 70%)', margin: '0 auto' } : undefined}>
         <div style={{ position: 'relative', background: '#0E0E14', borderRadius: 12, overflow: 'hidden', border: '1px solid #222', aspectRatio: '9 / 16' }}>
           {url
             ? <img src={url} alt="Tela atual do aparelho da estação" style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} />

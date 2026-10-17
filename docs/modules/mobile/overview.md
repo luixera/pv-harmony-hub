@@ -48,6 +48,8 @@ Dois casos concretos, hoje:
 Quem usa `ListaEmCartoes` hoje é **só** `src/pages/company/CompanyProjects.tsx`,
 onde não havia nada.
 
+O **console do master** (`/painel`) entrou em 17/10/2026, a pedido do usuário: no celular o menu lateral vira barra com gaveta (`PainelConsole.tsx`), o número dos `Kpi` encolhe com a tela (`clamp`) e a seção Eletropostos tem tratamento próprio (cartões escuros, não `ListaEmCartoes`, que é do tema claro). Ver [eletropostos](../eletropostos/overview.md).
+
 **Regra para a próxima tela:** antes de trocar um tratamento de celular por
 `ListaEmCartoes`, abra o que existe no celular e compare. Se o existente mostra
 mais ou navega melhor, deixe como está.

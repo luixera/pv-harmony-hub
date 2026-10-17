@@ -71,7 +71,7 @@ export function ConfiguracaoColeta({ locais }: { locais: Local[] }) {
         A estação escolhe a faixa pela maior potência do carregador e arredonda o intervalo a múltiplos do ciclo de 8 min; a Tupi (VPS) segue em 5 min.
         Só os locais das <b>cidades marcadas</b> são lidos; local ainda sem cadastro continua sendo lido.
       </p>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 14 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(320px, 100%), 1fr))', gap: 14 }}>
         <div style={card}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
             <b style={{ fontSize: 13, color: '#fff' }}>Faixas de potência</b>

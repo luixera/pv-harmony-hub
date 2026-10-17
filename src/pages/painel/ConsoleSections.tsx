@@ -29,7 +29,7 @@ export function Kpi({ icon: Icon, label, value, hint }: { icon: React.ElementTyp
   return (
     <div style={card}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#888', fontSize: 12 }}><Icon size={15} style={{ color: GOLD }} /> {label}</div>
-      <div style={{ fontSize: 24, fontWeight: 800, color: '#fff', marginTop: 8 }}>{value}</div>
+      <div style={{ fontSize: 'clamp(17px, 5.2vw, 24px)', fontWeight: 800, color: '#fff', marginTop: 8, lineHeight: 1.15, overflowWrap: 'anywhere' }}>{value}</div>
       {hint && <div style={{ fontSize: 11, color: '#777', marginTop: 2 }}>{hint}</div>}
     </div>
   );

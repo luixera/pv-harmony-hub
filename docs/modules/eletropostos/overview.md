@@ -54,6 +54,8 @@ e para o console em 15–16/10/2026.
   leitura por fonte e por local, no período escolhido; faixa das últimas 24 h).
 - **Premissas** — os 8 fatores da estimativa (DC/AC, preço e custo padrão).
 
+**No celular** (abaixo de 640 px, 17/10/2026): o console troca o menu lateral por uma barra no topo com gaveta; o período vira uma linha (Hoje / 7 / 30 dias + botão de datas + CSV); as abas rolam de lado; em Carregadores os filtros recolhem num botão "Filtros", a ordenação vira um seletor e a tabela vira **cartões** (escuros, no visual do console — o `ListaEmCartoes` de `src/mobile` é claro e não serve aqui); a fita de uso por hora vai para baixo do nome; o painel lateral ocupa a tela com cabeçalho fixo, números em 2 colunas, gráficos em versão compacta e cadastro em 1 coluna; Fontes (aba Coleta) vira lista. Desktop sem mudança.
+
 O **painel lateral** de um local traz KPIs, horas por dia, mapa de calor dia ×
 hora, conectores com linha do tempo de 48 h e o cadastro editável.
 

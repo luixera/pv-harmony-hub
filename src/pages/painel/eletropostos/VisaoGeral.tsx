@@ -1,4 +1,5 @@
 import { Clock, Zap, Gauge, Battery, DollarSign, MapPin } from 'lucide-react';
+import { useWindowSize } from '@/hooks/useWindowSize';
 import { card, grid, Kpi } from '../ConsoleSections';
 import { useDetalhe } from './consultas';
 import { faixa, fmt, mil, pct, perfilMedio } from './calculo';
@@ -9,6 +10,7 @@ import type { Local, Resumo, Status } from './tipos';
 interface Props { resumo: Resumo; de: string; ate: string; abrir: (id: string) => void; irParaColeta: () => void }
 
 export function VisaoGeral({ resumo, de, ate, abrir, irParaColeta }: Props) {
+  const { isMobile } = useWindowSize();
   const k = resumo.kpis;
   const mon = resumo.locais.filter(l => l.monitorado).sort((a, b) => (b.ocupacao ?? -1) - (a.ocupacao ?? -1));
   if (!mon.length) {
@@ -36,36 +38,36 @@ export function VisaoGeral({ resumo, de, ate, abrir, irParaColeta }: Props) {
         {agora.map(s => <span key={s} style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}>{k.agora[s]} <St s={s} /></span>)}
         <span style={mudo}>· Cobertura da coleta no período: {pct(k.cobertura)}.</span>
       </p>
-      <div style={{ ...grid(170), marginBottom: 22 }}>
+      <div style={{ ...(isMobile ? { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 } : grid(170)), marginBottom: 22 }}>
         <Kpi icon={Clock} label="Horas carregando" value={`${fmt(k.horas_ocupado, 0)} h`} />
         <Kpi icon={Zap} label="Recargas detectadas" value={fmt(k.sessoes, 0)} />
         <Kpi icon={Battery} label="Energia estimada" value={`${faixa(k.kwh_min, k.kwh_max, v => fmt(v / 1000, 1))} MWh`} hint="faixa, não medição" />
         <Kpi icon={DollarSign} label="Receita estimada" value={`R$ ${faixa(k.receita_min, k.receita_max, mil)} mil`} hint="preço do local ou padrão" />
-        <Kpi icon={MapPin} label="Locais monitorados" value={String(k.monitorados)} hint={`de ${k.locais_dc} rápidos`} />
+        <Kpi icon={MapPin} label="Locais monitorados" value={String(k.monitorados)} hint={`de ${k.locais} cadastrados`} />
         <Kpi icon={Gauge} label="Ocupação média" value={pct(k.ocupacao_media)} />
       </div>
 
       <h3 style={h3}>Uso por hora do dia</h3>
       <p style={{ ...sub, marginBottom: 10 }}>Altura e cor = fração do tempo em que o local esteve carregando naquela hora, média do período. Clique para ver o detalhe.</p>
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(180px,260px) 1fr 92px', gap: 14, padding: '0 14px 6px', color: '#777', fontSize: 11 }}>
+      <div style={{ display: isMobile ? 'none' : 'grid', gridTemplateColumns: 'minmax(180px,260px) 1fr 92px', gap: 14, padding: '0 14px 6px', color: '#777', fontSize: 11 }}>
         <div />
         <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>0h</span><span>6h</span><span>12h</span><span>18h</span><span>24h</span></div>
         <div style={{ textAlign: 'right' }}>ocupação</div>
       </div>
       <div style={{ ...card, padding: 0 }}>
-        {mon.map((l, i) => <FitaLocal key={l.id} local={l} de={de} ate={ate} primeira={i === 0} abrir={abrir} />)}
+        {mon.map((l, i) => <FitaLocal key={l.id} local={l} de={de} ate={ate} primeira={i === 0} abrir={abrir} celular={isMobile} />)}
       </div>
       {mon.length === 0 && <div style={vazio}>Sem locais monitorados.</div>}
     </div>
   );
 }
 
-function FitaLocal({ local: l, de, ate, primeira, abrir }: { local: Local; de: string; ate: string; primeira: boolean; abrir: (id: string) => void }) {
+function FitaLocal({ local: l, de, ate, primeira, abrir, celular }: { local: Local; de: string; ate: string; primeira: boolean; abrir: (id: string) => void; celular?: boolean }) {
   const { data } = useDetalhe(l.id, de, ate);
   const perfil = perfilMedio(data?.perfil);
   return (
     <div role="button" tabIndex={0} onClick={() => abrir(l.id)} onKeyDown={e => e.key === 'Enter' && abrir(l.id)}
-      style={{ display: 'grid', gridTemplateColumns: 'minmax(180px,260px) 1fr 92px', gap: 14, alignItems: 'center', padding: '10px 14px',
+      style={{ display: 'grid', gridTemplateColumns: celular ? '1fr auto' : 'minmax(180px,260px) 1fr 92px', gap: celular ? '8px 12px' : 14, alignItems: 'center', padding: celular ? '12px 12px' : '10px 14px',
         borderTop: primeira ? 'none' : '1px solid #1a1a22', cursor: 'pointer' }}>
       <div style={{ fontWeight: 600, lineHeight: 1.25, color: '#eee', fontSize: 13 }}>
         {l.nome}
@@ -73,11 +75,17 @@ function FitaLocal({ local: l, de, ate, primeira, abrir }: { local: Local; de: s
           {l.operadora || 'Operadora não informada'} · {l.conectores_monitorados} conector{l.conectores_monitorados > 1 ? 'es' : ''} · {fmt(l.potencia_kw, 0)} kW
         </small>
       </div>
-      <Fita perfil={perfil} />
+      {!celular && <Fita perfil={perfil} />}
       <div style={{ textAlign: 'right', fontWeight: 700, fontSize: 16, color: '#fff' }}>
         {pct(l.ocupacao)}
         <small style={{ display: 'block', fontSize: 11, color: '#777', fontWeight: 400 }}>{fmt(l.horas_ocupado_dia / Math.max(1, l.conectores_monitorados), 1)} h/dia/conector</small>
       </div>
+      {celular && (
+        <div style={{ gridColumn: '1 / -1' }}>
+          <Fita perfil={perfil} />
+          <div style={{ display: 'flex', justifyContent: 'space-between', color: '#666', fontSize: 10, marginTop: 2 }}><span>0h</span><span>6h</span><span>12h</span><span>18h</span><span>24h</span></div>
+        </div>
+      )}
     </div>
   );
 }

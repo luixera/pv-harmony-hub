@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react';
-import { Download } from 'lucide-react';
+import { useWindowSize } from '@/hooks/useWindowSize';
+import { CalendarDays, Download } from 'lucide-react';
 import { GOLD, Loading, SectionTitle } from './ConsoleSections';
 import { useResumo } from './eletropostos/consultas';
 import { csvDoResumo, hojeBrasilia, menosDias } from './eletropostos/calculo';
@@ -29,6 +30,8 @@ const CHAVE_ABA = 'painel.eletropostos.aba';
 
 export function EletropostosSection() {
   const hoje = hojeBrasilia();
+  const { isMobile } = useWindowSize();
+  const [datasAbertas, setDatasAbertas] = useState(false);
   const [aba, setAba] = useState<Aba>(() => { try { return (sessionStorage.getItem(CHAVE_ABA) as Aba) || 'geral'; } catch { return 'geral'; } });
   const [de, setDe] = useState(menosDias(hoje, 6));
   const [ate, setAte] = useState(hoje);
@@ -52,6 +55,39 @@ export function EletropostosSection() {
 
   return (
     <div style={{ maxWidth: 1180, margin: '0 auto' }}>
+      {isMobile ? (
+        /* Celular: título + exportar na mesma linha; período em duas linhas que cabem na tela */
+        <div style={{ marginBottom: comPeriodo ? 12 : 0 }}>
+          {comPeriodo && (
+            <>
+              <div style={{ display: 'flex', gap: 6 }}>
+              <div role="group" aria-label="Período" style={{ flex: 1, display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 8, overflow: 'hidden' }}>
+                {[[1, 'Hoje'], [7, '7 dias'], [30, '30 dias']].map(([n, r]) => (
+                  <button key={n} onClick={() => atalho(n as number)} aria-pressed={atalhoAtivo(n as number)}
+                    style={{ all: 'unset', cursor: 'pointer', textAlign: 'center', padding: '10px 0', fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap',
+                      background: atalhoAtivo(n as number) ? GOLD : '#16161F', color: atalhoAtivo(n as number) ? '#1A1A1A' : '#bbb' }}>{r}</button>
+                ))}
+              </div>
+              <button type="button" onClick={() => setDatasAbertas(v => !v)} aria-label="Escolher datas" aria-expanded={datasAbertas}
+                style={{ ...botao, width: 42, padding: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                  borderColor: datasAbertas || !([1, 7, 30].some(n => atalhoAtivo(n))) ? GOLD : botao.borderColor,
+                  color: datasAbertas || !([1, 7, 30].some(n => atalhoAtivo(n))) ? GOLD : botao.color }}><CalendarDays size={16} /></button>
+              <button type="button" onClick={exportar} disabled={!resumo} aria-label="Exportar CSV"
+                style={{ ...botao, width: 42, padding: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Download size={16} /></button>
+              </div>
+              {(datasAbertas || ![1, 7, 30].some(n => atalhoAtivo(n))) && (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', gap: 6, marginTop: 8 }}>
+                <input type="date" value={de} max={ate} onChange={e => e.target.value && setDe(e.target.value)} aria-label="Início"
+                  style={{ ...input, width: '100%', minWidth: 0, minHeight: 40, fontSize: 14 }} />
+                <span style={{ color: '#777', fontSize: 12 }}>até</span>
+                <input type="date" value={ate} min={de} max={hoje} onChange={e => e.target.value && setAte(e.target.value)} aria-label="Fim"
+                  style={{ ...input, width: '100%', minWidth: 0, minHeight: 40, fontSize: 14 }} />
+              </div>
+              )}
+            </>
+          )}
+        </div>
+      ) : (
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
         <SectionTitle>Eletropostos</SectionTitle>
         {comPeriodo && (
@@ -70,11 +106,13 @@ export function EletropostosSection() {
           </div>
         )}
       </div>
+      )}
 
-      <nav aria-label="Abas" style={{ display: 'flex', gap: 4, borderBottom: '1px solid rgba(255,255,255,0.08)', marginBottom: 18 }}>
+      <nav aria-label="Abas" style={{ display: 'flex', gap: 4, borderBottom: '1px solid rgba(255,255,255,0.08)', marginBottom: isMobile ? 14 : 18,
+        overflowX: 'auto', scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch', margin: isMobile ? '0 -12px 14px' : undefined, padding: isMobile ? '0 12px' : undefined }}>
         {ABAS.map(a => (
           <button key={a.key} onClick={() => irPara(a.key)} aria-current={aba === a.key ? 'page' : undefined}
-            style={{ all: 'unset', cursor: 'pointer', padding: '8px 14px', fontSize: 13, fontWeight: 600,
+            style={{ all: 'unset', cursor: 'pointer', padding: isMobile ? '10px 12px' : '8px 14px', fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', flex: 'none',
               color: aba === a.key ? GOLD : '#999', borderBottom: aba === a.key ? `2px solid ${GOLD}` : '2px solid transparent', marginBottom: -1 }}>{a.label}</button>
         ))}
       </nav>

@@ -30,7 +30,7 @@ export function Premissas({ premissas }: { premissas: P }) {
     <div>
       <p style={sub}>Valores usados para estimar energia e receita a partir do tempo de uso. O tempo carregando é medido; energia e receita são estimadas e aparecem sempre como faixa.</p>
       <form onSubmit={submeter} style={{ ...card, maxWidth: 760 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '12px 16px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(300px, 100%), 1fr))', gap: '12px 16px' }}>
           {CAMPOS.map(c => (
             <label key={c.k} style={rotulo}>
               {c.rotulo}

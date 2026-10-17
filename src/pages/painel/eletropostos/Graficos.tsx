@@ -31,12 +31,12 @@ export function Fita({ perfil }: { perfil: (number | null)[] }) {
   );
 }
 
-export function BarrasDia({ diario }: { diario: DiaSerie[] }) {
+export function BarrasDia({ diario, compacto }: { diario: DiaSerie[]; compacto?: boolean }) {
   if (!diario.length) return null;
-  const w = 680, h = 150, pad = 26, bw = (w - pad) / diario.length;
+  const w = compacto ? 360 : 680, h = compacto ? 130 : 150, pad = 26, bw = (w - pad) / diario.length;
   const max = Math.max(1, ...diario.map(d => d.horas_ocupado));
   const y = (v: number) => h - 20 - (v / max) * (h - 34);
-  const passo = Math.ceil(diario.length / 14);
+  const passo = Math.ceil(diario.length / (compacto ? 7 : 14));
   return (
     <svg viewBox={`0 0 ${w} ${h}`} style={{ width: '100%', height: 'auto' }} role="img" aria-label="Horas carregando por dia">
       <line x1={pad} x2={w} y1={h - 20} y2={h - 20} stroke="#2a2a35" />
@@ -48,8 +48,8 @@ export function BarrasDia({ diario }: { diario: DiaSerie[] }) {
             <rect x={x + bw * 0.3} y={y(d.horas_ocupado)} width={bw * 0.4} height={Math.max(0, alt)} rx={3} fill={GOLD}>
               <title>{dia.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' })}: {fmt(d.horas_ocupado, 1)} h carregando · {pct(d.ocupacao)} · receita {faixa(d.receita_min, d.receita_max, brl)}</title>
             </rect>
-            {diario.length <= 14 && d.horas_ocupado > 0 && <text x={x + bw / 2} y={y(d.horas_ocupado) - 4} textAnchor="middle" fill="#aaa" fontSize={11}>{fmt(d.horas_ocupado, 1)}</text>}
-            {(diario.length <= 14 || i % passo === 0) && <text x={x + bw / 2} y={h - 5} textAnchor="middle" fill="#888" fontSize={11}>{dia.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}</text>}
+            {diario.length <= (compacto ? 7 : 14) && d.horas_ocupado > 0 && <text x={x + bw / 2} y={y(d.horas_ocupado) - 4} textAnchor="middle" fill="#aaa" fontSize={11}>{fmt(d.horas_ocupado, 1)}</text>}
+            {(diario.length <= (compacto ? 7 : 14) || i % passo === 0) && <text x={x + bw / 2} y={h - 5} textAnchor="middle" fill="#888" fontSize={11}>{dia.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}</text>}
           </g>
         );
       })}
@@ -58,8 +58,8 @@ export function BarrasDia({ diario }: { diario: DiaSerie[] }) {
 }
 
 const DIAS = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
-export function MapaCalor({ perfil }: { perfil: (number | null)[][] }) {
-  const cw = 25, ch = 20, x0 = 36, y0 = 4;
+export function MapaCalor({ perfil, compacto }: { perfil: (number | null)[][]; compacto?: boolean }) {
+  const cw = compacto ? 13 : 25, ch = compacto ? 16 : 20, x0 = compacto ? 30 : 36, y0 = 4;
   return (
     <svg viewBox={`0 0 ${x0 + 24 * cw} ${y0 + 7 * ch + 18}`} style={{ width: '100%', height: 'auto' }} role="img" aria-label="Ocupação por dia da semana e hora">
       {perfil.map((lin, w) => (
@@ -73,15 +73,15 @@ export function MapaCalor({ perfil }: { perfil: (number | null)[][] }) {
           ))}
         </g>
       ))}
-      {[0, 6, 12, 18, 23].map(h => <text key={h} x={x0 + h * cw + cw / 2} y={y0 + 7 * ch + 14} textAnchor="middle" fill="#888" fontSize={11}>{h}h</text>)}
+      {[0, 6, 12, 18, 23].map(h => <text key={h} x={h === 23 ? x0 + 24 * cw : x0 + h * cw + cw / 2} y={y0 + 7 * ch + 14} textAnchor={h === 23 ? "end" : "middle"} fill="#888" fontSize={11}>{h}h</text>)}
     </svg>
   );
 }
 
 /** Últimas 48 h de um conector: barra cheia = carregando, traço = fora/sem leitura. */
-export function LinhaTempo({ pontos }: { pontos: [string, Status][] | undefined }) {
+export function LinhaTempo({ pontos, compacto }: { pontos: [string, Status][] | undefined; compacto?: boolean }) {
   if (!pontos?.length) return null;
-  const fim = new Date(pontos[pontos.length - 1][0]).getTime(), ini = fim - 48 * 3600e3, w = 680, h = 22;
+  const fim = new Date(pontos[pontos.length - 1][0]).getTime(), ini = fim - 48 * 3600e3, w = compacto ? 360 : 680, h = compacto ? 18 : 22;
   const x = (t: string) => (new Date(t).getTime() - ini) / (fim - ini) * w;
   const pts = pontos.filter(r => new Date(r[0]).getTime() >= ini && r[1] !== 'livre');
   return (

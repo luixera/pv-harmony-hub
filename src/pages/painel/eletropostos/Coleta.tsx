@@ -1,4 +1,5 @@
 import { toast } from 'sonner';
+import { useWindowSize } from '@/hooks/useWindowSize';
 import { card, Loading } from '../ConsoleSections';
 import { useColeta, useVincular } from './consultas';
 import { atrasada, pct, relativo } from './calculo';
@@ -11,6 +12,7 @@ import { EspelhoEstacao } from './EspelhoEstacao';
 export function Coleta({ resumo, de, ate }: { resumo: Resumo; de: string; ate: string }) {
   const { data: c, isLoading } = useColeta();
   const vincular = useVincular();
+  const { isMobile } = useWindowSize();
   if (isLoading || !c) return <Loading />;
   const agora = new Date(c.agora).getTime();
   const nv = resumo.nao_vinculados;
@@ -45,7 +47,20 @@ export function Coleta({ resumo, de, ate }: { resumo: Resumo; de: string; ate: s
         : 'O coletor da Tupi roda na VPS a cada 5 minutos; a estação local (BlueStacks) manda as leituras dos apps.'}</p>
 
       <h3 style={h3}>Fontes</h3>
-      {tabela(['Fonte', 'Última leitura com sucesso', 'Varreduras', 'Com sucesso', 'Situação'],
+      {isMobile ? (
+        <div style={{ ...card, padding: '4px 14px' }}>
+          {c.fontes.length === 0 && <p style={{ ...mudo, fontSize: 13 }}>Nenhuma varredura registrada.</p>}
+          {c.fontes.map((f, i) => (
+            <div key={f.fonte} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, padding: '10px 0', color: '#ddd', borderTop: i ? '1px solid #1a1a22' : 'none' }}>
+              <span style={{ minWidth: 0 }}>
+                <b style={{ color: '#fff', fontSize: 14 }}>{f.fonte}</b>
+                <span style={{ ...mudo, display: 'block', fontSize: 12 }}>último ok {relativo(f.ultima_ok, agora)} · {pct(f.total ? f.oks / f.total : null)} de {f.total} ok</span>
+              </span>
+              {atrasada(f.ultima_ok, agora) ? situacao(false, 'Sem leitura recente') : situacao(true, 'Em dia')}
+            </div>
+          ))}
+        </div>
+      ) : tabela(['Fonte', 'Última leitura com sucesso', 'Varreduras', 'Com sucesso', 'Situação'],
         c.fontes.map(f => [<b key="f">{f.fonte}</b>, relativo(f.ultima_ok, agora), String(f.total), pct(f.total ? f.oks / f.total : null),
           atrasada(f.ultima_ok, agora) ? situacao(false, 'Sem leitura recente') : situacao(true, 'Em dia')]),
         i => c.fontes[i].fonte, 'Nenhuma varredura registrada.')}

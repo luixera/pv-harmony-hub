@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useWindowSize } from '@/hooks/useWindowSize';
 import { X } from 'lucide-react';
 import { toast } from 'sonner';
 import { card, Loading } from '../ConsoleSections';
@@ -15,6 +16,7 @@ const NUMERICOS: (keyof Cadastro)[] = ['potencia_kw', 'conectores', 'preco_kwh',
 /** Gaveta à direita com o detalhe do local: métricas, gráficos, conectores e o cadastro editável. */
 export function PainelLateral({ id, de, ate, premissas: P, fechar, irParaColeta }: Props) {
   const { data: d, isLoading } = useDetalhe(id, de, ate);
+  const { isMobile } = useWindowSize();
   const salvar = useSalvarLocal();
   const [form, setForm] = useState<Record<string, string>>({});
   useEffect(() => {
@@ -55,23 +57,24 @@ export function PainelLateral({ id, de, ate, premissas: P, fechar, irParaColeta 
   return (
     <aside aria-label="Detalhe do local" style={{
       position: 'fixed', top: 0, right: 0, bottom: 0, width: 'min(760px, 100%)', background: '#0E0E14',
-      borderLeft: '1px solid rgba(255,255,255,0.08)', boxShadow: '-20px 0 40px rgba(0,0,0,.45)', overflow: 'auto', zIndex: 1000, padding: '22px 26px 60px',
+      borderLeft: '1px solid rgba(255,255,255,0.08)', boxShadow: '-20px 0 40px rgba(0,0,0,.45)', overflow: 'auto', zIndex: 1000, padding: isMobile ? '14px 14px 48px' : '22px 26px 60px',
     }}>
       {isLoading || !d || !l ? <Loading /> : (
         <>
-          <header style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', marginBottom: 16 }}>
+          <header style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', marginBottom: 16,
+            ...(isMobile ? { position: 'sticky', top: -14, background: '#0E0E14', zIndex: 2, padding: '14px 0 10px', margin: '-14px 0 12px' } : {}) }}>
             <div>
-              <h2 style={{ fontSize: 22, fontWeight: 800, color: '#fff', margin: 0 }}>{l.nome}</h2>
+              <h2 style={{ fontSize: isMobile ? 18 : 22, fontWeight: 800, color: '#fff', margin: 0 }}>{l.nome}</h2>
               <p style={{ margin: '4px 0 0', color: '#999', fontSize: 13 }}>
                 {[l.operadora, l.cidade, l.tipo && `${l.tipo} ${l.potencia_kw ? fmt(l.potencia_kw, 0) + ' kW' : ''}`].filter(Boolean).join(' · ')}
               </p>
             </div>
-            <button onClick={fechar} aria-label="Fechar" autoFocus style={{ all: 'unset', cursor: 'pointer', padding: 6, borderRadius: 6, color: '#bbb' }}><X size={18} /></button>
+            <button onClick={fechar} aria-label="Fechar" autoFocus style={{ all: 'unset', cursor: 'pointer', padding: isMobile ? 10 : 6, borderRadius: 8, color: '#bbb', background: isMobile ? 'rgba(255,255,255,0.06)' : 'transparent', flex: 'none' }}><X size={18} /></button>
           </header>
 
           {l.monitorado ? (
             <>
-              <dl style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 1, background: 'rgba(255,255,255,0.06)', borderRadius: 12, overflow: 'hidden', margin: '0 0 16px' }}>
+              <dl style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(3, 1fr)', gap: 1, background: 'rgba(255,255,255,0.06)', borderRadius: 12, overflow: 'hidden', margin: '0 0 16px' }}>
                 {[
                   ['Ocupação', pct(l.ocupacao), ''],
                   ['Carregando por dia', `${fmt(l.horas_ocupado_dia / Math.max(1, l.conectores_monitorados), 1)} h`, 'por conector'],
@@ -82,15 +85,15 @@ export function PainelLateral({ id, de, ate, premissas: P, fechar, irParaColeta 
                 ].map(([t, v, s]) => (
                   <div key={t} style={{ background: '#16161F', padding: '12px 14px' }}>
                     <dt style={{ color: '#888', fontSize: 12 }}>{t}</dt>
-                    <dd style={{ margin: '2px 0 0', fontSize: 20, fontWeight: 700, color: '#fff' }}>{v} {s && <small style={{ fontSize: 11, color: '#777', fontWeight: 400 }}>{s}</small>}</dd>
+                    <dd style={{ margin: '2px 0 0', fontSize: isMobile ? 17 : 20, fontWeight: 700, color: '#fff' }}>{v} {s && <small style={{ fontSize: 11, color: '#777', fontWeight: 400 }}>{s}</small>}</dd>
                   </div>
                 ))}
               </dl>
-              <div style={{ ...card, marginBottom: 14 }}><h3 style={h3}>Horas carregando por dia</h3><BarrasDia diario={d.diario} /></div>
+              <div style={{ ...card, marginBottom: 14 }}><h3 style={h3}>Horas carregando por dia</h3><BarrasDia diario={d.diario} compacto={isMobile} /></div>
               <div style={{ ...card, marginBottom: 14 }}>
                 <h3 style={h3}>Quando ele é usado</h3>
                 <p style={{ ...mudo, fontSize: 12, margin: '-6px 0 10px' }}>Fração do tempo carregando, por dia da semana e hora (média do período).</p>
-                <MapaCalor perfil={d.perfil} />
+                <MapaCalor perfil={d.perfil} compacto={isMobile} />
               </div>
               <div style={{ ...card, marginBottom: 14 }}>
                 <h3 style={h3}>Conectores</h3>
@@ -100,7 +103,7 @@ export function PainelLateral({ id, de, ate, premissas: P, fechar, irParaColeta 
                     <div><St s={c.m.ultimo_status} /> <span style={mudo}>{c.m.ultimo_bruto || ''}</span></div>
                     <div style={{ ...mudo, fontSize: 12 }}>{pct(c.m.ocupacao)} ocupado · {fmt(c.m.horas_ocupado, 1)} h · {c.m.sessoes} recargas · {fmt(c.m.horas_fora, 1)} h fora de serviço · cobertura {pct(c.m.cobertura)}</div>
                     <div />
-                    <div style={{ gridColumn: '1 / -1' }}><LinhaTempo pontos={d.linha_do_tempo[c.nome]} /></div>
+                    <div style={{ gridColumn: '1 / -1' }}><LinhaTempo pontos={d.linha_do_tempo[c.nome]} compacto={isMobile} /></div>
                   </div>
                 ))}
               </div>
@@ -114,7 +117,7 @@ export function PainelLateral({ id, de, ate, premissas: P, fechar, irParaColeta 
 
           <form onSubmit={submeter} style={card}>
             <h3 style={h3}>Cadastro</h3>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 14px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '10px 14px' }}>
               <div style={{ gridColumn: '1 / -1' }}>{campo('nome', 'Nome')}</div>
               <div style={{ gridColumn: '1 / -1' }}>{campo('endereco', 'Endereço')}</div>
               {campo('cidade', 'Cidade')}{campo('operadora', 'Operadora')}
