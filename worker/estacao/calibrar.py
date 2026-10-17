@@ -99,6 +99,7 @@ def main():
     if "ensaio" in PARTES:
         nota("ENSAIO: ciclo completo com o telas.json, sem gravar (cada passo sai na hora)")
         c.DEPURAR = True          # imprime cada passo com o tempo: mantém a conexão viva e mostra o caminho
+        c.DIR_FALHAS = SAIDA      # tela de cada falha e de cada leitura vazia vai para o artefato
         r = c.coletar(ensaio=True)
         nota(f"ENSAIO resumo: {r}")
 

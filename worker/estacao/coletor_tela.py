@@ -538,6 +538,23 @@ def _espelho(*args, **kw):
 
 
 ESPELHO_DESLIGADO = False
+DIR_FALHAS = None        # calibração/ensaio: pasta onde guardar a tela de cada falha (xml, png, txt)
+_n_falha_capt = [0]
+
+
+def capturar_falha(rotulo):
+    """Guarda a tela do momento (só quando DIR_FALHAS está definido). Nunca levanta."""
+    if not DIR_FALHAS:
+        return
+    try:
+        _n_falha_capt[0] += 1
+        base = Path(DIR_FALHAS) / f"falha_{_n_falha_capt[0]:02d}_{re.sub(r'[^A-Za-z0-9]+', '_', rotulo)[:40]}"
+        xml = tela_xml()
+        base.with_suffix(".xml").write_text(xml, encoding="utf-8")
+        base.with_suffix(".txt").write_text("\n".join(f"{t}\t{b}" for t, b in textos(xml)), encoding="utf-8")
+        base.with_suffix(".png").write_bytes(adb("exec-out", "screencap", "-p", binario=True))
+    except Exception:
+        pass
 
 
 class _RepetirAlvo(Exception):
@@ -701,10 +718,14 @@ def coletar(ensaio=False, so_fonte=None):
                             continue
                         executar_passo(p)
                     itens = tela_atual() if roteiro.get("regras") else []
+                    vazias = 0
                     for r in roteiro.get("regras", []):
                         bruto = ler(r, itens)
+                        vazias += bruto is None
                         linhas.append(linha(r["local_id"], r["local_nome"], r.get("conector", "*"), r.get("potencia_kw"),
                                             bruto, r.get("lat"), r.get("lng"), passo_min=passo_de(roteiro)))
+                    if vazias:
+                        capturar_falha(f"{alvo['fonte']}_vazia_{roteiro['regras'][0]['local_nome']}")
                     for p in roteiro.get("depois", []):
                         executar_passo(p)
                     if roteiro.get("regras"):
@@ -717,6 +738,7 @@ def coletar(ensaio=False, so_fonte=None):
                     falhas.append(f"{roteiro.get('nome', '?')}: {repr(e)[:80]}")
                     falhas_local.append({"nome": roteiro["regras"][0]["local_nome"], "erro": repr(e)[:200]})
                     _espelho(f"falha em {roteiro['regras'][0]['local_nome'].strip()}", "falha", alvo["fonte"], repr(e)[:200])
+                    capturar_falha(f"{alvo['fonte']}_{roteiro['regras'][0]['local_nome']}")
                     seguidas += 1
                     print(f"  roteiro falhou: {falhas[-1]}", flush=True)
                     CACHE_LISTA = ""
