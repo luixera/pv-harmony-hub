@@ -327,6 +327,8 @@ def executar_passo(p):
         CACHE_LISTA = ""; XML_VALIDO = False
         if p.get("activity"):   # reinício quente: só a activity, com a pilha limpa (processo continua carregado)
             adb("shell", "am", "start", "--activity-clear-task", "-n", f"{p['pacote']}/{p['activity']}")
+        elif p.get("quente"):   # traz para a frente onde parou (sem os avisos de abertura); se o processo morreu, abre frio
+            adb("shell", "monkey", "-p", p["pacote"], "-c", "android.intent.category.LAUNCHER", "1")
         else:                   # frio: mata o app e abre de novo
             adb("shell", "am", "force-stop", p["pacote"]); time.sleep(1)
             adb("shell", "monkey", "-p", p["pacote"], "-c", "android.intent.category.LAUNCHER", "1")
@@ -334,8 +336,9 @@ def executar_passo(p):
         entrada("tap", *px(p["x"], p["y"]))
     elif tipo == "deslizar":
         entrada("swipe", *px(p["x1"], p["y1"]), *px(p["x2"], p["y2"]), str(p.get("ms", 400)))
-    elif tipo == "voltar":
-        entrada("keyevent", "4")
+    elif tipo == "voltar":   # com "se_texto": só volta quando o texto está na tela (não sai do app sem querer)
+        if not p.get("se_texto") or any(p["se_texto"].lower() in t.lower() for t, _ in tela_atual()):
+            entrada("keyevent", "4")
     elif tipo == "passar_avisos":   # avisos de abertura (notificação, convite de cadastro…) até o texto final aparecer
         # p["avisos"] = [[trecho do aviso, [botões possíveis]], ...]; p["ate_texto"] = texto da tela pronta
         fim = time.time() + p.get("ate", 30)
@@ -641,8 +644,32 @@ def coletar(ensaio=False, so_fonte=None):
     except Exception:
         ultimas = {}
 
+    # Rodízio parcial dos carregadores pequenos (AC de 7 kW; pedido do usuário em 17/10/2026: o foco são
+    # os grandes, lidos o mais perto possível de 8 min). Os grandes rodam sempre e primeiro; a cada ciclo
+    # UM app (o que tem o pequeno mais atrasado) lê seus pequenos vencidos — sem leitura há "intervalo"
+    # (faixa do GD, padrão 60 min) — do mais antigo para o mais novo, só dentro de segundos_por_ciclo.
+    # Pequeno pulado não é falha: espera a vez dele.
+    peq_cfg = cfg.get("rodizio_pequenos") or {}
+    peq_ativo = bool(peq_cfg) and peq_cfg.get("ativo", True)
+    peq_kw = float(peq_cfg.get("ate_kw", 22))
+    peq_s = float(peq_cfg.get("segundos_por_ciclo", 60))
+
+    def pequeno(r):
+        return peq_ativo and bool(r.get("regras")) and max((x.get("potencia_kw") or 7.2) for x in r["regras"]) <= peq_kw
+
+    def ultima_de(fonte, r):
+        return min((float(ultimas.get(f"{fonte}|{x['local_id']}|{x.get('conector', '*')}") or 0) for x in r["regras"]), default=0)
+
+    def intervalo_peq(r):
+        return int(r.get("intervalo_min") or peq_cfg.get("intervalo_min", 60))   # a faixa do GD manda
+
+    def devido(fonte, r):   # 90 s de folga: o início do ciclo varia alguns segundos
+        return time.time() - ultima_de(fonte, r) >= intervalo_peq(r) * 60 - 90
+
     def passo_de(roteiro, fonte, regra):
         cfg_int = roteiro.get("intervalo_min") if cadencia and roteiro.get("intervalo_min") else ciclo_min
+        if roteiro.get("_rodizio"):
+            cfg_int = intervalo_peq(roteiro)
         chave = f"{fonte}|{regra['local_id']}|{regra.get('conector', '*')}"
         ant = ultimas.get(chave)
         ultimas[chave] = inicio
@@ -716,6 +743,26 @@ def coletar(ensaio=False, so_fonte=None):
         rodizio = json.loads(rodizio_arq.read_text(encoding="utf-8"))
     except Exception:
         rodizio = {}
+    # app do rodízio dos pequenos neste ciclo: o que tem o pequeno vencido mais antigo
+    escolhido, mais_velho = None, None
+    for a in alvos:
+        for r in a.get("roteiros", []):
+            if pequeno(r) and not r.get("fora_do_monitoramento") and devido(a["fonte"], r):
+                u = ultima_de(a["fonte"], r)
+                if mais_velho is None or u < mais_velho:
+                    escolhido, mais_velho = a["fonte"], u
+    gasto_peq = 0.0
+    if peq_ativo:
+        resumo.append(f"rodízio dos pequenos: {escolhido or 'nenhum vencido'}")
+
+    def com_pequenos(lista, fonte):
+        """Grandes na ordem do telas.json; pequenos (só no app escolhido) no fim, do mais atrasado ao mais novo."""
+        grandes = [r for r in lista if not pequeno(r)]
+        if fonte != escolhido:
+            return grandes, len(lista) - len(grandes)
+        peqs = sorted((dict(r, _rodizio=True) for r in lista if pequeno(r)), key=lambda r: ultima_de(fonte, r))
+        return grandes + peqs, 0
+
     for alvo in alvos:
         t0 = time.time()
         _espelho(f"abrindo {alvo.get('app', alvo['fonte'])}", "info", alvo["fonte"], foto=True)
@@ -724,8 +771,9 @@ def coletar(ensaio=False, so_fonte=None):
         if cfg.get("tela_ref"):
             globals()["TELA_REF"] = tuple(cfg["tela_ref"])
         # roteiros fixos primeiro; os opcionais em rodízio (começando de onde o ciclo anterior parou)
-        fixos = [r for r in alvo["roteiros"] if not r.get("opcional")]
-        opcionais = [r for r in alvo["roteiros"] if r.get("opcional")]
+        base, em_espera = com_pequenos(alvo["roteiros"], alvo["fonte"])
+        fixos = [r for r in base if not r.get("opcional") or r.get("_rodizio")]
+        opcionais = [r for r in base if r.get("opcional") and not r.get("_rodizio")]
         k = rodizio.get(alvo["fonte"], 0) % len(opcionais) if opcionais else 0
         roteiros = fixos + opcionais[k:] + opcionais[:k]
         lidos_opc = 0
@@ -741,21 +789,28 @@ def coletar(ensaio=False, so_fonte=None):
 
             def nao_lidos(motivo, desde):
                 for r in roteiros[desde:]:
-                    if r.get("regras") and not r.get("opcional") and na_vez(r) and not r.get("fora_do_monitoramento"):
+                    if r.get("regras") and not r.get("opcional") and not r.get("_rodizio") and na_vez(r) and not r.get("fora_do_monitoramento"):
                         falhas_local.append({"nome": r["regras"][0]["local_nome"], "erro": motivo[:200]})
             i = 0
             while i < len(roteiros):
                 roteiro = roteiros[i]; i += 1
-                if roteiro.get("regras") and (roteiro.get("fora_do_monitoramento") or not na_vez(roteiro)):
+                t_peq = None
+                if roteiro.get("regras") and (roteiro.get("fora_do_monitoramento") or (not roteiro.get("_rodizio") and not na_vez(roteiro))):
                     fora_da_vez += 1
                     continue
-                if roteiro.get("opcional"):
+                if roteiro.get("_rodizio"):
+                    # pequeno: só se venceu e ainda há tempo na fatia do ciclo (e nunca depois do limite)
+                    if not devido(alvo["fonte"], roteiro) or gasto_peq >= peq_s or time.time() - inicio > limite:
+                        em_espera += 1
+                        continue
+                    t_peq = time.time()
+                elif roteiro.get("opcional"):
                     if time.time() - inicio > orcamento:
                         pulados += 1
                         continue
                     lidos_opc += 1
                 elif roteiro.get("regras") and time.time() - inicio > limite:
-                    falhas.insert(0, f"limite de {limite} s do ciclo: {sum(1 for r in roteiros[i - 1:] if r.get('regras') and not r.get('opcional'))} carregadores fixos não lidos")
+                    falhas.insert(0, f"limite de {limite} s do ciclo: {sum(1 for r in roteiros[i - 1:] if r.get('regras') and not r.get('opcional') and not r.get('_rodizio'))} carregadores fixos não lidos")
                     nao_lidos(f"não lido: limite de {limite} s do ciclo", i - 1)
                     break
                 if seguidas >= max_falhas_seguidas:
@@ -774,7 +829,7 @@ def coletar(ensaio=False, so_fonte=None):
                                     reiniciou = True
                                     raise _RepetirAlvo()
                                 chave = p.get("depois", p["se_casar"]) if p["se_casar"] == "reiniciar_bluestacks" else p["se_casar"]
-                                outros = alvo.get(chave, [])
+                                outros, _ = com_pequenos(alvo.get(chave, []), alvo["fonte"])
                                 resumo.append(f"{alvo['fonte']}: {p.get('motivo', chave)} ({len(outros)} roteiros)")
                                 roteiros = roteiros[:i] + outros
                             continue
@@ -817,6 +872,9 @@ def coletar(ensaio=False, so_fonte=None):
                             raise
                         except Exception as e2:
                             print(f"  recuperação falhou: {repr(e2)[:80]}", flush=True); break
+                finally:
+                    if t_peq:
+                        gasto_peq += time.time() - t_peq
             if cfg.get("guardar_capturas"):
                 salvar_captura(alvo["fonte"])
             erro = ("; ".join(falhas))[:300] if falhas else None
@@ -827,6 +885,7 @@ def coletar(ensaio=False, so_fonte=None):
             resumo.append(f"{alvo['fonte']} {n} leituras em {time.time() - t0:.0f} s"
                           + (f" ({pulados} roteiros opcionais pulados)" if pulados else "")
                           + (f" ({fora_da_vez} fora da vez)" if fora_da_vez else "")
+                          + (f" ({em_espera} pequenos esperando a vez)" if em_espera else "")
                           + (f" ({len(falhas)} roteiros falharam)" if falhas else ""))
           except _RepetirAlvo:
             roteiros = fixos + opcionais[k:] + opcionais[:k]
