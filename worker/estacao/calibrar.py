@@ -96,6 +96,8 @@ def main():
         descobrir_atm(w, h)
     if "cury" in PARTES:
         descobrir_cury(w, h)
+    if "tupi_regiao" in PARTES:
+        tupi_regiao(["Rio Preto", "Mirassol", "Bady"], w, h)
     if "tupi_busca" in PARTES:
         buscar_tupi(["BYD", "Monte Carlo", "Madero", "Jota", "Iguatemi"], w, h)   # sem acento: o input text do adb não aceita
     for parte in [p for p in PARTES if p.startswith("explorar:")]:
@@ -189,6 +191,101 @@ def buscar_tupi(termos, w, h):
         (SAIDA / f"tupi_b{n}_3_ficha_botoes.json").write_text(
             json.dumps(nos_clicaveis_sem_texto(c.ULTIMO_XML), ensure_ascii=False, indent=1), encoding="utf-8")
         rolar(w, h, 0.35); capturar(f"tupi_b{n}_4_ficha_rolada")
+
+
+RE_TUPI = re.compile(r"^(.*?), (Disponível|Ocupad[ao]|Indisponível|Offline|Off-line|Reservad[ao]|Em manutenção|Manutenção|Fora de serviço|Em uso|Carregando), (.*?), ([\d.,]+ ?kW)(?:, (.*))?$", re.S)
+REGIAO_TUPI = ("rio preto", "mirassol", "bady bassit", "sjrp")
+
+
+def abrir_busca_tupi(termo):
+    """Abre a Tupi, passa os avisos, busca o termo e esconde o teclado. Devolve os itens da tela."""
+    c.executar_passo({"tipo": "abrir", "pacote": "com.tupinamba", "espera": 4})
+    campo, fim = None, time.time() + 30
+    while time.time() < fim and not campo:
+        passar_avisos("tupi")
+        campo = next((b for t, b in c.textos(c.tela_xml()) if t.strip() in ("Pesquisar endereço", "Nome do local, estação ou endereço")), None)
+        if campo:
+            time.sleep(2); passar_avisos("tupi")
+            campo = next((b for t, b in c.textos(c.tela_xml()) if t.strip() in ("Pesquisar endereço", "Nome do local, estação ou endereço")), None)
+        else:
+            time.sleep(2)
+    if not campo:
+        raise RuntimeError("campo de busca da Tupi não apareceu")
+    tocar_bounds(campo); time.sleep(2)
+    c.executar_passo({"tipo": "limpar_campo", "espera": 0.5})
+    c.executar_passo({"tipo": "digitar", "texto": termo, "espera": 5})
+    c.executar_passo({"tipo": "esconder_teclado", "espera": 1})
+    return c.textos(c.tela_xml())
+
+
+def tupi_regiao(termos, w, h):
+    """Lista as estações da região (busca por cidade), abre a ficha de cada uma e lê as tomadas."""
+    estacoes, ordem = {}, []
+    for termo in termos:
+        try:
+            abrir_busca_tupi(termo)
+        except RuntimeError as e:
+            nota(f"  {termo}: {e}"); continue
+        capturar(f"tupi_r_{termo.replace(' ', '_')}_lista")
+        for rolagem in range(12):
+            novos = 0
+            for t, b in c.textos(c.tela_xml()):
+                m = RE_TUPI.match(t.strip())
+                if not m or not any(r in m.group(3).lower() or r in m.group(1).lower() for r in REGIAO_TUPI):
+                    continue
+                nome = m.group(1).strip()
+                if nome not in estacoes:
+                    estacoes[nome] = {"nome": nome, "status": m.group(2), "endereco": m.group(3)[:140], "kw": m.group(4),
+                                      "resto": (m.group(5) or "")[:80], "termo": termo, "tomadas": []}
+                    ordem.append(nome); novos += 1
+            if novos == 0 and rolagem > 1:
+                break
+            rolar(w, h, 0.4)
+        nota(f"  {termo}: {len(ordem)} estações da região até agora")
+    (SAIDA / "tupi_regiao.json").write_text(json.dumps([estacoes[n] for n in ordem], ensure_ascii=False, indent=1), encoding="utf-8")
+    # fichas: busca de novo pelo termo de cada estação, toca nela e lê "Tomada N" + status
+    for i, nome in enumerate(ordem):
+        e = estacoes[nome]
+        try:
+            abrir_busca_tupi(e["termo"])
+        except RuntimeError as er:
+            nota(f"  {nome}: {er}"); continue
+        achou = False
+        for _ in range(12):
+            itens = c.textos(c.tela_xml())
+            b = next((b for t, b in itens if t.strip().startswith(nome + ",")), None)
+            if b:
+                tocar_bounds(b); achou = True; break
+            rolar(w, h, 0.3)
+        if not achou:
+            nota(f"  {nome}: não achei na lista"); continue
+        time.sleep(5)
+        itens = c.textos(c.tela_xml())
+        if i < 2:
+            capturar(f"tupi_r_ficha_{i}")
+        tomadas = []
+        for k, (t, b) in enumerate(itens):
+            mt = re.match(r"^Tomada (\d+)$", t.strip())
+            if mt:
+                st = next((tt for tt, _ in itens[k + 1:k + 4] if re.match(r"^(Dispon|Ocupad|Indispon|Offline|Off-line|Reservad|Em manuten|Manuten|Fora|Em uso|Carregando)", tt.strip())), None)
+                pl = next((itens[j + 1][0] for j in range(k + 1, min(k + 8, len(itens) - 1)) if itens[j][0].strip() == "Plug:"), None)
+                tomadas.append({"tomada": mt.group(1), "status": st, "plug": pl})
+        # tomadas fora da tela (lista horizontal): rolar para a esquerda e ler de novo
+        if tomadas:
+            y = c.centro(next(b for t, b in itens if t.strip() == "Tomada 1"))[1]
+            c.entrada("swipe", str(int(w * 0.85)), str(y), str(int(w * 0.15)), str(y), "400"); time.sleep(1.5)
+            itens2 = c.textos(c.tela_xml())
+            for k, (t, b) in enumerate(itens2):
+                mt = re.match(r"^Tomada (\d+)$", t.strip())
+                if mt and mt.group(1) not in [x["tomada"] for x in tomadas]:
+                    st = next((tt for tt, _ in itens2[k + 1:k + 4] if re.match(r"^(Dispon|Ocupad|Indispon|Offline|Off-line|Reservad|Em manuten|Manuten|Fora|Em uso|Carregando)", tt.strip())), None)
+                    tomadas.append({"tomada": mt.group(1), "status": st, "plug": None})
+        e["tomadas"] = tomadas
+        nota(f"  {nome}: {[(x['tomada'], x['status'], x['plug']) for x in tomadas]}")
+        (SAIDA / "tupi_regiao.json").write_text(json.dumps([estacoes[n] for n in ordem], ensure_ascii=False, indent=1), encoding="utf-8")
+        if i == 0:   # o "voltar" da ficha leva de volta à lista de resultados?
+            c.entrada("keyevent", "4"); time.sleep(2.5)
+            capturar("tupi_r_depois_do_voltar")
 
 
 def explorar_app(termo, w, h):
