@@ -78,6 +78,8 @@ coletor os descarta antes de montar as linhas).
 Ver [business-rules.md](business-rules.md). Em uma linha: janela de 5 min
 "ocupado" = 5 min de uso; janela sem leitura e conector "fora" saem do
 denominador; energia/receita em faixa min–max; período em horário de Brasília.
+Casamento (17/10/2026): dois carros no mesmo carregador dividem a potência,
+"em preparação" não leva energia, e um local lido por duas fontes conta só uma.
 
 ## Permissões
 

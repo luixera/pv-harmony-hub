@@ -10,9 +10,10 @@ tabelas têm `tenant_id` (padrão `eletropostos_tenant()` = tenant
 
 | Tabela | Chave | Conteúdo |
 |---|---|---|
-| `eletroposto_local` | `id uuid` | cadastro (nome, operadora, cidade, endereço, lat/lng, tipo DC/AC, potência por conector, nº de conectores, preço e custo R$/kWh, fonte de status, observações, ativo). Seed: 72 locais do `inventario.csv`. |
+| `eletroposto_local` | `id uuid` | cadastro (nome, operadora, cidade, endereço, lat/lng, tipo DC/AC, potência por conector, nº de conectores, preço e custo R$/kWh, fonte de status, observações, ativo, `fonte_principal` — fonte que entra na conta quando o local é lido por mais de uma, null = automática). Seed: 72 locais do `inventario.csv`. |
 | `eletroposto_fonte_local` | `(fonte, local_fonte)` | como cada fonte chama um local; `local_id` = vínculo com o cadastro (nulo = sem vínculo); `visto_em` |
 | `eletroposto_leitura` | `id bigint`; `UNIQUE (slot, fonte, local_fonte, conector)` | leituras cruas: `ts_utc`, `slot` (janela de 5 min UTC), `conector` (`'*'` = só o local), `potencia_kw`, `status_bruto`, `status`, `upstream_ts`, `passo_min` (passo da leitura em min, opcional; sem ele vale o da fonte). Índices em `(slot)` e `(fonte, local_fonte, slot)`. |
+| `eletroposto_fonte_config` | `fonte text` | por fonte: `passo_min` (minutos que cada leitura vale) e `agrupar` (`conector`, `estacao` ou `prefixo`: como os plugues formam um carregador; ver o casamento em business-rules). |
 | `eletroposto_varredura` | `id` | uma linha por coleta: fonte, `ok`, `n` linhas, `erro`, `falhas jsonb` (falhas por local `[{nome, erro, conector?}]`, desde 16/10/2026) |
 | `eletroposto_premissas` | `tenant_id` | `valores jsonb` (só o que difere do padrão; `eletropostos_premissas()` devolve padrão ∪ valores) |
 | `eletroposto_coleta_config` | `tenant_id` | periodicidade por faixa de potência (`faixas jsonb`) e `cidades text[]` monitoradas ([business-rules](business-rules.md)) |
@@ -28,7 +29,10 @@ tabelas têm `tenant_id` (padrão `eletropostos_tenant()` = tenant
 | `eletropostos_distancia_m(lat1, lng1, lat2, lng2)` | haversine, para o vínculo automático (< 150 m) |
 | `eletropostos_energia(horas, kw, tipo, premissas) → numeric[2]` | [kWh min, kWh max] |
 | `eletropostos_periodo(de, ate) → (a, b, esperadas, dias)` | dias civis de Brasília → `[a, b)` UTC, janelas esperadas e dias efetivos |
-| `eletropostos_conectores(a, b, local?) → SETOF eletroposto_conector_agg` | contagens por status, sessões (`lag`), último status/potência por conector |
+| `eletropostos_conectores(a, b, local?) → SETOF eletroposto_conector_agg` | contagens por status, sessões (`lag`), último status/potência por conector e `energia_min` (passo × parte da potência no grupo); só a fonte escolhida de cada local |
+| `eletropostos_carregando(status, bruto)` | ocupado e não em preparação/fim/suspenso |
+| `eletropostos_grupo(agrupar, conector)` | a que carregador o plugue pertence (`conector`, `estacao` ou `prefixo`) |
+| `eletropostos_fonte_escolhida(local, a, b)` | `fonte_principal` do cadastro ou a fonte que mais leu no período |
 | `eletropostos_metricas(conector_agg, esperadas) → jsonb` | o dicionário de métricas do conector |
 | `eletropostos_montar_local(local, conectores jsonb, premissas, dias) → jsonb` | local + agregados + energia/receita/margem |
 | `eletropostos_estacao_ok()` | `auth.uid()` é operador de estação ativa do seu tenant |

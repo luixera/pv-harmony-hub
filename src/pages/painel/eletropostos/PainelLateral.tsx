@@ -28,6 +28,7 @@ export function PainelLateral({ id, de, ate, premissas: P, fechar, irParaColeta 
       fonte_status: l.fonte_status ?? '', preco_kwh: l.preco_kwh == null ? '' : String(l.preco_kwh),
       custo_energia_kwh: l.custo_energia_kwh == null ? '' : String(l.custo_energia_kwh),
       lat: l.lat == null ? '' : String(l.lat), lng: l.lng == null ? '' : String(l.lng), observacoes: l.observacoes ?? '', ativo: l.ativo ? '1' : '',
+      fonte_principal: l.fonte_principal ?? '',
     });
   }, [d]);
   useEffect(() => {
@@ -54,6 +55,7 @@ export function PainelLateral({ id, de, ate, premissas: P, fechar, irParaColeta 
   };
 
   const l = d?.local;
+  const fontesDoLocal = [...new Set((d?.vinculos ?? []).map(v => v.fonte))].sort();
   return (
     <aside aria-label="Detalhe do local" style={{
       position: 'fixed', top: 0, right: 0, bottom: 0, width: 'min(760px, 100%)', background: '#0E0E14',
@@ -101,7 +103,7 @@ export function PainelLateral({ id, de, ate, premissas: P, fechar, irParaColeta 
                   <div key={c.nome} style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '4px 12px', padding: '8px 0', borderTop: '1px solid #1a1a22', fontSize: 12.5, color: '#ddd' }}>
                     <div><b>Conector {c.conector}</b> <span style={mudo}>{c.fonte} · {c.local_fonte}</span></div>
                     <div><St s={c.m.ultimo_status} /> <span style={mudo}>{c.m.ultimo_bruto || ''}</span></div>
-                    <div style={{ ...mudo, fontSize: 12 }}>{pct(c.m.ocupacao)} ocupado · {fmt(c.m.horas_ocupado, 1)} h · {c.m.sessoes} recargas · {fmt(c.m.horas_fora, 1)} h fora de serviço · cobertura {pct(c.m.cobertura)}</div>
+                    <div style={{ ...mudo, fontSize: 12 }}>{pct(c.m.ocupacao)} ocupado · {fmt(c.m.horas_ocupado, 1)} h{c.m.horas_energia != null && c.m.horas_energia < c.m.horas_ocupado - 0.05 ? ` (${fmt(c.m.horas_energia, 1)} h de energia: potência dividida ou em preparação)` : ''} · {c.m.sessoes} recargas · {fmt(c.m.horas_fora, 1)} h fora de serviço · cobertura {pct(c.m.cobertura)}</div>
                     <div />
                     <div style={{ gridColumn: '1 / -1' }}><LinhaTempo pontos={d.linha_do_tempo[c.nome]} compacto={isMobile} /></div>
                   </div>
@@ -127,6 +129,14 @@ export function PainelLateral({ id, de, ate, premissas: P, fechar, irParaColeta 
               {campo('potencia_kw', 'Potência por conector (kW)', 'number')}
               {campo('conectores', 'Nº de conectores', 'number')}
               {campo('fonte_status', 'Fonte de status')}
+              {fontesDoLocal.length > 1 && (
+                <label style={rotulo}>Fonte que entra na conta
+                  <select value={form.fonte_principal ?? ''} onChange={e => setForm({ ...form, fonte_principal: e.target.value })} style={input}>
+                    <option value="">Automática (a que mais leu{d?.fonte_na_conta ? `: ${d.fonte_na_conta}` : ''})</option>
+                    {fontesDoLocal.map(f => <option key={f} value={f}>{f}</option>)}
+                  </select>
+                </label>
+              )}
               {campo('preco_kwh', 'Preço cobrado (R$/kWh)', 'number', `padrão ${fmt(P.preco_kwh_padrao, 2)}`)}
               {campo('custo_energia_kwh', 'Custo da energia (R$/kWh)', 'number', `padrão ${fmt(P.custo_energia_kwh_padrao, 2)}`)}
               {campo('lat', 'Latitude', 'number')}{campo('lng', 'Longitude', 'number')}
@@ -141,7 +151,7 @@ export function PainelLateral({ id, de, ate, premissas: P, fechar, irParaColeta 
               <button type="submit" disabled={salvar.isPending} style={botaoOuro}>Salvar alterações</button>
             </div>
           </form>
-          {d.vinculos.length > 0 && <p style={{ ...mudo, fontSize: 12, marginTop: 10 }}>Lido de: {d.vinculos.map(v => `${v.fonte} · ${v.nome || v.local_fonte}`).join('; ')}</p>}
+          {d.vinculos.length > 0 && <p style={{ ...mudo, fontSize: 12, marginTop: 10 }}>Lido de: {d.vinculos.map(v => `${v.fonte} · ${v.nome || v.local_fonte}${v.na_conta === false ? ' (fora da conta, evita duplicar)' : ''}`).join('; ')}</p>}
         </>
       )}
     </aside>

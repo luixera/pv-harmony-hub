@@ -12,7 +12,7 @@ import type { Local, Resumo } from './tipos';
 
 const local = (p: Partial<Local>): Local => ({
   id: 'x', nome: 'Local', operadora: null, cidade: null, endereco: null, lat: null, lng: null, tipo: 'DC',
-  potencia_kw: null, conectores: 1, preco_kwh: null, custo_energia_kwh: null, fonte_status: null, observacoes: null, ativo: true,
+  potencia_kw: null, conectores: 1, preco_kwh: null, custo_energia_kwh: null, fonte_status: null, observacoes: null, ativo: true, fonte_principal: null,
   preco_efetivo: 2.12, custo_efetivo: 0.9, preco_estimado: true, custo_estimado: true, monitorado: false,
   conectores_monitorados: 0, horas_ocupado: 0, horas_ocupado_dia: 0, ocupacao: null, cobertura: null, sessoes: 0,
   kwh_min: 0, kwh_max: 0, receita_min: 0, receita_max: 0, custo_min: 0, custo_max: 0, margem_min: 0, margem_max: 0, agora: {},

@@ -77,6 +77,35 @@ Premissas (editáveis na aba Premissas; padrão do `servidor.py`):
 - A tela **nunca** mostra energia ou receita como número único quando min ≠
   max arredondados.
 
+## Casamento de carregadores (17/10/2026)
+
+Um carregador pode aparecer duas vezes: com dois plugues no mesmo aparelho, ou
+lido por duas fontes (o app da Tupi na VMOS e a API da Tupi, por exemplo).
+Migração `20261017120000_eletropostos_casamento`.
+
+- **Grupo = um carregador.** `eletroposto_fonte_config.agrupar` diz como os
+  plugues de uma fonte se juntam: `prefixo` (cury, tupi_app: "91748 - 1" e
+  "91748 - 2" são o carregador 91748), `estacao` (tupi pela API: todos os
+  plugues da estação), `conector` (atm e qualquer fonte nova: cada plugue é
+  um carregador).
+- **Regra do usuário: dois carros no mesmo carregador dividem a potência —
+  metade para cada.** Em cada leitura, a energia do plugue vale
+  `passo × 1 / (plugues carregando no grupo naquela janela)`. Três carros, um
+  terço cada.
+- **Em preparação não leva energia.** Status bruto com `prepar`, `finish`,
+  `finaliz` ou `suspend` conta como tempo ocupado (o carro está ligado), mas
+  a parte de energia dele é zero (`eletropostos_carregando`).
+- **Ocupação e recargas seguem por plugue.** Cada carro conta como recarga e
+  como hora ocupada; só a energia (e com ela receita e margem) usa a potência
+  dividida (`horas_energia` na métrica do conector).
+- **Um local, uma fonte na conta.** Quando o mesmo cadastro está ligado a duas
+  fontes (casadas pela localização, < 150 m), só uma entra nas contas: a
+  escolhida no cadastro ("Fonte que entra na conta" →
+  `eletroposto_local.fonte_principal`) ou, sem escolha, a que mais leu no
+  período. As outras continuam gravando e aparecem como "fora da conta".
+- Efeito medido em 7 dias (17/10/2026): Cury −37% de horas de energia, Tupi
+  −22%, ATM −1,5% (só os "em preparação").
+
 ## Vínculo fonte → cadastro
 
 Cada fonte identifica um local do seu jeito (`eletroposto_fonte_local`). No

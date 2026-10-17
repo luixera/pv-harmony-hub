@@ -17,6 +17,8 @@ export interface Premissas {
 /** Métricas de um conector no período (porta de `metricas_conector`). */
 export interface MetricasConector {
   horas_ocupado: number;
+  /** horas à potência cheia: com 2 carros no mesmo carregador cada um leva metade; "em preparação" não leva */
+  horas_energia?: number;
   horas_observadas: number;
   horas_fora: number;
   ocupacao: number | null;
@@ -56,6 +58,8 @@ export interface Cadastro {
   fonte_status: string | null;
   observacoes: string | null;
   ativo: boolean;
+  /** fonte que entra na conta quando o local é lido por mais de uma (null = a que mais leu) */
+  fonte_principal: string | null;
 }
 
 /** Local montado pelo banco (cadastro + métricas do período). */
@@ -127,7 +131,9 @@ export interface Detalhe {
   perfil: (number | null)[][];
   /** nome do conector → [[ 'YYYY-MM-DDTHH:MM' (Brasília), status ], …] das últimas 48 h */
   linha_do_tempo: Record<string, [string, Status][]>;
-  vinculos: { fonte: string; local_fonte: string; nome: string | null }[];
+  vinculos: { fonte: string; local_fonte: string; nome: string | null; na_conta?: boolean }[];
+  /** fonte usada nas contas do período */
+  fonte_na_conta?: string | null;
 }
 
 export interface FonteColeta {
