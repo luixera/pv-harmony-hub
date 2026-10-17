@@ -14,7 +14,7 @@ EnvironmentFile=/etc/gdm-estacao/env
 Environment=HOME=/home/gdmestacao
 Environment=PATH=/usr/local/bin:/usr/bin:/bin
 ExecStart=/usr/bin/python3 coletar.py
-TimeoutStartSec=15min
+TimeoutStartSec=20min
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=gdm-estacao

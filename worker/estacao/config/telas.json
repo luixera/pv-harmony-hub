@@ -1,5 +1,5 @@
 {
- "_sobre": "Roteiros de leitura dos apps no BlueStacks (gerado em 16/10/2026 por gera_telas.py a partir de capturas/*.json). Passos: abrir, toque, tocar_texto, tocar_texto_rolando, esperar_texto, digitar, deslizar, voltar, escolher; 'opcional' não falha. Regras: uma por plugue/carregador; o status é o grupo 1 do regex no texto da ficha. Roteiros 'opcional' rodam em rodízio no tempo que sobrar do orçamento (orcamento_s). Na ATM, sem GPS (lista com 0.00 km) o alvo troca para roteiros_sem_gps (busca pelo nome, só os fixos). limite_s: nenhum roteiro novo começa depois disso (600 s: o timer dispara 1 min após o fim, então o ciclo pode passar de 8 min sem perder carregador fixo); max_falhas_seguidas: desiste do app no ciclo. Cadência: roteiros com intervalo_min (AC de 7 kW: 16) rodam em 1 de cada intervalo/ciclo_min ciclos, no grupo indicado; só vale com cadencia_ativa. Tupi (fonte tupi_app): sem lista fixa; cada local é buscado pelo campo do topo (toque em coordenada), a ficha mostra 'Tomada N' + status (Bitcharge: 'Plug:' + status); 'recuperar' reabre o app quando um local falha.",
+ "_sobre": "Roteiros de leitura dos apps no BlueStacks (gerado em 16/10/2026 por gera_telas.py a partir de capturas/*.json). Passos: abrir, toque, tocar_texto, tocar_texto_rolando, esperar_texto, digitar, deslizar, voltar, escolher; 'opcional' não falha. Regras: uma por plugue/carregador; o status é o grupo 1 do regex no texto da ficha. Roteiros 'opcional' rodam em rodízio no tempo que sobrar do orçamento (orcamento_s). Na ATM, sem GPS (lista com 0.00 km) o alvo troca para roteiros_sem_gps (busca pelo nome, só os fixos). limite_s: nenhum roteiro novo começa depois disso (780 s desde a Tupi pelo app, 17/10/2026: Cury + ATM + Tupi passam de 10 min; o timer dispara 1 min após o fim, então o ciclo pode passar de 8 min sem perder carregador fixo); max_falhas_seguidas: desiste do app no ciclo. Cadência: roteiros com intervalo_min (AC de 7 kW: 16) rodam em 1 de cada intervalo/ciclo_min ciclos, no grupo indicado; só vale com cadencia_ativa. Tupi (fonte tupi_app): sem lista fixa; cada local é buscado pelo campo do topo (toque em coordenada), a ficha mostra 'Tomada N' + status (Bitcharge: 'Plug:' + status); 'recuperar' reabre o app quando um local falha.",
  "orcamento_s": 360,
  "guardar_capturas": false,
  "alvos": [
@@ -2983,7 +2983,7 @@
        ],
        "ate_texto": "Pesquisar endereço",
        "ate": 40,
-       "folga": 7,
+       "folga": 4,
        "espera": 1
       }
      ],
@@ -3756,13 +3756,13 @@
      ],
      "ate_texto": "Pesquisar endereço",
      "ate": 40,
-     "folga": 7,
+     "folga": 4,
      "espera": 1
     }
    ]
   }
  ],
- "limite_s": 600,
+ "limite_s": 780,
  "max_falhas_seguidas": 3,
  "ciclo_min": 8,
  "cadencia_ativa": true,
