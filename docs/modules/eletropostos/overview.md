@@ -35,7 +35,7 @@ e para o console em 15–16/10/2026.
 | Banco | migração `20261015200000_eletropostos.sql` — tabelas `eletroposto_*`, RPCs `eletropostos_*` ([database.md](database.md)) |
 | Validação das RPCs | `supabase/eletropostos-validacao.sql` (leituras sintéticas, 28 conferências, limpa no fim) |
 | Coletor da Tupi (VPS) | `worker/eletropostos/` — **agente próprio** (serviço systemd `gdm-eletropostos`, workflow `eletropostos-worker.yml`), separado da Ludmilla por decisão do usuário em 16/10/2026 |
-| Estação local (apps) | `C:\Users\luiza\Documents\monitor-eletropostos` (Python stdlib, fora do repositório; ver [Estação local](#estação-local)) |
+| Estação de telas (apps) | `worker/estacao/` — **na VPS** (serviço `gdm-estacao` + timer de 8 min, workflow `estacao-worker.yml`), falando adb com um celular na nuvem (VMOS Cloud); descoberta e ensaio pelo workflow `estacao-calibrar.yml`. Antes: PC do usuário com BlueStacks ([celular na nuvem](#estação-no-celular-na-nuvem-vmos)) |
 
 ## As cinco abas
 
@@ -86,7 +86,37 @@ exige o `operador` de uma `eletroposto_estacao` ativa; as RPCs de tela exigem
 master. Liberar para admin/staff do tenant no futuro é trocar a condição das
 políticas, não migrar tabela.
 
-## Estação local
+## Estação no celular na nuvem (VMOS)
+
+Desde 16/10/2026 à noite a leitura da Cury e do ATM EVs saiu do PC do usuário e
+roda **na VPS**, num **celular na nuvem VMOS Cloud** (aparelho `ACP25091462JLVCR`,
+nó Brasil, Android 13, 720×1280, 320 dpi; Google, Cury e ATM EVs instalados e
+logados pela pessoa). O código fica em `worker/estacao/` (fonte da verdade; a
+pasta do PC é a versão antiga) e o deploy é o workflow `estacao-worker.yml`.
+
+| Peça | O que faz |
+|---|---|
+| `vmos.py` | Open API do VMOS (assinatura V2: `X-Sign = sha256(SK + timestamp + caminho + corpo)`, cabeçalhos `X-Access-Key` e `X-Timestamp`). `/adb` devolve o comando do túnel SSH e a chave de conexão: o túnel abre a cada ciclo numa porta local livre (sem `-f`, autenticado por `SSH_ASKPASS`) e morre com o processo. `/gpsInjectInfo` fixa a posição em Rio Preto no começo de cada ciclo; `/restart` reinicia o aparelho; o estado vem de `/padDetails` (o singular dá 404). |
+| `estacao.py` | Na VPS, **modo serviço**: com `SUPABASE_SERVICE_ROLE_KEY` grava por `eletropostos_gravar` e pulsa com `ESTACAO_ID` (estação "VPS + VMOS"); no PC, login de pessoa como antes. |
+| `coletor_tela.py` | Independente da tela: rolagens proporcionais, X da ficha da ATM achado ao lado do selo de distância, seta de voltar achada no canto, toque só em item com 60 % ou mais visível, passos `limpar_campo` e `esconder_teclado`, conferência do título de cada ficha. `AndroidTravado` reinicia o aparelho pela API. |
+| `espelho.py` | Quadro "Estação ao vivo": cada passo e a foto atual (no máximo a cada 20 s; sempre ao abrir app, em falha e no fim) no bucket `eletropostos-espelho`; foto de falha guardada 3 dias. Só no modo serviço; nunca derruba o ciclo. |
+| `calibrar.py` | Descoberta e ensaio na VPS (workflow `estacao-calibrar.yml`, manual): partes `atm`, `cury`, `atm_busca` e `ensaio` (ciclo sem gravar, com a tela de cada falha). Pausa o timer; nome fixo `gdm-estacao-calibrar` e encerra sobras antes de começar. |
+
+**Armadilhas desta migração (16/10/2026):**
+- O teclado do Google fica aberto na metade de baixo depois de digitar, e a rolagem
+  em cima dele vira **digitação por deslize** (apareceu "FR" na busca da ATM). Por
+  isso há `esconder_teclado` depois de `digitar`.
+- Os cartões da Cury carregam depois de "Escolha um carregador": o roteiro espera o
+  código do 1º carregador.
+- O item cortado no pé da lista fazia abrir o vizinho.
+- Cancelar um run do GitHub **não** para o processo na VPS, e o fim de uma unidade
+  systemd derruba o servidor do adb da outra.
+- No Linux a memória "comprometível" negativa é normal; o aviso só olha a RAM
+  disponível.
+
+Ensaio limpo às 21:48: Cury 8/8, ATM 18 leituras, ciclo de ~6 min.
+
+## Estação local (PC com BlueStacks — substituída pela VMOS)
 
 O PC do usuário com o **BlueStacks** (instância `Rvc64`, Android 11, porta ADB
 5555) é a única fonte dos apps que exigem celular. Pasta
@@ -237,3 +267,7 @@ Android 11; por isso o `platform-tools` oficial.
 - Retenção das leituras (hoje nenhuma; ~2 M linhas/ano cabem).
 - Deploy do coletor: Actions → "Eletropostos — deploy do coletor na VPS"
   (`eletropostos-worker.yml`, manual). Log na VPS: `journalctl -u gdm-eletropostos`.
+- Estação de telas na VPS: deploy por `estacao-worker.yml` (com a opção do timer), log
+  em `journalctl -u gdm-estacao`; descoberta e ensaio por `estacao-calibrar.yml`.
+  Desligar a tarefa do PC ("Eletropostos\Coleta a cada 8 min") quando a VPS gravar
+  ciclos limpos.
