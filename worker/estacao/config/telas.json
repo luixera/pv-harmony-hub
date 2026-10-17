@@ -2983,6 +2983,7 @@
        ],
        "ate_texto": "Pesquisar endereço",
        "ate": 40,
+       "folga": 7,
        "espera": 1
       }
      ],
@@ -2991,6 +2992,37 @@
     {
      "nome": "BYD | Allma Millazo - SJRP - 01",
      "passos": [
+      {
+       "tipo": "passar_avisos",
+       "avisos": [
+        [
+         "notificaç",
+         [
+          "Cancelar",
+          "Agora não",
+          "Não permitir"
+         ]
+        ],
+        [
+         "cadastre-se para carregar",
+         [
+          "Agora não"
+         ]
+        ],
+        [
+         "localização",
+         [
+          "Durante o uso do app",
+          "Ao usar o app",
+          "Permitir"
+         ]
+        ]
+       ],
+       "ate_texto": "Filtrar",
+       "ate": 12,
+       "folga": 0,
+       "espera": 0.3
+      },
       {
        "tipo": "toque",
        "x": 250,
@@ -3069,6 +3101,37 @@
      "nome": "BYD | Allma Millazo - SJRP - 02",
      "passos": [
       {
+       "tipo": "passar_avisos",
+       "avisos": [
+        [
+         "notificaç",
+         [
+          "Cancelar",
+          "Agora não",
+          "Não permitir"
+         ]
+        ],
+        [
+         "cadastre-se para carregar",
+         [
+          "Agora não"
+         ]
+        ],
+        [
+         "localização",
+         [
+          "Durante o uso do app",
+          "Ao usar o app",
+          "Permitir"
+         ]
+        ]
+       ],
+       "ate_texto": "Filtrar",
+       "ate": 12,
+       "folga": 0,
+       "espera": 0.3
+      },
+      {
        "tipo": "toque",
        "x": 250,
        "y": 220,
@@ -3145,6 +3208,37 @@
     {
      "nome": "Charger Pro - Emporio Jota - SJRP",
      "passos": [
+      {
+       "tipo": "passar_avisos",
+       "avisos": [
+        [
+         "notificaç",
+         [
+          "Cancelar",
+          "Agora não",
+          "Não permitir"
+         ]
+        ],
+        [
+         "cadastre-se para carregar",
+         [
+          "Agora não"
+         ]
+        ],
+        [
+         "localização",
+         [
+          "Durante o uso do app",
+          "Ao usar o app",
+          "Permitir"
+         ]
+        ]
+       ],
+       "ate_texto": "Filtrar",
+       "ate": 12,
+       "folga": 0,
+       "espera": 0.3
+      },
       {
        "tipo": "toque",
        "x": 250,
@@ -3223,6 +3317,37 @@
      "nome": "Cia Charge | Madero Mirassol | Sao Jose do Rio Preto",
      "passos": [
       {
+       "tipo": "passar_avisos",
+       "avisos": [
+        [
+         "notificaç",
+         [
+          "Cancelar",
+          "Agora não",
+          "Não permitir"
+         ]
+        ],
+        [
+         "cadastre-se para carregar",
+         [
+          "Agora não"
+         ]
+        ],
+        [
+         "localização",
+         [
+          "Durante o uso do app",
+          "Ao usar o app",
+          "Permitir"
+         ]
+        ]
+       ],
+       "ate_texto": "Filtrar",
+       "ate": 12,
+       "folga": 0,
+       "espera": 0.3
+      },
+      {
        "tipo": "toque",
        "x": 250,
        "y": 220,
@@ -3299,6 +3424,37 @@
     {
      "nome": "HS/RM Recharge - Posto Monte Carlo Interior Eventos - Mirassol",
      "passos": [
+      {
+       "tipo": "passar_avisos",
+       "avisos": [
+        [
+         "notificaç",
+         [
+          "Cancelar",
+          "Agora não",
+          "Não permitir"
+         ]
+        ],
+        [
+         "cadastre-se para carregar",
+         [
+          "Agora não"
+         ]
+        ],
+        [
+         "localização",
+         [
+          "Durante o uso do app",
+          "Ao usar o app",
+          "Permitir"
+         ]
+        ]
+       ],
+       "ate_texto": "Filtrar",
+       "ate": 12,
+       "folga": 0,
+       "espera": 0.3
+      },
       {
        "tipo": "toque",
        "x": 250,
@@ -3377,6 +3533,37 @@
      "nome": "Bitcharge - Alameda Iguatemi 01",
      "passos": [
       {
+       "tipo": "passar_avisos",
+       "avisos": [
+        [
+         "notificaç",
+         [
+          "Cancelar",
+          "Agora não",
+          "Não permitir"
+         ]
+        ],
+        [
+         "cadastre-se para carregar",
+         [
+          "Agora não"
+         ]
+        ],
+        [
+         "localização",
+         [
+          "Durante o uso do app",
+          "Ao usar o app",
+          "Permitir"
+         ]
+        ]
+       ],
+       "ate_texto": "Filtrar",
+       "ate": 12,
+       "folga": 0,
+       "espera": 0.3
+      },
+      {
        "tipo": "toque",
        "x": 250,
        "y": 220,
@@ -3445,6 +3632,37 @@
     {
      "nome": "Bitcharge - Alameda Iguatemi 02",
      "passos": [
+      {
+       "tipo": "passar_avisos",
+       "avisos": [
+        [
+         "notificaç",
+         [
+          "Cancelar",
+          "Agora não",
+          "Não permitir"
+         ]
+        ],
+        [
+         "cadastre-se para carregar",
+         [
+          "Agora não"
+         ]
+        ],
+        [
+         "localização",
+         [
+          "Durante o uso do app",
+          "Ao usar o app",
+          "Permitir"
+         ]
+        ]
+       ],
+       "ate_texto": "Filtrar",
+       "ate": 12,
+       "folga": 0,
+       "espera": 0.3
+      },
       {
        "tipo": "toque",
        "x": 250,
@@ -3546,6 +3764,7 @@
      ],
      "ate_texto": "Pesquisar endereço",
      "ate": 40,
+     "folga": 7,
      "espera": 1
     }
    ]

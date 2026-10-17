@@ -351,6 +351,8 @@ def executar_passo(p):
             if botao:
                 entrada("tap", *map(str, centro(botao))); time.sleep(2); continue
             if p.get("ate_texto") and any(p["ate_texto"].lower() in t.lower() for t, _ in itens):
+                if p.get("folga", 2) <= 0:      # só conferência (antes de cada busca): sem segunda olhada
+                    break
                 time.sleep(p.get("folga", 2))
                 # um aviso pode surgir logo depois (convite de cadastro por cima do mapa): mais uma olhada
                 itens = textos(tela_xml()); baixo = " ".join(t.lower() for t, _ in itens)
