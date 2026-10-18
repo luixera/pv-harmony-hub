@@ -1,5 +1,5 @@
 {
- "_sobre": "Roteiros de leitura dos apps no BlueStacks (gerado em 16/10/2026 por gera_telas.py a partir de capturas/*.json). Passos: abrir, toque, tocar_texto, tocar_texto_rolando, esperar_texto, digitar, deslizar, voltar, escolher; 'opcional' não falha. Regras: uma por plugue/carregador; o status é o grupo 1 do regex no texto da ficha. Roteiros 'opcional' rodam em rodízio no tempo que sobrar do orçamento (orcamento_s). Na ATM, sem GPS (lista com 0.00 km) o alvo troca para roteiros_sem_gps (busca pelo nome, só os fixos). limite_s: nenhum roteiro novo começa depois disso (780 s desde a Tupi pelo app, 17/10/2026: Cury + ATM + Tupi passam de 10 min; o timer dispara 1 min após o fim, então o ciclo pode passar de 8 min sem perder carregador fixo); max_falhas_seguidas: desiste do app no ciclo. Cadência: roteiros com intervalo_min (AC de 7 kW: 16) rodam em 1 de cada intervalo/ciclo_min ciclos, no grupo indicado; só vale com cadencia_ativa. Tupi (fonte tupi_app): sem lista fixa; cada local é buscado pelo campo do topo (toque em coordenada), a ficha mostra 'Tomada N' + status (Bitcharge: 'Plug:' + status); 'recuperar' reabre o app quando um local falha. rodizio_pequenos (17/10/2026): carregadores de até ate_kw saem da cadência por ciclo; a cada ciclo UM app (o do pequeno mais atrasado) lê seus pequenos vencidos (sem leitura há intervalo_min da faixa do GD) do mais antigo ao mais novo, só dentro de segundos_por_ciclo, depois dos grandes. Pequeno pulado não conta como falha. Cury: cada local de outro posto reabre o app (abrir frio) — a 'Lista' da Cury só mostra os postos perto de onde o mapa parou; voltar só serve entre carregadores do mesmo posto (Ernani 80 → 60). rodizio_pequenos.pausado (18/10/2026, decisão do usuário: o modelo de negócio é dos rápidos de 40 kW+): nenhum pequeno é lido; locais mistos (7+40) seguem como rápidos.",
+ "_sobre": "Roteiros de leitura dos apps no BlueStacks (gerado em 16/10/2026 por gera_telas.py a partir de capturas/*.json). Passos: abrir, toque, tocar_texto, tocar_texto_rolando, esperar_texto, digitar, deslizar, voltar, escolher; 'opcional' não falha. Regras: uma por plugue/carregador; o status é o grupo 1 do regex no texto da ficha. Roteiros 'opcional' rodam em rodízio no tempo que sobrar do orçamento (orcamento_s). Na ATM, sem GPS (lista com 0.00 km) o alvo troca para roteiros_sem_gps (busca pelo nome, só os fixos). limite_s: nenhum roteiro novo começa depois disso (780 s desde a Tupi pelo app, 17/10/2026: Cury + ATM + Tupi passam de 10 min; o timer dispara 1 min após o fim, então o ciclo pode passar de 8 min sem perder carregador fixo); max_falhas_seguidas: desiste do app no ciclo. Cadência: roteiros com intervalo_min (AC de 7 kW: 16) rodam em 1 de cada intervalo/ciclo_min ciclos, no grupo indicado; só vale com cadencia_ativa. Tupi (fonte tupi_app): sem lista fixa; cada local é buscado pelo campo do topo (toque em coordenada), a ficha mostra 'Tomada N' + status (Bitcharge: 'Plug:' + status); 'recuperar' reabre o app quando um local falha. rodizio_pequenos (17/10/2026): carregadores de até ate_kw saem da cadência por ciclo; a cada ciclo UM app (o do pequeno mais atrasado) lê seus pequenos vencidos (sem leitura há intervalo_min da faixa do GD) do mais antigo ao mais novo, só dentro de segundos_por_ciclo, depois dos grandes. Pequeno pulado não conta como falha. Cury: cada local de outro posto reabre o app (abrir frio) — a 'Lista' da Cury só mostra os postos perto de onde o mapa parou; voltar só serve entre carregadores do mesmo posto (Ernani 80 → 60). rodizio_pequenos.pausado (18/10/2026, decisão do usuário: o modelo de negócio é dos rápidos de 40 kW+): nenhum pequeno é lido; locais mistos (7+40) seguem como rápidos. Cidades novas (18/10/2026, só rápidos): ATM Posto Pratico 40 kW (Votuporanga) pela busca do nome, com ao_fim (vai depois de todos porque troca a lista); Tupi Bitcharge Ramiru's 60 kW (Fernandópolis).",
  "orcamento_s": 360,
  "guardar_capturas": false,
  "alvos": [
@@ -1890,6 +1890,78 @@
      "opcional": true,
      "intervalo_min": 16,
      "grupo": 1
+    },
+    {
+     "nome": "Posto Pratico eletroposto 40Kw (Votuporanga, busca pelo nome)",
+     "passos": [
+      {
+       "tipo": "fechar_ficha"
+      },
+      {
+       "tipo": "ir_ao_mapa"
+      },
+      {
+       "tipo": "tocar_texto",
+       "texto": "Pesquisar",
+       "espera": 1.5
+      },
+      {
+       "tipo": "limpar_campo",
+       "espera": 0.5
+      },
+      {
+       "tipo": "digitar",
+       "texto": "Posto Pratico",
+       "espera": 3
+      },
+      {
+       "tipo": "esconder_teclado",
+       "espera": 1
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Posto Pratico eletroposto 40Kw",
+       "ate": 10,
+       "espera": 0.3
+      },
+      {
+       "tipo": "tocar_texto_rolando",
+       "texto": "Posto Pratico eletroposto 40Kw",
+       "rolagens": 4,
+       "espera": 0.5
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Clique na tomada",
+       "ate": 12,
+       "espera": 0
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Posto Pratico eletroposto 40Kw",
+       "ate": 4,
+       "espera": 0,
+       "conferir": true
+      }
+     ],
+     "regras": [
+      {
+       "local_id": "Posto Pratico eletroposto 40Kw",
+       "local_nome": "Posto Pratico eletroposto 40Kw",
+       "conector": "6003",
+       "potencia_kw": 40.0,
+       "lat": -20.4241201,
+       "lng": -49.9599216,
+       "regex": "ID: 6003, (.+)$"
+      }
+     ],
+     "depois": [
+      {
+       "tipo": "fechar_ficha",
+       "espera": 0.5
+      }
+     ],
+     "ao_fim": true
     }
    ],
    "roteiros_sem_gps": [
@@ -2939,6 +3011,78 @@
      ],
      "intervalo_min": 16,
      "grupo": 1
+    },
+    {
+     "nome": "Posto Pratico eletroposto 40Kw (Votuporanga, busca pelo nome)",
+     "passos": [
+      {
+       "tipo": "fechar_ficha"
+      },
+      {
+       "tipo": "ir_ao_mapa"
+      },
+      {
+       "tipo": "tocar_texto",
+       "texto": "Pesquisar",
+       "espera": 1.5
+      },
+      {
+       "tipo": "limpar_campo",
+       "espera": 0.5
+      },
+      {
+       "tipo": "digitar",
+       "texto": "Posto Pratico",
+       "espera": 3
+      },
+      {
+       "tipo": "esconder_teclado",
+       "espera": 1
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Posto Pratico eletroposto 40Kw",
+       "ate": 10,
+       "espera": 0.3
+      },
+      {
+       "tipo": "tocar_texto_rolando",
+       "texto": "Posto Pratico eletroposto 40Kw",
+       "rolagens": 4,
+       "espera": 0.5
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Clique na tomada",
+       "ate": 12,
+       "espera": 0
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Posto Pratico eletroposto 40Kw",
+       "ate": 4,
+       "espera": 0,
+       "conferir": true
+      }
+     ],
+     "regras": [
+      {
+       "local_id": "Posto Pratico eletroposto 40Kw",
+       "local_nome": "Posto Pratico eletroposto 40Kw",
+       "conector": "6003",
+       "potencia_kw": 40.0,
+       "lat": -20.4241201,
+       "lng": -49.9599216,
+       "regex": "ID: 6003, (.+)$"
+      }
+     ],
+     "depois": [
+      {
+       "tipo": "fechar_ficha",
+       "espera": 0.5
+      }
+     ],
+     "ao_fim": true
     }
    ]
   },
@@ -3721,6 +3865,212 @@
      ],
      "intervalo_min": 16,
      "grupo": 0
+    },
+    {
+     "nome": "Bitcharge - Ramiru's Churrascaria",
+     "passos": [
+      {
+       "tipo": "passar_avisos",
+       "avisos": [
+        [
+         "notificaç",
+         [
+          "Cancelar",
+          "Agora não",
+          "Não permitir"
+         ]
+        ],
+        [
+         "cadastre-se para carregar",
+         [
+          "Agora não"
+         ]
+        ],
+        [
+         "localização",
+         [
+          "Durante o uso do app",
+          "Ao usar o app",
+          "Permitir"
+         ]
+        ]
+       ],
+       "ate_texto": "Filtrar",
+       "ate": 12,
+       "folga": 0,
+       "espera": 0.3
+      },
+      {
+       "tipo": "toque",
+       "x": 250,
+       "y": 220,
+       "espera": 1.5
+      },
+      {
+       "tipo": "limpar_campo",
+       "espera": 0.5
+      },
+      {
+       "tipo": "digitar",
+       "texto": "Ramiru",
+       "espera": 3
+      },
+      {
+       "tipo": "esconder_teclado",
+       "espera": 1
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "RESULTADO",
+       "ate": 12,
+       "espera": 0.5
+      },
+      {
+       "tipo": "tocar_texto_rolando",
+       "texto": "Bitcharge - Ramiru's Churrascaria,",
+       "rolagens": 6,
+       "espera": 0.5
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Tomada 1",
+       "ate": 15,
+       "espera": 1
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Bitcharge - Ramiru's Churrascaria",
+       "ate": 4,
+       "espera": 0,
+       "conferir": true
+      }
+     ],
+     "regras": [
+      {
+       "local_id": "BITCHARGE_RAMIRUS_FERNANDOPOLIS",
+       "local_nome": "Bitcharge - Ramiru's Churrascaria",
+       "conector": "BITCHARGE_RAMIRUS_FERNANDOPOLIS - 1",
+       "potencia_kw": 60.0,
+       "lat": -20.2709672,
+       "lng": -50.2407655,
+       "ancora": "^Tomada 1$",
+       "regex": "^(?!Plug:|Pot[êe]ncia:|Tomada \\d|\\(|CCS|Tipo \\d|CHAdeMO|GB/?T|[\\d.,]+ ?kW|R[áa]pida|Ultra|Lenta|Carga|Reserva|Ociosidade|R\\$|Tra[çc]ar rota|Iniciar)(.{2,40})$"
+      },
+      {
+       "local_id": "BITCHARGE_RAMIRUS_FERNANDOPOLIS",
+       "local_nome": "Bitcharge - Ramiru's Churrascaria",
+       "conector": "BITCHARGE_RAMIRUS_FERNANDOPOLIS - 2",
+       "potencia_kw": 60.0,
+       "lat": -20.2709672,
+       "lng": -50.2407655,
+       "ancora": "^Tomada 2$",
+       "regex": "^(?!Plug:|Pot[êe]ncia:|Tomada \\d|\\(|CCS|Tipo \\d|CHAdeMO|GB/?T|[\\d.,]+ ?kW|R[áa]pida|Ultra|Lenta|Carga|Reserva|Ociosidade|R\\$|Tra[çc]ar rota|Iniciar)(.{2,40})$"
+      }
+     ],
+     "depois": [
+      {
+       "tipo": "voltar",
+       "espera": 2
+      }
+     ]
+    },
+    {
+     "nome": "AUTO POSTO CALIFÓRNIA",
+     "passos": [
+      {
+       "tipo": "passar_avisos",
+       "avisos": [
+        [
+         "notificaç",
+         [
+          "Cancelar",
+          "Agora não",
+          "Não permitir"
+         ]
+        ],
+        [
+         "cadastre-se para carregar",
+         [
+          "Agora não"
+         ]
+        ],
+        [
+         "localização",
+         [
+          "Durante o uso do app",
+          "Ao usar o app",
+          "Permitir"
+         ]
+        ]
+       ],
+       "ate_texto": "Filtrar",
+       "ate": 12,
+       "folga": 0,
+       "espera": 0.3
+      },
+      {
+       "tipo": "toque",
+       "x": 250,
+       "y": 220,
+       "espera": 1.5
+      },
+      {
+       "tipo": "limpar_campo",
+       "espera": 0.5
+      },
+      {
+       "tipo": "digitar",
+       "texto": "Votuporanga",
+       "espera": 3
+      },
+      {
+       "tipo": "esconder_teclado",
+       "espera": 1
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "RESULTADO",
+       "ate": 12,
+       "espera": 0.5
+      },
+      {
+       "tipo": "tocar_texto_rolando",
+       "texto": "AUTO POSTO CALIFÓRNIA,",
+       "rolagens": 6,
+       "espera": 0.5
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "Plug:",
+       "ate": 15,
+       "espera": 1
+      },
+      {
+       "tipo": "esperar_texto",
+       "texto": "AUTO POSTO CALIFÓRNIA",
+       "ate": 4,
+       "espera": 0,
+       "conferir": true
+      }
+     ],
+     "regras": [
+      {
+       "local_id": "AUTO_POSTO_CALIFORNIA_VOTUPORANGA",
+       "local_nome": "AUTO POSTO CALIFÓRNIA",
+       "conector": "AUTO_POSTO_CALIFORNIA_VOTUPORANGA - 1",
+       "potencia_kw": 40.0,
+       "lat": -20.4097029,
+       "lng": -49.970107,
+       "ancora": "^Plug:$",
+       "regex": "^(?!Plug:|Pot[êe]ncia:|Tomada \\d|\\(|CCS|Tipo \\d|CHAdeMO|GB/?T|[\\d.,]+ ?kW|R[áa]pida|Ultra|Lenta|Carga|Reserva|Ociosidade|R\\$|Tra[çc]ar rota|Iniciar)(.{2,40})$"
+      }
+     ],
+     "depois": [
+      {
+       "tipo": "voltar",
+       "espera": 2
+      }
+     ]
     }
    ],
    "recuperar": [

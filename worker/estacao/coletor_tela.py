@@ -760,11 +760,14 @@ def coletar(ensaio=False, so_fonte=None):
 
     def com_pequenos(lista, fonte):
         """Grandes na ordem do telas.json; pequenos (só no app escolhido) no fim, do mais atrasado ao mais novo."""
-        grandes = [r for r in lista if not pequeno(r)]
+        # "ao_fim": roteiro que troca a lista do app (busca pelo nome, ex.: carregador de outra cidade na ATM)
+        # vai depois de todos, inclusive dos pequenos, para não estragar a lista dos outros
+        grandes = [r for r in lista if not pequeno(r) and not r.get("ao_fim")]
+        fim = [r for r in lista if not pequeno(r) and r.get("ao_fim")]
         if fonte != escolhido:
-            return grandes, len(lista) - len(grandes)
+            return grandes + fim, sum(1 for r in lista if pequeno(r))
         peqs = sorted((dict(r, _rodizio=True) for r in lista if pequeno(r)), key=lambda r: ultima_de(fonte, r))
-        return grandes + peqs, 0
+        return grandes + peqs + fim, 0
 
     for alvo in alvos:
         t0 = time.time()
