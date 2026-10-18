@@ -678,7 +678,7 @@ def coletar(ensaio=False, so_fonte=None):
         minutos = round((inicio - float(ant)) / 60)
         if minutos > 2 * cfg_int:
             return cfg_int
-        return max(5, minutos)
+        return min(120, max(5, minutos))   # o banco aceita passo_min de 1 a 120 (acima disso recusa o lote inteiro)
     max_falhas_seguidas = cfg.get("max_falhas_seguidas", 3)
     resumo = list(resumo_inicial)
 

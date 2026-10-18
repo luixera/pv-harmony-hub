@@ -92,6 +92,24 @@ def main():
         except Exception as e:
             nota(f"GPS não aplicado: {e}")
 
+    if "memoria" in PARTES:   # só leitura: RAM, apps que mais ocupam, disco e o estado pela API do VMOS
+        for titulo, cmd in [("meminfo", "grep -E 'MemTotal|MemFree|MemAvailable|Cached|SwapTotal|SwapFree' /proc/meminfo"),
+                            ("uptime", "uptime"),
+                            ("processos (PSS)", "dumpsys meminfo | sed -n '/Total PSS by process/,/Total PSS by OOM/p' | head -22"),
+                            ("resumo", "dumpsys meminfo | grep -E 'Total RAM|Free RAM|Used RAM|Lost RAM|ZRAM'"),
+                            ("disco", "df -h /data | tail -1")]:
+            try:
+                nota(f"── {titulo}\n" + c.adb("shell", cmd, timeout=60).strip())
+            except Exception as e:
+                nota(f"── {titulo}: {e}")
+        if c.ANDROID == "vmos":
+            try:
+                import vmos
+                est = vmos.estado()
+                nota("── API VMOS: " + json.dumps({k: v for k, v in (est or {}).items()
+                                                  if not re.search(r"key|token|secret|senha|pass", str(k), re.I)}, ensure_ascii=False)[:1500])
+            except Exception as e:
+                nota(f"── API VMOS: {e}")
     if "atm" in PARTES:
         descobrir_atm(w, h)
     if "cury" in PARTES:
