@@ -562,7 +562,8 @@ def descobrir_cidades(nomes, w, h):
             lat, lng = CIDADES[nome]
             nota(f"══ {nome}: GPS em {lat}, {lng}")
             vmos.gps(lat, lng); time.sleep(5)
-            for parte, fn in (("ATM", lambda: descobrir_atm(w, h)), ("Cury", lambda: descobrir_cury(w, h))):
+            for parte, fn in ((("ATM", lambda: descobrir_atm(w, h)), ("Cury", lambda: descobrir_cury(w, h)))
+                              if "so_tupi" not in PARTES else ()):
                 try:
                     fn()
                 except Exception as e:
