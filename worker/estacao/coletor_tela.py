@@ -752,7 +752,10 @@ def coletar(ensaio=False, so_fonte=None):
                 if mais_velho is None or u < mais_velho:
                     escolhido, mais_velho = a["fonte"], u
     gasto_peq = 0.0
-    if peq_ativo:
+    if peq_ativo and peq_cfg.get("pausado"):   # 18/10/2026: só os rápidos (40 kW+) — pequenos fora de todos os ciclos
+        escolhido = None
+        resumo.append("pequenos pausados")
+    elif peq_ativo:
         resumo.append(f"rodízio dos pequenos: {escolhido or 'nenhum vencido'}")
 
     def com_pequenos(lista, fonte):

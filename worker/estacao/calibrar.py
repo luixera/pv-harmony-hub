@@ -110,6 +110,9 @@ def main():
                                                   if not re.search(r"key|token|secret|senha|pass", str(k), re.I)}, ensure_ascii=False)[:1500])
             except Exception as e:
                 nota(f"── API VMOS: {e}")
+    cidades = [p.split(":", 1)[1] for p in PARTES if p.startswith("cidade:")]
+    if cidades:
+        descobrir_cidades(cidades, w, h)
     if "atm" in PARTES:
         descobrir_atm(w, h)
     if "cury" in PARTES:
@@ -533,6 +536,52 @@ def descobrir_cury(w, h):
         nota(f"  {nome}: {[(x['codigo'], x['kw'], x['status']) for x in locais[nome]['carregadores']]}")
         (SAIDA / "cury_locais.json").write_text(json.dumps([locais[n] for n in ordem_c], ensure_ascii=False, indent=1), encoding="utf-8")
     (SAIDA / "cury_locais.json").write_text(json.dumps([locais[n] for n in ordem_c], ensure_ascii=False, indent=1), encoding="utf-8")
+
+
+# Cidades novas (18/10/2026: só carregadores rápidos, 40 kW+). Centro aproximado de cada cidade.
+CIDADES = {
+    "Catanduva": (-21.1378, -48.9728),
+    "Votuporanga": (-20.4237, -49.9781),
+    "Fernandopolis": (-20.2839, -50.2464),
+}
+
+
+def descobrir_cidades(nomes, w, h):
+    """Por cidade: GPS do aparelho no centro dela, ATM e Cury listados por distância (fichas até RAIO km)
+    e a Tupi buscada pelo nome da cidade. Cada cidade numa subpasta da saída. No fim o GPS volta para
+    Rio Preto (o ciclo da estação também o recoloca no começo)."""
+    global SAIDA, REGIAO_TUPI
+    raiz = SAIDA
+    import vmos
+    try:
+        for nome in nomes:
+            if nome not in CIDADES:
+                nota(f"cidade sem coordenada: {nome}"); continue
+            SAIDA = raiz / nome
+            SAIDA.mkdir(parents=True, exist_ok=True)
+            lat, lng = CIDADES[nome]
+            nota(f"══ {nome}: GPS em {lat}, {lng}")
+            vmos.gps(lat, lng); time.sleep(5)
+            for parte, fn in (("ATM", lambda: descobrir_atm(w, h)), ("Cury", lambda: descobrir_cury(w, h))):
+                try:
+                    fn()
+                except Exception as e:
+                    nota(f"  {nome} {parte}: {e!r}")
+                    try:
+                        capturar(f"erro_{parte.lower()}")
+                    except Exception:
+                        pass
+            REGIAO_TUPI = (nome.lower(), {"Fernandopolis": "fernandópolis"}.get(nome, nome.lower()))
+            try:
+                tupi_regiao([nome], w, h)
+            except Exception as e:
+                nota(f"  {nome} Tupi: {e!r}")
+    finally:
+        SAIDA = raiz
+        try:
+            vmos.gps(); nota("GPS de volta em Rio Preto")
+        except Exception as e:
+            nota(f"GPS não voltou: {e}")
 
 
 if __name__ == "__main__":
