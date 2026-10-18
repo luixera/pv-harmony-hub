@@ -145,6 +145,37 @@ ATM ~240 s com a fatia dos pequenos, Tupi ~150 s). Passo real dos grandes:
 por hora. Para chegar a 8 min nos grandes com um aparelho só não sobra folga;
 o caminho seria um segundo aparelho VMOS lendo um dos apps em paralelo.
 
+### Só rápidos e cidades novas (18/10/2026)
+
+Decisão do usuário: o modelo de negócio é dos **rápidos (40 kW+)**. Os lentos
+estão **pausados** (`rodizio_pequenos.pausado` no `telas.json`; locais mistos
+7+40 seguem). A leitura foi ampliada para **Votuporanga, Fernandópolis e
+Catanduva** (também na lista de cidades do GD).
+
+Descoberta pela parte `cidade:<Nome>` do `estacao-calibrar`: o GPS do aparelho
+vai para o centro da cidade, ATM e Cury listam por distância e a Tupi é buscada
+pelo nome da cidade. A opção `so_tupi` pula ATM e Cury. A rodada inteira passa de
+30 min (`RuntimeMaxSec`), então use no máximo duas cidades por vez. Rápidos
+encontrados:
+
+| Cidade | Local | App | Potência | Conector |
+|---|---|---|---|---|
+| Votuporanga | Posto Pratico eletroposto 40Kw | ATM | 40 kW CCS2 | 6003 |
+| Votuporanga | AUTO POSTO CALIFÓRNIA | Tupi | 40 kW CCS2 | `AUTO_POSTO_CALIFORNIA_VOTUPORANGA - 1` |
+| Fernandópolis | Bitcharge - Ramiru's Churrascaria | Tupi | 60 kW, 2 tomadas | `BITCHARGE_RAMIRUS_FERNANDOPOLIS - 1/2` |
+| Catanduva | — | — | só lentos (Muffato na ATM, Uni2 na Cury) | — |
+
+- A ATM lista por distância de Rio Preto, então o Posto Pratico é lido pela
+  **busca do nome**, num roteiro com `ao_fim` (vai depois de todos, porque a
+  busca troca a lista do app).
+- Sem a API da Tupi não há `stationID`: os locais novos usam um código próprio,
+  sem " - " (o agrupamento da `tupi_app` corta no primeiro " - ").
+- Coordenadas do OpenStreetMap: Posto Pratico exata; Califórnia pelo trecho da
+  avenida; Ramiru's só pelo centro do bairro CECAP (aproximada). Os três ainda
+  não têm cadastro e aparecem na aba Coleta como "sem vínculo".
+- Os três apps não cobrem todas as redes: Catanduva com certeza tem rápidos de
+  outras operadoras. O PlugShare seria o caminho para achá-los.
+
 ### Tupi pelo app (`tupi_app`, 17/10/2026)
 
 A API da Tupi passou a responder 403 do Cloudflare; não se contorna. O app da
