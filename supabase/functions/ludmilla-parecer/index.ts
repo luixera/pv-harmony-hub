@@ -29,6 +29,14 @@
 // reserva é desfeita — não existe consumo para registrar. Para isso o chamador
 // manda `tenant_id` (a linha do extrato exige tenant); sem ele a função ainda lê
 // o parecer, mas o gasto fica FORA do extrato e isso vai para o log.
+//
+// DOIS MODOS. Sem `concessionaria` no corpo (a EDP, em produção) a função é a de
+// sempre: o mesmo prompt e a mesma resposta de seis campos — qualquer mudança
+// aqui precisa deixar esse caminho IDÊNTICO. Com `concessionaria: 'enel'` o
+// prompt é o da ENEL e a resposta ganha `tipo`, `nt` e `uc` (o que o documento
+// é, a Nota Técnica e a instalação a que ele se refere), que o robô usa para
+// achar o projeto. Os três campos só existem no modo ENEL: na EDP a chave nem
+// aparece, o que o robô lê (`?? null`) como "não achei".
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const cors = {
@@ -56,17 +64,33 @@ const TETO_MS = 110_000
  */
 const MIN_PDF_B64 = 256
 
+/** Tipos do documento no modo ENEL (lista branca). */
+const TIPOS_ENEL = ['carta_projeto', 'resultado_vistoria', 'troca_relogio', 'outro']
+/** A NT da ENEL tem 9 dígitos (nota de serviço tem 12, protocolo de contato 10). */
+const MIN_DIGITOS_NT = 9
+/**
+ * A instalação (UC) vale 7 dígitos ou mais: o cadastro guarda `0088101266`, mas o
+ * documento traz `88101266` (8 dígitos) — sem os zeros. Com o mínimo de 9 da NT,
+ * metade das UCs reais seria descartada.
+ */
+const MIN_DIGITOS_UC = 7
+/** No modo ENEL, quando nada foi lido (falha ou "inconclusivo"): os três vão null. */
+const SEM_DOCUMENTO_ENEL = { tipo: null, nt: null, uc: null }
+
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...cors, 'Content-Type': 'application/json' } })
 
-/** Resposta de "não deu para concluir" — mesmo formato do caminho feliz. */
-const inconclusivo = (resumo: string) => json({
-  ok: true, veredito: 'inconclusivo', resumo, pendencias: [], titular: null, endereco: null,
+/**
+ * Resposta de "não deu para concluir" — mesmo formato do caminho feliz.
+ * `extra` são os campos do modo ENEL; vazio na EDP, que segue com seis campos.
+ */
+const inconclusivo = (resumo: string, extra: Record<string, unknown> = {}) => json({
+  ok: true, veredito: 'inconclusivo', resumo, pendencias: [], titular: null, endereco: null, ...extra,
 })
 
 /** A IA (ou a cota) não pôde ler: ok:false + o formato completo do contrato. */
-const falhaDaIA = (error: string) => json({
-  ok: false, error, veredito: 'inconclusivo', resumo: '', pendencias: [], titular: null, endereco: null,
+const falhaDaIA = (error: string, extra: Record<string, unknown> = {}) => json({
+  ok: false, error, veredito: 'inconclusivo', resumo: '', pendencias: [], titular: null, endereco: null, ...extra,
 })
 
 /** minúsculas, sem acento, sem espaço nas pontas: 'Favorável ' → 'favoravel'. */
@@ -137,6 +161,40 @@ const textoOuNulo = (valor: unknown, limite: number, marcadorEmFrase = false): s
   if (ECO_DO_PROMPT.some((re) => re.test(n))) return null
   return t.slice(0, limite)
 }
+
+/**
+ * Número do documento (NT, instalação): só os dígitos, sem zeros à esquerda, com
+ * pelo menos `minimo` deles. Eco do prompt ("número da Nota Técnica ou null"), texto
+ * sem número e número curto demais viram null — um número que não é o do documento
+ * nunca pode passar como lido, porque o robô o procura entre os projetos. Só texto
+ * conta; número JSON, booleano e objeto não são dado lido.
+ */
+const numeroOuNulo = (v: unknown, minimo: number): string | null => {
+  if (typeof v !== 'string') return null
+  const d = v.replace(/\D/g, '').replace(/^0+/, '')
+  return d.length >= minimo ? d : null
+}
+
+/**
+ * O prompt do modo ENEL. Ao mexer nele, reveja ECO_DO_PROMPT: a IA às vezes copia
+ * a linha de formato em vez de preencher. (O tipo copiado cai em 'outro' pela lista
+ * branca e o nt/uc copiados não têm dígitos, então só o titular, o endereço e o
+ * resumo dependem daquela lista.)
+ */
+const PROMPT_ENEL = [
+  'Você lê um documento da ENEL Distribuição São Paulo sobre um projeto de micro ou minigeração distribuída (energia solar).',
+  'Responda SOMENTE com um objeto JSON, sem texto antes ou depois, neste formato:',
+  '{"tipo":"carta_projeto|resultado_vistoria|troca_relogio|outro","veredito":"favoravel|pendencia|inconclusivo","resumo":"uma frase em português","pendencias":["..."],"titular":"nome do titular ou null","endereco":"logradouro e número ou null","nt":"número da Nota Técnica ou null","uc":"número da instalação ou null"}',
+  'Regras:',
+  '- "carta_projeto": carta de resposta ao projeto (aprovação, reprovação ou exigências).',
+  '- "resultado_vistoria": resultado da vistoria (relatório fotográfico ou vídeo de anti-ilhamento).',
+  '- "troca_relogio": troca do medidor (relógio).',
+  '- "favoravel": aprovado, inclusive "aprovado, porém solicitamos observar os itens abaixo" — nesse caso liste os itens em "pendencias". "pendencia": reprovado ou com exigência que precisa ser cumprida ANTES da aprovação. "inconclusivo": não dá para dizer.',
+  '- "titular": o nome completo do titular na ordem natural (prenome primeiro, sobrenome no fim), sem vírgula. Se o documento trouxer "SOBRENOME, NOME", reescreva como "NOME SOBRENOME".',
+  '- "nt": o número da Nota Técnica (NT) do projeto, só dígitos. NÃO confunda com protocolo de atendimento, nota de serviço ou número SF.',
+  '- "uc": o número da instalação (unidade consumidora), só dígitos.',
+  '- Use null quando o documento não trouxer a informação. Não invente.',
+].join('\n')
 
 /**
  * O último objeto JSON BALANCEADO do texto.
@@ -225,8 +283,15 @@ Deno.serve(async (req) => {
   const apiKey = Deno.env.get('ANTHROPIC_API_KEY')
   if (!apiKey) return json({ ok: false, error: 'ANTHROPIC_API_KEY não configurada' }, 500)
 
-  let body: { pdf_base64?: unknown; nome_arquivo?: string; protocolo?: string; tenant_id?: string } | null
+  let body: {
+    pdf_base64?: unknown; nome_arquivo?: string; protocolo?: string; tenant_id?: string; concessionaria?: string
+  } | null
   try { body = await req.json() } catch { return json({ ok: false, error: 'corpo inválido' }, 400) }
+  // O único desvio entre os modos: só o valor exato 'enel' liga o modo ENEL. Qualquer
+  // outra coisa (ausente, 'edp', 'ENEL') é a EDP de sempre.
+  const modoEnel = body?.concessionaria === 'enel'
+  /** Os campos que o modo ENEL acrescenta quando nada foi lido; na EDP, nenhum. */
+  const semLeitura = modoEnel ? SEM_DOCUMENTO_ENEL : {}
   // Tipo E tamanho, ANTES da reserva no extrato. Um `pdf_base64` numérico ia
   // para a API como `data: 12345`, tomava 400 e a mensagem "IA respondeu 400"
   // fazia quem lê o log concluir "a IA está fora" — e sobrava uma linha de
@@ -261,9 +326,9 @@ Deno.serve(async (req) => {
     })
     if (erroCota || !cota) {
       console.error('consume_ai_quota_servidor:', erroCota?.code ?? 'sem retorno')
-      return falhaDaIA('não foi possível verificar a cota de IA')
+      return falhaDaIA('não foi possível verificar a cota de IA', semLeitura)
     }
-    if (cota.allowed === false) return falhaDaIA(`cota de IA indisponível (${cota.reason})`)
+    if (cota.allowed === false) return falhaDaIA(`cota de IA indisponível (${cota.reason})`, semLeitura)
     logId = cota.log_id ?? null
   } else {
     console.error('tenant_id ausente: o consumo desta leitura NÃO entra no extrato de IA')
@@ -278,7 +343,8 @@ Deno.serve(async (req) => {
     if (error) console.error('reserva do extrato não desfeita:', error.code)
   }
 
-  const prompt = [
+  // O prompt da EDP é o de sempre, palavra por palavra (há teste que o trava).
+  const promptEdp = [
     'Você está lendo um PARECER DE ACESSO da distribuidora EDP para um projeto de geração distribuída.',
     `Protocolo/nota esperado: ${body?.protocolo ?? '(não informado)'}.`,
     '',
@@ -290,6 +356,7 @@ Deno.serve(async (req) => {
     '- "pendencia": o parecer pede correção, complementação ou indefere.',
     '- "inconclusivo": não dá para afirmar pelo documento.',
   ].join('\n')
+  const prompt = modoEnel ? PROMPT_ENEL : promptEdp
 
   // Prazo PRÓPRIO da chamada (ver TETO_MS): abortar aqui cai no mesmo catch que
   // desfaz a reserva, enquanto o relógio da plataforma mataria o isolate antes.
@@ -318,7 +385,7 @@ Deno.serve(async (req) => {
     const estourou = e instanceof Error && e.name === 'AbortError'
     console.error('Falha ao chamar a IA:', e instanceof Error ? e.name : 'erro')
     await desfazerReserva()
-    return falhaDaIA(estourou ? 'tempo esgotado ao chamar a IA' : 'falha ao chamar a IA')
+    return falhaDaIA(estourou ? 'tempo esgotado ao chamar a IA' : 'falha ao chamar a IA', semLeitura)
   } finally {
     // A resposta é inteira (não é stream): quando os cabeçalhos chegam, a IA já
     // terminou de gerar. Daqui para frente só falta ler o corpo, que é rápido —
@@ -330,7 +397,7 @@ Deno.serve(async (req) => {
     // só o status vai para o log — o corpo do erro pode ecoar trecho do documento
     console.error('IA respondeu', resposta.status)
     await desfazerReserva()
-    return falhaDaIA(`IA respondeu ${resposta.status}`)
+    return falhaDaIA(`IA respondeu ${resposta.status}`, semLeitura)
   }
 
   let data: {
@@ -344,7 +411,7 @@ Deno.serve(async (req) => {
     // a IA respondeu 200 (e cobrou), só não dá para ler: a linha do extrato fica
     // e ele estima — melhor que sumir com um gasto que provavelmente existiu
     console.error('Resposta da IA não era JSON')
-    return falhaDaIA('falha ao ler a resposta da IA')
+    return falhaDaIA('falha ao ler a resposta da IA', semLeitura)
   }
 
   // Tokens REAIS no extrato — também quando a resposta não serve (cortada,
@@ -361,7 +428,7 @@ Deno.serve(async (req) => {
   const texto = (data.content ?? []).filter((c) => c.type === 'text')
     .map((c) => c.text ?? '').join('')
   const bruto = ultimoObjetoJson(texto)
-  if (!bruto) return inconclusivo('não consegui ler o parecer')
+  if (!bruto) return inconclusivo('não consegui ler o parecer', semLeitura)
 
   try {
     const r = JSON.parse(bruto)
@@ -371,6 +438,17 @@ Deno.serve(async (req) => {
     // DEVOLVIDO segue sendo o canônico sem acento.
     const pedido = normalizar(r.veredito)
     const veredito = VEREDITOS.includes(pedido) ? pedido : 'inconclusivo'
+    // Só no modo ENEL. Mesma regra do veredito: normaliza e confere na lista branca
+    // (o que a IA inventar, ou o eco do formato, vira 'outro'). Na EDP o objeto
+    // fica vazio e a resposta é a de seis campos de sempre.
+    const tipo = normalizar(r.tipo)
+    const doDocumento = modoEnel
+      ? {
+        tipo: TIPOS_ENEL.includes(tipo) ? tipo : 'outro',
+        nt: numeroOuNulo(r.nt, MIN_DIGITOS_NT),
+        uc: numeroOuNulo(r.uc, MIN_DIGITOS_UC),
+      }
+      : {}
     return json({
       ok: true, veredito,
       // Pelo mesmo filtro do titular: o resumo também vem, às vezes, como eco da
@@ -380,9 +458,10 @@ Deno.serve(async (req) => {
       pendencias: Array.isArray(r.pendencias) ? r.pendencias.map(String).slice(0, 10) : [],
       titular: textoOuNulo(r.titular, 150, true),
       endereco: textoOuNulo(r.endereco, 200, true),
+      ...doDocumento,
     })
   } catch {
     // não loga o erro: a mensagem do JSON.parse cita trecho do texto lido
-    return inconclusivo('resposta da IA fora do formato')
+    return inconclusivo('resposta da IA fora do formato', semLeitura)
   }
 })
