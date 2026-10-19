@@ -161,9 +161,22 @@ export function uidsDaBusca(resultado: number[] | false | undefined, protocolo: 
   throw new Error(`A busca na caixa de e-mail falhou (protocolo ${protocolo}): o servidor não devolveu a lista de mensagens.`);
 }
 
+/**
+ * Puro: a mesma regra de `uidsDaBusca`, para a busca por REMETENTE (ENEL). Falha
+ * do servidor LANÇA em vez de virar "não achei": a robô da ENEL parte da caixa, e
+ * uma caixa que "não tem nada" por causa de um NO/BAD silencioso é a mesma
+ * cegueira em silêncio — só que sem nenhum protocolo para denunciar.
+ */
+export function uidsDaBuscaPorRemetente(resultado: number[] | false | undefined, remetente: string): number[] {
+  if (Array.isArray(resultado)) return resultado;
+  throw new Error(`A busca na caixa de e-mail falhou (remetente ${remetente}): o servidor não devolveu a lista de mensagens.`);
+}
+
 export interface Caixa {
   /** uids das mensagens cujo assunto OU corpo tem o número do protocolo. */
   procurar(protocolo: string): Promise<number[]>;
+  /** uids das mensagens DESTE remetente desde a data (granularidade de dia do IMAP). */
+  procurarDe(remetente: string, desde: Date): Promise<number[]>;
   /**
    * Só o envelope (assunto, id, data): é com isto que se decide o que vale
    * baixar. Spec §5.4, literal: "Mensagem já registrada em
@@ -223,6 +236,11 @@ export async function abrirCaixa(c: { email: string; senha: string }): Promise<C
       if (n.length < 8) return [];
       // Sem try/catch: busca que falhou NÃO pode virar "não achei" (quem chama decide o que fazer).
       return uidsDaBusca(await client.search({ or: [{ subject: n }, { body: n }] }, { uid: true }), protocolo);
+    },
+    async procurarDe(remetente: string, desde: Date): Promise<number[]> {
+      verificarConexao();
+      // Sem try/catch: busca que falhou NÃO pode virar "não achei".
+      return uidsDaBuscaPorRemetente(await client.search({ from: remetente, since: desde }, { uid: true }), remetente);
     },
     async *envelopes(uids: number[]): AsyncGenerator<EnvelopeLido> {
       verificarConexao();

@@ -351,6 +351,7 @@ export async function protocolosDeInteresse(accountId: string): Promise<string[]
 // recusa o run na estação está em `email/index.ts`.
 
 import { idArquivoDeEmail, type RegraEmail } from './email/util.js';
+import type { ProjetoEnel } from './email/enel/identificar.js';
 
 export interface ProtocoloDeProjeto {
   protocolo: string; project_id: string; company_id: string;
@@ -377,6 +378,46 @@ export async function regrasDoEmail(accountId: string): Promise<RegraEmail[]> {
   const { data, error } = await supabase().rpc('ludmilla_email_regras' as never, { p_account_id: accountId } as never);
   if (error) throw new Error(`Não consegui listar as regras de e-mail: ${error.message}`);
   return (data ?? []) as RegraEmail[];
+}
+
+/**
+ * Como a conta descobre o projeto de um e-mail (`protocolo_no_assunto`, o da EDP,
+ * ou `remetente`, o da ENEL) e quando a última varredura terminou. Valor que o
+ * robô não conhece cai no modo da EDP: o caminho antigo é o padrão seguro.
+ */
+export async function contaDoEmail(accountId: string): Promise<{
+  identificacao: 'protocolo_no_assunto' | 'remetente'; ultimaVarreduraEm: string | null;
+}> {
+  const { data, error } = await supabase().rpc('ludmilla_email_conta' as never, { p_account_id: accountId } as never);
+  if (error) throw new Error(`Não consegui ler a configuração da conta: ${error.message}`);
+  const l = ((data ?? []) as { identificacao: string; ultima_varredura_em: string | null }[])[0];
+  if (!l) throw new Error('A conta de e-mail não foi encontrada.');
+  return {
+    identificacao: l.identificacao === 'remetente' ? 'remetente' : 'protocolo_no_assunto',
+    ultimaVarreduraEm: l.ultima_varredura_em,
+  };
+}
+
+/** TODOS os projetos da concessionária da conta (inclusive os concluídos, que só servem para reconhecer o número). */
+export async function projetosDoEmail(accountId: string): Promise<ProjetoEnel[]> {
+  const { data, error } = await supabase().rpc('ludmilla_email_projetos' as never, { p_account_id: accountId } as never);
+  if (error) throw new Error(`Não consegui listar os projetos da concessionária: ${error.message}`);
+  return (data ?? []) as ProjetoEnel[];
+}
+
+export interface AvisoEmail {
+  accountId: string; messageId: string; protocolo: string; projectId: string | null;
+  titulo: string; mensagem: string;
+}
+
+/** Toca o sino de admin + staff. Uma vez por mensagem: a retentativa devolve 0. */
+export async function avisarEquipe(p: AvisoEmail): Promise<number> {
+  const { data, error } = await supabase().rpc('ludmilla_email_avisar' as never, {
+    p_account_id: p.accountId, p_message_id: p.messageId, p_protocolo: p.protocolo,
+    p_project_id: p.projectId, p_titulo: p.titulo, p_mensagem: p.mensagem,
+  } as never);
+  if (error) throw new Error(`Não consegui avisar a equipe: ${error.message}`);
+  return Number(data ?? 0);
 }
 
 /**
@@ -512,8 +553,27 @@ export interface EmailLido {
   concluida: boolean;
   /** Qual anexo a IA leu (o PDF maior). Null quando não houve leitura. */
   arquivoLido: string | null;
+  /** ENEL: como o projeto aparece no cartão. A EDP não manda (vale o protocolo). */
+  referencia?: string | null;
+  /** ENEL: por qual sinal o projeto foi achado. A EDP não manda (vale 'protocolo'). */
+  casamento?: 'protocolo' | 'uc' | 'titular';
+  /** false = registra a mensagem sem abrir cartão (só anota). Padrão do banco: true. */
+  abrirCartao?: boolean;
+  /**
+   * ENEL: o robô PEDE que o cartão sugira trocar o protocolo do cadastro pelo da
+   * `referencia` (a NT da Carta). Quem decide é o robô, mas quem TRAVA é o banco:
+   * só vale com `referencia` só de dígitos (9+), projeto existente e dígitos
+   * diferentes dos do cadastro; falhou, o cartão sai sem troca e sem erro. A EDP
+   * não manda (o banco usa FALSE).
+   */
+  atualizarProtocolo?: boolean;
 }
 
+/**
+ * Os campos que só a ENEL manda ficam FORA do objeto quando `undefined`, e é o
+ * `JSON.stringify` do supabase-js que os omite do fio — o banco usa o DEFAULT. Por
+ * isso a chamada da EDP não muda de payload (teste: enel-caixa.test.ts).
+ */
 export async function registrarEmailLido(p: EmailLido): Promise<void> {
   const { error } = await supabase().rpc('ludmilla_email_registrar' as never, {
     p_run_id: p.runId, p_account_id: p.accountId, p_message_id: p.messageId, p_protocolo: p.protocolo,
@@ -521,6 +581,8 @@ export async function registrarEmailLido(p: EmailLido): Promise<void> {
     p_tipo_documento: p.tipoDocumento, p_veredito: p.veredito, p_resumo: p.resumo,
     p_anexos: p.anexos, p_motivo: p.motivo, p_recomendacao: p.recomendacao,
     p_concluida: p.concluida, p_arquivo_lido: p.arquivoLido,
+    p_referencia: p.referencia, p_casamento: p.casamento, p_abrir_cartao: p.abrirCartao,
+    p_atualizar_protocolo: p.atualizarProtocolo,
   } as never);
   if (error) throw new Error(`Não consegui registrar o e-mail lido: ${error.message}`);
 }
