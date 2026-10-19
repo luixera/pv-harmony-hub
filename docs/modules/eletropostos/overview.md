@@ -171,8 +171,13 @@ encontrados:
 - Sem a API da Tupi não há `stationID`: os locais novos usam um código próprio,
   sem " - " (o agrupamento da `tupi_app` corta no primeiro " - ").
 - Coordenadas do OpenStreetMap: Posto Pratico exata; Califórnia pelo trecho da
-  avenida; Ramiru's só pelo centro do bairro CECAP (aproximada). Os três ainda
-  não têm cadastro e aparecem na aba Coleta como "sem vínculo".
+  avenida; Ramiru's só pelo centro do bairro CECAP (aproximada).
+- Cadastro criado em 19/10/2026 (o usuário viu que não apareciam: leitura sem
+  cadastro fica só na aba Coleta, como "sem vínculo"): "Posto Prático -
+  Eletroposto 40kW" (ATM EVS, R$ 1,99/kWh), "Auto Posto Califórnia" (Tupi,
+  R$ 2,39/kWh) e "Bitcharge - Ramiru's Churrascaria" (Bitcharge (Tupi),
+  R$ 2,30/kWh), cada um vinculado à sua fonte. **Local novo = cadastro +
+  vínculo**, senão não entra nas análises.
 - Os três apps não cobrem todas as redes: Catanduva com certeza tem rápidos de
   outras operadoras. O PlugShare seria o caminho para achá-los.
 
