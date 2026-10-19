@@ -23,13 +23,26 @@ import { cn } from '@/lib/utils';
  */
 
 export const ROTULO_TIPO: Record<TipoDocumentoEmail, string> = {
-  parecer:     'parecer de acesso',
-  carta_obras: 'carta de obras',
-  nota:        'nota de serviço',
-  outro:       'outro documento',
+  parecer:             'parecer de acesso',
+  carta_obras:         'carta de obras',
+  nota:                'nota de serviço',
+  outro:               'outro documento',
+  // ENEL: o tipo da regra é só uma dica — o que o e-mail É sai do texto e do PDF
+  carta_projeto:       'carta do projeto',
+  resultado_vistoria:  'resultado da vistoria',
+  troca_relogio:       'troca do relógio',
+  resposta_automatica: 'resposta automática',
+  devolucao:           'e-mail devolvido',
+  comunicado:          'comunicado (ignorar)',
 };
 
-const TIPOS: TipoDocumentoEmail[] = ['parecer', 'carta_obras', 'nota', 'outro'];
+const TIPOS: TipoDocumentoEmail[] = [
+  'parecer', 'carta_obras', 'nota', 'outro',
+  'carta_projeto', 'resultado_vistoria', 'troca_relogio', 'resposta_automatica', 'devolucao', 'comunicado',
+];
+
+const SEM_DOCUMENTO: TipoDocumentoEmail[] = ['resposta_automatica', 'devolucao', 'comunicado'];
+const LE_COM_IA: TipoDocumentoEmail[] = ['parecer', 'carta_projeto', 'resultado_vistoria', 'troca_relogio'];
 
 /** Selo que também é botão: um clique inverte o campo da regra. */
 function Chave({ ligado, rotuloLigado, rotuloDesligado, cor, onClick, disabled }: {
@@ -62,17 +75,23 @@ export function RegrasEmail({ accountId, tenantId }: { accountId: string; tenant
 
   const base = { account_id: accountId, tenant_id: tenantId };
 
+  // Assunto vazio é válido ("qualquer assunto deste remetente"), mas a regra precisa
+  // de pelo menos um dos dois: sem assunto e sem remetente ela casaria com TUDO.
+  const regraCompleta = assunto.trim() !== '' || remetente.trim() !== '';
+
   function adicionar() {
-    if (!assunto.trim()) return;
+    if (!regraCompleta) return;
     salvar.mutate({
       ...base,
       assunto: assunto.trim(),
       remetente: remetente.trim() || null,
       tipo_documento: tipo,
-      anexar: true,
-      // o parecer é o único que precisa de IA: o assunto diz que chegou, só o
-      // conteúdo distingue aprovado de pendência
-      ler_pdf: tipo === 'parecer',
+      // os mesmos padrões que a migração semeou para a ENEL: resposta automática,
+      // e-mail devolvido e comunicado não levam documento nenhum ao card
+      anexar: !SEM_DOCUMENTO.includes(tipo),
+      // o parecer (e, na ENEL, a carta, o resultado da vistoria e a troca do relógio)
+      // precisa de IA: o assunto diz que chegou, só o conteúdo distingue aprovado de pendência
+      ler_pdf: LE_COM_IA.includes(tipo),
       ativo: true,
       ordem: Math.max(0, ...regras.map(r => r.ordem)) + 1,
     });
@@ -106,7 +125,11 @@ export function RegrasEmail({ accountId, tenantId }: { accountId: string; tenant
             <div key={r.id}
               className={cn('flex flex-wrap items-center gap-2 text-xs border rounded-md px-2 py-1.5',
                 !r.ativo && 'opacity-60')}>
-              <span className="font-medium font-mono truncate max-w-[14rem]" title={r.assunto}>{r.assunto}</span>
+              {r.assunto.trim() === '' ? (
+                <span className="font-medium italic text-muted-foreground">qualquer assunto</span>
+              ) : (
+                <span className="font-medium font-mono truncate max-w-[14rem]" title={r.assunto}>{r.assunto}</span>
+              )}
               <span className="text-muted-foreground truncate max-w-[12rem]" title={r.remetente ?? undefined}>
                 {r.remetente ?? 'qualquer remetente'}
               </span>
@@ -153,7 +176,7 @@ export function RegrasEmail({ accountId, tenantId }: { accountId: string; tenant
         <div className="flex flex-wrap items-center gap-2 pt-1">
           <Input value={assunto} onChange={e => setAssunto(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter') adicionar(); }}
-            placeholder="Trecho do assunto" className="h-8 w-48 text-xs" />
+            placeholder="Assunto (ou vazio)" className="h-8 w-48 text-xs" />
           <Input value={remetente} onChange={e => setRemetente(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter') adicionar(); }}
             placeholder="Remetente (opcional)" className="h-8 w-48 text-xs" />
@@ -164,7 +187,7 @@ export function RegrasEmail({ accountId, tenantId }: { accountId: string; tenant
             </SelectContent>
           </Select>
           <Button size="sm" variant="outline" className="gap-1 h-8"
-            onClick={adicionar} disabled={!assunto.trim() || salvar.isPending}>
+            onClick={adicionar} disabled={!regraCompleta || salvar.isPending}>
             {salvar.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />} Adicionar
           </Button>
         </div>

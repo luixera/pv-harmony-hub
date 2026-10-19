@@ -14,6 +14,7 @@ import {
 import { useAgentConfig, type AgentConfigSafe } from '@/hooks/useAgentConfig';
 import { RegrasEmail } from '@/components/ludmilla/RegrasEmail';
 import { ContadoresEmail, MensagensEmail } from '@/components/ludmilla/MensagensEmail';
+import { identidadeDoCartao, textoDaTrocaDeProtocolo } from '@/lib/ludmillaCartao';
 import { useStatusLabel, useStatusOrder } from '@/hooks/useStatusLabel';
 import { useEnergyConcessionaires } from '@/hooks/useEnergyConcessionaires';
 import { cn } from '@/lib/utils';
@@ -103,6 +104,7 @@ export function LinhaRecomendacao({ u }: { u: PortalUpdate }) {
   const ignorar = useIgnorarUpdate();
   const [etapa, setEtapa] = useState<string>(u.recomendacao ?? '');
   const pendente = u.situacao === 'pendente';
+  const { titular, noPortal, empresa } = identidadeDoCartao(u);
 
   return (
     <div className={cn('rounded-xl border bg-card p-4 space-y-3', !pendente && 'opacity-70')}>
@@ -116,13 +118,29 @@ export function LinhaRecomendacao({ u }: { u: PortalUpdate }) {
             ) : (
               <span className="font-semibold text-muted-foreground">Sem projeto casado</span>
             )}
-            <span className="text-sm text-muted-foreground truncate">{u.titular_portal}</span>
           </div>
-          <div className="mt-1 text-xs text-muted-foreground">
+          {/* Pedido do usuário (16/10/2026): TODO cartão diz de quem é (titular) e de qual
+              empresa — portal CPFL, e-mail EDP e e-mail ENEL. Falta um dos dois: traço. */}
+          <dl className="mt-1.5 grid grid-cols-[3.75rem_minmax(0,1fr)] gap-x-2 gap-y-0.5 text-sm">
+            <dt className="text-xs text-muted-foreground pt-0.5">Titular</dt>
+            <dd className="font-medium break-words">
+              {titular ?? <span className="font-normal text-muted-foreground">—</span>}
+              {noPortal && (
+                <span className="block text-xs font-normal text-muted-foreground">
+                  no portal: <span className="font-mono">{noPortal}</span>
+                </span>
+              )}
+            </dd>
+            <dt className="text-xs text-muted-foreground pt-0.5">Empresa</dt>
+            <dd className="break-words">
+              {empresa ?? <span className="text-muted-foreground">—</span>}
+            </dd>
+          </dl>
+          <div className="mt-1.5 text-xs text-muted-foreground">
             Protocolo {u.protocolo} · visto {quando(u.detectado_em)}
             {u.atualizar_protocolo && (
               <span className="ml-2 px-1.5 py-0.5 rounded bg-violet-100 text-violet-800">
-                protocolo novo — casado por {u.casamento === 'cpf' ? 'CPF/CNPJ' : u.casamento === 'uc' ? 'UC' : 'título'}; no cadastro está {u.protocolo_anterior || '(vazio)'}
+                {textoDaTrocaDeProtocolo(u.casamento, u.protocolo_anterior)}
               </span>
             )}
             {u.raw?.['Última atualização'] ? ` · atualizado no portal em ${u.raw['Última atualização']}` : ''}
@@ -381,7 +399,7 @@ function BlocoEmail({ conta, caixa }: { conta: PortalAccount; caixa: AgentConfig
         )}
       </div>
 
-      <ContadoresEmail run={run} />
+      <ContadoresEmail run={run} identificacao={conta.identificacao} />
 
       <div className="rounded-lg border bg-muted/20 p-3">
         <RegrasEmail accountId={conta.id} tenantId={conta.tenant_id} />

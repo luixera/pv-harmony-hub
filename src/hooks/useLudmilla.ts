@@ -4,6 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTenant } from '@/hooks/useTenant';
 import { toast } from 'sonner';
+import { textoAplicado, type ProjetoParaIdentidade } from '@/lib/ludmillaCartao';
 
 /**
  * LUDMILLA — a funcionária que acompanha os portais das concessionárias.
@@ -51,9 +52,17 @@ export interface PortalAccount {
   estacao_vista_em: string | null;
   /** desde quando a estação está logada no portal sem precisar de login (sessão viva) */
   sessao_viva_desde: string | null;
-  /** portal = ela entra no site; email = ela lê a caixa (EDP) */
+  /** portal = ela entra no site; email = ela lê a caixa (EDP, ENEL) */
   acompanhamento: AcompanhamentoConta;
+  /**
+   * Só vale para quem é acompanhada por e-mail: `protocolo_no_assunto` (EDP) parte
+   * do projeto e exige o protocolo no assunto; `remetente` (ENEL) parte do e-mail,
+   * pelos remetentes, e descobre o projeto. Decide quais contadores a tela mostra.
+   */
+  identificacao: IdentificacaoConta;
 }
+
+export type IdentificacaoConta = 'protocolo_no_assunto' | 'remetente';
 
 // ── Código da imagem respondido pela equipe (de longe) ───────────────────────
 
@@ -433,7 +442,20 @@ export interface PortalUpdate {
   aplicada_em: string | null;
   detectado_em: string;
   raw: Record<string, string> | null;
-  project?: { id: string; code: string; status: string; title: string | null } | null;
+  project?: ProjetoDoCartao | null;
+}
+
+/**
+ * O projeto como o cartão o recebe: além do código e da etapa, a EMPRESA e o titular
+ * do CADASTRO — pedido do usuário (16/10/2026): todo cartão mostra os dois nomes.
+ * `companies` e `project_general_data` são os mesmos embeds que as edge functions
+ * `ze-brain` e `bidu-chat` já usam; passam pela RLS normal de quem lê.
+ */
+export interface ProjetoDoCartao extends ProjetoParaIdentidade {
+  id: string;
+  code: string;
+  status: string;
+  title: string | null;
 }
 
 export function usePortalUpdates(situacao: 'pendente' | 'aplicada' | 'ignorada' | 'todas' = 'pendente') {
@@ -443,7 +465,7 @@ export function usePortalUpdates(situacao: 'pendente' | 'aplicada' | 'ignorada' 
     queryFn: async (): Promise<PortalUpdate[]> => {
       let q = supabase
         .from('portal_updates' as never)
-        .select('*, project:projects(id, code, status, title)')
+        .select('*, project:projects(id, code, status, title, companies:company_id(name), project_general_data(holder_name))')
         .order('detectado_em', { ascending: false })
         .limit(200);
       if (situacao !== 'todas') q = q.eq('situacao', situacao);
@@ -465,10 +487,11 @@ export function useAplicarUpdate() {
       const { error } = await supabase.rpc('ludmilla_aplicar_update' as never, { p_update_id: id, p_status: status ?? null } as never);
       if (error) throw error;
     },
-    onSuccess: () => {
+    onSuccess: (_d, { status }) => {
       qc.invalidateQueries({ queryKey: ['portal-updates'], exact: false });
       qc.invalidateQueries({ queryKey: ['projects'], exact: false });
-      toast.success('Card movido. Ficou no histórico com você como autor e a Ludmilla como origem.');
+      // sem etapa só o protocolo do cadastro mudou: dizer "card movido" seria falso
+      toast.success(textoAplicado(status));
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -529,7 +552,10 @@ export function useRegistroLudmilla(limite = 120, ator?: AtorLudmilla) {
 
 // ── Acompanhamento por e-mail: as regras de leitura ──────────────────────────
 
-export type TipoDocumentoEmail = 'parecer' | 'carta_obras' | 'nota' | 'outro';
+export type TipoDocumentoEmail =
+  | 'parecer' | 'carta_obras' | 'nota' | 'outro'
+  // ENEL (CHECK da migração 20261013120000): o tipo da regra é só uma dica
+  | 'carta_projeto' | 'resultado_vistoria' | 'troca_relogio' | 'resposta_automatica' | 'devolucao' | 'comunicado';
 
 /**
  * Uma linha = "e-mail com este trecho no assunto (e deste remetente, quando a
