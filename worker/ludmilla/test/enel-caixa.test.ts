@@ -5,7 +5,7 @@
 // (email-caixa.test.ts, email-run.test.ts…) ficam sem uma vírgula alterada.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { uidsDaBuscaPorRemetente } from '../src/email/caixa.js';
+import { buscarPorRemetente, criterioPorRemetente, uidsDaBuscaPorRemetente } from '../src/email/caixa.js';
 import { avisarEquipe, contaDoEmail, projetosDoEmail, registrarEmailLido, type EmailLido } from '../src/fila.js';
 
 // ── a busca por remetente ───────────────────────────────────────────────────
@@ -19,6 +19,43 @@ test('busca por remetente: lista vira lista; falha do servidor LANÇA, nunca vir
 
 test('busca por remetente: a mensagem de erro cita o remetente (que é nosso, não dado de cliente)', () => {
   assert.throws(() => uidsDaBuscaPorRemetente(false, 'tecnico.abc@enel.com'), /tecnico\.abc@enel\.com/);
+});
+
+// O critério da busca. `since` é o que segura o teto de 30 dias: sem ele a caixa
+// INTEIRA seria lida (e cada mensagem nova da ENEL custaria IA).
+test('critério da busca por remetente: remetente E data, nada além', () => {
+  const desde = new Date('2026-09-18T00:00:00Z');
+  const c = criterioPorRemetente('nao.responda@enel.com', desde);
+  assert.deepEqual(c, { from: 'nao.responda@enel.com', since: desde });
+  assert.equal(c.since, desde, 'a data é a que foi pedida, não uma cópia truncada nem undefined');
+  assert.ok('since' in c && c.since instanceof Date);
+});
+
+/** Um servidor IMAP de mentira: guarda o que recebeu e responde o que mandarem. */
+function imapFalso(responde: () => Promise<number[] | false | undefined>) {
+  const recebidos: { query: unknown; opcoes: unknown }[] = [];
+  return {
+    recebidos,
+    search: async (query: unknown, opcoes: unknown) => { recebidos.push({ query, opcoes }); return responde(); },
+  };
+}
+
+test('buscarPorRemetente: manda o critério com uid:true e devolve a lista do servidor', async () => {
+  const desde = new Date('2026-09-18T00:00:00Z');
+  const imap = imapFalso(async () => [4, 9]);
+  assert.deepEqual(await buscarPorRemetente(imap as never, 'tecnico.abc@enel.com', desde), [4, 9]);
+  assert.deepEqual(imap.recebidos, [{ query: { from: 'tecnico.abc@enel.com', since: desde }, opcoes: { uid: true } }]);
+  assert.deepEqual(await buscarPorRemetente(imapFalso(async () => []) as never, 'a@b', desde), [], 'lista vazia é resposta válida');
+});
+
+test('buscarPorRemetente: NO/BAD do servidor (false/undefined) e exceção da conexão LANÇAM, nunca viram []', async () => {
+  const desde = new Date('2026-09-18T00:00:00Z');
+  await assert.rejects(() => buscarPorRemetente(imapFalso(async () => false) as never, 'a@b', desde), /busca na caixa de e-mail falhou/);
+  await assert.rejects(() => buscarPorRemetente(imapFalso(async () => undefined) as never, 'a@b', desde), /busca na caixa de e-mail falhou/);
+  await assert.rejects(
+    () => buscarPorRemetente(imapFalso(async () => { throw new Error('socket caiu'); }) as never, 'a@b', desde),
+    /socket caiu/,
+  );
 });
 
 // ── a porta do robô para o banco (fila.ts) ──────────────────────────────────

@@ -562,9 +562,15 @@ export interface EmailLido {
   /**
    * ENEL: o robô PEDE que o cartão sugira trocar o protocolo do cadastro pelo da
    * `referencia` (a NT da Carta). Quem decide é o robô, mas quem TRAVA é o banco:
-   * só vale com `referencia` só de dígitos (9+), projeto existente e dígitos
-   * diferentes dos do cadastro; falhou, o cartão sai sem troca e sem erro. A EDP
-   * não manda (o banco usa FALSE).
+   * só vale com `referencia` só de dígitos (9+), projeto existente, dígitos
+   * diferentes dos do cadastro e que não sejam a UC nem o CPF/CNPJ do próprio
+   * projeto; falhou, o cartão sai sem troca e sem erro. A EDP não manda (o banco
+   * usa FALSE).
+   *
+   * ATENÇÃO: o pedido só tem efeito com `abrirCartao` verdadeiro (o padrão). Com
+   * `abrirCartao: false` o banco NÃO abre cartão nenhum, e então não há onde
+   * gravar a troca: ela é descartada em silêncio. Quem quer a troca tem de abrir
+   * o cartão.
    */
   atualizarProtocolo?: boolean;
 }

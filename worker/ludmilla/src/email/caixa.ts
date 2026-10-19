@@ -1,5 +1,5 @@
 // worker/ludmilla/src/email/caixa.ts
-import { ImapFlow, type MailboxLockObject } from 'imapflow';
+import { ImapFlow, type MailboxLockObject, type SearchObject } from 'imapflow';
 import { simpleParser, type ParsedMail } from 'mailparser';
 import { chaveProtocolo } from './util.js';
 
@@ -172,6 +172,29 @@ export function uidsDaBuscaPorRemetente(resultado: number[] | false | undefined,
   throw new Error(`A busca na caixa de e-mail falhou (remetente ${remetente}): o servidor não devolveu a lista de mensagens.`);
 }
 
+/**
+ * Puro: o critério do SEARCH por remetente. O `since` é o que segura a janela de
+ * 30 dias — sem ele a caixa inteira seria lida, e cada mensagem da ENEL custaria
+ * IA —, por isso mora numa função que o teste consegue ler.
+ */
+export function criterioPorRemetente(remetente: string, desde: Date): SearchObject {
+  return { from: remetente, since: desde };
+}
+
+/** O pedaço do cliente IMAP que a busca usa (o `ImapFlow` real serve; o teste usa um de mentira). */
+export interface BuscaImap {
+  search(query: SearchObject, options: { uid: true }): Promise<number[] | false | undefined>;
+}
+
+/**
+ * A busca por remetente inteira, sem a conexão. Sem try/catch de propósito:
+ * exceção da conexão e NO/BAD do servidor sobem, e nenhuma delas pode virar
+ * "não achei" (a caixa parecer vazia = a robô cega em silêncio).
+ */
+export async function buscarPorRemetente(client: BuscaImap, remetente: string, desde: Date): Promise<number[]> {
+  return uidsDaBuscaPorRemetente(await client.search(criterioPorRemetente(remetente, desde), { uid: true }), remetente);
+}
+
 export interface Caixa {
   /** uids das mensagens cujo assunto OU corpo tem o número do protocolo. */
   procurar(protocolo: string): Promise<number[]>;
@@ -240,7 +263,7 @@ export async function abrirCaixa(c: { email: string; senha: string }): Promise<C
     async procurarDe(remetente: string, desde: Date): Promise<number[]> {
       verificarConexao();
       // Sem try/catch: busca que falhou NÃO pode virar "não achei".
-      return uidsDaBuscaPorRemetente(await client.search({ from: remetente, since: desde }, { uid: true }), remetente);
+      return buscarPorRemetente(client, remetente, desde);
     },
     async *envelopes(uids: number[]): AsyncGenerator<EnvelopeLido> {
       verificarConexao();
