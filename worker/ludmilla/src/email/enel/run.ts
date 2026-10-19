@@ -12,8 +12,8 @@ import {
 } from '../util.js';
 import { classificarAssunto, classificarCorpo, type Classificacao } from './classificar.js';
 import {
-  avisosEnel, janelaDeBusca, ntParaGravar, precisaLerPdf, recomendacaoCabe, recomendacaoEnel,
-  remetentesParaBuscar, titularDeOutraPessoa,
+  avisosEnel, janelaDeBusca, precisaLerPdf, recomendacaoCabe, recomendacaoEnel, remetentesDoRun,
+  titularDeOutraPessoa, trocaDeProtocolo,
 } from './decidir.js';
 import {
   combinar, identificarPorDocumento, identificarPorTexto, nomeTrazOutroProjeto, referenciaDoProjeto,
@@ -181,15 +181,18 @@ export async function tratarMensagemEnel(
       : id.tipo === 'inativo' ? `não anexei · o e-mail é do projeto ${id.projeto.codigo}, que já está concluído ou arquivado`
       : passageira ? `não consegui ler o anexo para descobrir o projeto: ${parecer.erro}`
       : 'não reconheci de qual projeto é este e-mail (nenhum protocolo, UC ou nome de titular nosso) — confira à mão';
+    // O sino ANTES do registro: se o aviso falhar, a exceção sobe com a linha ainda
+    // `concluida = false` (aberta em abrirTentativa) e a retentativa toca. O banco é
+    // idempotente por `aviso_em`: não toca duas vezes. Sem projeto, só a devolução avisa.
+    let avisos = 0;
+    for (const a of avisosEnel(regra.tipo_documento, null, null, null)) {
+      avisos += await deps.avisar({ accountId: run.account_id, messageId: m.messageId, protocolo: CHAVE_DA_MENSAGEM_ENEL, projectId: null, ...a });
+    }
     await deps.registrarEmailLido({
       ...base, projectId: null, tipoDocumento: regra.tipo_documento,
       veredito: parecer.ok ? parecer.veredito : null, resumo: parecer.resumo || null, anexos: 0,
       motivo, recomendacao: null, concluida: !passageira, arquivoLido: null, abrirCartao: false,
     });
-    let avisos = 0;
-    for (const a of avisosEnel(regra.tipo_documento, null, null, null)) {
-      avisos += await deps.avisar({ accountId: run.account_id, messageId: m.messageId, protocolo: CHAVE_DA_MENSAGEM_ENEL, projectId: null, ...a });
-    }
     log('e-mail sem projeto certo', { nivel: 'aviso', situacao: id.tipo, codigos: id.tipo === 'conflito' ? id.codigos : undefined });
     return {
       ...vazio, imagensIgnoradas, avisos, concluida: !passageira,
@@ -223,22 +226,33 @@ export async function tratarMensagemEnel(
   const nota = anotacao(classificacao);
   if (nota) ressalvas.push(nota);
 
-  // Só a NT que a IA leu na Carta (nunca um número do assunto ou do corpo).
-  const ntNova = ntParaGravar(parecer, projeto.protocolo);
-  const atualizarProtocolo = ntNova !== null;
-  const referenciaDoCartao = ntNova ?? chaveDoAnexo;
-  if (ntNova) {
-    const temDigito = chaveProtocolo(projeto.protocolo ?? '') !== '';
-    ressalvas.push(`a Carta traz a NT ${ntNova}; o cadastro tem ${temDigito ? (projeto.protocolo ?? '').trim() : 'nenhum'} — o cartão sugere gravar a NT`);
-  }
+  // O PDF que a IA leu traz o número de OUTRO projeto: o que ele diz (etapa, troca,
+  // observações, sino) não vale para ESTE. O registro guarda o que foi lido, com a ressalva.
+  const pdfDeOutro = lido !== null && pdf !== null && nomeTrazOutroProjeto(pdf.nome, projeto, projetos);
+  const leitura: ParecerEnel = pdfDeOutro ? SEM_LEITURA : parecer;
+  if (pdfDeOutro && pdf) ressalvas.push(`o documento que li (${pdf.nome}) traz o número de outro projeto: não usei o que ele diz para sugerir etapa nem protocolo`);
 
-  const sugerida = recomendacaoEnel(classificacao, parecer);
+  const sugerida = recomendacaoEnel(classificacao, leitura);
   const recomendacao = sugerida && recomendacaoCabe(sugerida, projeto.status) ? sugerida : null;
+
+  // Só a NT que a IA leu na Carta (nunca um número do assunto ou do corpo).
+  const troca = trocaDeProtocolo(leitura, projeto, sugerida !== null && recomendacao === null);
+  const atualizarProtocolo = troca.tipo === 'pedir';
+  const referenciaDoCartao = troca.tipo === 'pedir' ? troca.nt : chaveDoAnexo;
+  if (troca.tipo === 'pedir') {
+    const temDigito = chaveProtocolo(projeto.protocolo ?? '') !== '';
+    ressalvas.push(`a Carta traz a NT ${troca.nt}; o cadastro tem ${temDigito ? (projeto.protocolo ?? '').trim() : 'nenhum'} — o cartão sugere gravar a NT`);
+  } else if (troca.tipo === 'conferir') {
+    ressalvas.push(`a Carta traz a NT ${troca.nt}, diferente da do cadastro (${troca.doCadastro}); como o projeto já está à frente, não sugeri trocar — confira`);
+  }
   if (sugerida && !recomendacao) ressalvas.push(naoCabe(sugerida, projeto.status));
 
-  const observacoes = parecer.ok && parecer.veredito === 'favoravel'
-    ? parecer.pendencias.map(s => s.trim()).filter(s => s.length > 0) : [];
-  if (observacoes.length) ressalvas.push(`aprovado com observações: ${nomes(observacoes)}`);
+  // Os itens que a ENEL listou: no aprovado, são observações; na pendência, é o que ela pediu.
+  const itens = leitura.ok ? leitura.pendencias.map(s => s.trim()).filter(s => s.length > 0) : [];
+  if (itens.length && leitura.veredito === 'favoravel') ressalvas.push(`aprovado com observações: ${nomes(itens)}`);
+  else if (itens.length && leitura.veredito === 'pendencia') {
+    ressalvas.push(`pendências ${leitura.tipo === 'carta_projeto' ? 'da Carta' : 'do documento'}: ${nomes(itens)}`);
+  }
   if (passageira) ressalvas.push(`não consegui ler o documento: ${parecer.erro}`);
 
   const paraAnexar = regra.anexar ? semImagem.filter(a => !nomeTrazOutroProjeto(a.nome, projeto, projetos)) : [];
@@ -273,6 +287,13 @@ export async function tratarMensagemEnel(
     }
   }
 
+  // O sino ANTES do registro concluído (ver o caminho sem projeto): na vistoria
+  // aprovada não há cartão, e o sino é o único sinal.
+  let avisos = 0;
+  for (const a of avisosEnel(regra.tipo_documento, classificacao, leitura, projeto)) {
+    avisos += await deps.avisar({ accountId: run.account_id, messageId: m.messageId, protocolo: CHAVE_DA_MENSAGEM_ENEL, projectId: projeto.project_id, ...a });
+  }
+
   const concluida = !passageira && !anexoFalhou;
   await deps.registrarEmailLido({
     ...base, projectId: projeto.project_id, referencia: referenciaDoCartao, casamento: id.por,
@@ -286,11 +307,6 @@ export async function tratarMensagemEnel(
     resumo: parecer.resumo || null, anexos: anexados,
     motivo: ressalvas.length ? ressalvas.join(' · ') : null, recomendacao, concluida, arquivoLido: lido,
   });
-
-  let avisos = 0;
-  for (const a of avisosEnel(regra.tipo_documento, classificacao, parecer, projeto)) {
-    avisos += await deps.avisar({ accountId: run.account_id, messageId: m.messageId, protocolo: CHAVE_DA_MENSAGEM_ENEL, projectId: projeto.project_id, ...a });
-  }
 
   log('e-mail tratado', {
     projeto: projeto.codigo, por: id.por, tipo: regra.tipo_documento, leu_pdf: ler,
@@ -343,7 +359,11 @@ export function resultadoEnel(n: ContaEnel, remetentes: number, projetosAtivos: 
   };
 }
 
-export async function executarVarreduraEnel(run: Run, ultimaVarreduraEm: string | null): Promise<void> {
+/**
+ * A janela de busca é FIXA (30 dias, `janelaDeBusca`), então o run não depende da
+ * última varredura: a retentativa e o "Ler de novo" alcançam o e-mail antigo.
+ */
+export async function executarVarreduraEnel(run: Run): Promise<void> {
   log('varredura por e-mail (por remetente) iniciada', { run: run.id });
   let caixa: Caixa | null = null;
   try {
@@ -351,8 +371,9 @@ export async function executarVarreduraEnel(run: Run, ultimaVarreduraEm: string 
     const projetos = await projetosDoEmail(run.account_id);
     const regras = await regrasDoEmail(run.account_id);
     if (regras.length === 0) throw new Error('Esta concessionária não tem regras de e-mail cadastradas na tela da Ludmilla.');
-    const remetentes = remetentesParaBuscar(regras);
-    const desde = janelaDeBusca(ultimaVarreduraEm, new Date());
+    // sem remetente nenhum é o mesmo erro de "sem regras": nunca um run "ok" com 0 lidos
+    const remetentes = remetentesDoRun(regras);
+    const desde = janelaDeBusca(new Date());
     caixa = await abrirCaixa(creds);
     const n = contaEnelZerada();
     // Duas regras que se sobrepõem (um remetente contido no outro) achariam a mesma
@@ -389,6 +410,8 @@ export async function executarVarreduraEnel(run: Run, ultimaVarreduraEm: string 
           const env = aprovados.get(baixada.uid);
           // o id que vale é o do envelope: foi com ele que a pendência respondeu
           const m = env ? { ...baixada, messageId: env.messageId } : baixada;
+          // duas cópias com o mesmo Message-ID (uids diferentes) no mesmo lote: uma vez só
+          if (vistas.has(m.messageId)) { n.pulados++; continue; }
           vistas.add(m.messageId);
           try { n.lidos++; somarEnel(n, await tratarMensagemEnel(run, m, regras, projetos)); }
           catch (e) { n.falhasTratamento++; log('o tratamento desta mensagem falhou', { nivel: 'falha', mensagem: m.messageId, erro: (e as Error).message }); }

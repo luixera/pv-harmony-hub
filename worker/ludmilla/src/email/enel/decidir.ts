@@ -1,7 +1,7 @@
 // worker/ludmilla/src/email/enel/decidir.ts
 import { chaveProtocolo, comparavelTitular, type RegraEmail, type Veredito } from '../util.js';
 import type { Classificacao } from './classificar.js';
-import { MIN_DIGITOS, mesmoTitular, type Identificacao } from './identificar.js';
+import { mesmoTitular, type Identificacao } from './identificar.js';
 
 /**
  * As decisões do run da ENEL que não precisam de banco nem de rede: ler o PDF
@@ -86,12 +86,14 @@ export function avisosEnel(
 export const JANELA_MAXIMA_DIAS = 30;
 const DIA = 86_400_000;
 
-/** 30 dias na primeira leitura; depois, desde a última verificação menos 2 dias — nunca mais que 30. */
-export function janelaDeBusca(ultimaVarreduraEm: string | null, agora: Date): Date {
-  const limite = new Date(agora.getTime() - JANELA_MAXIMA_DIAS * DIA);
-  if (!ultimaVarreduraEm) return limite;
-  const desde = new Date(new Date(ultimaVarreduraEm).getTime() - 2 * DIA);
-  return desde > limite ? desde : limite;
+/**
+ * A janela é FIXA: os últimos 30 dias, em todo run. Uma janela "desde a última
+ * varredura" fazia a mensagem pendente (IA sem cota por dias, por exemplo) e o
+ * "Ler de novo" sumirem da busca sem aviso. O envelope é barato: a pendência
+ * filtra as já concluídas e a IA só roda para as pendentes.
+ */
+export function janelaDeBusca(agora: Date): Date {
+  return new Date(agora.getTime() - JANELA_MAXIMA_DIAS * DIA);
 }
 
 /** Os remetentes a procurar: os das regras, sem repetir, sem o comunicado (que é ignorado sem nem ser buscado). */
@@ -103,27 +105,72 @@ export function remetentesParaBuscar(regras: RegraEmail[]): string[] {
   return [...s];
 }
 
+/**
+ * Os remetentes do run, ou ERRO. Regras sem remetente nenhum (ou só de comunicado)
+ * não podem virar um run "ok" com 0 lidos: a frase é a de "sem regras"
+ * (`classificarErroEmail` → `sem_regras`), que a tela já explica.
+ */
+export function remetentesDoRun(regras: RegraEmail[]): string[] {
+  const r = remetentesParaBuscar(regras);
+  if (r.length === 0) {
+    throw new Error('Esta concessionária não tem regras de e-mail cadastradas com remetente na tela da Ludmilla (a ENEL procura os e-mails pelo remetente).');
+  }
+  return r;
+}
+
 /** O que a troca de protocolo precisa da leitura do PDF. */
 export interface LeituraDaCarta { ok: boolean; tipo: string | null; nt: string | null }
 
+/** Todas as NTs reais vistas têm 9 dígitos. Mais que isso é número colado ("NT … (SF …)"). */
+export const DIGITOS_DA_NT = 9;
+
 /**
- * A NT que o cartão sugere gravar como protocolo do projeto, ou null.
- *
- * Na ENEL o protocolo do projeto É a NT (9 dígitos), e a Carta traz a NT. Projeto
- * achado pela UC ou pelo nome, sem protocolo (no cadastro há texto, como "Sem
- * protocolo") ou com outro número, sai com o cartão sugerindo gravar a NT.
- *
- * SÓ a NT que a IA leu na CARTA. Número do assunto ou do corpo nunca vira protocolo
- * (princípio "nossos números", spec §6.1): o e-mail traz protocolo de atendimento,
- * nota de serviço e número SF, e qualquer um deles gravado no cadastro seria pior
- * que o cadastro vazio. Comparação por dígitos, sem zeros à esquerda; protocolo
- * sem dígito conta como vazio. O banco trava de novo (`ludmilla_email_registrar`).
+ * Os números de um campo do cadastro: os dígitos todos colados E cada pedaço
+ * (`/\d+/g`), sem zeros à esquerda. "NT 391.000.001" é 391000001 (colado);
+ * "391000777 / 391000001" traz os dois (pedaços).
  */
-export function ntParaGravar(p: LeituraDaCarta, protocoloDoCadastro: string | null): string | null {
-  if (!p.ok || p.tipo !== 'carta_projeto') return null;
+function numerosDoCampo(s: string | null | undefined): Set<string> {
+  const pedacos = ((s ?? '').match(/\d+/g) ?? []).map(x => x.replace(/^0+/, ''));
+  return new Set([chaveProtocolo(s ?? ''), ...pedacos].filter(x => x.length > 0));
+}
+
+export type TrocaDeProtocolo =
+  | { tipo: 'nenhuma' }
+  /** o cartão sugere gravar a NT */
+  | { tipo: 'pedir'; nt: string }
+  /** a Carta traz outra NT, mas o projeto já tem protocolo e está à frente: só a ressalva */
+  | { tipo: 'conferir'; nt: string; doCadastro: string };
+
+/**
+ * A Carta sugere gravar a NT dela como protocolo do projeto?
+ *
+ * Na ENEL o protocolo do projeto É a NT, e a Carta traz a NT. Projeto achado pela
+ * UC ou pelo nome, sem protocolo (no cadastro há texto, como "Sem protocolo") ou
+ * com outro número, sai com o cartão sugerindo gravar a NT. SÓ a NT que a IA leu na
+ * CARTA: número do assunto ou do corpo nunca vira protocolo (spec §6.1). Pede só se:
+ *  1. a NT tem EXATAMENTE 9 dígitos sem os zeros à esquerda (a leitura cola os
+ *     dígitos: "NT 391000001 (SF 01234)" vira 14);
+ *  2. a NT não é a UC do próprio projeto (a IA às vezes troca os campos);
+ *  3. a NT não é o protocolo que o cadastro já tem;
+ *  4. se o projeto JÁ tem protocolo numérico de 9 dígitos e a etapa lida foi barrada
+ *     por ele estar à frente (`etapaBarrada`), a Carta é antiga: a NT dela é a VELHA.
+ *     Não pede — fica a conferência. Sem protocolo numérico, pede mesmo à frente
+ *     (é o caso que motivou o pedido do usuário).
+ * `ProjetoEnel` não traz CPF/CNPJ; e eles têm 11/14 dígitos, que a regra 1 já recusa.
+ * O banco trava de novo (`ludmilla_email_registrar`).
+ */
+export function trocaDeProtocolo(
+  p: LeituraDaCarta, projeto: { protocolo: string | null; uc: string | null }, etapaBarrada: boolean,
+): TrocaDeProtocolo {
+  if (!p.ok || p.tipo !== 'carta_projeto') return { tipo: 'nenhuma' };
   const nt = chaveProtocolo(p.nt ?? '');
-  if (nt.length < MIN_DIGITOS) return null;
-  return nt === chaveProtocolo(protocoloDoCadastro ?? '') ? null : nt;
+  if (nt.length !== DIGITOS_DA_NT) return { tipo: 'nenhuma' };
+  if (numerosDoCampo(projeto.uc).has(nt)) return { tipo: 'nenhuma' };
+  const doCadastro = numerosDoCampo(projeto.protocolo);
+  if (doCadastro.has(nt)) return { tipo: 'nenhuma' };
+  const numerico = [...doCadastro].find(x => x.length === DIGITOS_DA_NT);
+  if (numerico && etapaBarrada) return { tipo: 'conferir', nt, doCadastro: numerico };
+  return { tipo: 'pedir', nt };
 }
 
 /**
@@ -135,10 +182,13 @@ export function ntParaGravar(p: LeituraDaCarta, protocoloDoCadastro: string | nu
  * sentidos ("CELINA MOURAO" × "CELINA DE FARIAS PRUDENTE MOURAO" passa). Mesmo
  * primeiro e último nome com o do meio trocado é outra pessoa e bloqueia: era o que
  * `casaTitular` (só primeiro e último) deixava entrar no card errado.
- * Nome que não dá para comparar é FALTA DE DADO, nunca divergência.
+ * Nome que não dá para comparar é FALTA DE DADO, nunca divergência — inclusive o
+ * que não bate nem consigo mesmo ("LU SANTOS NETO", "ANA ME LTDA": sem dois nomes de
+ * 3+ letras, `mesmoTitular(n, n)` é false e o próprio nome se bloqueava).
  */
 export function titularDeOutraPessoa(doSistema: string | null, doDocumento: string | null): boolean {
   if (!doSistema || !doDocumento) return false;
   if (!comparavelTitular(doSistema) || !comparavelTitular(doDocumento)) return false;
+  if (!mesmoTitular(doSistema, doSistema) || !mesmoTitular(doDocumento, doDocumento)) return false;
   return !mesmoTitular(doSistema, doDocumento) && !mesmoTitular(doDocumento, doSistema);
 }

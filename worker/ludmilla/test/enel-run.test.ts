@@ -60,7 +60,7 @@ interface Diario {
   leituras: number;
 }
 
-function dubles(o: { parecer?: ParecerEnel; storageRecusa?: string; anexoRetorna?: AberturaDeAnexo['situacao'] } = {}): { deps: DepsEnel; d: Diario } {
+function dubles(o: { parecer?: ParecerEnel; storageRecusa?: string; anexoRetorna?: AberturaDeAnexo['situacao']; avisoFalha?: boolean } = {}): { deps: DepsEnel; d: Diario } {
   const d: Diario = { ordem: [], tentativas: [], registros: [], chavesDoAnexo: [], anexosPedidos: [], subidos: [], errosDeAnexo: [], avisos: [], leituras: 0 };
   const deps: DepsEnel = {
     async abrirTentativa(p) { d.ordem.push('abrirTentativa'); d.tentativas.push(p); return d.tentativas.length; },
@@ -81,7 +81,12 @@ function dubles(o: { parecer?: ParecerEnel; storageRecusa?: string; anexoRetorna
     async anexoEnviado() { d.ordem.push('anexoEnviado'); },
     async anexoErro(_id, motivo) { d.ordem.push('anexoErro'); d.errosDeAnexo.push(motivo); },
     async registrarEmailLido(p) { d.ordem.push('registrarEmailLido'); d.registros.push(p); },
-    async avisar(p) { d.ordem.push('avisar'); d.avisos.push(p); return 1; },
+    async avisar(p) {
+      d.ordem.push('avisar');
+      if (o.avisoFalha) throw new Error('Não consegui avisar a equipe: tempo esgotado');
+      d.avisos.push(p);
+      return 1;
+    },
     async lerParecer() { d.ordem.push('lerParecer'); d.leituras++; return o.parecer ?? carta(); },
   };
   return { deps, d };
@@ -151,6 +156,7 @@ test('3. vistoria aprovada no corpo: sem IA, 1 aviso, sem etapa, anotação no m
   assert.equal(reg.recomendacao, null);
   assert.equal(reg.abrirCartao, false);
   assert.match(String(reg.motivo), /vistoria virtual aprovada — falta a troca do relógio/);
+  assert.equal(reg.arquivoLido, null, 'a IA não leu o PDF: não há arquivo lido');
 });
 
 test('4. troca que não foi executada: sem IA, 1 aviso com o motivo', async () => {
@@ -222,6 +228,7 @@ test('9. titular do documento é OUTRA pessoa: bloqueado, nada anexado, cartão 
   assert.equal(reg.abrirCartao, true);
   assert.equal(reg.recomendacao, null);
   assert.equal('atualizarProtocolo' in reg, false);
+  assert.equal(reg.concluida, true, 'bloqueio é definitivo: não paga a IA de novo a cada run');
 });
 
 test('10. arquivo com a NT de B ao tratar A: não vai para o card de A', async () => {
@@ -484,4 +491,145 @@ test('24. projeto achado pelo texto e a IA falha: anexa, mas NÃO conclui (a Car
   const reg = unico(d);
   assert.equal(reg.concluida, false);
   assert.match(String(reg.motivo), /não consegui ler o documento/);
+});
+
+// ── Rodada de correção 1 ─────────────────────────────────────────────────────
+
+const CORPO_VISTORIA_OK = 'Prezado(a) Senhor(a), Informamos que após realização da vistoria através de relatorio fotográfico, a vistoria do sistema de microgeração fotovoltaica está APROVADA. Atenciosamente';
+const VISTORIA_OK = (o: Partial<MensagemLida> = {}) => mensagem({
+  remetente: 'Técnico ABC <tecnico.abc@enel.com>', assunto: 'RE: VISTORIA GD - NT 391000010', texto: CORPO_VISTORIA_OK, anexos: [], ...o,
+});
+
+test('I-1. o aviso falha: a exceção sobe e NADA fica gravado como concluído (o sino toca na retentativa)', async () => {
+  const { deps, d } = dubles({ avisoFalha: true });
+  await assert.rejects(tratar(VISTORIA_OK(), deps), /avisar a equipe/);
+  assert.ok(d.ordem.includes('avisar'));
+  assert.equal(d.registros.some(r => r.concluida), false);
+});
+
+test('I-1. devolução sem projeto: o aviso que falha também não deixa a mensagem concluída', async () => {
+  const { deps, d } = dubles({ avisoFalha: true });
+  await assert.rejects(tratar(mensagem({ remetente: 'postmaster@enel.com', assunto: 'Undeliverable: pedido de vistoria', anexos: [] }), deps));
+  assert.equal(d.registros.some(r => r.concluida), false);
+});
+
+test('I-1. o aviso vem ANTES do registro nos dois caminhos', async () => {
+  const achado = dubles();
+  await tratar(VISTORIA_OK(), achado.deps);
+  assert.ok(achado.d.ordem.indexOf('avisar') < achado.d.ordem.indexOf('registrarEmailLido'));
+  const semProjeto = dubles();
+  await tratar(mensagem({ remetente: 'postmaster@enel.com', assunto: 'Undeliverable: pedido de vistoria', anexos: [] }), semProjeto.deps);
+  assert.ok(semProjeto.d.ordem.indexOf('avisar') < semProjeto.d.ordem.indexOf('registrarEmailLido'));
+});
+
+test('I-3a. a IA põe a UC do próprio projeto no campo nt: sem troca e sem cartão vazio', async () => {
+  const p = projeto({ codigo: 'GD-T6-009', protocolo: 'Sem protocolo', uc: '0391000005', titular: 'CELINA MOURAO', status: 'vistoria_solicitada' });
+  const { deps, d } = dubles({ parecer: carta({ nt: '391000005', uc: null, titular: 'CELINA MOURAO' }) });
+  const r = await tratar(mensagem(), deps, [p, PA]);
+  assert.equal(r.situacao, 'tratado');
+  const reg = unico(d);
+  assert.equal('atualizarProtocolo' in reg, false);
+  assert.equal(reg.abrirCartao, false);
+});
+
+test('I-3b. NT colada pela leitura (14 dígitos, "NT … (SF …)"): não vira sugestão de protocolo', async () => {
+  const { deps, d } = dubles({ parecer: carta({ nt: '39100000101234', uc: '77001122', titular: PC.titular }) });
+  await tratar(mensagem(), deps);
+  const reg = unico(d);
+  assert.equal('atualizarProtocolo' in reg, false);
+  assert.equal(reg.referencia, referenciaDoProjeto(PC));
+  assert.equal(reg.recomendacao, 'approved');
+});
+
+test('I-3c. Carta antiga (NT velha) de projeto com a NT nova e à frente: não sugere voltar, só pede conferência', async () => {
+  const p = projeto({ codigo: 'GD-T6-010', protocolo: '391000222', uc: '0066001001', titular: 'CELINA MOURAO', status: 'vistoria_solicitada' });
+  const { deps, d } = dubles({ parecer: carta({ nt: '391000111', uc: '66001001', titular: 'CELINA MOURAO' }) });
+  await tratar(mensagem(), deps, [p, PA]);
+  const reg = unico(d);
+  assert.equal('atualizarProtocolo' in reg, false);
+  assert.equal(reg.abrirCartao, false);
+  assert.equal(reg.referencia, '391000222');
+  assert.match(String(reg.motivo), /a Carta traz a NT 391000111, diferente da do cadastro \(391000222\); como o projeto já está à frente, não sugeri trocar — confira/);
+});
+
+test('M-1. vistoria aprovada no corpo, mas projeto NÃO identificado: sem sino (sem projeto, só a devolução avisa)', async () => {
+  const { deps, d } = dubles();
+  const r = await tratar(VISTORIA_OK({ assunto: 'RE: VISTORIA GD' }), deps);
+  assert.equal(r.situacao, 'nao_identificado');
+  assert.equal(d.avisos.length, 0);
+});
+
+test('M-1. R1: o ASSUNTO vale antes do corpo (corpo diz aprovada, assunto diz reprovada)', async () => {
+  const pv = { ...PA, status: 'vistoria_solicitada' };
+  const { deps, d } = dubles();
+  await tratar(mensagem({
+    remetente: 'atendimento.edsp@enel.com', assunto: 'Comunicado técnico sobre a nota: 391000010 - Vistoria reprovada',
+    texto: 'Informamos que a vistoria do sistema de microgeração está APROVADA.', anexos: [],
+  }), deps, [pv, PB]);
+  assert.equal(unico(d).recomendacao, 'vistoria_reprovada');
+  assert.equal(d.avisos.length, 0);
+});
+
+test('M-1. vistoria aprovada lida no PDF (corpo genérico): 1 aviso e o arquivo lido registrado', async () => {
+  const { deps, d } = dubles({ parecer: carta({ tipo: 'resultado_vistoria', veredito: 'favoravel' }) });
+  await tratar(mensagem({
+    remetente: 'Técnico ABC <tecnico.abc@enel.com>', assunto: 'RE: VISTORIA GD - NT 391000010',
+    texto: 'Prezado(a), segue o relatório em anexo. Atenciosamente', anexos: [pdf('RELATORIO.pdf')],
+  }), deps);
+  assert.equal(d.leituras, 1);
+  assert.equal(d.avisos.length, 1);
+  assert.match(d.avisos[0].titulo, /Vistoria virtual aprovada/);
+  assert.equal(unico(d).arquivoLido, 'RELATORIO.pdf');
+});
+
+test('M-1. vistoria reprovada com o projeto em Aprovado: sugere vistoria_reprovada (é o que recomendacaoCabe diz)', async () => {
+  const pa = { ...PA, status: 'approved' };
+  const { deps, d } = dubles();
+  await tratar(mensagem({
+    remetente: 'atendimento.edsp@enel.com', assunto: 'Comunicado técnico sobre a nota: 391000010 - Vistoria reprovada',
+    texto: CORPO_GENERICO, anexos: [],
+  }), deps, [pa, PB]);
+  assert.equal(unico(d).recomendacao, 'vistoria_reprovada');
+});
+
+test('M-1. a ressalva da troca diz o protocolo que o cadastro tem (não "nenhum")', async () => {
+  const { deps, d } = dubles({ parecer: carta({ nt: '391000777' }) });
+  await tratar(mensagem({ assunto: 'Geração Distribuída – Carta – NT 391000010' }), deps);
+  const reg = unico(d);
+  assert.equal(reg.atualizarProtocolo, true);
+  assert.equal(reg.referencia, '391000777');
+  assert.match(String(reg.motivo), /a Carta traz a NT 391000777; o cadastro tem 391000010 — o cartão sugere gravar a NT/);
+});
+
+test('M-5. Carta com pendência: os itens vão como "pendências da Carta", nunca como observações de aprovado', async () => {
+  const { deps, d } = dubles({ parecer: carta({ veredito: 'pendencia', pendencias: ['Corrigir o diagrama unifilar', 'Enviar a ART', 'Ajustar o DPS', 'Trocar a placa'] }) });
+  await tratar(mensagem(), deps);
+  const reg = unico(d);
+  assert.equal(reg.recomendacao, 'pendencia');
+  assert.match(String(reg.motivo), /pendências da Carta: Corrigir o diagrama unifilar, Enviar a ART, Ajustar o DPS e mais 1/);
+  assert.doesNotMatch(String(reg.motivo), /aprovado com observações/);
+});
+
+test('M-2. titular de nome curto, igual no cadastro e no documento: não se bloqueia', async () => {
+  const p = projeto({ codigo: 'GD-T6-011', protocolo: '391000060', titular: 'LU SANTOS NETO' });
+  const { deps, d } = dubles({ parecer: carta({ nt: '391000060', titular: 'LU SANTOS NETO' }) });
+  const r = await tratar(mensagem(), deps, [p, PA]);
+  assert.equal(r.situacao, 'tratado');
+  assert.equal(d.subidos.length, 1);
+});
+
+test('M-3. o PDF que a IA leu traz o número de OUTRO projeto: o que ele diz não vale para etapa, troca nem observações', async () => {
+  const { deps, d } = dubles({ parecer: carta({ nt: '391000777', titular: null, pendencias: ['Item qualquer'] }) });
+  const r = await tratar(mensagem({
+    assunto: 'Geração Distribuída – Carta – NT 391000010', anexos: [pdf('NT_391000020.pdf', 500), pdf('CARTA.pdf', 100)],
+  }), deps);
+  assert.equal(r.situacao, 'tratado');
+  assert.deepEqual(d.subidos, ['CARTA.pdf']);
+  const reg = unico(d);
+  assert.equal(reg.recomendacao, null);
+  assert.equal(reg.abrirCartao, false);
+  assert.equal('atualizarProtocolo' in reg, false);
+  assert.equal(reg.arquivoLido, 'NT_391000020.pdf');
+  assert.match(String(reg.motivo), /o documento que li \(NT_391000020\.pdf\) traz o número de outro projeto/);
+  assert.doesNotMatch(String(reg.motivo), /observações/);
 });

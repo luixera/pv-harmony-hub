@@ -26,6 +26,7 @@ export async function executarAcompanhamentoEmail(run: Run): Promise<void> {
       .catch(() => undefined);
     return;
   }
-  if (conta.identificacao === 'remetente') return executarVarreduraEnel(run, conta.ultimaVarreduraEm);
+  // a ENEL busca numa janela fixa de 30 dias: `ultimaVarreduraEm` não muda mais nada nela
+  if (conta.identificacao === 'remetente') return executarVarreduraEnel(run);
   return executarVarreduraEmail(run);
 }
