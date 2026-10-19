@@ -24,6 +24,9 @@ export interface LinhaAberta {
   alvo_id: string;
   rotulo: string;
   detalhe: string;
+  /** Etapa do projeto (`projects.status`). Nula na mensalidade, que não tem
+   *  etapa — e por isso nunca é filtrada. */
+  etapa: string | null;
   vencimento: string | null;
   total: number;
   pago: number;
@@ -82,14 +85,23 @@ function invalidarFinanceiro(qc: ReturnType<typeof useQueryClient>) {
 /**
  * O que a empresa deve, com a distribuição sugerida para `valor`.
  * Só calcula — não grava nada. Refaz a conta a cada mudança de valor.
+ *
+ * `etapas` restringe QUAIS projetos recebem a sugestão. Lista vazia = todos,
+ * que é o comportamento de sempre. O filtro vive no banco de propósito: a ART
+ * fora do recorte é pulada **antes** de consumir o valor, e é só assim que o
+ * dinheiro escorre para os projetos seguintes. Desmarcar a linha aqui na tela
+ * não faria isso — viraria sobra, e sobra vira crédito da empresa.
  */
-export function useSugestaoRecebimento(companyId: string | null, valor: number) {
+export function useSugestaoRecebimento(companyId: string | null, valor: number, etapas: string[] = []) {
+  // ordenada na chave do cache: marcar A e depois B é a mesma consulta que B e A
+  const etapasOrdenadas = [...etapas].sort();
   return useQuery({
-    queryKey: ['recebimento-sugestao', companyId, valor],
+    queryKey: ['recebimento-sugestao', companyId, valor, etapasOrdenadas.join(',')],
     queryFn: async (): Promise<LinhaAberta[]> => {
       if (!companyId) return [];
       const { data, error } = await supabase.rpc('recebimento_sugerir' as never, {
         _company_id: companyId, _valor: valor,
+        _etapas: etapasOrdenadas.length ? etapasOrdenadas : null,
       } as never);
       if (error) throw error;
       return ((data ?? []) as Record<string, unknown>[]).map(r => ({
@@ -98,6 +110,7 @@ export function useSugestaoRecebimento(companyId: string | null, valor: number) 
         alvo_id: String(r.alvo_id),
         rotulo: String(r.rotulo ?? ''),
         detalhe: String(r.detalhe ?? ''),
+        etapa: (r.etapa as string | null) ?? null,
         vencimento: (r.vencimento as string | null) ?? null,
         total: num(r.total),
         pago: num(r.pago),

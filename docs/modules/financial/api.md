@@ -40,12 +40,15 @@ Todas `SECURITY DEFINER` com `search_path = ''`; escrita exige
 - `recebimento_abertos(_company_id)` — o que a empresa deve, na ordem da
   sugestão: ARTs (grupo 0) por `due_date NULLS LAST`, `created_at`; depois
   mensalidades (grupo 1) por competência. Devolve `tipo`, `alvo_id`,
-  `rotulo`, `detalhe`, `total`, `aberto`, `vencimento`.
+  `rotulo`, `detalhe`, **`etapa`**, `total`, `aberto`, `vencimento`.
+  `etapa` é `projects.status` (o enum `project_status`, convertido para texto
+  no `UNION` — a mensalidade traz `NULL`, porque não tem etapa).
 - `recebimento_credito(_company_id)` — soma das sobras de recebimentos não
   estornados.
-- `recebimento_sugerir(_company_id, _valor)` — distribuição gulosa sobre
-  `recebimento_abertos`. **Só calcula, não grava** (RN-FIN-07); devolve as
-  linhas com `sugerido`.
+- `recebimento_sugerir(_company_id, _valor, _etapas text[] = NULL)` —
+  distribuição gulosa sobre `recebimento_abertos`. **Só calcula, não grava**
+  (RN-FIN-07); devolve as linhas com `sugerido`. `_etapas` restringe quais
+  projetos concorrem ao valor (RN-FIN-20); `NULL` ou vazio = todos.
 - `recebimento_registrar(_company_id, _data, _valor, _linhas jsonb, _notes)` —
   grava o `financial_receipts` + as parcelas e recalcula os status.
   `_linhas` = `[{tipo, alvo_id, valor}]`. Valida RN-FIN-10 e devolve o

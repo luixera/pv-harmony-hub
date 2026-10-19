@@ -102,6 +102,21 @@ valor, empresa) com as **parcelas** que ele abateu penduradas nele.
   qualquer valor. Quem grava é `recebimento_registrar`, com as linhas que a
   pessoa confirmou — o servidor **nunca redistribui** o que ela ajustou.
   Trocar o valor recebido refaz a sugestão do zero: é dinheiro diferente.
+  Mexer no filtro de etapa (RN-FIN-20) tem o mesmo efeito, pela mesma razão.
+- **RN-FIN-20 — o recebimento pode ser restrito por etapa do projeto.**
+  Decisão do usuário (19/10/2026), com um caso concreto: ao lançar R$ 4.000
+  da LDS SOLAR, a sugestão mandou R$ 3.068,04 para um projeto que **ainda não
+  estava aprovado**. O modal ganhou botões liga/desliga de etapa; nenhum
+  marcado = todos, que é o comportamento de sempre.
+  O filtro vive **no banco**, em `recebimento_sugerir`, e isso é o ponto:
+  desmarcar a linha na tela não resolveria, porque o valor desmarcado viraria
+  **sobra**, e sobra vira crédito da empresa (RN-FIN-09) em vez de escorrer
+  para os próximos projetos. A ART fora do recorte é pulada **antes** de
+  consumir o valor, e é só assim que o dinheiro cascateia.
+  Duas consequências deliberadas: a linha fora do filtro **continua na lista**
+  com `sugerido = 0` (a dívida existe, e a pessoa pode marcá-la na mão —
+  `recebimento_registrar` valida saldo, nunca etapa); e a **mensalidade nunca
+  é filtrada**, porque não tem etapa de projeto.
 - **RN-FIN-08 — a ordem é ART mais antiga primeiro, mensalidade depois.**
   Decisão do usuário (out/2026): as ARTs vêm antes porque são a dívida do
   projeto que está parado esperando, e dentro delas vence a mais antiga

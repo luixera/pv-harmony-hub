@@ -5,6 +5,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Loader2, Wallet, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
+import { VALID_PROJECT_STATUSES } from '@/lib/statusMapping';
+import { useStatusLabel } from '@/hooks/useStatusLabel';
 import { valorBR } from '@/lib/valorBR';
 import {
   LinhaAberta, LinhaParaGravar, useCreditoDaEmpresa, useRegistrarRecebimento, useSugestaoRecebimento,
@@ -19,6 +21,8 @@ import {
  *
  * Trocar o valor refaz a sugestão do zero — é dinheiro diferente, e manter
  * ajustes antigos sobre uma distribuição nova confundiria mais do que ajudaria.
+ * Mexer no filtro de etapa tem o mesmo efeito, e pela mesma razão: a
+ * distribuição inteira muda quando um projeto deixa de concorrer ao valor.
  */
 
 interface Props {
@@ -42,15 +46,26 @@ export function RecebimentoDialog({ companies, companyIdInicial, onClose, onDone
   const [valorTexto, setValorTexto] = useState('');
   const [data, setData] = useState(hoje());
   const [notes, setNotes] = useState('');
+  // Etapas que podem receber a sugestao. Vazio = todas, que e o de sempre.
+  const [etapas, setEtapas] = useState<string[]>([]);
   const [edicoes, setEdicoes] = useState<Record<string, LinhaEditada>>({});
   const [confirmandoSobra, setConfirmandoSobra] = useState(false);
 
   const valor = paraNumero(valorTexto);
-  const { data: sugestao = [], isLoading, isError } = useSugestaoRecebimento(companyId || null, valor);
+  const { data: sugestao = [], isLoading, isError } = useSugestaoRecebimento(companyId || null, valor, etapas);
   const { data: credito = 0 } = useCreditoDaEmpresa(companyId || null);
   const registrar = useRegistrarRecebimento();
+  const rotuloEtapa = useStatusLabel();
 
-  // A sugestão manda enquanto a pessoa não mexeu: trocar o valor recomeça.
+  const alternarEtapa = (etapa: string) => setEtapas(atual =>
+    atual.includes(etapa) ? atual.filter(e => e !== etapa) : [...atual, etapa],
+  );
+  /** A linha ficou de fora do recorte? (mensalidade nunca fica: nao tem etapa) */
+  const foraDoFiltro = (l: LinhaAberta) =>
+    etapas.length > 0 && l.tipo === 'art' && !etapas.includes(l.etapa ?? '');
+
+  // A sugestão manda enquanto a pessoa não mexeu: trocar o valor ou as etapas
+  // recomeça (as duas coisas refazem a consulta, e com ela este efeito).
   useEffect(() => {
     const inicial: Record<string, LinhaEditada> = {};
     for (const l of sugestao) inicial[l.alvo_id] = { marcada: l.sugerido > 0, valor: l.sugerido };
@@ -128,6 +143,46 @@ export function RecebimentoDialog({ companies, companyIdInicial, onClose, onDone
             </div>
           </div>
 
+          {/* Filtro de etapa. Mora no BANCO, nao aqui: a ART fora do recorte e
+              pulada antes de consumir o valor, e e assim que o dinheiro escorre
+              para os proximos projetos. Desmarcar a linha na mao viraria sobra,
+              e sobra vira credito da empresa — que nao e o que se quer.
+              Pedido do usuario (out/2026): projeto ainda nao aprovado nao devia
+              estar abocanhando o abatimento. */}
+          {companyId && (
+            <div>
+              <Label>
+                Etapas que podem receber
+                {etapas.length > 0 && (
+                  <span className="ml-1.5 font-normal text-amber-700">({etapas.length} selecionadas)</span>
+                )}
+              </Label>
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                {VALID_PROJECT_STATUSES.map(k => {
+                  const on = etapas.includes(k);
+                  return (
+                    <button
+                      key={k}
+                      type="button"
+                      onClick={() => alternarEtapa(k)}
+                      aria-pressed={on}
+                      className={'rounded-full border px-2.5 py-1 text-[11px] font-semibold leading-tight transition-colors ' + (on
+                        ? 'border-amber-400 bg-amber-100 text-amber-900'
+                        : 'border-border bg-background text-muted-foreground hover:bg-muted')}
+                    >
+                      {rotuloEtapa(k)}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="mt-1.5 text-[11px] text-muted-foreground">
+                {etapas.length === 0
+                  ? 'Nenhuma marcada = a sugestão considera todos os projetos em aberto.'
+                  : 'Projeto em outra etapa fica com 0,00 e o valor segue para o próximo — mas continua na lista, e você pode marcá-lo na mão.'}
+              </p>
+            </div>
+          )}
+
           {credito > 0 && (
             <p className="text-xs rounded-md bg-amber-50 text-amber-900 px-3 py-2">
               Esta empresa tem <strong>{fmt(credito)}</strong> de crédito de depósitos anteriores.
@@ -149,8 +204,9 @@ export function RecebimentoDialog({ companies, companyIdInicial, onClose, onDone
               {linhas.map(({ base, ed }) => {
                 const quita = ed.marcada && ed.valor >= base.aberto;
                 const ruim = ed.marcada && (ed.valor <= 0 || ed.valor > base.aberto);
+                const fora = foraDoFiltro(base);
                 return (
-                  <div key={base.alvo_id} className="flex items-center gap-3 p-2.5">
+                  <div key={base.alvo_id} className={'flex items-center gap-3 p-2.5' + (fora && !ed.marcada ? ' bg-muted/40' : '')}>
                     <input
                       type="checkbox" checked={ed.marcada} aria-label={'Incluir ' + base.rotulo}
                       onChange={e => mexer(base.alvo_id, {
@@ -164,6 +220,11 @@ export function RecebimentoDialog({ companies, companyIdInicial, onClose, onDone
                         <span className="text-sm font-medium truncate">{base.rotulo}</span>
                         {base.tipo === 'assinatura' && (
                           <span className="text-[10px] px-1.5 py-0.5 rounded bg-violet-100 text-violet-800">mensalidade</span>
+                        )}
+                        {fora && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+                            fora do filtro · {rotuloEtapa(base.etapa ?? '')}
+                          </span>
                         )}
                         {ed.marcada && (
                           <span className={'text-[10px] px-1.5 py-0.5 rounded ' + (quita
