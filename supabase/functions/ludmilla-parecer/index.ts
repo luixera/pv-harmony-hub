@@ -114,6 +114,32 @@ const ECO_DO_PROMPT = [
 ]
 
 /**
+ * SÓ no modo ENEL (a EDP não ganha este filtro): os exemplos que a regra do titular
+ * do PROMPT_ENEL ensina — `reescreva como "NOME SOBRENOME"`, `"SOBRENOME, NOME"`.
+ * Se a IA copiar o exemplo em vez de preencher, o placeholder passaria como titular
+ * LIDO e o worker BLOQUEARIA o anexo por divergir do cadastro — o único bloqueio do
+ * fluxo, disparado por um texto que não é nome de ninguém. Já normalizados (sem
+ * acento, minúsculos); aceitam aspas e pontuação nas pontas.
+ * Ao mexer nas regras do PROMPT_ENEL, reveja esta lista.
+ */
+const ECO_DO_PROMPT_ENEL = [
+  /^\W*nome\s+sobrenome\W*$/,
+  /^\W*sobrenome\s*,?\s*nome\W*$/,
+]
+const ecoDoPromptEnel = (titular: string): boolean =>
+  ECO_DO_PROMPT_ENEL.some((re) => re.test(normalizar(titular)))
+
+/**
+ * O tipo do documento no modo ENEL: normaliza e confere na lista branca; o que não
+ * for texto, ou não estiver nela (inclusive o eco do formato), é 'outro'.
+ * Só é chamada no modo ENEL — na EDP o `tipo` da IA nem é lido.
+ */
+const tipoEnel = (v: unknown): string => {
+  const t = typeof v === 'string' ? normalizar(v) : ''
+  return TIPOS_ENEL.includes(t) ? t : 'outro'
+}
+
+/**
  * Marcadores de "não achei" que a IA devolve em vez de um valor. Já normalizados
  * (minúsculas, sem acento).
  */
@@ -438,17 +464,19 @@ Deno.serve(async (req) => {
     // DEVOLVIDO segue sendo o canônico sem acento.
     const pedido = normalizar(r.veredito)
     const veredito = VEREDITOS.includes(pedido) ? pedido : 'inconclusivo'
-    // Só no modo ENEL. Mesma regra do veredito: normaliza e confere na lista branca
-    // (o que a IA inventar, ou o eco do formato, vira 'outro'). Na EDP o objeto
-    // fica vazio e a resposta é a de seis campos de sempre.
-    const tipo = normalizar(r.tipo)
+    // Só no modo ENEL, e SÓ DENTRO deste ramo: na EDP o `tipo` da IA não é nem lido
+    // (um valor esquisito, como um objeto, faria o String() lançar e a EDP, que lia
+    // o parecer, passaria a responder 'inconclusivo'). Mesma regra do veredito:
+    // normaliza e confere na lista branca. Na EDP o objeto fica vazio e a resposta
+    // é a de seis campos de sempre.
     const doDocumento = modoEnel
       ? {
-        tipo: TIPOS_ENEL.includes(tipo) ? tipo : 'outro',
+        tipo: tipoEnel(r.tipo),
         nt: numeroOuNulo(r.nt, MIN_DIGITOS_NT),
         uc: numeroOuNulo(r.uc, MIN_DIGITOS_UC),
       }
       : {}
+    const titular = textoOuNulo(r.titular, 150, true)
     return json({
       ok: true, veredito,
       // Pelo mesmo filtro do titular: o resumo também vem, às vezes, como eco da
@@ -456,7 +484,8 @@ Deno.serve(async (req) => {
       // do cartão. Dizer que não houve resumo é mais honesto que mostrar o eco.
       resumo: textoOuNulo(r.resumo, 500) ?? 'a IA não resumiu o parecer',
       pendencias: Array.isArray(r.pendencias) ? r.pendencias.map(String).slice(0, 10) : [],
-      titular: textoOuNulo(r.titular, 150, true),
+      // No modo ENEL, o exemplo do prompt ("NOME SOBRENOME") copiado não é titular.
+      titular: modoEnel && titular !== null && ecoDoPromptEnel(titular) ? null : titular,
       endereco: textoOuNulo(r.endereco, 200, true),
       ...doDocumento,
     })
