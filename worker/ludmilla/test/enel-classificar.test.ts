@@ -180,11 +180,29 @@ test('citação achatada: cabeçalho do Outlook em inglês "From: … Sent: …"
   assert.equal(classificarCorpo(corpo), null);
 });
 
-test('citação achatada: marcador ">" de resposta', () => {
-  const corpo = `Ciente. > ${CITADO} > mais um trecho do histórico`;
-  assert.equal(semCitacao(corpo), 'Ciente.');
-  assert.equal(classificarCorpo(corpo), null);
-  assert.equal(semCitacao(`> ${CITADO}`), '');
+test('citação achatada: "No dia … escreveu:" e "On … wrote:"', () => {
+  const noDia = `Ciente. No dia 10/09/2026 às 10:00, Canal GD <canalgd.sp@br.enel.com> escreveu: ${CITADO}`;
+  assert.equal(semCitacao(noDia), 'Ciente. ');
+  assert.equal(classificarCorpo(noDia), null);
+  const on = `Ok. On Wed, Sep 10, 2026 at 10:00 AM Canal GD <canalgd.sp@br.enel.com> wrote: ${CITADO}`;
+  assert.equal(semCitacao(on), 'Ok. ');
+  assert.equal(classificarCorpo(on), null);
+});
+
+test('citação achatada: mensagem encaminhada ("Forwarded message", "Mensagem encaminhada")', () => {
+  assert.equal(semCitacao(`Segue. ---------- Forwarded message --------- De: Canal GD Date: qua 10 set ${CITADO}`), 'Segue. ');
+  assert.equal(semCitacao(`Segue. ---------- Mensagem encaminhada ---------- De: Canal GD Data: qua 10 set ${CITADO}`), 'Segue. ');
+  assert.equal(classificarCorpo(`Segue. ---------- Mensagem encaminhada ---------- ${CITADO}`), null);
+});
+
+test('o marcador ">" NÃO é mais citação: não corta texto novo legítimo (P2)', () => {
+  // "Prazo > 5 dias" e "Menu > Detalhes" são texto da parte nova; cortar aqui perdia a falha
+  assert.deepEqual(classificarCorpo(`Prazo &gt; 5 dias. ${CITADO}`), { tipo: 'resultado_vistoria', aprovada: true });
+  assert.deepEqual(classificarCorpo(`Prazo > 5 dias. ${CITADO}`), { tipo: 'resultado_vistoria', aprovada: true });
+  assert.deepEqual(classificarCorpo(`Menu > Detalhes. ${CITADO}`), { tipo: 'resultado_vistoria', aprovada: true });
+  const falha = classificarCorpo('Acesse Menu &gt; Notas &gt; Detalhes: a tentativa de troca do medidor não foi executada pelo seguinte motivo: Cliente Não Permitiu Execução.');
+  assert.deepEqual(falha, { tipo: 'troca_relogio', estado: 'nao_executada', motivo: 'Cliente Não Permitiu Execução' });
+  assert.equal(semCitacao(`Ciente. > ${CITADO}`), `Ciente. > ${CITADO}`);
 });
 
 test('"De:" sem "Enviado" por perto não é citação', () => {
@@ -210,14 +228,15 @@ test('o "em" da parte nova não vira o começo da citação', () => {
 // Entrada enorme: nenhuma marca pode ser quadrática (o revisor mediu 5 a 11 s)
 // ---------------------------------------------------------------------------
 
-test('muitas linhas em branco não deixam a leitura lenta', () => {
-  for (const enchimento of ['\n', ' ', '\n \n', 'Em ', 'De: ']) {
+test('entrada enorme não deixa a leitura lenta (nenhuma marca é quadrática)', () => {
+  // '-' e '- ': a marca de hífens era quadrática (50 mil hífens levavam 10 s; 200 mil, 115 s)
+  for (const enchimento of ['\n', ' ', '\n \n', 'Em ', 'De: ', '-', '- ', '&amp;']) {
     const inicio = Date.now();
     const r = classificarCorpo(`${enchimento.repeat(100000)} Informamos que a vistoria do sistema está APROVADA.`);
     const ms = Date.now() - inicio;
     assert.ok(ms < 1500, `enchimento ${JSON.stringify(enchimento)} levou ${ms} ms`);
-    if (enchimento === '\n' || enchimento === ' ' || enchimento === '\n \n') {
-      assert.deepEqual(r, { tipo: 'resultado_vistoria', aprovada: true });
+    if (enchimento !== 'Em ' && enchimento !== 'De: ') {
+      assert.deepEqual(r, { tipo: 'resultado_vistoria', aprovada: true }, JSON.stringify(enchimento));
     }
   }
 });
@@ -268,4 +287,206 @@ test('assunto: nulo e vazio não classificam', () => {
   assert.equal(classificarAssunto(null), null);
   assert.equal(classificarAssunto(undefined), null);
   assert.equal(classificarAssunto(''), null);
+});
+
+// ---------------------------------------------------------------------------
+// Rodada 2 · Important 1: "o verbo é da vistoria" — outro sujeito e furos da negação
+// ---------------------------------------------------------------------------
+
+test('o "aprovado" depois de "vistoria," é de OUTRO sujeito (projeto, documentação, solicitação)', () => {
+  for (const frase of [
+    'Em relação à vistoria, o projeto foi aprovado em 25/08.',
+    'Solicitação de vistoria: o projeto foi aprovado.',
+    'Quanto à vistoria, a documentação está aprovada.',
+    'Sobre a vistoria técnica, a solicitação foi aprovada e será agendada.',
+    'Sobre a vistoria; a documentação foi aprovada.',
+  ]) assert.equal(classificarCorpo(frase), null, frase);
+});
+
+test('a vírgula DIRETA antes do verbo continua casando, e vale a vistoria mais perto do verbo', () => {
+  assert.deepEqual(classificarCorpo('Informamos que após a vistoria da microgeração fotovoltaica do endereço acima, foi aprovada.'),
+    { tipo: 'resultado_vistoria', aprovada: true });
+  // a 1ª "vistoria" tem vírgula + outra palavra no caminho; a 2ª é a do verbo
+  assert.deepEqual(classificarCorpo('Em relação à vistoria, a vistoria do sistema foi aprovada.'),
+    { tipo: 'resultado_vistoria', aprovada: true });
+});
+
+test('nenhum, nenhuma, ninguém, nada e tampouco também negam', () => {
+  for (const frase of [
+    'Nenhum item da vistoria foi aprovado.',
+    'Nenhuma vistoria foi aprovada.',
+    'Nem a vistoria foi aprovada.',
+    'Ninguém informou que a vistoria foi aprovada.',
+    'Nada indica que a vistoria foi aprovada.',
+    'A vistoria tampouco foi aprovada.',
+  ]) assert.equal(classificarCorpo(frase), null, frase);
+});
+
+test('a data no meio da frase não quebra a frase da negação', () => {
+  assert.equal(classificarCorpo('Não foi possível confirmar em 21.08.2026 que a vistoria foi aprovada.'), null);
+});
+
+test('negação a mais de 80 caracteres antes, na mesma frase, também anula', () => {
+  const frase = 'Não temos certeza do resultado, pois o cadastro do titular, a documentação enviada e os demais itens do projeto ainda dependem de conferência pela distribuidora, mas a vistoria foi aprovada.';
+  assert.ok(frase.indexOf('vistoria') - frase.indexOf('Não') > 80);
+  assert.equal(classificarCorpo(frase), null);
+});
+
+test('condicional: "se a vistoria foi aprovada" não afirma nada', () => {
+  assert.equal(classificarCorpo('Para acompanhar se a vistoria foi aprovada, acesse o portal da distribuidora.'), null);
+  // o "se" de OUTRA frase não atrapalha
+  assert.deepEqual(classificarCorpo('Para acompanhar o pedido, acesse o portal. Informamos que a vistoria do sistema está APROVADA.'),
+    { tipo: 'resultado_vistoria', aprovada: true });
+});
+
+test('contraditório: afirmações de aprovada E de reprovada no texto novo → null', () => {
+  assert.equal(classificarCorpo('Foi aprovada. A vistoria foi reprovada.'), null);
+  assert.equal(classificarCorpo('A vistoria está aprovada. Depois: a vistoria foi reprovada.'), null);
+  // sozinha, cada uma continua valendo
+  assert.deepEqual(classificarCorpo('A vistoria foi reprovada.'), { tipo: 'resultado_vistoria', aprovada: false });
+});
+
+test('uma negação da MESMA afirmação em outra frase também anula ("foi aprovada. … não foi aprovada")', () => {
+  assert.equal(classificarCorpo('A vistoria foi aprovada. Porém a vistoria não foi aprovada na segunda análise.'), null);
+});
+
+test('palavras que quebram o caminho entre "vistoria" e o verbo, uma a uma', () => {
+  for (const frase of [
+    'Informamos que a vistoria ainda está aprovada.', // ainda
+    'Informamos que a vistoria sem laudo foi aprovada.', // sem
+    'Informamos que a vistoria nem sequer foi aprovada.', // nem (no caminho; sem "nem foi" colado)
+    'Informamos que a vistoria nunca foi aprovada.', // nunca
+    'Informamos que a vistoria jamais foi aprovada.', // jamais
+    'A vistoria agendada para amanhã e o cadastro aprovado está aprovado.', // e
+    'A vistoria agendada ou o cadastro está aprovado.', // ou
+    'A vistoria agendada mas o cadastro está aprovado.', // mas
+    'A vistoria agendada porém o cadastro está aprovado.', // porem
+    'A vistoria do imóvel que o cadastro indica está aprovada.', // que
+    'A vistoria foi registrada o projeto foi aprovado.', // foi
+    'A vistoria está agendada o projeto está aprovado.', // esta
+    'A vistoria das placas estão agendadas o projeto foi aprovado.', // estao
+    'A vistoria será agendada o projeto foi aprovado.', // sera
+    'A vistoria das placas serão agendadas o projeto foi aprovado.', // serao
+  ]) assert.equal(classificarCorpo(frase), null, frase);
+});
+
+// ---------------------------------------------------------------------------
+// Rodada 2 · P1: entidades HTML (inclusive a codificação dupla) são decodificadas
+// ---------------------------------------------------------------------------
+
+test('entidades HTML: "rejei&amp;ccedil;&amp;atilde;o" (codificação dupla) é falha da troca', () => {
+  const r = classificarCorpo('Prezado(a), bom dia! Reenviamos a nota de serviço 400012345678 , referente a instalação 2222222222 , para a troca do medidor bidirecional, com o prazo de execu&amp;ccedil;&amp;atilde;o de at&amp;eacute; 5 dias &amp;uacute;teis. Motivo da rejei&amp;ccedil;&amp;atilde;o Cliente N&amp;atilde;o Permitiu Execu&amp;ccedil;&amp;atilde;o 21.08.2026 Protocolo: 9876543210 . Atenciosamente');
+  assert.deepEqual(r, { tipo: 'troca_relogio', estado: 'nao_executada', motivo: 'Cliente Não Permitiu Execução' });
+});
+
+test('entidades HTML: codificação simples, numéricas e as de pontuação', () => {
+  const simples = classificarCorpo('Reenviamos a nota de servi&ccedil;o 400012345678 , para a troca do medidor bidirecional. Motivo da rejei&ccedil;&atilde;o: Fechado Sem Acesso ao Centro de Medi&ccedil;&atilde;o. 06.10.2026 Protocolo: 9876543210');
+  assert.deepEqual(simples, { tipo: 'troca_relogio', estado: 'nao_executada', motivo: 'Fechado Sem Acesso ao Centro de Medição' });
+  // &#231; = ç, &#xE3; = ã, &nbsp; = espaço
+  const numericas = classificarCorpo('Reenviamos a nota de servi&#231;o 400012345678 , para a troca do medidor. Motivo da rejei&#231;&#xE3;o:&nbsp;Cliente&nbsp;N&#227;o Permitiu Execu&#231;&#xE3;o. Protocolo: 9876543210');
+  assert.deepEqual(numericas, { tipo: 'troca_relogio', estado: 'nao_executada', motivo: 'Cliente Não Permitiu Execução' });
+  // maiúsculas acentuadas e as de pontuação: &Aacute; &Eacute; &Ccedil; &Atilde; &Otilde; &lt; &gt; &quot; &#39; &amp;
+  assert.deepEqual(classificarCorpo('A TROCA DO MEDIDOR N&Atilde;O FOI EXECUTADA pelo seguinte motivo: &quot;Cliente &lt;Ausente&gt; &amp; sem acesso&#39;. Protocolo: 9876543210'),
+    { tipo: 'troca_relogio', estado: 'nao_executada', motivo: '"Cliente <Ausente> & sem acesso\'' });
+});
+
+test('entidades HTML: cada entidade da lista decodifica (vista pelo motivo da falha)', () => {
+  const casos: Array<[string, string]> = [
+    ['&amp;', '&'], ['&lt;', '<'], ['&gt;', '>'], ['&quot;', '"'], ['&#39;', "'"], ['&nbsp;', ' '],
+    ['&aacute;', 'á'], ['&acirc;', 'â'], ['&atilde;', 'ã'], ['&agrave;', 'à'], ['&eacute;', 'é'], ['&ecirc;', 'ê'],
+    ['&iacute;', 'í'], ['&oacute;', 'ó'], ['&ocirc;', 'ô'], ['&otilde;', 'õ'], ['&uacute;', 'ú'], ['&ccedil;', 'ç'],
+    ['&Aacute;', 'Á'], ['&Acirc;', 'Â'], ['&Atilde;', 'Ã'], ['&Agrave;', 'À'], ['&Eacute;', 'É'], ['&Ecirc;', 'Ê'],
+    ['&Iacute;', 'Í'], ['&Oacute;', 'Ó'], ['&Ocirc;', 'Ô'], ['&Otilde;', 'Õ'], ['&Uacute;', 'Ú'], ['&Ccedil;', 'Ç'],
+    ['&#231;', 'ç'], ['&#xE7;', 'ç'], ['&#xe7;', 'ç'],
+    // codificado duas vezes
+    ['&amp;ccedil;', 'ç'], ['&amp;#231;', 'ç'], ['&amp;amp;', '&'],
+  ];
+  for (const [entidade, esperado] of casos) {
+    const r = classificarCorpo(`A troca do medidor não foi executada pelo seguinte motivo: X${entidade}X. Protocolo: 9876543210`);
+    const motivo = r && r.tipo === 'troca_relogio' && r.estado === 'nao_executada' ? r.motivo : null;
+    assert.equal(motivo, `X${esperado}X`, entidade);
+  }
+});
+
+test('entidades HTML: número impossível não derruba o robô nem some com o texto', () => {
+  // String.fromCodePoint lança RangeError acima de 0x10FFFF; surrogate e zero não são caractere
+  for (const impossivel of ['&#9999999;', '&#1114112;', '&#xD800;', '&#0;', '&#xFFFFFF;']) {
+    const r = classificarCorpo(`A troca do medidor não foi executada pelo seguinte motivo: Obra ${impossivel} no local. Protocolo: 9876543210`);
+    assert.equal(r && r.tipo === 'troca_relogio' && r.estado, 'nao_executada', impossivel);
+  }
+});
+
+test('entidades HTML: o resultado da vistoria e o corte da citação também veem o texto decodificado', () => {
+  assert.deepEqual(classificarCorpo('Informamos que a vistoria do sistema de microgera&ccedil;&atilde;o est&aacute; APROVADA.'),
+    { tipo: 'resultado_vistoria', aprovada: true });
+  assert.equal(classificarCorpo(`Ciente. Em qua., 10 de set. de 2026 &agrave;s 10:00, Canal GD &lt;canalgd.sp@br.enel.com&gt; escreveu: ${CITADO}`), null);
+  // entidade desconhecida fica como está
+  assert.deepEqual(classificarCorpo('A vistoria &foo; do sistema está APROVADA.'), { tipo: 'resultado_vistoria', aprovada: true });
+});
+
+// ---------------------------------------------------------------------------
+// Rodada 2 · P3: redações de falha ainda não vistas (valem com a troca citada)
+// ---------------------------------------------------------------------------
+
+test('troca que não foi feita: as outras redações', () => {
+  for (const frase of [
+    'A troca do medidor não foi realizada pelo seguinte motivo: Cliente Não Permitiu Execução.', // foi realizada
+    'A troca do medidor não pôde ser executada pelo seguinte motivo: Cliente Não Permitiu Execução.', // pôde
+    'A troca do medidor não pode ser executada neste momento.', // pode
+    'Não foi possível executar a troca do medidor.', // possível executar
+    'Não foi possível realizar a troca do medidor.', // possível realizar
+    'A troca do medidor está não concluída.', // concluída
+    'A troca do medidor, não concluída, será reagendada.', // concluída (vírgula)
+  ]) {
+    const r = classificarCorpo(frase);
+    assert.equal(r?.tipo, 'troca_relogio', frase);
+    assert.equal(r && r.tipo === 'troca_relogio' && r.estado, 'nao_executada', frase);
+  }
+});
+
+test('"reenviamos" sozinho NÃO é falha: há reenvio sem falha', () => {
+  assert.deepEqual(classificarCorpo(REENVIO), { tipo: 'troca_relogio', estado: 'agendada', prazoDias: 5 });
+});
+
+test('a falha só vale se a mensagem fala da troca: cada palavra do contexto, sozinha', () => {
+  for (const frase of [
+    'A troca não foi executada pelo seguinte motivo: Cliente Não Permitiu Execução.', // troca
+    'A instalação do medidor não foi executada pelo seguinte motivo: Cliente Não Permitiu Execução.', // medidor
+    'A nota de serviço 400012345678 não foi executada pelo seguinte motivo: Cliente Não Permitiu Execução.', // nota de servico
+    'A substituição não foi executada pelo seguinte motivo: Cliente Não Permitiu Execução.', // substituicao
+    'O relógio não foi executado pelo seguinte motivo: Cliente Não Permitiu Execução.', // relogio
+  ]) {
+    const r = classificarCorpo(frase);
+    assert.equal(r && r.tipo === 'troca_relogio' && r.estado, 'nao_executada', frase);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Rodada 2 · P4: a palavra do contexto que parecia não fazer diferença
+// ---------------------------------------------------------------------------
+
+test('"Em … escreveu:" volta a aceitar o "em" minúsculo', () => {
+  const corpo = `Ciente. em qua., 10 de set. de 2026 às 10:00, Canal GD <canalgd.sp@br.enel.com> escreveu: ${CITADO}`;
+  assert.equal(semCitacao(corpo), 'Ciente. ');
+});
+
+test('a janela é temperada com os TRÊS iniciadores: vale o último "Em/No dia/On" antes do "escreveu/wrote"', () => {
+  const dist = (corpo: string, de: string, ate: string) => corpo.indexOf(ate) - corpo.indexOf(de);
+  // "Em" da parte nova antes de um "No dia … escreveu:"
+  const a = 'Em resposta ao seu pedido, a vistoria do sistema está APROVADA. No dia 10/09/2026 às 10:00, Canal GD <c@enel.com> escreveu: antigo';
+  assert.ok(dist(a, 'Em resposta', 'escreveu:') < 160);
+  assert.deepEqual(classificarCorpo(a), { tipo: 'resultado_vistoria', aprovada: true });
+  // "no dia" da parte nova antes de um "On … wrote:"
+  const b = 'A tentativa de troca do medidor no dia 15/09, não foi executada pelo seguinte motivo: Cliente ausente. On Wed, Sep 10, 2026 at 10:00 AM Canal GD <c@enel.com> wrote: old';
+  assert.ok(dist(b, 'no dia', 'wrote:') < 160);
+  assert.deepEqual(classificarCorpo(b), { tipo: 'troca_relogio', estado: 'nao_executada', motivo: 'Cliente ausente' });
+  // "On" da parte nova antes de um "Em … escreveu:"
+  const c = 'Segue on-line o resultado, On resposta: a vistoria do sistema está APROVADA. Em seg., 12 de out. de 2026 às 09:00, Canal GD <c@enel.com> escreveu: antigo';
+  assert.ok(dist(c, 'On resposta', 'escreveu:') < 160);
+  assert.deepEqual(classificarCorpo(c), { tipo: 'resultado_vistoria', aprovada: true });
+});
+
+test('o "no dia" da parte nova não vira o começo da citação (a falha cita o dia)', () => {
+  const corpo = 'A tentativa de troca do medidor no dia 15/09 , não foi executada pelo seguinte motivo: Cliente Não Permitiu Execução. Em seg., 12 de out. de 2026 às 09:00, Canal GD <canalgd.sp@br.enel.com> escreveu: antigo';
+  assert.deepEqual(classificarCorpo(corpo), { tipo: 'troca_relogio', estado: 'nao_executada', motivo: 'Cliente Não Permitiu Execução' });
 });
