@@ -36,6 +36,9 @@ const ENTIDADES: Record<string, string> = {
   oacute: 'ó', ocirc: 'ô', otilde: 'õ', uacute: 'ú', ccedil: 'ç',
   Aacute: 'Á', Acirc: 'Â', Atilde: 'Ã', Agrave: 'À', Eacute: 'É', Ecirc: 'Ê', Iacute: 'Í',
   Oacute: 'Ó', Ocirc: 'Ô', Otilde: 'Õ', Uacute: 'Ú', Ccedil: 'Ç',
+  // o "nº" (&ordm; aparece 64× no corpus), o travessão (&ndash; 20×) e as parentes
+  ordm: 'º', ordf: 'ª', deg: '°', ndash: '–', mdash: '—', hellip: '…', rarr: '→',
+  ldquo: '“', rdquo: '”', lsquo: '‘', rsquo: '’', apos: "'", laquo: '«', raquo: '»',
 };
 
 /** `&ccedil;`, `&#231;`, `&#xE7;`. Entidade desconhecida (ou número impossível) fica como está. */
@@ -52,13 +55,14 @@ function umaPassada(s: string): string {
 
 /**
  * Até 2 passadas: a ENEL (ou o reenvio) deixa vir `rejei&amp;ccedil;&amp;atilde;o`,
- * codificado duas vezes.
+ * codificado duas vezes. Termina ACHATANDO de novo: `&#10;` e `&#xA;` viram \n, e
+ * um \n furava a janela `[^\n]` do "Em … escreveu:" (a citação não era cortada e
+ * o histórico virava resultado). O texto fica como chega do caixa.ts.
  */
 function decodificarEntidades(s: string): string {
-  if (!s.includes('&')) return s;
   let r = s;
-  for (let i = 0; i < 2; i++) r = umaPassada(r);
-  return r;
+  if (s.includes('&')) for (let i = 0; i < 2; i++) r = umaPassada(r);
+  return r.replace(/\s+/g, ' ');
 }
 
 // ── A citação ─────────────────────────────────────────────────────────────────
@@ -164,29 +168,43 @@ function extrairMotivo(t: string, origem: number[], original: string): string | 
 }
 
 // ── O resultado da vistoria ───────────────────────────────────────────────────
-// O verbo tem de ser da VISTORIA. Entre "vistoria" e "está/foi aprovada" não pode
-// haver: outra "vistoria" (vale a mais perto), negação, outro verbo ("foi
-// registrada e o projeto foi aprovado"), conjunção que abre outra oração, ponto —
-// nem [,:;] seguido de outra palavra ("Em relação à vistoria, o projeto foi
-// aprovado": o "aprovado" é do projeto). A vírgula DIRETA ("…do endereço acima,
-// foi aprovada") continua valendo. Na frase de ANTES também não pode haver
-// negação ("não foi possível confirmar que a vistoria foi aprovada") nem "se"
-// ("para acompanhar se a vistoria foi aprovada").
+// O verbo tem de ser da VISTORIA ("quem foi aprovado"). Na dúvida é null.
+//  · Entre "vistoria" e "está/foi aprovada" não pode haver: outra "vistoria" (vale a
+//    mais perto), negação, "se", outro verbo ("foi registrada e o projeto foi
+//    aprovado"), conjunção que abre outra oração, ponto — nem um separador seguido
+//    de outra palavra ([,:;?!()|/–—&] ou " - "): "Em relação à vistoria, o projeto
+//    foi aprovado", "Vistoria (o projeto está aprovado)". A vírgula DIRETA ("…do
+//    endereço acima, foi aprovada") continua valendo.
+//  · O núcleo do sujeito não pode ser outra coisa: "solicitação/pedido/taxa … de
+//    vistoria foi aprovada" é do pedido, não da vistoria. ("vídeo" fica fora da
+//    lista: "o vídeo foi aprovado" é a vistoria virtual.)
+//  · Não pode ser pergunta ("a vistoria foi aprovada?").
+//  · Na frase de ANTES não pode haver negação, "ainda", "sem", "impossível" nem "se"
+//    ("não foi possível confirmar que…", "para acompanhar se…"). A frase quebra em
+//    [.;!?] seguido de espaço — "21.08.2026" e "Sr." não quebram.
+//  · aprovada: anulada por qualquer "foi/está reprovada" ou "não foi aprovada" no
+//    texto (o erro caro). reprovada: só anulada por um "aprovada" SOBRE A VISTORIA
+//    (ou um "Foi aprovada." solto, sem sujeito); "o projeto foi aprovado. A vistoria
+//    foi reprovada." é reprovada de verdade.
 const NEGACOES = 'nao|nem|nunca|jamais|nenhum|nenhuma|ninguem|nada|tampouco';
-const PALAVRAS_QUE_QUEBRAM = `vistoria|ainda|sem|${NEGACOES}|foi|esta|estao|sera|serao|e|ou|mas|porem|que`;
+const PALAVRAS_QUE_QUEBRAM = `vistoria|ainda|sem|se|${NEGACOES}|foi|esta|estao|sera|serao|e|ou|mas|porem|que`;
+const CAMINHO_ATE_O_VERBO = String.raw`((?:(?!\b(?:${PALAVRAS_QUE_QUEBRAM})\b)[^.]){0,160}?)`;
 const VISTORIA_COM_RESULTADO = new RegExp(
-  String.raw`\bvistoria\b((?:(?!\b(?:${PALAVRAS_QUE_QUEBRAM})\b)[^.]){0,160}?)\b(?:esta|foi)\s+(aprovad[ao]|reprovad[ao])\b`,
+  String.raw`\bvistoria\b${CAMINHO_ATE_O_VERBO}\b(?:esta|foi)\s+(aprovad[ao]|reprovad[ao])\b`,
 );
-const OUTRO_SUJEITO_NO_CAMINHO = /[,:;]\s*\S/;
-// o ";" de uma entidade que não decodificamos ("&foo;") não é pontuação do texto
-const ENTIDADE_RESIDUAL = /&[a-z]+;/g;
-const NEGA_OU_CONDICIONA = new RegExp(String.raw`\b(?:${NEGACOES}|se)\b`);
-// Fim de frase: ponto/;/!/? seguido de espaço (ou do fim). "21.08.2026" não quebra.
-const FIM_DE_FRASE = /[.;!?](?=\s|$)/g;
+const OUTRO_SUJEITO_NO_CAMINHO = /[,:;?!()|\/\u2013\u2014&]\s*\S|\s-\s*\S/;
+const NUCLEO_QUE_NAO_E_A_VISTORIA = /\b(?:solicitacao|pedido|agendamento|reagendamento|requerimento|abertura|marcacao|taxa|data|prazo|protocolo|nota|ordem|cadastro|documentacao|projeto|relatorio|laudo|formulario|ficha|termo|orcamento)\s+(?:de|da|do|para|pra)\s+(?:a\s+|sua\s+|essa\s+)?$/;
+const NEGA_OU_CONDICIONA = new RegExp(String.raw`\b(?:${NEGACOES}|ainda|sem|impossivel|se)\b`);
+// Fim de frase: ponto/;/!/? seguido de espaço (ou do fim). "21.08.2026" não quebra, e o
+// ponto de "Sr.", "Sra.", "Dr.", "Dra.", "art.", "n." e "nº." também não.
+const FIM_DE_FRASE = /(?:(?<!\b(?:sr|sra|dr|dra|art|n|nº|n°))\.|[;!?])(?=\s|$)/g;
 const JANELA_DA_FRASE = 300;
-const AFIRMA_APROVADA = /\b(?:esta|foi)\s+aprovad[ao]\b/;
 const AFIRMA_REPROVADA = /\b(?:esta|foi)\s+reprovad[ao]\b/;
-const AFIRMACAO_NEGADA = /\b(?:nao|nem|nenhum|nenhuma)\s+(?:foi|esta)\s+(?:re)?aprovad[ao]\b/;
+const AFIRMACAO_NEGADA = new RegExp(String.raw`\b(?:${NEGACOES})\s+(?:foi|esta)\s+aprovad[ao]\b`);
+const APROVADA_DA_VISTORIA = new RegExp(
+  String.raw`\bvistoria\b${CAMINHO_ATE_O_VERBO}\b(?:esta|foi)\s+aprovad[ao]\b`, 'g',
+);
+const APROVADA_SEM_SUJEITO = /(?:^|[.!?;])\s*(?:esta|foi)\s+aprovad[ao]\b/;
 
 /** A frase em que "vistoria" (em `ate`) aparece, até a janela de 300 caracteres. */
 function fraseAntes(t: string, ate: number): string {
@@ -196,15 +214,25 @@ function fraseAntes(t: string, ate: number): string {
   return antes.slice(inicio);
 }
 
+/** Há, no texto, um "aprovada" SOBRE A VISTORIA (ou um "Foi aprovada." solto)? */
+function afirmaAprovadaDaVistoria(t: string): boolean {
+  for (const m of t.matchAll(APROVADA_DA_VISTORIA)) if (!OUTRO_SUJEITO_NO_CAMINHO.test(m[1])) return true;
+  return APROVADA_SEM_SUJEITO.test(t);
+}
+
 function resultadoDaVistoria(t: string): Classificacao {
   const v = VISTORIA_COM_RESULTADO.exec(t);
   if (!v) return null;
-  if (OUTRO_SUJEITO_NO_CAMINHO.test(v[1].replace(ENTIDADE_RESIDUAL, ' '))) return null;
+  if (OUTRO_SUJEITO_NO_CAMINHO.test(v[1])) return null;
+  if (NUCLEO_QUE_NAO_E_A_VISTORIA.test(t.slice(Math.max(0, v.index - 40), v.index))) return null;
+  const depois = v.index + v[0].length;
+  if (/^\s*\?/.test(t.slice(depois, depois + 4))) return null; // pergunta
   if (NEGA_OU_CONDICIONA.test(fraseAntes(t, v.index))) return null;
-  // aprovada E reprovada no mesmo texto, ou a mesma afirmação negada em outra frase
-  if (AFIRMA_APROVADA.test(t) && AFIRMA_REPROVADA.test(t)) return null;
-  if (AFIRMACAO_NEGADA.test(t)) return null;
-  return { tipo: 'resultado_vistoria', aprovada: v[2].startsWith('aprovad') };
+  const aprovada = v[2].startsWith('aprovad');
+  if (aprovada) {
+    if (AFIRMA_REPROVADA.test(t) || AFIRMACAO_NEGADA.test(t)) return null;
+  } else if (afirmaAprovadaDaVistoria(t)) return null;
+  return { tipo: 'resultado_vistoria', aprovada };
 }
 
 export function classificarCorpo(corpo: string | null | undefined): Classificacao {

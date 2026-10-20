@@ -300,6 +300,7 @@ test('o "aprovado" depois de "vistoria," é de OUTRO sujeito (projeto, documenta
     'Quanto à vistoria, a documentação está aprovada.',
     'Sobre a vistoria técnica, a solicitação foi aprovada e será agendada.',
     'Sobre a vistoria; a documentação foi aprovada.',
+    'Quanto à vistoria: a documentação está aprovada.', // ":" sem o núcleo "solicitação de"
   ]) assert.equal(classificarCorpo(frase), null, frase);
 });
 
@@ -398,6 +399,11 @@ test('entidades HTML: cada entidade da lista decodifica (vista pelo motivo da fa
     ['&Aacute;', 'Á'], ['&Acirc;', 'Â'], ['&Atilde;', 'Ã'], ['&Agrave;', 'À'], ['&Eacute;', 'É'], ['&Ecirc;', 'Ê'],
     ['&Iacute;', 'Í'], ['&Oacute;', 'Ó'], ['&Ocirc;', 'Ô'], ['&Otilde;', 'Õ'], ['&Uacute;', 'Ú'], ['&Ccedil;', 'Ç'],
     ['&#231;', 'ç'], ['&#xE7;', 'ç'], ['&#xe7;', 'ç'],
+    // rodada 3 (M-2): as que aparecem no corpus real (&ordm; 64×, &ndash; 20×) e as parentes
+    ['&ordm;', 'º'], ['&ordf;', 'ª'], ['&deg;', '°'], ['&ndash;', '–'], ['&mdash;', '—'], ['&rarr;', '→'],
+    ['&ldquo;', '“'], ['&rdquo;', '”'], ['&lsquo;', '‘'], ['&rsquo;', '’'], ['&apos;', "'"], ['&laquo;', '«'], ['&raquo;', '»'],
+    // decimal e hexadecimal com mais de 3 dígitos
+    ['&#8211;', '–'], ['&#x2013;', '–'],
     // codificado duas vezes
     ['&amp;ccedil;', 'ç'], ['&amp;#231;', 'ç'], ['&amp;amp;', '&'],
   ];
@@ -420,8 +426,10 @@ test('entidades HTML: o resultado da vistoria e o corte da citação também vee
   assert.deepEqual(classificarCorpo('Informamos que a vistoria do sistema de microgera&ccedil;&atilde;o est&aacute; APROVADA.'),
     { tipo: 'resultado_vistoria', aprovada: true });
   assert.equal(classificarCorpo(`Ciente. Em qua., 10 de set. de 2026 &agrave;s 10:00, Canal GD &lt;canalgd.sp@br.enel.com&gt; escreveu: ${CITADO}`), null);
-  // entidade desconhecida fica como está
-  assert.deepEqual(classificarCorpo('A vistoria &foo; do sistema está APROVADA.'), { tipo: 'resultado_vistoria', aprovada: true });
+  // entidade desconhecida fica como está (aqui, vista pelo motivo) e, no caminho da vistoria, é dúvida: null
+  const r = classificarCorpo('A troca do medidor não foi executada pelo seguinte motivo: Obra &foo; no local. Protocolo: 9876543210');
+  assert.equal(r && r.tipo === 'troca_relogio' && r.estado === 'nao_executada' && r.motivo, 'Obra &foo; no local');
+  assert.equal(classificarCorpo('A vistoria &foo; do sistema está APROVADA.'), null);
 });
 
 // ---------------------------------------------------------------------------
@@ -489,4 +497,180 @@ test('a janela é temperada com os TRÊS iniciadores: vale o último "Em/No dia/
 test('o "no dia" da parte nova não vira o começo da citação (a falha cita o dia)', () => {
   const corpo = 'A tentativa de troca do medidor no dia 15/09 , não foi executada pelo seguinte motivo: Cliente Não Permitiu Execução. Em seg., 12 de out. de 2026 às 09:00, Canal GD <canalgd.sp@br.enel.com> escreveu: antigo';
   assert.deepEqual(classificarCorpo(corpo), { tipo: 'troca_relogio', estado: 'nao_executada', motivo: 'Cliente Não Permitiu Execução' });
+});
+
+
+// ---------------------------------------------------------------------------
+// Rodada 3 · I-1: a `reprovada` verdadeira não é desfeita por "aprovado" de OUTRO assunto
+// ---------------------------------------------------------------------------
+
+test('reprovada verdadeira: "o projeto/documentação/parecer/vídeo" aprovado ou não aprovado não a desfaz', () => {
+  for (const frase of [
+    'O projeto foi aprovado. A vistoria foi reprovada.',
+    'A documentação está aprovada e a vistoria foi reprovada.',
+    'Informamos que a vistoria foi reprovada. O projeto está aprovado, porém os itens abaixo devem ser corrigidos.',
+    'Informamos que o projeto foi aprovado em 25/08, mas a vistoria foi reprovada em razão do não atendimento aos requisitos.',
+    'A vistoria foi reprovada. O parecer de acesso foi aprovado anteriormente.',
+    // é assim que a ENEL lista os motivos da reprovação
+    'Informamos que a vistoria foi reprovada. Motivos: 1. Cabeamento fora do padrão. 2. O vídeo não foi aprovado.',
+  ]) assert.deepEqual(classificarCorpo(frase), { tipo: 'resultado_vistoria', aprovada: false }, frase);
+});
+
+test('o contraditório SOBRE A VISTORIA continua anulando, nos dois sentidos', () => {
+  for (const frase of [
+    'Foi aprovada. A vistoria foi reprovada.', // "Foi aprovada." solto, sem sujeito
+    'Está aprovada. A vistoria foi reprovada.',
+    'A vistoria está aprovada. Depois: a vistoria foi reprovada.',
+    'A vistoria está aprovada. Depois a vistoria está reprovada.', // "está reprovada"
+    'A vistoria foi reprovada. Depois a vistoria está aprovada.',
+  ]) assert.equal(classificarCorpo(frase), null, frase);
+});
+
+test('reprovada: um "aprovado" de OUTRO sujeito, mesmo depois de "vistoria,", não a desfaz', () => {
+  assert.deepEqual(classificarCorpo('A vistoria foi reprovada. Sobre a vistoria, o projeto foi aprovado.'),
+    { tipo: 'resultado_vistoria', aprovada: false });
+  // (e "Sua solicitação de vistoria foi aprovada" depois de uma reprovada fica null: na dúvida, só anota)
+  assert.equal(classificarCorpo('A vistoria foi reprovada. Sua solicitação de vistoria foi aprovada anteriormente.'), null);
+});
+
+test('aprovada continua desfeita por qualquer reprovada ou afirmação negada no texto', () => {
+  assert.equal(classificarCorpo('A vistoria foi aprovada. O projeto foi reprovado.'), null);
+  for (const negacao of ['não', 'nem', 'nunca', 'jamais', 'nenhum', 'nenhuma', 'ninguém', 'nada', 'tampouco']) {
+    assert.equal(classificarCorpo(`A vistoria foi aprovada. Mas ${negacao} foi aprovado.`), null, negacao);
+  }
+  assert.equal(classificarCorpo('A vistoria foi aprovada. Mas o item não está aprovado.'), null);
+});
+
+// ---------------------------------------------------------------------------
+// Rodada 3 · I-2: o sujeito é outro (núcleo, separador, "se", pergunta)
+// ---------------------------------------------------------------------------
+
+test('o núcleo do sujeito não é a vistoria: "solicitação/pedido/taxa … de vistoria foi aprovada"', () => {
+  assert.equal(classificarCorpo('Sua solicitação de vistoria foi aprovada e será agendada.'), null);
+  for (const nucleo of [
+    'solicitação', 'pedido', 'agendamento', 'reagendamento', 'requerimento', 'abertura', 'marcação', 'taxa', 'data',
+    'prazo', 'protocolo', 'nota', 'ordem', 'cadastro', 'documentação', 'projeto', 'relatório', 'laudo', 'formulário',
+    'ficha', 'termo', 'orçamento',
+  ]) assert.equal(classificarCorpo(`O ${nucleo} de vistoria foi aprovado.`), null, nucleo);
+  for (const ligacao of ['de', 'da', 'do', 'para', 'pra', 'para a', 'para sua', 'de essa', 'da sua']) {
+    assert.equal(classificarCorpo(`O cadastro ${ligacao} vistoria foi aprovado.`), null, ligacao);
+  }
+  assert.equal(classificarCorpo('O cadastro para a vistoria foi aprovado.'), null);
+  assert.equal(classificarCorpo('A taxa de vistoria foi aprovada.'), null);
+});
+
+test('separadores entre "vistoria" e o verbo: ? ! ( ) | / – — & e o hífen com espaço', () => {
+  for (const frase of [
+    'Dúvidas sobre a vistoria? O seu projeto foi aprovado!',
+    'Vistoria! O projeto foi aprovado.',
+    'Vistoria (o projeto está aprovado).',
+    'Vistoria GD) o projeto está aprovado.',
+    'Vistoria | projeto foi aprovado.',
+    'Vistoria / projeto foi aprovado.',
+    'Vistoria – o projeto foi aprovado.',
+    'Vistoria — o projeto foi aprovado.',
+    'Vistoria & projeto foi aprovado.',
+    'Vistoria - o projeto foi aprovado.',
+    'Vistoria &ndash; o projeto foi aprovado.',
+    'Vistoria &mdash; o projeto foi aprovado.',
+  ]) assert.equal(classificarCorpo(frase), null, frase);
+  // o hífen DENTRO de palavra não é separador
+  assert.deepEqual(classificarCorpo('Informamos que a vistoria do sistema pré-instalado está APROVADA.'),
+    { tipo: 'resultado_vistoria', aprovada: true });
+});
+
+test('"se" depois de "vistoria" ("para saber se foi aprovada") não afirma nada', () => {
+  assert.equal(classificarCorpo('Consulte a vistoria para saber se foi aprovada.'), null);
+});
+
+test('pergunta: "a vistoria foi aprovada?" não afirma nada', () => {
+  assert.equal(classificarCorpo('A vistoria foi aprovada?'), null);
+  assert.equal(classificarCorpo('Gostaria de saber: a vistoria foi aprovada?'), null);
+  assert.equal(classificarCorpo('A vistoria foi aprovada ?'), null);
+  assert.deepEqual(classificarCorpo('A vistoria foi aprovada.'), { tipo: 'resultado_vistoria', aprovada: true });
+});
+
+// ---------------------------------------------------------------------------
+// Rodada 3 · M-1: &#10; vira \n e furava a janela do "Em … escreveu:"
+// ---------------------------------------------------------------------------
+
+test('entidade de quebra de linha (&#10;, &#xA;, &#13;&#10;) não fura a citação', () => {
+  for (const quebra of ['&#10;', '&#xA;', '&#13;&#10;', '&amp;#10;']) {
+    const corpo = `Ciente. Em qua., 10 de set. de 2026 às 10:00,${quebra}Canal GD <canalgd.sp@br.enel.com> escreveu: ${CITADO}`;
+    assert.equal(classificarCorpo(corpo), null, quebra);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Rodada 3 · M-2: mais entidades; o "…" termina o motivo; "nº" sai decodificado
+// ---------------------------------------------------------------------------
+
+test('o motivo sai com "nº" decodificado e termina no "…" (&hellip;)', () => {
+  const numero = classificarCorpo('A troca do medidor não foi executada pelo seguinte motivo: Sem acesso ao n&ordm; 25 do condom&iacute;nio. Protocolo: 9876543210');
+  assert.equal(numero && numero.tipo === 'troca_relogio' && numero.estado === 'nao_executada' && numero.motivo, 'Sem acesso ao nº 25 do condomínio');
+  for (const reticencias of ['&hellip;', '&#8230;', '&#x2026;']) {
+    const r = classificarCorpo(`A troca do medidor não foi executada pelo seguinte motivo: Cliente Não Permitiu Execução${reticencias} Reenviamos a nota de serviço 400012345678`);
+    assert.equal(r && r.tipo === 'troca_relogio' && r.estado === 'nao_executada' && r.motivo, 'Cliente Não Permitiu Execução', reticencias);
+  }
+});
+
+test('o ";" de entidade real não atrapalha, o de "R&D;" (entidade inexistente) é dúvida', () => {
+  assert.deepEqual(classificarCorpo('Informamos que a vistoria do n&ordm; 25 está APROVADA.'), { tipo: 'resultado_vistoria', aprovada: true });
+  assert.equal(classificarCorpo('Informamos que a vistoria da R&D; do sistema está APROVADA.'), null);
+});
+
+// ---------------------------------------------------------------------------
+// Rodada 3 · M-3: "ainda", "sem", "impossível" e as abreviações que não fecham frase
+// ---------------------------------------------------------------------------
+
+test('"ainda", "sem" e "impossível" antes da vistoria, na mesma frase, também anulam', () => {
+  assert.equal(classificarCorpo('Ainda aguardamos o retorno de que a vistoria foi aprovada.'), null);
+  assert.equal(classificarCorpo('Informamos que, sem ressalvas, a vistoria foi aprovada.'), null);
+  assert.equal(classificarCorpo('É impossível confirmar que a vistoria foi aprovada.'), null);
+  // o de OUTRA frase não atrapalha
+  assert.deepEqual(classificarCorpo('Ainda aguardamos o seu retorno. Informamos que a vistoria do sistema está APROVADA.'),
+    { tipo: 'resultado_vistoria', aprovada: true });
+});
+
+test('a frase não quebra em Sr., Sra., Dr., Dra., art., n. e nº.', () => {
+  for (const abreviacao of ['Sr.', 'Sra.', 'Dr.', 'Dra.', 'art.', 'n.', 'nº.', 'n°.']) {
+    assert.equal(classificarCorpo(`Não foi possível confirmar, conforme ${abreviacao} 25, que a vistoria foi aprovada.`), null, abreviacao);
+  }
+  assert.equal(classificarCorpo('Não foi possível confirmar ao Sr. Silva que a vistoria foi aprovada.'), null);
+});
+
+// ---------------------------------------------------------------------------
+// Rodada 3 · M-4: o que as mutações ainda não derrubavam
+// ---------------------------------------------------------------------------
+
+test('a janela da frase: negação a 260 caracteres antes ainda vale', () => {
+  const frase = `Não ${'palavra '.repeat(32)}a vistoria foi aprovada.`;
+  const distancia = frase.indexOf('vistoria') - frase.indexOf('Não');
+  assert.ok(distancia > 200 && distancia < 300, `distância ${distancia}`);
+  assert.equal(classificarCorpo(frase), null);
+});
+
+test('a frase quebra também em ";", "!" e "?"', () => {
+  for (const separador of [';', '!', '?']) {
+    assert.deepEqual(classificarCorpo(`Você não recebeu o aviso${separador} a vistoria do sistema está APROVADA.`),
+      { tipo: 'resultado_vistoria', aprovada: true }, separador);
+  }
+});
+
+test('a marca de hífens: maiúsculas, minúsculas e só 3 hífens', () => {
+  assert.equal(semCitacao('Ciente. -----MENSAGEM ORIGINAL----- x'), 'Ciente. ');
+  assert.equal(semCitacao('Ciente. -----original message----- x'), 'Ciente. ');
+  assert.equal(semCitacao('Segue. --- Mensagem encaminhada --- x'), 'Segue. ');
+  assert.equal(semCitacao('Segue. --- FORWARDED MESSAGE --- x'), 'Segue. ');
+});
+
+test('os cabeçalhos "De: … Enviado" e "From: … Sent:" valem com 100 caracteres entre os rótulos', () => {
+  const de = `Segue ciente. De: Equipe de Atendimento ao Cliente - Distribuição de Energia Elétrica [atendimento.cliente@exemplo.com.br] Enviado em: quarta-feira ${CITADO}`;
+  const entreDe = de.indexOf('Enviado') - de.indexOf('De:');
+  assert.ok(entreDe > 50 && entreDe < 200, `entre De e Enviado: ${entreDe}`);
+  assert.equal(semCitacao(de), 'Segue ciente. ');
+  const from = `Ok. From: Team of Customer Service and Distribution <customer.service.team@example.com.br> Sent: Wednesday ${CITADO}`;
+  const entreFrom = from.indexOf('Sent:') - from.indexOf('From:');
+  assert.ok(entreFrom > 50 && entreFrom < 200, `entre From e Sent: ${entreFrom}`);
+  assert.equal(semCitacao(from), 'Ok. ');
 });
