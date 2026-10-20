@@ -104,3 +104,14 @@ export function referenciaDaMensagem(protocolo: string, codigoDoProjeto: string 
   if (p !== '') return `protocolo ${p}`;
   return limpo(codigoDoProjeto) ? null : '—';
 }
+
+/**
+ * O texto de um erro de consulta para o aviso da tela. O erro do supabase-js é um
+ * objeto simples (`{ message, code, … }`), não um `Error`: o hook faz `throw error`
+ * e o react-query o entrega como veio. Nada aproveitável: null (nunca "undefined").
+ */
+export function mensagemDeErro(e: unknown): string | null {
+  if (typeof e === 'string') return limpo(e);
+  if (e && typeof e === 'object' && 'message' in e) return limpo((e as { message?: unknown }).message as string | undefined);
+  return null;
+}

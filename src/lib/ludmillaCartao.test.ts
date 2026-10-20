@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  identidadeDoCartao, referenciaDaMensagem, rotuloCasamento, textoAplicado, textoDaTrocaDeProtocolo,
+  identidadeDoCartao, mensagemDeErro, referenciaDaMensagem, rotuloCasamento, textoAplicado, textoDaTrocaDeProtocolo,
 } from './ludmillaCartao';
 
 // Todos os nomes abaixo são inventados.
@@ -132,5 +132,23 @@ describe('referenciaDaMensagem — a linha do histórico nunca fica com o protoc
   it('chave vazia da ENEL sem projeto: traço', () => {
     expect(referenciaDaMensagem('', null)).toBe('—');
     expect(referenciaDaMensagem('', undefined)).toBe('—');
+  });
+});
+
+describe('mensagemDeErro — o texto do aviso quando uma consulta falha', () => {
+  it('erro do PostgREST é um objeto simples (não é Error): lê a message dele', () => {
+    expect(mensagemDeErro({ message: 'Could not find a relationship between projects and companies', code: 'PGRST200' }))
+      .toBe('Could not find a relationship between projects and companies');
+  });
+  it('Error de verdade e texto solto também servem', () => {
+    expect(mensagemDeErro(new Error('Failed to fetch'))).toBe('Failed to fetch');
+    expect(mensagemDeErro('sem rede')).toBe('sem rede');
+  });
+  it('sem nada aproveitável: null, para a tela não escrever "undefined"', () => {
+    expect(mensagemDeErro(undefined)).toBeNull();
+    expect(mensagemDeErro(null)).toBeNull();
+    expect(mensagemDeErro({})).toBeNull();
+    expect(mensagemDeErro({ message: '   ' })).toBeNull();
+    expect(mensagemDeErro(42)).toBeNull();
   });
 });

@@ -161,7 +161,7 @@ export function RegrasEmail({ accountId, tenantId }: { accountId: string; tenant
                     </span>
                   ) : (
                     <button type="button" onClick={() => setConfirmar(r.id)}
-                      aria-label={`Apagar a regra ${r.assunto}`} title="Apagar esta regra">
+                      aria-label={`Apagar a regra ${r.assunto.trim() || r.remetente?.trim() || 'sem assunto'}`} title="Apagar esta regra">
                       <Trash2 className="h-3.5 w-3.5 text-muted-foreground hover:text-red-600" />
                     </button>
                   )

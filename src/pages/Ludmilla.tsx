@@ -4,7 +4,7 @@ import { MainLayout } from '@/components/layout/MainLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Radar, CheckCircle2, XCircle, ArrowRight, ExternalLink, RefreshCw, Loader2, Clock, KeyRound, MonitorSmartphone, ShieldQuestion, ChevronRight, Paperclip, MessageSquare, ClipboardCheck, Mail, Globe, Inbox } from 'lucide-react';
+import { Radar, CheckCircle2, XCircle, ArrowRight, ExternalLink, RefreshCw, Loader2, Clock, KeyRound, MonitorSmartphone, ShieldQuestion, ChevronRight, Paperclip, MessageSquare, ClipboardCheck, Mail, Globe, Inbox, AlertTriangle } from 'lucide-react';
 import {
   estadoDaEstacao, PortalCaptcha, PortalRun, PortalUpdate, PassoCriacao, urlDoPrint,
   useAplicarUpdate, useIgnorarUpdate, useLudmillaDisponivel, usePedirRun, usePortalAccounts,
@@ -14,7 +14,7 @@ import {
 import { useAgentConfig, type AgentConfigSafe } from '@/hooks/useAgentConfig';
 import { RegrasEmail } from '@/components/ludmilla/RegrasEmail';
 import { ContadoresEmail, MensagensEmail } from '@/components/ludmilla/MensagensEmail';
-import { identidadeDoCartao, textoDaTrocaDeProtocolo } from '@/lib/ludmillaCartao';
+import { identidadeDoCartao, mensagemDeErro, textoDaTrocaDeProtocolo } from '@/lib/ludmillaCartao';
 import { useStatusLabel, useStatusOrder } from '@/hooks/useStatusLabel';
 import { useEnergyConcessionaires } from '@/hooks/useEnergyConcessionaires';
 import { cn } from '@/lib/utils';
@@ -422,7 +422,9 @@ export default function Ludmilla() {
   const disponivel = useLudmillaDisponivel();
   const navigate = useNavigate();
   const [filtro, setFiltro] = useState<'pendente' | 'aplicada' | 'ignorada' | 'todas'>('pendente');
-  const { data: updates = [], isLoading } = usePortalUpdates(filtro);
+  const {
+    data: updates = [], isLoading, isError, error: erroDasRecomendacoes, isFetching, refetch,
+  } = usePortalUpdates(filtro);
   const { data: contas = [] } = usePortalAccounts();
   const { data: concessionarias = [] } = useEnergyConcessionaires(false);
   const { data: captchas = [] } = usePortalCaptchas();
@@ -582,12 +584,39 @@ export default function Ludmilla() {
 
         {isLoading ? (
           <div className="text-sm text-muted-foreground flex items-center gap-2"><Loader2 size={14} className="animate-spin" /> Carregando…</div>
-        ) : updates.length === 0 ? (
-          <div className="rounded-xl border p-8 text-center text-sm text-muted-foreground">
-            {filtro === 'pendente' ? 'Nada pendente — os portais estão como o sistema.' : 'Nenhuma linha aqui.'}
-          </div>
         ) : (
-          <div className="space-y-3">{updates.map(u => <LinhaRecomendacao key={u.id} u={u} />)}</div>
+          <>
+            {/* Consulta que falhou NÃO é lista vazia: dizer "Nada pendente" esconderia
+                as recomendações (e o contador da barra lateral some junto). O aviso vem
+                sempre que há erro; se ainda há linhas de antes, elas ficam abaixo. */}
+            {isError && (
+              <div role="alert" className="rounded-xl border-2 border-red-300 bg-red-50 p-4 text-sm text-red-900 flex flex-wrap items-center gap-3">
+                <AlertTriangle size={18} className="shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <b>Não consegui carregar as recomendações.</b>{' '}
+                  Isto não quer dizer que não haja nenhuma pendente — a consulta falhou.
+                  {mensagemDeErro(erroDasRecomendacoes) && (
+                    <span className="block text-xs text-red-800 break-words mt-0.5">{mensagemDeErro(erroDasRecomendacoes)}</span>
+                  )}
+                </div>
+                <Button size="sm" variant="outline" className="gap-2" disabled={isFetching} onClick={() => void refetch()}>
+                  {isFetching ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />} Tentar de novo
+                </Button>
+              </div>
+            )}
+            {updates.length === 0 ? (
+              !isError && (
+                <div className="rounded-xl border p-8 text-center text-sm text-muted-foreground">
+                  {filtro === 'pendente' ? 'Nada pendente — os portais estão como o sistema.' : 'Nenhuma linha aqui.'}
+                </div>
+              )
+            ) : (
+              // `etapa` nasce de `u.recomendacao`; sem a chave nova a seleção não acompanha o
+              // refetch (a robô repete a leitura e muda a recomendação) e o "Aplicar" mandaria
+              // uma etapa velha — ou nenhuma, e o banco usaria a nova sem o toast saber.
+              <div className="space-y-3">{updates.map(u => <LinhaRecomendacao key={`${u.id}|${u.recomendacao ?? ''}`} u={u} />)}</div>
+            )}
+          </>
         )}
 
         <RegistroDaLudmilla />
