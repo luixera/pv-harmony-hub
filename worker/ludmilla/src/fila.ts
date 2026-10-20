@@ -473,15 +473,24 @@ export type AberturaDeAnexo =
  *
  * `ocorrencia` desambigua arquivos de MESMO nome na mesma mensagem (1 = o
  * primeiro): sem ela o segundo colidia com o primeiro e sumia como "resolvido".
+ *
+ * `chave` (ENEL) separa a CHAVE do arquivo do TEXTO do comentário: entra só na chave
+ * (`id_arquivo`), e `protocolo` continua sendo o que o comentário do card diz ("para o
+ * protocolo …"). Na ENEL o protocolo muda (o cartão sugere gravar a NT); com a chave
+ * presa a ele, o "Ler de novo" depois da troca subia o documento de novo. Sem `chave`
+ * (EDP), nada muda: `p_chave` fica fora do fio e o banco usa o protocolo, como sempre
+ * (migração 20261019120000).
  */
 export async function anexoDeEmail(
   accountId: string, protocolo: string, projectId: string, messageId: string, nomeArquivo: string, conferidoPor: string,
-  ocorrencia = 1,
+  ocorrencia = 1, chave?: string,
 ): Promise<AberturaDeAnexo> {
   const { data, error } = await supabase().rpc('ludmilla_email_anexo_novo' as never, {
     p_account_id: accountId, p_protocolo: protocolo, p_project_id: projectId,
     p_message_id: messageId, p_nome_arquivo: nomeArquivo, p_conferido_por: conferidoPor,
     p_ocorrencia: ocorrencia,
+    // só vai quando informada: o payload da EDP fica o de sempre
+    ...(chave !== undefined ? { p_chave: chave } : {}),
   } as never);
   if (error) throw new Error(`Não consegui abrir o anexo: ${error.message}`);
   const l = ((data ?? []) as {
@@ -504,7 +513,8 @@ export async function anexoDeEmail(
     situacao: 'aberto',
     anexo: {
       id: l.anexo_id, project_id: l.projeto_id, company_id: l.company_id, protocolo,
-      id_arquivo: idArquivoDeEmail(messageId, protocolo, nomeArquivo, ocorrencia),
+      // a mesma regra do banco: coalesce(nullif(p_chave, ''), p_protocolo)
+      id_arquivo: idArquivoDeEmail(messageId, chave || protocolo, nomeArquivo, ocorrencia),
       nome_arquivo: nomeArquivo, codigo: l.codigo ?? '',
     },
   };

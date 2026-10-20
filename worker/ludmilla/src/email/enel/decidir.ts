@@ -152,15 +152,24 @@ export type TrocaDeProtocolo =
  *     dígitos: "NT 391000001 (SF 01234)" vira 14);
  *  2. a NT não é a UC do próprio projeto (a IA às vezes troca os campos);
  *  3. a NT não é o protocolo que o cadastro já tem;
- *  4. se o projeto JÁ tem protocolo numérico de 9 dígitos e a etapa lida foi barrada
- *     por ele estar à frente (`etapaBarrada`), a Carta é antiga: a NT dela é a VELHA.
- *     Não pede — fica a conferência. Sem protocolo numérico, pede mesmo à frente
- *     (é o caso que motivou o pedido do usuário).
- * `ProjetoEnel` não traz CPF/CNPJ; e eles têm 11/14 dígitos, que a regra 1 já recusa.
- * O banco trava de novo (`ludmilla_email_registrar`).
+ *  4. se o projeto JÁ tem protocolo numérico de 9 dígitos E está à frente — a etapa
+ *     lida foi barrada por isso (`etapaBarrada`) OU o projeto já passou da fase da
+ *     Carta (status fora de `ANTES_DA_APROVACAO`, o que pega a Carta antiga SEM
+ *     veredito, que não sugere etapa nenhuma) —, a Carta é antiga e a NT dela é a
+ *     VELHA. Não pede: fica a conferência. Sem protocolo numérico, pede mesmo à
+ *     frente (é o caso que motivou o pedido do usuário).
+ *     Resíduo conhecido: Carta de pendência ANTIGA com o projeto ainda em `analysis` e
+ *     a NT nova no cadastro pede a troca para a NT velha; separar exigiria a data da
+ *     Carta contra a do protocolo, que a robô não tem.
+ * CPF e CNPJ não estão em `ProjetoEnel`. Um CPF começado por "00" tem 9 dígitos sem
+ * os zeros e passaria pela regra 1 se a IA o pusesse no campo `nt` (improvável: o
+ * prompt pede a NT e o CPF não tem cara de NT). Nesse caso o banco recusa a gravação
+ * (`ludmilla_email_registrar`, trava de 1a7cead: compara com a UC por pedaço e com o
+ * CPF/CNPJ do titular do próprio projeto) e sobra um cartão sem sugestão — nada vai
+ * para o cadastro.
  */
 export function trocaDeProtocolo(
-  p: LeituraDaCarta, projeto: { protocolo: string | null; uc: string | null }, etapaBarrada: boolean,
+  p: LeituraDaCarta, projeto: { protocolo: string | null; uc: string | null; status: string }, etapaBarrada: boolean,
 ): TrocaDeProtocolo {
   if (!p.ok || p.tipo !== 'carta_projeto') return { tipo: 'nenhuma' };
   const nt = chaveProtocolo(p.nt ?? '');
@@ -169,7 +178,8 @@ export function trocaDeProtocolo(
   const doCadastro = numerosDoCampo(projeto.protocolo);
   if (doCadastro.has(nt)) return { tipo: 'nenhuma' };
   const numerico = [...doCadastro].find(x => x.length === DIGITOS_DA_NT);
-  if (numerico && etapaBarrada) return { tipo: 'conferir', nt, doCadastro: numerico };
+  const aFrente = etapaBarrada || !ANTES_DA_APROVACAO.has(projeto.status);
+  if (numerico && aFrente) return { tipo: 'conferir', nt, doCadastro: numerico };
   return { tipo: 'pedir', nt };
 }
 

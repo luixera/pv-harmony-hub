@@ -101,23 +101,25 @@ test('M-6: regras sem remetente nenhum (ou só comunicado) é ERRO de regras, n�
 // ── R3 + I-3: a NT da Carta que o cartão sugere gravar ──────────────────────────
 
 const CARTA = { ok: true, tipo: 'carta_projeto', nt: '391000001' };
-const SEM = { protocolo: 'Sem protocolo', uc: '0077001122' };
+/** o projeto como a troca o vê; `analysis` (antes da Carta) quando o teste não diz */
+const P = (o: { protocolo: string | null; uc: string | null; status?: string }) => ({ status: 'analysis', ...o });
+const SEM = P({ protocolo: 'Sem protocolo', uc: '0077001122' });
 const NENHUMA = { tipo: 'nenhuma' };
 const pede = (nt: string) => ({ tipo: 'pedir', nt });
 
 test('R3: Carta com NT e cadastro sem protocolo (texto, vazio ou null) → pede gravar a NT', () => {
   assert.deepEqual(trocaDeProtocolo(CARTA, SEM, false), pede('391000001'));
-  assert.deepEqual(trocaDeProtocolo(CARTA, { protocolo: '', uc: null }, false), pede('391000001'));
-  assert.deepEqual(trocaDeProtocolo(CARTA, { protocolo: null, uc: null }, false), pede('391000001'));
+  assert.deepEqual(trocaDeProtocolo(CARTA, P({ protocolo: '', uc: null }), false), pede('391000001'));
+  assert.deepEqual(trocaDeProtocolo(CARTA, P({ protocolo: null, uc: null }), false), pede('391000001'));
 });
 test('R3: NT diferente do protocolo do cadastro, sugestão não barrada → pede', () => {
-  assert.deepEqual(trocaDeProtocolo(CARTA, { protocolo: '391000777', uc: null }, false), pede('391000001'));
+  assert.deepEqual(trocaDeProtocolo(CARTA, P({ protocolo: '391000777', uc: null }), false), pede('391000001'));
 });
 test('R3: NT igual ao protocolo (zeros à esquerda, pontuação, dois números no cadastro) → nenhuma', () => {
   for (const protocolo of ['0391000001', 'NT 391.000.001', '391000777 / 391000001']) {
-    assert.deepEqual(trocaDeProtocolo(CARTA, { protocolo, uc: null }, false), NENHUMA, protocolo);
+    assert.deepEqual(trocaDeProtocolo(CARTA, P({ protocolo, uc: null }), false), NENHUMA, protocolo);
   }
-  assert.deepEqual(trocaDeProtocolo({ ...CARTA, nt: '0391000001' }, { protocolo: '391000001', uc: null }, false), NENHUMA);
+  assert.deepEqual(trocaDeProtocolo({ ...CARTA, nt: '0391000001' }, P({ protocolo: '391000001', uc: null }), false), NENHUMA);
 });
 test('I-3b: a NT tem EXATAMENTE 9 dígitos (sem os zeros à esquerda)', () => {
   // "NT 391000001 (SF 01234)" colado pelo numeroOuNulo da edge function vira 14 dígitos
@@ -127,16 +129,30 @@ test('I-3b: a NT tem EXATAMENTE 9 dígitos (sem os zeros à esquerda)', () => {
   assert.deepEqual(trocaDeProtocolo({ ...CARTA, nt: '000391000001' }, SEM, false), pede('391000001'));
 });
 test('I-3a: a "NT" é a UC do próprio projeto (a IA trocou o campo) → nenhuma', () => {
-  assert.deepEqual(trocaDeProtocolo({ ...CARTA, nt: '391000005' }, { protocolo: 'Sem protocolo', uc: '0391000005' }, false), NENHUMA);
-  assert.deepEqual(trocaDeProtocolo({ ...CARTA, nt: '391000005' }, { protocolo: null, uc: '0055001001 / 0391000005' }, false), NENHUMA);
+  assert.deepEqual(trocaDeProtocolo({ ...CARTA, nt: '391000005' }, P({ protocolo: 'Sem protocolo', uc: '0391000005' }), false), NENHUMA);
+  assert.deepEqual(trocaDeProtocolo({ ...CARTA, nt: '391000005' }, P({ protocolo: null, uc: '0055001001 / 0391000005' }), false), NENHUMA);
 });
 test('I-3c: projeto com protocolo numérico e etapa barrada por estar à frente → só conferir, NÃO pede', () => {
-  assert.deepEqual(trocaDeProtocolo({ ...CARTA, nt: '391000111' }, { protocolo: '391000222', uc: null }, true),
+  assert.deepEqual(trocaDeProtocolo({ ...CARTA, nt: '391000111' }, P({ protocolo: '391000222', uc: null }), true),
     { tipo: 'conferir', nt: '391000111', doCadastro: '391000222' });
+});
+test('N1: projeto com protocolo numérico que JÁ PASSOU da fase da Carta → só conferir, mesmo sem etapa barrada', () => {
+  // a Carta antiga inconclusiva não sugere etapa nenhuma: `etapaBarrada` é false
+  for (const status of ['approved', 'vistoria_solicitada', 'completed']) {
+    assert.deepEqual(trocaDeProtocolo({ ...CARTA, nt: '391000111' }, P({ protocolo: '391000222', uc: null, status }), false),
+      { tipo: 'conferir', nt: '391000111', doCadastro: '391000222' }, status);
+  }
+});
+test('N1 controle: antes da fase da Carta e sem etapa barrada, NT diferente → pede', () => {
+  for (const status of ['pending', 'analysis', 'documentation', 'approval', 'pendencia']) {
+    assert.deepEqual(trocaDeProtocolo({ ...CARTA, nt: '391000111' }, P({ protocolo: '391000222', uc: null, status }), false),
+      pede('391000111'), status);
+  }
 });
 test('I-3 controle: projeto SEM protocolo numérico, mesmo à frente → pede (o caso que motivou o pedido)', () => {
   assert.deepEqual(trocaDeProtocolo(CARTA, SEM, true), pede('391000001'));
-  assert.deepEqual(trocaDeProtocolo(CARTA, { protocolo: 'aguardando', uc: null }, true), pede('391000001'));
+  assert.deepEqual(trocaDeProtocolo(CARTA, P({ protocolo: 'aguardando', uc: null }), true), pede('391000001'));
+  assert.deepEqual(trocaDeProtocolo(CARTA, P({ protocolo: 'Sem protocolo', uc: null, status: 'vistoria_solicitada' }), false), pede('391000001'));
 });
 test('R3: só a Carta, lida pela IA', () => {
   assert.deepEqual(trocaDeProtocolo({ ...CARTA, ok: false }, SEM, false), NENHUMA, 'leitura que falhou');

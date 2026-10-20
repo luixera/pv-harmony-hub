@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { tratarMensagemEnel, type DepsEnel, type ParecerEnel } from '../src/email/enel/run.js';
 import { referenciaDoProjeto, type ProjetoEnel } from '../src/email/enel/identificar.js';
 import type { MensagemLida } from '../src/email/caixa.js';
-import type { RegraEmail } from '../src/email/util.js';
+import { idArquivoDeEmail, type RegraEmail } from '../src/email/util.js';
 import type { AberturaDeAnexo, AvisoEmail, EmailLido, Run, TentativaEmail } from '../src/fila.js';
 
 const RUN: Run = { id: 'run-t6', tenant_id: 'tenant-t6', account_id: 'conta-enel', tipo: 'varredura_email', situacao: 'rodando' };
@@ -51,8 +51,10 @@ interface Diario {
   ordem: string[];
   tentativas: TentativaEmail[];
   registros: EmailLido[];
-  /** o 2º argumento de anexoDeEmail: a CHAVE do anexo */
-  chavesDoAnexo: string[];
+  /** o 8º argumento de anexoDeEmail: a CHAVE do anexo (só a chave; nunca aparece na tela) */
+  chavesDoAnexo: (string | undefined)[];
+  /** o 2º argumento de anexoDeEmail: o protocolo, que é o TEXTO do comentário do card */
+  protocolosDoAnexo: string[];
   anexosPedidos: string[];
   subidos: string[];
   errosDeAnexo: string[];
@@ -60,16 +62,28 @@ interface Diario {
   leituras: number;
 }
 
-function dubles(o: { parecer?: ParecerEnel; storageRecusa?: string; anexoRetorna?: AberturaDeAnexo['situacao']; avisoFalha?: boolean } = {}): { deps: DepsEnel; d: Diario } {
-  const d: Diario = { ordem: [], tentativas: [], registros: [], chavesDoAnexo: [], anexosPedidos: [], subidos: [], errosDeAnexo: [], avisos: [], leituras: 0 };
+/**
+ * `banco`: as linhas de anexo por `id_arquivo`, com a MESMA regra da RPC
+ * (`coalesce(nullif(p_chave, ''), p_protocolo)` na chave; linha `enviado` responde
+ * `ja_resolvido`). Passe o mesmo Map em dois tratamentos para simular a 2ª leitura.
+ */
+function dubles(o: {
+  parecer?: ParecerEnel; storageRecusa?: string; anexoRetorna?: AberturaDeAnexo['situacao']; avisoFalha?: boolean;
+  banco?: Map<string, 'pendente' | 'enviado'>;
+} = {}): { deps: DepsEnel; d: Diario } {
+  const d: Diario = { ordem: [], tentativas: [], registros: [], chavesDoAnexo: [], protocolosDoAnexo: [], anexosPedidos: [], subidos: [], errosDeAnexo: [], avisos: [], leituras: 0 };
+  const banco = o.banco ?? new Map<string, 'pendente' | 'enviado'>();
   const deps: DepsEnel = {
     async abrirTentativa(p) { d.ordem.push('abrirTentativa'); d.tentativas.push(p); return d.tentativas.length; },
-    async anexoDeEmail(_conta, chave, projectId, _msg, nome): Promise<AberturaDeAnexo> {
-      d.ordem.push('anexoDeEmail'); d.chavesDoAnexo.push(chave); d.anexosPedidos.push(nome);
+    async anexoDeEmail(_conta, protocolo, projectId, msg, nome, _conferido, ocorrencia = 1, chave): Promise<AberturaDeAnexo> {
+      d.ordem.push('anexoDeEmail'); d.chavesDoAnexo.push(chave); d.protocolosDoAnexo.push(protocolo); d.anexosPedidos.push(nome);
       if (o.anexoRetorna === 'ja_resolvido') return { situacao: 'ja_resolvido' };
+      const idArquivo = idArquivoDeEmail(msg, chave || protocolo, nome, ocorrencia);
+      if (banco.get(idArquivo) === 'enviado') return { situacao: 'ja_resolvido' };
+      banco.set(idArquivo, 'pendente');
       return {
         situacao: 'aberto',
-        anexo: { id: `anexo-${nome}`, project_id: projectId, company_id: 'empresa-t6', protocolo: chave, id_arquivo: `x#${chave}#${nome}`, nome_arquivo: nome, codigo: '' },
+        anexo: { id: idArquivo, project_id: projectId, company_id: 'empresa-t6', protocolo, id_arquivo: idArquivo, nome_arquivo: nome, codigo: '' },
       };
     },
     async subirDocumento(a) {
@@ -78,7 +92,7 @@ function dubles(o: { parecer?: ParecerEnel; storageRecusa?: string; anexoRetorna
       d.subidos.push(a.nome_arquivo);
       return `caminho/${a.nome_arquivo}`;
     },
-    async anexoEnviado() { d.ordem.push('anexoEnviado'); },
+    async anexoEnviado(id) { d.ordem.push('anexoEnviado'); banco.set(id, 'enviado'); },
     async anexoErro(_id, motivo) { d.ordem.push('anexoErro'); d.errosDeAnexo.push(motivo); },
     async registrarEmailLido(p) { d.ordem.push('registrarEmailLido'); d.registros.push(p); },
     async avisar(p) {
@@ -318,8 +332,9 @@ test('16. Carta sem nada no texto, projeto achado pela UC e sem protocolo: suger
   assert.equal(r.situacao, 'tratado');
   assert.equal(r.por, 'uc');
   assert.equal(d.subidos.length, 1);
-  assert.deepEqual(d.chavesDoAnexo, [referenciaDoProjeto(PC)]);
-  assert.notEqual(d.chavesDoAnexo[0], '391000001');
+  // M-7: a CHAVE é o project_id (nunca muda, nunca aparece); o TEXTO do comentário é a NT da Carta
+  assert.deepEqual(d.chavesDoAnexo, [PC.project_id]);
+  assert.deepEqual(d.protocolosDoAnexo, ['391000001'], 'o comentário diz "para o protocolo 391000001", não o código');
   const reg = unico(d);
   assert.equal(reg.referencia, '391000001');
   assert.equal(reg.atualizarProtocolo, true);
@@ -329,19 +344,43 @@ test('16. Carta sem nada no texto, projeto achado pela UC e sem protocolo: suger
   assert.match(String(reg.motivo), /a Carta traz a NT 391000001; o cadastro tem nenhum — o cartão sugere gravar a NT/);
 });
 
-test('16b. a 2ª tentativa da mesma Carta usa a MESMA chave do anexo (não sobe em dobro)', async () => {
-  // 1ª: a IA falhou; o projeto foi achado pela UC no assunto e o anexo subiu com a chave de sempre
-  const um = dubles({ parecer: { ...carta(), ok: false, veredito: null, titular: null, nt: null, tipo: null, erro: 'a leitura do documento respondeu 503' } });
+test('16b. a 2ª tentativa da mesma Carta (a IA voltou e leu a NT) não sobe o documento em dobro', async () => {
+  const banco = new Map<string, 'pendente' | 'enviado'>();
+  // 1ª: a IA falhou; o projeto foi achado pela UC no assunto e o anexo subiu
+  const um = dubles({ banco, parecer: { ...carta(), ok: false, veredito: null, titular: null, nt: null, tipo: null, erro: 'a leitura do documento respondeu 503' } });
   const m = mensagem({ assunto: 'Geração Distribuída – Carta – Instalação 77001122' });
   const r1 = await tratar(m, um.deps);
   assert.equal(r1.concluida, false);
   assert.equal(um.d.registros[0].atualizarProtocolo, undefined);
-  // 2ª: a IA voltou e leu a NT
-  const dois = dubles({ parecer: carta({ nt: '391000001', uc: '77001122', titular: PC.titular }), anexoRetorna: 'ja_resolvido' });
+  assert.equal(um.d.subidos.length, 1);
+  // 2ª: a IA voltou e leu a NT — o texto do comentário muda, a chave não
+  const dois = dubles({ banco, parecer: carta({ nt: '391000001', uc: '77001122', titular: PC.titular }) });
   await tratar(m, dois.deps);
   assert.deepEqual(dois.d.chavesDoAnexo, um.d.chavesDoAnexo, 'a chave do anexo não pode virar a NT');
+  assert.notDeepEqual(dois.d.protocolosDoAnexo, um.d.protocolosDoAnexo, 'o texto, sim, passa a ser a NT');
+  assert.equal(dois.d.subidos.length, 0, 'não subiu de novo');
   assert.equal(dois.d.registros[0].referencia, '391000001');
   assert.equal(dois.d.registros[0].atualizarProtocolo, true);
+});
+
+test('16c. M-7: "Ler de novo" DEPOIS de aplicar a troca (o projeto já com a NT) não sobe o documento de novo', async () => {
+  const banco = new Map<string, 'pendente' | 'enviado'>();
+  const m = mensagem();
+  const leitura = carta({ nt: '391000001', uc: '77001122', titular: PC.titular });
+  const antes = dubles({ banco, parecer: leitura });
+  await tratar(m, antes.deps);
+  assert.equal(antes.d.subidos.length, 1);
+  assert.equal(antes.d.registros[0].atualizarProtocolo, true);
+  // a equipe aplicou: o protocolo do cadastro agora é a NT, e referenciaDoProjeto muda junto
+  const aplicado = { ...PC, protocolo: '391000001' };
+  assert.notEqual(referenciaDoProjeto(aplicado), referenciaDoProjeto(PC));
+  const depois = dubles({ banco, parecer: leitura });
+  await tratar(m, depois.deps, [PA, PB, aplicado, PI]);
+  assert.equal(depois.d.subidos.length, 0, 'mesma chave (project_id): já resolvido');
+  assert.deepEqual(depois.d.chavesDoAnexo, [PC.project_id]);
+  const reg = unico(depois.d);
+  assert.equal('atualizarProtocolo' in reg, false, 'a NT já é o protocolo');
+  assert.equal(reg.referencia, '391000001');
 });
 
 test('17. Carta com a NT igual ao protocolo (zeros à esquerda à parte): sem pedido de troca, a chave nem vai', async () => {
@@ -632,4 +671,71 @@ test('M-3. o PDF que a IA leu traz o número de OUTRO projeto: o que ele diz nã
   assert.equal(reg.arquivoLido, 'NT_391000020.pdf');
   assert.match(String(reg.motivo), /o documento que li \(NT_391000020\.pdf\) traz o número de outro projeto/);
   assert.doesNotMatch(String(reg.motivo), /observações/);
+});
+
+// ── Rodada de correção 2 ─────────────────────────────────────────────────────
+
+test('N1. Carta antiga SEM veredito (inconclusiva) com a NT velha, projeto já em vistoria com NT: não pede a troca', async () => {
+  const p = projeto({ codigo: 'GD-T6-012', protocolo: '391000222', uc: '0066004004', titular: 'CELINA MOURAO', status: 'vistoria_solicitada' });
+  const { deps, d } = dubles({ parecer: carta({ veredito: 'inconclusivo', nt: '391000111', uc: '66004004', titular: 'CELINA MOURAO' }) });
+  await tratar(mensagem(), deps, [p, PA]);
+  const reg = unico(d);
+  assert.equal(reg.recomendacao, null);
+  assert.equal('atualizarProtocolo' in reg, false);
+  assert.equal(reg.abrirCartao, false, 'sem etapa e sem troca: nada de cartão vazio');
+  assert.equal(reg.referencia, '391000222');
+  assert.match(String(reg.motivo), /a Carta traz a NT 391000111, diferente da do cadastro \(391000222\); como o projeto já está à frente, não sugeri trocar — confira/);
+});
+
+test('N1. Carta de pendência com o projeto JÁ em pendência e com NT: etapa barrada (a mesma) → não pede a troca', async () => {
+  // `pendencia` está antes da fase da Carta: aqui quem segura a troca é a etapa barrada, não o status
+  const p = projeto({ codigo: 'GD-T6-013', protocolo: '391000222', uc: '0066005005', titular: 'CELINA MOURAO', status: 'pendencia' });
+  const { deps, d } = dubles({ parecer: carta({ veredito: 'pendencia', nt: '391000111', uc: '66005005', titular: 'CELINA MOURAO' }) });
+  await tratar(mensagem(), deps, [p, PA]);
+  const reg = unico(d);
+  assert.equal(reg.recomendacao, null);
+  assert.equal('atualizarProtocolo' in reg, false);
+  assert.match(String(reg.motivo), /a Carta traz a NT 391000111, diferente da do cadastro \(391000222\)/);
+});
+
+test('N3. o PDF lido é de OUTRO projeto e é um laudo de vistoria aprovada: o sino NÃO toca', async () => {
+  const { deps, d } = dubles({ parecer: carta({ tipo: 'resultado_vistoria', veredito: 'favoravel', nt: null, titular: null }) });
+  const r = await tratar(mensagem({
+    remetente: 'Técnico ABC <tecnico.abc@enel.com>', assunto: 'RE: VISTORIA GD - NT 391000010',
+    texto: 'Prezado(a), segue o relatório em anexo. Atenciosamente',
+    anexos: [pdf('LAUDO_NT_391000020.pdf', 500), pdf('RELATORIO.pdf', 100)],
+  }), deps);
+  assert.equal(r.situacao, 'tratado');
+  assert.equal(d.leituras, 1);
+  assert.equal(d.avisos.length, 0, 'a vistoria aprovada é do outro projeto');
+  assert.deepEqual(d.subidos, ['RELATORIO.pdf']);
+});
+
+test('M-5 (Task 3). resposta automática que repete "troca … não executada/NÃO CONCLUÍDA": não classifica, não toca o sino', async () => {
+  const { deps, d } = dubles();
+  const r = await tratar(mensagem({
+    remetente: 'ENEL <no-reply@enel.com>', assunto: 'RE: TROCA DE RELÓGIO - NT 391000010 - NÃO CONCLUÍDA',
+    texto: 'Recebemos o seu e-mail: "a tentativa de troca do medidor não foi executada pelo seguinte motivo: Cliente Ausente". Atendimento SF0123456789.',
+    anexos: [],
+  }), deps);
+  assert.equal(r.situacao, 'tratado');
+  assert.equal(d.avisos.length, 0);
+  const reg = unico(d);
+  assert.equal(reg.recomendacao, null);
+  assert.doesNotMatch(String(reg.motivo), /troca do relógio/);
+});
+
+test('M-5 (Task 3). devolução que cita "a vistoria … está REPROVADA": só o aviso da devolução, sem etapa', async () => {
+  const pv = { ...PA, status: 'vistoria_solicitada' };
+  const { deps, d } = dubles();
+  await tratar(mensagem({
+    remetente: 'postmaster@enel.com', assunto: 'Undeliverable: RE: VISTORIA - NT 391000010',
+    texto: 'Delivery has failed. Original message: Informamos que a vistoria do sistema de microgeração está REPROVADA pelos motivos abaixo.',
+    anexos: [],
+  }), deps, [pv, PB]);
+  assert.equal(d.avisos.length, 1);
+  assert.equal(d.avisos[0].titulo, '📡 Um e-mail nosso voltou');
+  const reg = unico(d);
+  assert.equal(reg.recomendacao, null, 'a devolução não sugere vistoria_reprovada');
+  assert.doesNotMatch(String(reg.motivo), /vistoria/);
 });

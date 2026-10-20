@@ -39,6 +39,9 @@ const log = (msg: string, extra: Record<string, unknown> = {}) =>
  */
 export const CHAVE_DA_MENSAGEM_ENEL = '';
 
+/** Tipos de regra cujo texto não diz nada sobre vistoria ou troca (só repetem o nosso). */
+const TIPOS_SEM_SINAL: ReadonlySet<string> = new Set(['resposta_automatica', 'devolucao', 'comunicado']);
+
 export interface ParecerEnel {
   ok: boolean; veredito: Veredito | null; resumo: string;
   /** "aprovado, porém solicitamos observar os itens abaixo": favorável, com os itens aqui */
@@ -155,7 +158,12 @@ export async function tratarMensagemEnel(
   // O ASSUNTO antes do corpo: o atendimento.edsp manda o resultado no assunto
   // ("Comunicado técnico sobre a nota: <NT> - Vistoria aprovada"), com corpo genérico.
   // `m.texto` chega achatado (caixa.ts) e vai como está: o classificador foi feito para ele.
-  const classificacao = classificarAssunto(m.assunto) ?? classificarCorpo(m.texto);
+  // Resposta automática e devolução NÃO têm sinal de vistoria nem de troca: repetem o
+  // NOSSO assunto e o nosso texto ("TROCA … NÃO CONCLUÍDA"), e classificar isso tocaria
+  // um sino falso. Para elas, nada é classificado.
+  const classificacao = TIPOS_SEM_SINAL.has(regra.tipo_documento)
+    ? null
+    : classificarAssunto(m.assunto) ?? classificarCorpo(m.texto);
   const idTexto = identificarPorTexto({ assunto: m.assunto, corpo: m.texto }, projetos);
 
   const ocorrencias = ocorrenciasPorNome(m.anexos);
@@ -201,19 +209,21 @@ export async function tratarMensagemEnel(
   }
 
   const projeto = id.projeto;
-  // DUAS coisas diferentes, de propósito:
-  //  · a CHAVE DO ANEXO é estável por projeto e nunca muda entre tentativas. Se a 1ª
-  //    tentativa subiu o anexo (a IA falhou) e a 2ª usasse a NT que a IA voltou a
-  //    ler, o documento subiria em dobro;
-  //  · a REFERÊNCIA DO CARTÃO é o protocolo que o "Aplicar" grava no projeto: quando
-  //    a Carta sugere gravar a NT, é a NT.
-  const chaveDoAnexo = referenciaDoProjeto(projeto);
+  // TRÊS coisas diferentes, de propósito:
+  //  · a CHAVE DO ANEXO é o project_id: nunca muda — nem entre tentativas (a 1ª subiu o
+  //    anexo com a IA fora, a 2ª leu a NT), nem depois de a equipe aplicar a troca
+  //    (o protocolo vira a NT e `referenciaDoProjeto` muda). Nunca aparece na tela;
+  //  · a REFERÊNCIA DO PROJETO (`referenciaDoProjeto`): como ele aparece hoje;
+  //  · a REFERÊNCIA DO CARTÃO: o protocolo que o "Aplicar" grava (a NT, quando a Carta
+  //    sugere gravá-la). É também o TEXTO do comentário do anexo ("para o protocolo …").
+  const chaveDoAnexo = projeto.project_id;
+  const referencia = referenciaDoProjeto(projeto);
   const lido = ler && parecer.ok && pdf ? pdf.nome : null;
 
   // O titular do DOCUMENTO de outra pessoa é o único bloqueio (como na EDP), nos dois sentidos.
   if (parecer.ok && titularDeOutraPessoa(projeto.titular, parecer.titular)) {
     await deps.registrarEmailLido({
-      ...base, projectId: projeto.project_id, referencia: chaveDoAnexo, casamento: id.por, abrirCartao: true,
+      ...base, projectId: projeto.project_id, referencia, casamento: id.por, abrirCartao: true,
       tipoDocumento: regra.tipo_documento, veredito: parecer.veredito, resumo: parecer.resumo || null, anexos: 0,
       motivo: `não anexei · o documento é de "${parecer.titular}" e o projeto é de "${projeto.titular}"`,
       recomendacao: null, concluida: true, arquivoLido: lido,
@@ -238,7 +248,7 @@ export async function tratarMensagemEnel(
   // Só a NT que a IA leu na Carta (nunca um número do assunto ou do corpo).
   const troca = trocaDeProtocolo(leitura, projeto, sugerida !== null && recomendacao === null);
   const atualizarProtocolo = troca.tipo === 'pedir';
-  const referenciaDoCartao = troca.tipo === 'pedir' ? troca.nt : chaveDoAnexo;
+  const referenciaDoCartao = troca.tipo === 'pedir' ? troca.nt : referencia;
   if (troca.tipo === 'pedir') {
     const temDigito = chaveProtocolo(projeto.protocolo ?? '') !== '';
     ressalvas.push(`a Carta traz a NT ${troca.nt}; o cadastro tem ${temDigito ? (projeto.protocolo ?? '').trim() : 'nenhum'} — o cartão sugere gravar a NT`);
@@ -272,7 +282,8 @@ export async function tratarMensagemEnel(
   let anexados = 0;
   let anexoFalhou = false;
   for (const a of aceitos) {
-    const aberto = await deps.anexoDeEmail(run.account_id, chaveDoAnexo, projeto.project_id, m.messageId, a.nome, id.por, a.ocorrencia);
+    // o protocolo é o TEXTO do comentário do card; a chave (project_id) é só a chave
+    const aberto = await deps.anexoDeEmail(run.account_id, referenciaDoCartao, projeto.project_id, m.messageId, a.nome, id.por, a.ocorrencia, chaveDoAnexo);
     if (aberto.situacao === 'ja_resolvido') { log('anexo já estava no card; não subi de novo', { nivel: 'aviso', projeto: projeto.codigo }); continue; }
     if (aberto.situacao === 'projeto_inexistente') { log('o projeto não existe mais; não anexei', { nivel: 'falha', projeto: projeto.codigo }); continue; }
     try {
