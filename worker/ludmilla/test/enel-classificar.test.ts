@@ -674,3 +674,66 @@ test('os cabeçalhos "De: … Enviado" e "From: … Sent:" valem com 100 caracte
   assert.ok(entreFrom > 50 && entreFrom < 200, `entre From e Sent: ${entreFrom}`);
   assert.equal(semCitacao(from), 'Ok. ');
 });
+
+// ---------------------------------------------------------------------------
+// Rodada 4 · N-1: "/", ":", "," e "." de data, hora e número não são outro sujeito
+// ---------------------------------------------------------------------------
+
+test('data, hora e número entre "vistoria" e o verbo não derrubam o resultado', () => {
+  const casos: Array<[string, boolean]> = [
+    ['Informamos que a vistoria realizada em 10/08/2026 foi reprovada.', false],
+    ['Informamos que a vistoria realizada em 10/08/2026 foi aprovada.', true],
+    ['Informamos que a vistoria da UC 12345/6 foi reprovada.', false],
+    ['Informamos que a vistoria da UC 4/5 está APROVADA.', true],
+    ['Informamos que a vistoria realizada às 10:30 foi aprovada.', true], // hora
+    ['Informamos que a vistoria do sistema de 5,5 kWp está APROVADA.', true], // decimal
+    ['Informamos que a vistoria cobrada em R$ 1,50 foi reprovada.', false], // dinheiro
+    ['Informamos que a vistoria realizada em 10.08.2026 foi aprovada.', true], // data com pontos
+    ['Informamos que a vistoria realizada em 10.08.2026 foi reprovada.', false],
+  ];
+  for (const [frase, aprovada] of casos) {
+    assert.deepEqual(classificarCorpo(frase), { tipo: 'resultado_vistoria', aprovada }, frase);
+  }
+});
+
+test('depois de número, separador com espaço continua sendo outro sujeito, e o ponto final continua quebrando', () => {
+  for (const frase of [
+    'Sobre a vistoria da UC 12345, o projeto foi aprovado.',
+    'Sobre a vistoria de 10/08: o projeto foi aprovado.',
+    'Sobre a vistoria da UC 12345. O projeto foi aprovado.',
+    'Sobre a vistoria da UC 12345.O projeto foi aprovado.',
+  ]) assert.equal(classificarCorpo(frase), null, frase);
+});
+
+// ---------------------------------------------------------------------------
+// Rodada 4 · N-2: nome herdado de Object.prototype não é entidade
+// ---------------------------------------------------------------------------
+
+test('&constructor;, &toString; e &valueOf; ficam como estão no texto', () => {
+  for (const nome of ['&constructor;', '&toString;', '&valueOf;']) {
+    const r = classificarCorpo(`A troca do medidor não foi executada pelo seguinte motivo: X${nome}X. Protocolo: 9876543210`);
+    assert.equal(r && r.tipo === 'troca_relogio' && r.estado === 'nao_executada' && r.motivo, `X${nome}X`, nome);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Rodada 4 · N-3: as mutações que ainda sobreviviam
+// ---------------------------------------------------------------------------
+
+test('o caminho entre "vistoria" e o verbo aceita mais de 60 caracteres', () => {
+  const frase = 'Informamos que a vistoria do sistema de microgeração fotovoltaica instalado no endereço cadastrado na unidade consumidora indicada no pedido está APROVADA.';
+  const caminho = frase.indexOf('está') - frase.indexOf('vistoria') - 'vistoria'.length;
+  assert.ok(caminho > 60 && caminho < 160, `caminho com ${caminho} caracteres`);
+  assert.deepEqual(classificarCorpo(frase), { tipo: 'resultado_vistoria', aprovada: true });
+});
+
+test('o "Foi aprovada." solto também vale depois de "!", "?" e ";"', () => {
+  for (const antes of ['Prezado cliente!', 'Recebeu o aviso?', 'Conforme solicitado;']) {
+    assert.equal(classificarCorpo(`${antes} Foi aprovada. A vistoria foi reprovada.`), null, antes);
+  }
+});
+
+test('entidade hexadecimal com X maiúsculo (&#XE7;) também decodifica', () => {
+  const r = classificarCorpo('A troca do medidor não foi executada pelo seguinte motivo: X&#XE7;X. Protocolo: 9876543210');
+  assert.equal(r && r.tipo === 'troca_relogio' && r.estado === 'nao_executada' && r.motivo, 'XçX');
+});

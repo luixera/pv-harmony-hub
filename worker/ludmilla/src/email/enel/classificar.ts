@@ -46,7 +46,8 @@ const ENTIDADE_HTML = /&(?:#(\d{1,7})|#[xX]([0-9a-fA-F]{1,6})|([a-zA-Z]+));/g;
 
 function umaPassada(s: string): string {
   return s.replace(ENTIDADE_HTML, (todo, dec: string | undefined, hex: string | undefined, nome: string | undefined) => {
-    if (nome !== undefined) return ENTIDADES[nome] ?? todo;
+    // hasOwn: "&constructor;" e "&toString;" não podem devolver o que vem de Object.prototype
+    if (nome !== undefined) return Object.hasOwn(ENTIDADES, nome) ? ENTIDADES[nome] : todo;
     const cp = dec !== undefined ? Number(dec) : parseInt(hex as string, 16);
     if (cp < 1 || cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff)) return todo;
     return String.fromCodePoint(cp);
@@ -188,11 +189,14 @@ function extrairMotivo(t: string, origem: number[], original: string): string | 
 //    foi reprovada." é reprovada de verdade.
 const NEGACOES = 'nao|nem|nunca|jamais|nenhum|nenhuma|ninguem|nada|tampouco';
 const PALAVRAS_QUE_QUEBRAM = `vistoria|ainda|sem|se|${NEGACOES}|foi|esta|estao|sera|serao|e|ou|mas|porem|que`;
-const CAMINHO_ATE_O_VERBO = String.raw`((?:(?!\b(?:${PALAVRAS_QUE_QUEBRAM})\b)[^.]){0,160}?)`;
+// O ponto entre dígitos ("10.08.2026") não fecha o caminho; o "/", ":", "," e ";" colados
+// em dígito ("10/08/2026", "10:30", "5,5", "UC 12345/6") não são outro sujeito — com
+// espaço depois ("UC 12345, o projeto"), continuam sendo.
+const CAMINHO_ATE_O_VERBO = String.raw`((?:(?!\b(?:${PALAVRAS_QUE_QUEBRAM})\b)(?:[^.]|(?<=\d)\.(?=\d))){0,160}?)`;
 const VISTORIA_COM_RESULTADO = new RegExp(
   String.raw`\bvistoria\b${CAMINHO_ATE_O_VERBO}\b(?:esta|foi)\s+(aprovad[ao]|reprovad[ao])\b`,
 );
-const OUTRO_SUJEITO_NO_CAMINHO = /[,:;?!()|\/\u2013\u2014&]\s*\S|\s-\s*\S/;
+const OUTRO_SUJEITO_NO_CAMINHO = /(?<!\d)[,:;\/]\s*\S|(?<=\d)[,:;\/]\s+\S|[?!()|\u2013\u2014&]\s*\S|\s-\s*\S/;
 const NUCLEO_QUE_NAO_E_A_VISTORIA = /\b(?:solicitacao|pedido|agendamento|reagendamento|requerimento|abertura|marcacao|taxa|data|prazo|protocolo|nota|ordem|cadastro|documentacao|projeto|relatorio|laudo|formulario|ficha|termo|orcamento)\s+(?:de|da|do|para|pra)\s+(?:a\s+|sua\s+|essa\s+)?$/;
 const NEGA_OU_CONDICIONA = new RegExp(String.raw`\b(?:${NEGACOES}|ainda|sem|impossivel|se)\b`);
 // Fim de frase: ponto/;/!/? seguido de espaço (ou do fim). "21.08.2026" não quebra, e o
