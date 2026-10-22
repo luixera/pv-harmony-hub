@@ -3,6 +3,11 @@
 > **Estado:** especificação para revisão do usuário. Nenhum código antes da
 > aprovação. Escrita em 13/10/2026 a partir da conversa com o usuário e dos
 > dados reais do tenant GD Manager.
+>
+> **Atualização de 20/10/2026:** aprovada e implementada. Algumas linhas abaixo
+> foram corrigidas (marcadas com "corrigido em 20/10") e o fim do documento traz
+> **"O que mudou na implementação (out/2026)"**. Na dúvida, vale o código e a doc do
+> módulo: [integrations/ludmilla.md](../../modules/integrations/ludmilla.md).
 
 ## Resumo
 
@@ -54,7 +59,7 @@ Remetentes que aparecem (o usuário citou três; há mais):
 | `canalgd.sp@br.enel.com` | 126 | respostas nas conversas de projeto, vistoria e troca de relógio |
 | `no-reply@enel.com` | 99 | "Resposta Automática – PROJETO / VISTORIA / TROCA / Status" |
 | `nao.responda@enel.com` | 31 | "Geração Distribuída – Carta…" |
-| `atendimento.edsp@enel.com` | 21 | "Comunicado técnico sobre a…" (envio em massa) |
+| `atendimento.edsp@enel.com` | 21 | "Comunicado técnico sobre a nota: <NT> - Vistoria aprovada" (16) ou "… reprovada" (5): **aviso por projeto**, com o status no assunto (corrigido em 20/10: a versão original dizia "envio em massa") |
 | `tecnico.abc@enel.com` | 13 | "VISTORIA GD <número>" / carta |
 | `tecnico.norte@enel.com` | 6 | "Carta resposta referente à…" |
 | `tecnico.oeste@enel.com` | 3 | idem |
@@ -111,8 +116,9 @@ propriedade da conta: `por_protocolo_no_assunto` (EDP, como hoje) ou
 ## 5. Leitura da caixa
 
 - `SEARCH FROM <remetente> SINCE <data>` para cada remetente com regra ativa.
-- Janela: **30 dias** na primeira leitura; nas seguintes, desde a última
-  verificação bem-sucedida, com sobreposição de 2 dias.
+- Janela: **30 dias, FIXA, em todo run** (corrigido em 20/10: a versão original
+  lia "desde a última verificação, com sobreposição de 2 dias", e a mensagem
+  pendente ou o "Ler de novo" com mais de ~3 dias sumiam da busca).
 - Triagem pelo **envelope** antes de baixar o corpo, como na EDP.
 - Dedupe pela chave de mensagem já existente.
 - Somente leitura (`readOnly`). O Claudinho lê a mesma caixa; os dois só leem.
@@ -136,14 +142,18 @@ qualquer um como protocolo faria a robô casar com o projeto errado.
 | Número | Formato | Onde aparece | É do projeto? |
 |---|---|---|---|
 | **NT** (nota técnica) | 9 dígitos | "… - NT <n>", "VISTORIA GD <n>" | **sim** |
-| **Instalação / UC** | 10 dígitos | "referente a instalação <n>" | **sim** |
+| **Instalação / UC** | 10 caracteres no cadastro; **8 ou 9 dígitos** quando se tiram os zeros à esquerda (a Carta traz "88101266" para o cadastro "0088101266"); o mínimo aceito é 7 | "referente a instalação <n>" | **sim** |
 | Nota de serviço | 12 dígitos | "nota de serviço <n>" (troca do relógio) | da troca |
 | Protocolo de contato | 10 dígitos | "Protocolo: <n>" (atendimento) | **não** |
 | Atendimento SF | "SF" + dígitos | resposta automática | **não** |
 
-Note que **UC e protocolo de contato têm o mesmo tamanho (10 dígitos)**. Por
-isso o 6.1: a robô só aceita um número se ele for **exatamente** o de um projeto
-nosso, casado como número inteiro (`\m…\M`, como o Claudinho já faz).
+Note que **UC e protocolo de contato têm o mesmo tamanho (10 caracteres no
+cadastro da UC)**. Por isso o 6.1: a robô só aceita um número se ele for
+**exatamente** o de um projeto nosso, casado como número inteiro (`\m…\M`, como o
+Claudinho já faz; no código, comparação por dígitos sem os zeros à esquerda).
+**Corrigido em 20/10:** NT e protocolo valem com **9+** dígitos, mas a **UC vale com
+7+**, sem os zeros à esquerda — a UC "0088101266" aparece como "88101266" na Carta,
+e 17 dos 34 projetos ativos tinham a UC com menos de 9 dígitos.
 
 Identificadores dos 34 projetos ativos, hoje:
 
@@ -153,15 +163,17 @@ Identificadores dos 34 projetos ativos, hoje:
 | Protocolo com 12 dígitos | 8 |
 | Protocolo só com texto, sem número | **8** |
 | Sem protocolo | 6 |
-| UC com 10 dígitos | 28 |
+| UC de 10 caracteres (8 ou 9 dígitos sem os zeros à esquerda; **17 dos 34 tinham menos de 9**) | 28 (corrigido em 20/10: a versão original dizia "10 dígitos") |
 | UC com 22 dígitos (provavelmente duas UCs juntas) | 3 |
 | Titular preenchido | 34 |
 
 ### 6.3 A escada
 
 1. **Texto, sem IA**: assunto + corpo. Procura a NT/protocolo e a UC de cada
-   projeto ativo, como número inteiro; procura o titular pela regra do Claudinho
-   (primeiro + último nome numa janela curta, aceitando meio abreviado).
+   projeto, como número inteiro; procura o titular **só no assunto**, onde um
+   *trecho inteiro* (entre " - " ou ":") tem de ser o nome (corrigido em 20/10: a
+   versão original usava a regra do Claudinho, primeiro + último nome numa janela
+   curta, que reabria homônimos; ver o fim do documento).
 2. **Anexo, com IA** — a `ludmilla-parecer` lê o PDF e devolve NT, UC e
    titular **do documento**; a robô casa esses valores com os projetos ativos do
    mesmo jeito. A leitura acontece em dois casos: quando a regra pede o
@@ -188,9 +200,12 @@ recupera depois que o cadastro for corrigido.
 
 A regra da EDP (não anexar arquivo cujo nome traz número de protocolo diferente
 do tratado) vale também para a ENEL — **mas com os formatos da ENEL**. A faixa de
-11–12 dígitos é da EDP; na ENEL a NT tem 9 e a UC tem 10. A faixa passa a ser
-parâmetro da conta. Sem isso, a proteção simplesmente não funcionaria para a
-ENEL.
+11–12 dígitos é da EDP; na ENEL a NT tem 9 e a UC tem 10 caracteres (8 ou 9 dígitos sem
+os zeros à esquerda; corrigido em 20/10: a versão original dizia "10 dígitos"). Sem isso, a proteção
+simplesmente não funcionaria para a ENEL. **Como ficou:** não é uma faixa por conta.
+`nomeTrazOutroProjeto` olha se o nome do arquivo traz o número (protocolo com 9+, UC
+com 7+) de **outro projeto nosso**, ativo ou não — o "procurar os nossos números"
+aplicado ao nome do arquivo. A faixa de 11–12 dígitos segue só na EDP.
 
 ## 7. Leitura do anexo
 
@@ -225,7 +240,7 @@ chamam a IA.
 | Troca — "não foi executada" | texto do corpo | **a troca falhou** (ex.: cliente não permitiu) | **toca o sino** — exige ação |
 | Resposta automática (`no-reply`) | regra | "recebemos seu pedido" | só anota |
 | `postmaster` | regra | e-mail **nosso** que voltou | **toca o sino** |
-| Comunicado (`atendimento.edsp`) | regra | envio em massa | ignora |
+| Aviso por projeto (`atendimento.edsp`) | assunto: "… nota: <NT> - Vistoria aprovada/reprovada" | resultado da vistoria virtual | como as linhas de vistoria acima (reprovada: **Vistoria reprovada**; aprovada: sino). Corrigido em 20/10: a versão original dizia "envio em massa — ignora" |
 
 **O sistema não tem etapa "vídeo aprovado, aguardando relógio".** Criar uma
 mexeria no Kanban de todos os tenants; fica fora. O projeto continua em Vistoria
@@ -252,7 +267,7 @@ Semeadas na conta da ENEL, **editáveis na tela** como as da EDP:
 | `canalgd.sp@br.enel.com` | quando o texto não identifica | sim | troca: só anota / sino |
 | `no-reply@enel.com` | não | não | não (só anota) |
 | `postmaster@enel.com` | não | não | não (sino) |
-| `atendimento.edsp@enel.com` | — | — | ignora |
+| `atendimento.edsp@enel.com` | não (o status está no assunto) | sim | sim: o resultado da vistoria vem no assunto (corrigido em 20/10: a versão original dizia "ignora") |
 
 ## 10. Avisos no sino
 
@@ -343,3 +358,73 @@ Manual e acompanhado, como na EDP, com um roteiro próprio. O que olhar:
   mostrar quantos testes caem.
 - Provas de banco executadas em `begin; … rollback;`.
 - Baseline do front (65) e build.
+
+---
+
+## O que mudou na implementação (out/2026)
+
+Escrito em 20/10/2026, com a implementação pronta e ainda **não publicada**
+(o robô da VPS não tem o código; ver o roteiro). Este documento é o desenho de
+13/10; o que vale hoje é o código e a doc do módulo
+([integrations/ludmilla.md](../../modules/integrations/ludmilla.md), seção "a ENEL").
+As diferenças, na ordem em que aparecem na spec:
+
+**O que estava errado ou foi superado**
+
+| Spec | O que era | O que ficou | Por quê |
+|---|---|---|---|
+| §2, §8, §9 | `atendimento.edsp` = "envio em massa — ignora" | aviso **por projeto**, `resultado_vistoria`, anexa, não lê PDF; o status vem do **assunto** ("… nota: <NT> - Vistoria aprovada/reprovada") | 21 e-mails reais; a consulta que classificou o padrão cortava o assunto em 4 palavras. Migração `20261014120000` |
+| §5 | janela: 30 dias na 1ª leitura; depois "desde a última verificação, −2 dias" | **30 dias fixos, em todo run** | a mensagem pendente (IA sem cota por dias) e o "Ler de novo" com mais de ~3 dias sumiam da busca |
+| §6.2, §6.5, §14 | "UC com 10 dígitos"; mínimo único de 9 | UC com **7+** dígitos sem os zeros à esquerda; NT e protocolo com **9+** | 17 dos 34 ativos (13/10) tinham UC com menos de 9 dígitos: "0088101266" no cadastro × "88101266" na Carta |
+| §6.5 | faixa de dígitos "parâmetro da conta" | `nomeTrazOutroProjeto`: o nome do arquivo traz o número de **outro projeto nosso** (ativo ou não) | é o princípio "nossos números" aplicado ao arquivo; a faixa 11–12 segue só na EDP |
+| §6.3 | nome pela regra do Claudinho (primeiro + último nome numa janela), em assunto + corpo | nome **só no assunto**, e só um **trecho inteiro** (entre " - " e ":") que seja o nome | 4 rodadas fechando homônimo (JOSE MARIA × JOSE CARLOS; "ALFA 2" × "ALFA") |
+| §8 | "Aprovado, porém observar os itens" não aparece | é **favorável** (Aprovado), com os itens no cartão | a Carta real do PRJ-67567; mesma regra da CPFL ("aprovado com adequação") |
+| §10 | sino "a ENEL não conseguiu trocar o relógio…" e "um e-mail nosso para a ENEL não chegou" | "a tentativa de troca … não foi executada: <motivo>" e "um dos destinatários não recebeu" | a devolução de 30/09 chegou no mesmo minuto da resposta automática: a ENEL recebeu |
+| §12 | "preencher o protocolo a partir do e-mail" fora da fase 1 | **entregue em parte**: a Carta sugere gravar a NT como protocolo (o cartão pede, o banco trava, a equipe aplica) | pedido do usuário em 16/10 |
+
+**O que a spec não previa**
+
+- **Projeto concluído ou arquivado reconhece o e-mail e não recebe nada**
+  (`ativo = false`, resultado `inativo`): `ludmilla_email_projetos` devolve todos os
+  projetos da concessionária.
+- **Trava de titular do documento** com `mesmoTitular` nos **dois sentidos** (o
+  projeto já foi achado por número; a trava existe para pegar pessoa diferente). Nome
+  que não bate nem consigo mesmo = falta de dado. O prompt da edge function pede o
+  titular "na ordem natural, sem vírgula".
+- **Classificação**: o assunto vale antes do corpo; o texto chega achatado; entidades
+  HTML são decodificadas em até 2 passadas; na dúvida o resultado é `null` (só
+  anota); resposta automática, devolução e comunicado não são classificados.
+- **`recomendacaoCabe`**: 30 dias de e-mail não sugerem etapa para trás.
+- **Chave fixa da mensagem `''`**, `p_referencia` (a referência do projeto vira o
+  protocolo do **cartão**), `p_casamento` e `p_abrir_cartao` (99 respostas
+  automáticas não viram 99 cartões).
+- **Troca de protocolo pela NT da Carta**: só a NT lida pela IA numa Carta, com
+  exatamente 9 dígitos, diferente da UC e do protocolo atual, e não pede se o
+  projeto já tem protocolo numérico e a Carta é antiga. O banco recusa UC e
+  CPF/CNPJ do próprio projeto. Resíduo: Carta de pendência antiga com o projeto em
+  análise.
+- **Chave do anexo = `project_id`** (`p_chave`, `20261019120000`); o texto do
+  comentário usa a referência do cartão. Sem isso, o "Ler de novo" depois da troca
+  subiria o documento de novo.
+- **Aviso ANTES de registrar como concluída**, e o sino uma vez por mensagem
+  (`aviso_em`).
+- **Todo cartão mostra titular e empresa** (CPFL, EDP e ENEL), pedido de 16/10. O
+  banco grava `titular_portal` com o titular do cadastro nos cartões de e-mail.
+- **Contadores da tela** com as chaves de `resultadoEnel`; não há contador
+  `protocolos` na ENEL (o quadro é "e-mails lidos").
+- **Defeito achado no caminho do portal**: `ludmilla_aplicar_update` tinha perdido o
+  ramo de troca de protocolo na reescrita de 22/09. Corrigido pela `20261016120000`.
+
+**Os números do tenant mudaram.** Em 21/10 os projetos ativos da ENEL são **30** (eram
+34 em 13/10; 42 no total). Nenhum ativo tem protocolo de 12 dígitos (a pergunta do
+§14 perdeu o objeto): 17 têm protocolo de 9 dígitos e 13 não têm número nenhum.
+
+**Incidente de 14/10.** Um clique em "Verificar agora" no cartão da ENEL, com o robô
+da VPS ainda sem o código dela, rodou a ENEL no modo da EDP e criou 18 cartões e 18
+sinos. Limpeza feita em 16/10. A ordem do roteiro existe por isso: publicar antes de
+clicar.
+
+**Verificação.** 580 testes do robô (`fail 0`, 21/10), mutações em cada tarefa, SQL em
+`begin; … rollback;`, baseline do front em 65 erros de tipo e build. O run nunca
+rodou: o primeiro é manual e acompanhado, em
+[2026-10-20-primeiro-run-enel-email.md](../2026-10-20-primeiro-run-enel-email.md).

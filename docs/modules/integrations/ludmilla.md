@@ -8,13 +8,21 @@
 > **EDP — por e-mail** (out/2026): ela lê a caixa, acha pelo protocolo, anexa o
 > parecer no card e recomenda a etapa. Código e banco prontos e revisados; **o
 > run ainda não rodou** — o primeiro é manual e acompanhado.
+> **ENEL — por e-mail, pelos remetentes** (out/2026): o contrário da EDP. Ela
+> lê a caixa pelos remetentes da ENEL, descobre de qual projeto é cada e-mail
+> (pelo protocolo/NT, pela UC ou pelo nome do titular), anexa o documento no card,
+> sugere a etapa (ou gravar a NT da Carta como protocolo) e toca o sino nos
+> momentos que pedem ação. Banco e código prontos e revisados; **o robô da VPS
+> ainda não tem o código da ENEL e o run nunca rodou** — o primeiro é manual e
+> acompanhado, no [roteiro](../../superpowers/2026-10-20-primeiro-run-enel-email.md).
 > **Elektro — estação local** (PC do coworking) construída e testada com portal
 > de mentira; aguarda o aceite na máquina de verdade.
 > Só tenant GD Manager (`is_library`). Ela nunca move card sozinha, nunca
 > escreve no portal nem na caixa, e nunca resolve CAPTCHA.
 > Specs: [2026-09-14-ludmilla-design.md](../../superpowers/specs/2026-09-14-ludmilla-design.md) ·
 > [2026-09-15-ludmilla-elektro-local-design.md](../../superpowers/specs/2026-09-15-ludmilla-elektro-local-design.md) ·
-> [2026-10-02-ludmilla-edp-email-design.md](../../superpowers/specs/2026-10-02-ludmilla-edp-email-design.md)
+> [2026-10-02-ludmilla-edp-email-design.md](../../superpowers/specs/2026-10-02-ludmilla-edp-email-design.md) ·
+> [2026-10-13-ludmilla-enel-email-design.md](../../superpowers/specs/2026-10-13-ludmilla-enel-email-design.md)
 
 ## O que é
 
@@ -457,6 +465,26 @@ menor disjuntor da classe que comporta o do projeto > maior da classe).
      linha por linha;
    - o grupo "não reconheci" não oferece **criar a regra a partir do assunto**
      daquele e-mail, que é o gesto óbvio ali.
+0b. **Primeiro run da ENEL por e-mail** — manual e acompanhado, antes de
+   qualquer agendamento, pelo
+   [roteiro](../../superpowers/2026-10-20-primeiro-run-enel-email.md). Antes
+   dele, nesta ordem: o push da `main` (decisão do usuário, depende da frente
+   de assinatura), a `ludmilla-parecer` com o modo ENEL no ar e o **robô da VPS
+   atualizado** (`ludmilla-worker.yml`, à mão) — até lá, "Verificar agora" no
+   cartão da ENEL roda no modo da EDP (foi o incidente de 14/10). Depende do
+   usuário:
+   - "a troca … já foi realizada através da nota de serviço" existe em e-mail da
+     ENEL e hoje **só anota** (a robô não a classifica): vira sino ou sugestão
+     de Concluído?
+   - os cartões do portal CPFL em que o "Aplicar" deixou de gravar o protocolo
+     (22/09 a 16/10, três cartões em dois projetos): pelos históricos, o
+     PRJ-36467 deve ficar com 2233593787 e o PRJ-89660 com 2250770386. A função
+     já foi consertada; os projetos **não** foram mexidos, falta o OK do
+     usuário.
+
+   Pendências pequenas (resíduos aceitos, com o motivo) estão em "O que NÃO está
+   provado" da seção da ENEL. **Fase 2** — pedir a troca do relógio por e-mail —
+   é enviar e-mail em nome da empresa: só depois de conversar (spec §13).
 1. **Aceite da estação** no PC do coworking: instalar, "Verificar agora" na
    Elektro (descoberta), responder o código pela /ludmilla (celular) ou no
    PC, telas no bucket, e observar por quanto tempo a sessão fica viva. Risco
@@ -558,8 +586,10 @@ gente saber se já foi aprovado ou não" — portal e pedido de vistoria da EDP
 ficaram para depois, de propósito.
 
 Cada conta passou a dizer **como** é acompanhada: `portal_accounts.acompanhamento`
-é `portal` ou `email`. A CPFL continua `portal`, a EDP é `email`. Não existe
-conta com os dois.
+é `portal` ou `email`. A CPFL continua `portal`, a EDP e a ENEL são `email`. Não
+existe conta com os dois. Entre as de e-mail, `portal_accounts.identificacao`
+diz como o projeto é descoberto: `protocolo_no_assunto` (a EDP, esta seção) ou
+`remetente` (a ENEL, seção "Acompanhamento por E-MAIL — a ENEL", mais abaixo).
 
 ### Por que no robô, e não numa edge function
 
@@ -879,3 +909,456 @@ buscar, e eles ficam fora da automação até ganharem protocolo.
 Risco latente conhecido: se uma conta algum dia fizer portal **e** e-mail,
 `ludmilla_anexos_pendentes` entregaria uma chave de e-mail ao `baixarAnexo` do
 portal. Hoje não ocorre.
+
+## Acompanhamento por E-MAIL — a ENEL (out/2026)
+
+Spec [2026-10-13-ludmilla-enel-email-design.md](../../superpowers/specs/2026-10-13-ludmilla-enel-email-design.md)
+(com a seção "O que mudou na implementação") ·
+plano [2026-10-13-ludmilla-enel-email.md](../../superpowers/plans/2026-10-13-ludmilla-enel-email.md) ·
+roteiro do primeiro run [2026-10-20-primeiro-run-enel-email.md](../../superpowers/2026-10-20-primeiro-run-enel-email.md)
+
+Pedido do usuário (13/10): "toda tratativa e atualização é por email… no corpo do
+email e/ou dentro do anexo sempre tem alguma referência do projeto, seja
+protocolo, seja nome do titular, número da UC". O Claudinho (`scan-emails`) já
+recolhia os e-mails da ENEL, mas só olha o corpo: dos 305 recolhidos ele ligou 29
+(≈10%) a um projeto, e **0 das 31 Cartas** do `nao.responda` — a referência mora
+no anexo. A Ludmilla lê a caixa **pelos remetentes da ENEL**, descobre de qual
+projeto é cada e-mail, anexa o documento no card e **sugere** a etapa. Os dois
+rodam: o Claudinho segue como está, e o mesmo e-mail pode gerar sugestão no
+`/email-updates` e na `/ludmilla`. Ela nunca move card e nunca envia nada.
+
+### A direção é invertida
+
+| | EDP | ENEL |
+|---|---|---|
+| Ponto de partida | o **projeto** (cada protocolo em andamento) | o **e-mail** (cada remetente das regras) |
+| Busca na caixa | pelo número do protocolo | `SEARCH FROM <remetente> SINCE <hoje − 30 dias>` |
+| Identificação | protocolo **no assunto**, chave única | protocolo/NT, UC ou nome, no assunto, no corpo **ou no PDF** |
+| Chave da linha da mensagem | o protocolo | **fixa, `''`** (`CHAVE_DA_MENSAGEM_ENEL`) |
+| Run | `executarVarreduraEmail` (não foi alterado) | `executarVarreduraEnel` (`worker/ludmilla/src/email/enel/run.ts`) |
+
+Quem escolhe é a **conta**: `portal_accounts.identificacao` (`protocolo_no_assunto`
+ou `remetente`, com CHECK no banco). `worker/ludmilla/src/email/rotear.ts` lê a conta
+(`ludmilla_email_conta`) e despacha; na estação local o caminho é o de sempre (que
+recusa o run de e-mail com uma explicação). O caminho da EDP não foi tocado: os
+testes dela seguem sem edição, e a edge function foi comparada com a de antes para a
+EDP (54 entradas do revisor, 0 diferença).
+
+### A conta e as 8 regras
+
+A conta (`connector = 'enel'`, `acompanhamento = 'email'`, `identificacao =
+'remetente'`) foi semeada no tenant de biblioteca **sem `login` e sem
+`secret_id`**. As regras são editáveis na tela, como as da EDP. Assunto `''` =
+qualquer assunto daquele remetente; o `tipo_documento` é só uma **dica** — o que o
+e-mail É sai do texto e do PDF.
+
+| Remetente | Tipo | Anexa | Lê o PDF |
+|---|---|---|---|
+| `nao.responda@enel.com` | `carta_projeto` | sim | sim |
+| `tecnico.abc@enel.com` · `.norte` · `.oeste` | `resultado_vistoria` | sim | sim |
+| `canalgd.sp@br.enel.com` | `troca_relogio` | sim | sim |
+| `no-reply@enel.com` | `resposta_automatica` | não | não |
+| `postmaster@enel.com` | `devolucao` | não | não |
+| `atendimento.edsp@enel.com` | `resultado_vistoria` | sim | **não** (o status está no assunto) |
+
+**O `atendimento.edsp` não é comunicado em massa.** A spec e a primeira semente
+disseram que era, e o ignoravam. Os 21 e-mails dele são **avisos por projeto**, com
+a NT e o resultado no assunto ("Comunicado técnico sobre a nota: <NT> - Vistoria
+aprovada", 16 vezes, e "… reprovada", 5). A consulta que descreveu o padrão cortava
+o assunto em 4 palavras e perdia o status. Como `comunicado` nem é buscado
+(`remetentesParaBuscar` o exclui), a robô perderia o sinal de vistoria mais
+estruturado que a ENEL manda. Corrigido pela `20261014120000`, que só mexe na regra
+se ninguém a tinha editado pela tela.
+
+### Os números da ENEL e o princípio "nossos números"
+
+As respostas da ENEL são cheias de números de naturezas diferentes:
+
+| Número | Tamanho | É do projeto? |
+|---|---|---|
+| **NT** (nota técnica) | 9 dígitos | sim — na ENEL o protocolo do projeto **é** a NT |
+| **UC / instalação** | 10 caracteres no cadastro; às vezes **8 dígitos**, sem os zeros ("0088101266" × "Instalação: 88101266") | sim |
+| Nota de serviço | 12 dígitos | da troca do relógio, não do projeto |
+| Protocolo de contato | 10 dígitos | **não** (atendimento) |
+| Atendimento SF | "SF" + dígitos | **não** |
+
+O protocolo de contato tem o **mesmo tamanho da UC**. Por isso o princípio
+(`identificar.ts`): **a robô procura os NOSSOS números dentro do e-mail; nunca
+trata um número qualquer do e-mail como protocolo.** Um número que não é de nenhum
+projeto nosso simplesmente não casa com nada. A comparação é por **número inteiro**,
+sem zeros à esquerda, e os mínimos são diferentes de propósito: NT e protocolo com
+**9+** dígitos (`MIN_DIGITOS`), UC com **7+** (`MIN_DIGITOS_UC`). Com 9 para tudo,
+a UC curta nunca casava: em 21/10, 17 dos 30 projetos ativos têm UC de 8 dígitos
+sem os zeros (eram 17 dos 34 em 13/10) — metade da identificação por UC, o sinal
+presente em todos os projetos. A mesma regra vale na edge function
+(`MIN_DIGITOS_UC = 7`, `MIN_DIGITOS_NT = 9`) e em `nomeTrazOutroProjeto`. O risco
+de 7–8 dígitos é um número aleatório do e-mail ser **exatamente** a UC de um
+cliente; o conflito número × nome e a trava de titular do documento ainda pegam o
+resto.
+
+### A escada de identificação
+
+`ludmilla_email_projetos` entrega **todos** os projetos da concessionária da conta
+(inclusive concluídos e arquivados; `ativo = false`): o número de um projeto
+concluído **reconhece** o e-mail ("é de um projeto já concluído") e barra arquivo de
+outro projeto, mas nada vai para o card dele.
+
+1. **Texto, sem IA** (`identificarPorTexto`): protocolo/NT e UC no assunto + corpo.
+2. **Documento, com IA** (`identificarPorDocumento`): a `ludmilla-parecer` devolve
+   NT, UC e titular do PDF, e a robô casa com os projetos do mesmo jeito. A IA às
+   vezes troca NT e UC de campo, então os dois números valem contra os dois
+   identificadores do projeto.
+3. `combinar` junta os dois: discordando é conflito; concordando fica o sinal mais
+   forte (protocolo > UC > nome).
+
+| Sinais encontrados | O que a robô faz |
+|---|---|
+| NT/protocolo **ou** UC de exatamente um projeto | anexa; selo `protocolo` ou `uc` |
+| só o nome, e é **único entre os ativos** | anexa; selo `titular` (decisão do usuário, 13/10) |
+| só o nome, e casa mais de um ativo | **não anexa**; levanta a mão |
+| número de um projeto, nome de outro | **não anexa**; levanta a mão |
+| números de mais de um projeto; ou texto e PDF apontando para projetos diferentes | **não anexa**; levanta a mão |
+| o número é de projeto concluído/arquivado | **não anexa**; anota (`inativo`) |
+| nada casou | anota "não reconheci"; aparece no grupo da tela |
+
+"Levanta a mão" = linha no grupo de atenção da `/ludmilla` com o motivo e
+`concluida = true` (não é falha passageira; insistir não resolve). "Ler de novo"
+recupera depois que o cadastro for corrigido.
+
+### O nome do titular — por que é um trecho inteiro
+
+O nome vale **só no assunto**: o corpo traz a assinatura de funcionário da ENEL, e
+um cliente homônimo casaria com ela. E só quando um **trecho inteiro** do assunto,
+separado por ` - ` (hífen, meia-risca ou travessão, com espaços) ou por `:`, é o
+nome (`trechoConforma`); "RE:" e "Undeliverable:" viram trechos próprios. Os
+assuntos da equipe isolam o nome ("TROCA DE RELÓGIO - <NOME> - NT …"); nome sem
+separador em volta ("PROJETO GD JOSE SANTOS 5KWP") **não** identifica, e a robô
+fica com os números ou levanta a mão.
+
+Por que tão estrito: **quatro rodadas** fecharam um homônimo e abriram outro, porque
+a regra era por substring ("o primeiro e o último nome numa janela"): "JOSE MARIA
+SANTOS" casava "JOSE CARLOS SANTOS"; "ALFA 2" casava "ALFA"; "MARIA JOSE SANTOS"
+casava "JOSE SANTOS". Trocar a regra por "o nome ocupa um trecho inteiro" fechou a
+família. As regras são as mesmas para o assunto e para o documento:
+
+- primeiro e último nome nas pontas, na ordem do cadastro; nada livre antes nem depois;
+- no meio, cada palavra é a do cadastro (inclusive as curtas, como LU), um
+  **conector** solto (DA, DE, DO, DAS, DOS, E), ou a **inicial** de um nome do meio
+  alfabético que não seja conector ("MARIA A. SILVA"; o "D" não é "DE"); o nome do
+  meio pode faltar, mas **nunca** vir diferente;
+- **todo token com dígito é obrigatório** e inteiro: "POSTO 1" não casa "POSTO 17",
+  "2B" não casa "2A";
+- **sufixo de empresa** (LTDA, EPP, EIRELI, MEI, ME, "S/A", "S.A.") pode faltar de
+  um lado; "SA" sozinho é sobrenome (Sá) e não entra;
+- **sufixo de geração** (JUNIOR/JR, FILHO, NETO, SOBRINHO, II, III, IV, SEGUNDO,
+  TERCEIRO) tem de ser o mesmo dos dois lados, ou faltar nos dois — pai e filho com
+  o mesmo nome é comum, e o filho concluído mandaria o e-mail para o card do pai.
+  "BAR DO NETO" e "ANTONIO NETO" continuam sendo nome, não sufixo.
+
+E o nome sozinho só identifica quando é **único entre os ATIVOS**. Custo do rigor: um
+assunto com o nome grafado diferente do cadastro deixa de identificar e cai nos
+números ou levanta a mão — o lado seguro. O nome é sinal de **reserva**: os 18
+e-mails reais examinados em 14/10 traziam todos a NT no assunto.
+
+### A trava de titular do documento
+
+Depois de achar o projeto por número, a robô compara o titular que a IA leu no PDF
+com o do cadastro. Divergindo, **não anexa** — é o único bloqueio do fluxo, como na
+EDP (`titularDeOutraPessoa`, `decidir.ts`). Usa `mesmoTitular` nos **dois
+sentidos**: o projeto já foi achado por **número**, então a trava existe para pegar
+**uma pessoa diferente**. "CELINA MOURAO" × "CELINA DE FARIAS PRUDENTE MOURAO" é a
+mesma pessoa de qualquer um dos lados e passa; o mesmo primeiro e último nome com o
+nome do meio trocado bloqueia (era o que o `casaTitular`, da EDP, deixava entrar no
+card errado). Um nome que **não bate nem consigo mesmo** ("LU SANTOS NETO", "ANA ME
+LTDA": sem dois nomes de 3+ letras) conta como **falta de dado**, nunca divergência —
+senão o próprio nome se bloquearia. O prompt da edge function pede o titular "na
+ordem natural, sem vírgula", e a função filtra o eco do exemplo do prompt ("NOME
+SOBRENOME"): uma ordem invertida ("SILVA, MARIA") viraria falso bloqueio de documento
+legítimo. O bloqueio abre cartão (sem etapa) com o motivo, para a equipe ver; o
+documento não sobe.
+
+### O que o e-mail diz: classificação e etapas
+
+Por texto, sem IA (`classificar.ts`): **primeiro o assunto** (`classificarAssunto`),
+**depois o corpo** (`classificarCorpo`). O assunto vale primeiro porque o
+`atendimento.edsp` manda o resultado nele, com corpo genérico. O texto chega
+**achatado** (`caixa.ts:113` troca todo `\s+` por um espaço): nada ali pode depender
+de quebra de linha, e a citação ("Em … escreveu:", "De: … Enviado:", "Mensagem
+original") é cortada sobre texto de uma linha só. Entidades HTML (`&ccedil;`, e até
+`&amp;ccedil;`, de codificação dupla) são decodificadas em **até 2 passadas**: 4 das
+5 falhas de troca reais chegavam assim. **Na dúvida o resultado é `null`**, e `null`
+só anota: dizer "aprovada" de uma vistoria que não foi aprovada faria o sino mandar
+pedir a troca do relógio, o erro caro. **Resposta automática, devolução e comunicado
+não são classificados** (`TIPOS_SEM_SINAL`): repetem o **nosso** assunto e o nosso
+texto ("TROCA … NÃO CONCLUÍDA"), e classificar isso tocaria um sino falso.
+
+| E-mail | Como a robô sabe | Resultado |
+|---|---|---|
+| Carta favorável | IA no PDF: `carta_projeto` + `favoravel` | sugere **Aprovado**. "Aprovado, porém solicitamos observar os itens abaixo" **também** é favorável, com os itens no cartão ("aprovado com observações: …", até 3) |
+| Carta com pendência | IA: `carta_projeto` + `pendencia` | sugere **Pendência**, com os itens no cartão ("pendências da Carta: …") |
+| Vistoria reprovada | texto/assunto, ou IA `resultado_vistoria` + `pendencia` | sugere **Vistoria reprovada** |
+| Vistoria aprovada | texto/assunto, ou IA `resultado_vistoria` + `favoravel` | **sem etapa**; sino "é hora de pedir a troca do relógio" |
+| Troca agendada | texto: "nota de serviço … troca do medidor" | só anota (com o prazo, "até N dias úteis") |
+| Troca não executada | texto: "não foi executada", "não sendo executada", "Motivo da rejeição"… | sino, com o motivo |
+| Devolução (`postmaster`) | regra | sino "um dos destinatários não recebeu" |
+| Resposta automática (`no-reply`) | regra | só anota |
+
+"Aprovada" lida **no corpo** só toca o sino; não move etapa nem abre cartão. O
+sistema **não tem** etapa "vídeo aprovado, aguardando relógio" (criar uma mexeria no
+Kanban de todos os tenants): o projeto fica em Vistoria solicitada e o histórico
+registra o passo. O sino da devolução diz "um dos destinatários", não "a ENEL não
+recebeu": a devolução de 30/09 chegou no mesmo minuto da resposta automática da ENEL,
+e quem não recebeu foi outro destinatário. Concluído continua **manual**: "troca
+feita" não apareceu em nenhuma amostra (a ENEL avisa quando cria a nota de serviço e
+quando a tentativa falha), e a frase "a troca … já foi realizada através da nota de
+serviço" hoje não é classificada — só anota.
+
+**Quando a IA é chamada** (`precisaLerPdf`; ~US$ 0,10 por PDF, lançado no extrato de
+IA do console com `kind = 'ludmilla_parecer'`): a regra tem `ler_pdf`, há PDF, não
+houve conflito nem projeto inativo no texto (ler não resolveria), **e** (o texto não
+identificou o projeto **ou** a regra espera veredito — `carta_projeto` e
+`resultado_vistoria` — e o texto não classificou). As Cartas chegam com o corpo
+vazio: tudo está no PDF. A tentativa é contada **antes** da chamada
+(`ludmilla_email_tentativa`); a IA fora do ar deixa a mensagem para o próximo run,
+até 5 vezes. Lê o maior PDF do e-mail; se o nome dele traz o número de **outro**
+projeto, o que ele diz não vale para este (nem etapa, nem troca, nem sino).
+
+### `recomendacaoCabe` — 30 dias de e-mail não sugerem etapa para trás
+
+A primeira leitura traz 30 dias. Uma Carta de aprovação de projeto que já está em
+vistoria não pode virar sugestão de voltar para Aprovado. A sugestão só vale se o
+projeto **não está já nessa etapa**; Aprovado e Pendência só vêm de etapas anteriores
+à aprovação (`pending`, `analysis`, `documentation`, `approval`, `pendencia`);
+Vistoria reprovada só de `approved` ou `vistoria_solicitada`. Quando não cabe, a
+ressalva diz por quê ("não sugeri … o projeto já está à frente, em …").
+
+### Troca de protocolo pela NT da Carta
+
+Na ENEL o protocolo do projeto é a NT, e a Carta traz a NT. 14 dos 34 ativos de
+13/10 (13 dos 30 de 21/10) não têm protocolo numérico — o cadastro tem vazio ou um
+texto como "Sem protocolo". Pedido do usuário (16/10, depois do PRJ-67567: Carta de
+13/10 com a NT 392812955 num projeto sem protocolo, que só se identifica pelo PDF):
+o cartão sugere **gravar a NT** (o mecanismo `atualizar_protocolo` +
+`protocolo_anterior` que já existia no portal), e todo e-mail seguinte do projeto
+passa a casar pelo número.
+
+O robô só **pede** (`trocaDeProtocolo`, `decidir.ts`), e só com a NT que a **IA leu
+numa Carta** — nunca número do assunto ou do corpo (spec §6.1). Condições:
+
+1. exatamente **9 dígitos** (a leitura cola os dígitos de "NT … (SF …)" e viraria 14);
+2. diferente da **UC** do projeto, por pedaço (a IA às vezes troca os campos);
+3. diferente do protocolo que o cadastro já tem;
+4. **não pede** se o projeto já tem protocolo numérico de 9 dígitos **e** (a etapa
+   lida foi barrada por `recomendacaoCabe` **ou** o projeto já passou da fase da
+   Carta): a Carta é antiga e a NT dela é a velha — fica só a ressalva "confira".
+   Projeto **sem** protocolo numérico pede mesmo à frente (é o caso do PRJ-67567).
+
+**Resíduo conhecido:** Carta de pendência **antiga** com o projeto ainda em
+`analysis` e a NT nova já no cadastro pede a troca para a NT velha; separar exigiria
+a data da Carta contra a do protocolo, que a robô não tem.
+
+O **banco trava** (`ludmilla_email_registrar`, `p_atualizar_protocolo`, DEFAULT
+FALSE): só liga se o número do cartão tem só dígitos (9+), o projeto existe, os
+dígitos diferem dos do cadastro (sem zeros) e **não são a UC do próprio projeto**
+(por pedaço — em 16/10, 4 projetos da ENEL traziam duas UCs na mesma célula) **nem o
+CPF/CNPJ do titular**. Falhando a trava, o cartão sai como sempre, sem erro. Só vale
+com `p_abrir_cartao = TRUE`. A troca **não é rebaixada** na repetição (a tentativa 1
+sem a NT e a 2 com ela liga; repetição sem pedido nunca desliga) e **sobrevive a uma
+decisão** da equipe (linha nova só de troca, mesmo sem recomendação), exceto se a
+linha decidida já era de troca. O "Aplicar" grava `portal_updates.protocolo` em
+`projects.protocol_number` (ver "A lição do Aplicar").
+
+### Chaves: `''`, `referencia` e a chave do anexo
+
+- **Chave da mensagem `''`.** Antes de identificar não se sabe o projeto, e a
+  tentativa tem de ser contada antes do gasto de IA. Com chave fixa, `tentativas`
+  sobe na **mesma** linha a cada retentativa e o teto de 5 vale; com o protocolo
+  como chave, cada tentativa abriria uma linha. O projeto vai em `project_id`; a
+  tentativa, a pendência, o registro e o aviso usam a mesma chave.
+- **`p_referencia` / `referencia`.** O número do projeto identificado vira o
+  `protocolo` do **cartão** (`portal_updates`), não o da mensagem
+  (`referenciaDoProjeto`: o protocolo numérico; sem ele, "UC <n>" quando a UC tem 9+
+  dígitos, senão o código do projeto). Quando o cartão sugere a troca, a referência
+  do cartão é a **NT** — é o que o "Aplicar" grava. O prefixo "UC " e o código
+  impedem que a referência dispare uma troca no banco (`_ref ~ ^[0-9]{9,}$`). Efeito
+  cosmético aceito: projeto sem protocolo e com UC de 8 dígitos sai com o código
+  (`PRJ-…`) no cartão e no comentário.
+- **`p_casamento`**: como o projeto foi achado (`protocolo`, `uc`, `titular`); a tela
+  mostra o selo.
+- **`p_abrir_cartao`.** Cartão só quando há o que decidir: uma etapa **ou** gravar a
+  NT (`recomendacao !== null || atualizarProtocolo`), mais o bloqueio por titular.
+  99 respostas automáticas não viram 99 cartões. A mensagem é gravada sempre.
+- **Chave do anexo da ENEL = `project_id`** (`p_chave`, `20261019120000`); o
+  **texto** do comentário ("Anexo emitido pela ENEL para o protocolo <referência do
+  cartão>") continua vindo de `p_protocolo`. Por quê: depois que a equipe aplica a
+  troca, a referência do projeto muda, e com a chave presa a ela o "Ler de novo"
+  subiria o documento **de novo**. A unicidade é a `UNIQUE (account_id, id_arquivo)`
+  de sempre. A EDP não manda `p_chave`: a chave dela é a de sempre, byte a byte. Na
+  retomada de um anexo pendente o protocolo passa a ser o da chamada nova.
+
+### Janela fixa, aviso antes do registro, sino uma vez
+
+- **Janela de busca FIXA de 30 dias** (`janelaDeBusca`, `JANELA_MAXIMA_DIAS`). A
+  primeira versão lia "desde a última varredura, −2 dias": a mensagem pendente (IA
+  sem cota por alguns dias) e o "Ler de novo" sumiam da busca sem aviso, e o
+  recuperar só funcionava para e-mail com menos de ~3 dias. Custo: cada run relê os
+  envelopes dos últimos 30 dias (barato: sem corpo); a pendência filtra o que já
+  concluiu, e a IA só roda para as pendentes. `ultima_varredura_em` não muda mais
+  nada na ENEL.
+- **Aviso ANTES de registrar como concluída.** O sino é tocado antes de
+  `ludmilla_email_registrar`: se o aviso falhasse depois do registro concluído, a
+  mensagem não voltaria e o sino sumiria para sempre. Com o aviso antes, a exceção
+  sobe com a linha ainda `concluida = false`, e a retentativa toca.
+- **`aviso_em`** (`portal_email_mensagens`): o sino toca **uma vez por mensagem**.
+  `ludmilla_email_avisar` marca e avisa no mesmo passo; "Ler de novo" não zera
+  `aviso_em`. Destinatários: `admin` e `staff` do tenant da conta (tipo `ludmilla`
+  em `notifications`).
+- **Há um segundo sino, que não é da robô: o do cartão.** Todo `INSERT` em
+  `portal_updates` dispara `trg_ludmilla_notificar` (`fn_ludmilla_notificar`, herdado
+  do portal): avisa os responsáveis do projeto (`project_assignments`) ou, se não
+  há responsável, os `admin`, com o título "📡 Ludmilla: PRJ-… mudou no portal" — o
+  texto diz "portal" mesmo vindo de e-mail. É isto que o `p_abrir_cartao = false`
+  evita (sem cartão, sem sino), e é por isso que, na primeira leitura, o número de
+  sinos é a soma dos dois tipos.
+
+### Banco da ENEL
+
+| Objeto | Para que |
+|---|---|
+| `portal_accounts.identificacao` | `protocolo_no_assunto` ou `remetente` |
+| `portal_email_regras.tipo_documento` | + `carta_projeto`, `resultado_vistoria`, `troca_relogio`, `resposta_automatica`, `devolucao`, `comunicado` |
+| `portal_email_mensagens.aviso_em` | o sino uma vez por mensagem |
+| `ludmilla_email_conta` | `identificacao` e `ultima_varredura_em` da conta |
+| `ludmilla_email_projetos` | os projetos da concessionária, com `ativo`; só service role |
+| `ludmilla_email_avisar` | toca o sino (admin + staff), idempotente por `aviso_em` |
+| `ludmilla_email_registrar` | agora com 20 parâmetros (`p_referencia`, `p_casamento`, `p_abrir_cartao`, `p_atualizar_protocolo`); grava `titular_portal` com o titular do **cadastro** (EDP e ENEL) |
+| `ludmilla_email_anexo_novo` | agora com 8 parâmetros (`p_chave`) |
+| `ludmilla_aplicar_update` | recuperou o ramo de troca de protocolo (`20261016120000`) |
+
+Migrações: `20261013120000` (base), `20261014120000` (regra do `atendimento.edsp`),
+`20261016120000` (Aplicar), `20261016130000` e `20261016140000` (titular e troca de
+protocolo, com a trava), `20261019120000` (chave do anexo). O `registrar` e o
+`anexo_novo` mudaram de assinatura: `CREATE OR REPLACE` sozinho criaria uma segunda
+função ao lado, então a antiga sai (`DROP FUNCTION` da assinatura anterior). Os
+parâmetros novos têm DEFAULT, e a chamada da EDP resolve para a nova sem mudança.
+
+### A edge function: o modo ENEL
+
+`ludmilla-parecer` ganha o modo ENEL só com `concessionaria: 'enel'` (valor exato).
+A resposta acrescenta `tipo` (`carta_projeto` | `resultado_vistoria` |
+`troca_relogio` | `outro`), `nt` (9+ dígitos) e `uc` (7+); a EDP segue com os seis
+campos de sempre, e o `tipo` só é lido no modo ENEL (o caminho da EDP não ganha um
+ponto de falha novo). O prompt manda "aprovado, porém solicitamos observar os itens
+abaixo" para `favoravel`, com os itens em `pendencias`. **Publicar** é um passo do
+primeiro run (o roteiro diz o que já foi com o `deploy.yml` e o que falta).
+
+### A tela
+
+Todo cartão, em qualquer meio (CPFL, EDP, ENEL), mostra **titular** e **empresa**
+(pedido do usuário, 16/10, "falha gravíssima"): `src/lib/ludmillaCartao.ts`
+(`identidadeDoCartao`) decide o nome; a consulta de `useLudmilla.ts` junta
+`project:projects(id, code, status, title, companies:company_id(name),
+project_general_data(holder_name))`. O titular é o do **cadastro**; o nome do portal
+(CPFL) aparece à parte como "no portal: …" quando difere. O banco grava
+`titular_portal` com o titular do cadastro nos cartões de e-mail, então o nome
+aparece uma vez só. O selo do casamento mostra "protocolo", "CPF/CNPJ", "UC" ou
+"nome do titular"; a troca de protocolo tem um selo violeta ("protocolo novo —
+casado por …; no cadastro está …"), e o "Atualizar protocolo" sem etapa agora diz
+"Protocolo do cadastro atualizado", não "Card movido". Erro na consulta dos cartões
+aparece em vermelho, com "Tentar de novo", e não como "Nada pendente".
+
+**Contadores da ENEL** (`MensagensEmail.tsx`, `ContadoresEmail`, quando
+`identificacao = 'remetente'`): `lidos`, `por_protocolo`, `por_uc`, `por_titular`,
+`nao_identificados` + `conflitos` somados ("levantei a mão"), `bloqueados`, `avisos`,
+`anexados`, `imagens_ignoradas`, `a_tentar_de_novo`, `falhas`. **As chaves são as de
+`resultadoEnel`** (`worker/ludmilla/src/email/enel/run.ts`): `contadorDoRun`
+devolve `null` para uma chave que não existe e o quadro some **sem erro**, então
+renomear lá zera aqui em silêncio — há um comentário nos dois lugares. Só no
+`resultado` do run (SQL do roteiro): `tratados`, `inativos`, `ignorados`,
+`anexos_de_outro_projeto`, `anexos_recusados`, `anexos_sem_nome`, `pulados`,
+`nao_lidas`, `falhas_busca`, `falhas_tratamento`, `remetentes`, `projetos_ativos`. Na
+linha do `portal_sync_runs`, `protocolos_lidos` é o nº de projetos **ativos** e
+`mudancas`, os documentos anexados.
+
+### A lição do Aplicar (22/09 a 16/10)
+
+`ludmilla_aplicar_update` **perdeu o ramo de troca de protocolo** na reescrita de
+22/09 (`20260922100000`, que partiu do corpo de 14/09, anterior ao ramo de
+`20260915130000`). De 22/09 a 16/10 o "Aplicar" movia a etapa e **não gravava o
+protocolo**, e o botão "Atualizar protocolo" (cartão sem etapa) dava "Escolha a
+etapa". Medido: 4 cartões com troca, 4 aplicados, 3 depois de 22/09 — nos 3 o
+protocolo não foi gravado. A `20261016120000` repôs só o ramo; sem etapa, não conta
+tarefa nem move o card, e o histórico diz "Protocolo atualizado pelo portal".
+**Lição: copiar sempre do `prosrc` vivo do banco (`select prosrc from pg_proc …`),
+nunca de uma migração que "parece" ser a última.** As migrações da ENEL registram o
+md5 do corpo conferido antes de copiar.
+
+### A proteção acidental do agendador
+
+`ludmilla_agendar_varreduras` só enfileira contas com `enabled` **e** `login` **e**
+`secret_id`, e só runs do tipo `varredura` (portal). A EDP e a ENEL não têm login nem
+`secret_id`, e por isso o cron nunca manda varredura de portal para conta de e-mail.
+É uma proteção **acidental**: ninguém a desenhou para isso. Mudar o agendador (ou
+dar login a uma conta de e-mail) sem cuidado faria o cron mandar varredura de portal
+para conta de e-mail. O run de e-mail (`varredura_email`) hoje só nasce do "Verificar
+agora" ou de `INSERT`; **não há agendamento** e não deve haver antes de olhar os
+números do primeiro run.
+
+### Incidente de 14/10
+
+Um admin clicou "Verificar agora" no cartão da ENEL com o robô da VPS ainda sem o
+código dela: o run rodou **no modo da EDP** (protocolo no assunto). Efeito: 18
+mensagens ligadas ao projeto certo, 0 anexo, 0 chamada de IA, mas 18 cartões
+pendentes e 18 sinos, e linhas de mensagem com chave = protocolo (a chave da ENEL é
+`''`: o código novo as releria e duplicaria o histórico). Limpeza feita em 16/10,
+autorizada pelo usuário, com um bloco `DO` que abortaria se não fossem exatamente
+18; os sinos não se apagam (só marcar como lido). **Regra: não clicar em "Verificar
+agora" no cartão da ENEL antes de o robô da VPS ser atualizado.**
+
+### O que NÃO está provado
+
+**O run nunca rodou.** Tudo é teste unitário (580 testes do robô, `fail 0`, medidos
+em 21/10, no commit `13200de`, o da rodada 4 da classificação), SQL em `begin; …
+rollback;`, revisão independente de cada tarefa e
+mutações. Nunca foi exercido: o IMAP com os remetentes reais, a `ludmilla-parecer`
+em modo ENEL contra PDF real, o embed novo da tela contra o PostgREST real (exige
+login) e o laço `executarVarreduraEnel` (sem teste, como o da EDP). O roteiro diz o
+que olhar. Resíduos conhecidos, aceitos de propósito:
+
+- **Nome:** romano/ordinal e letra de bloco no **meio** do cadastro são omissíveis
+  ("CONDOMINIO SOLAR" × "CONDOMINIO II SOLAR" com o irmão concluído); cadastro com
+  " - " dentro do nome é cortado pelos separadores ("CASAS ALFA - FILIAL 2" casa a
+  matriz); "CARLOS EDUARD" × "CARLOS EDUARDO" não casa (falha segura); nome do meio
+  omitido com irmão concluído; PF × PJ de mesmo nome (o sufixo de empresa é
+  opcional); "MEI" no fim de um sobrenome é tratado como sufixo de empresa.
+- **Classificação:** famílias de "quem foi aprovado" ainda com resíduo (a 1ª
+  ocorrência decide e pode calar uma reprovada posterior; "sem"/"não atendimento"
+  antes de reprovada vira `null`; "Duvidamos que…"). Todas caem em `null` (só
+  anota). A rodada 4 (`13200de`) só corrigiu data, hora e número no caminho da
+  vistoria, que viravam "outro sujeito".
+- **Troca de protocolo:** o resíduo da Carta de pendência antiga (acima); uma troca
+  **ignorada** pode voltar numa 3ª passada pendente; a trava do banco compara a UC
+  só por pedaço, então uma UC pontuada ("3.928.129-57") passa; uma recomendação
+  ignorada pode reaparecer numa 3ª passada.
+- **Run:** a sugestão de etapa **não olha a data do e-mail**: uma "vistoria
+  reprovada" de três semanas atrás, com o projeto já reaprovado e de volta em
+  Vistoria solicitada, vira cartão "Vistoria reprovada" — confira o `recebido_em`
+  antes de Aplicar. PDF barrado de **outro** titular bloqueia o e-mail inteiro (lado
+  seguro); o erro "sem remetente" mostra o texto genérico de "sem regras"; a
+  retomada do anexo pode rebaixar o texto do comentário de NT para código;
+  `comunicado` em `TIPOS_SEM_SINAL` é morto (a regra de comunicado nem é buscada).
+- **Banco:** `ludmilla_email_avisar` não filtra `profiles.active`; `LIMIT 2000` em
+  `ludmilla_email_projetos`; o UPDATE do `protocol_number` no "Aplicar" não tem
+  guarda de `''` nem filtro de tenant (igual ao de etapa, que já é assim).
+- **Tela:** o erro de `useMensagensEmail` vira "Nenhum e-mail lido ainda" e o
+  contador da Sidebar engole erro; entre o último refetch e o clique em "Aplicar"
+  há uma janela curta (a RPC devolve `VOID`).
+- **Dados:** 13 dos 30 projetos ativos sem protocolo numérico (a robô os identifica
+  pela UC ou pelo nome); 1 ativo com duas UCs na mesma célula, separadas por "/"
+  (cada pedaço casa como número) e 1 com UC alfanumérica ("UQM…"), que não casa com
+  nada e fica só com o protocolo ou o nome.
+
+**Fase 2 (fora deste plano):** pedir a troca do relógio por e-mail é **enviar** em
+nome da empresa — a mesma família de "pedir vistoria", que a regra da casa manda
+nunca fazer sem conversar. Esboço na spec §13 (modelo do pedido, aprovação por um
+clique, ou rascunho no Gmail).

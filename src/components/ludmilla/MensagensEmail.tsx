@@ -100,6 +100,14 @@ function ContadorSoma({ run, chaves, rotulo, destaque }: {
  * protocolo, pela UC, pelo nome) e quantos ficaram para a pessoa decidir ("levantei
  * a mão"). As chaves são as de `resultadoEnel` (worker/ludmilla/src/email/enel/run.ts).
  * Quem identifica pelo protocolo no assunto (EDP) segue com os quadros de sempre.
+ *
+ * ATENÇÃO — acoplamento sem tipo entre o robô e a tela: o `resultado` do run é um
+ * JSON solto, e `contadorDoRun` devolve `null` para uma chave que não existe, o
+ * que faz o quadro SUMIR sem erro nenhum. Se alguém renomear uma chave na função
+ * `resultadoEnel` (worker/ludmilla/src/email/enel/run.ts), os quadros abaixo
+ * zeram em silêncio. Mexeu lá, mexa aqui. Chaves usadas neste arquivo: lidos,
+ * por_protocolo, por_uc, por_titular, nao_identificados, conflitos, bloqueados,
+ * avisos, anexados, imagens_ignoradas, a_tentar_de_novo, falhas.
  */
 export function ContadoresEmail({ run, identificacao = 'protocolo_no_assunto' }: {
   run: PortalRun | null; identificacao?: IdentificacaoConta;
