@@ -9,7 +9,7 @@ import {
   type AtencaoEmail, type IdentificacaoConta, type MensagemEmail, type PortalRun,
 } from '@/hooks/useLudmilla';
 import { ROTULO_TIPO } from '@/components/ludmilla/RegrasEmail';
-import { referenciaDaMensagem } from '@/lib/ludmillaCartao';
+import { quadroDosAvisos, referenciaDaMensagem } from '@/lib/ludmillaCartao';
 import { cn } from '@/lib/utils';
 
 /**
@@ -107,7 +107,9 @@ function ContadorSoma({ run, chaves, rotulo, destaque }: {
  * `resultadoEnel` (worker/ludmilla/src/email/enel/run.ts), os quadros abaixo
  * zeram em silêncio. Mexeu lá, mexa aqui. Chaves usadas neste arquivo: lidos,
  * por_protocolo, por_uc, por_titular, nao_identificados, conflitos, bloqueados,
- * avisos, anexados, imagens_ignoradas, a_tentar_de_novo, falhas.
+ * avisos_mensagens (ou, no run antigo, avisos), anexados, imagens_ignoradas,
+ * a_tentar_de_novo, falhas. `avisos` soma SINOS tocados (~6 por aviso);
+ * `avisos_mensagens` conta as mensagens que geraram aviso (fechamento A, 22/10/2026).
  */
 export function ContadoresEmail({ run, identificacao = 'protocolo_no_assunto' }: {
   run: PortalRun | null; identificacao?: IdentificacaoConta;
@@ -144,7 +146,9 @@ export function ContadoresEmail({ run, identificacao = 'protocolo_no_assunto' }:
           {/* não achei o projeto, ou achei mais de um: sobra para a pessoa conferir à mão */}
           <ContadorSoma run={run} chaves={['nao_identificados', 'conflitos']} rotulo="levantei a mão: confira à mão" destaque />
           <Contador run={run} chave="bloqueados" rotulo="bloqueados: titular divergiu" destaque />
-          <Contador run={run} chave="avisos" rotulo="avisos no sino" />
+          {/* run novo: quantas MENSAGENS geraram aviso; run antigo (sem essa chave): o `avisos`
+              soma SINOS tocados (~6 por aviso) e o rótulo diz isso */}
+          <Contador run={run} {...quadroDosAvisos(run.resultado)} />
           <Contador run={run} chave="anexados" rotulo="documentos anexados" />
           <Contador run={run} chave="imagens_ignoradas" rotulo="imagens descartadas" destaque />
           <Contador run={run} chave="a_tentar_de_novo" rotulo="ficaram para a próxima" destaque />

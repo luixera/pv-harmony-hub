@@ -87,6 +87,99 @@ export function textoDaTrocaDeProtocolo(
   return `protocolo novo — ${por ? `casado por ${por}; ` : ''}no cadastro está ${noCadastro}`;
 }
 
+const ACHADO_POR: Record<string, string> = {
+  protocolo: 'achado pelo protocolo',
+  cpf: 'achado pelo CPF/CNPJ',
+  uc: 'achado pela UC',
+  titular: 'achado pelo nome do titular',
+};
+
+/**
+ * COMO o projeto foi achado, dito no cartão de e-mail SEMPRE (não só dentro do selo
+ * violeta da troca de protocolo): "achado pelo nome do titular" pede mais cuidado de
+ * quem confere do que "achado pelo protocolo". Valor desconhecido: null.
+ */
+export function textoDoAchado(c: string | null | undefined): string | null {
+  return c ? (ACHADO_POR[c] ?? null) : null;
+}
+
+export interface DetalheDoCartaoDeEmail {
+  /** "achado pela UC" etc.; null quando o cartão não diz como foi casado */
+  achado: string | null;
+  /** o `raw.motivo` gravado pelo robô: o porquê (ressalva ou bloqueio); null quando não há */
+  motivo: string | null;
+  /**
+   * O dia do e-mail. O rótulo diz de onde a data veio: `recebido_em` (cartões novos) é a
+   * do e-mail; nos cartões antigos o campo não existe e a única data é a da leitura, que
+   * não pode ser apresentada como a do e-mail.
+   */
+  data: { iso: string; rotulo: 'e-mail recebido em' | 'lido pela Ludmilla em' } | null;
+  /** o documento NÃO foi anexado (o titular dele é de outra pessoa): o cartão ganha a faixa vermelha */
+  bloqueio: boolean;
+}
+
+function textoDeRaw(raw: Record<string, unknown>, chave: string): string | null {
+  const v = raw[chave];
+  return typeof v === 'string' ? limpo(v) : null;
+}
+
+/** ISO legível pelo `Date`; qualquer outra coisa vira null (a tela nunca escreve "Invalid Date"). */
+function dataValida(s: string | null): string | null {
+  return s !== null && !Number.isNaN(Date.parse(s)) ? s : null;
+}
+
+/** Sem acento e em minúsculas: "NAO ANEXEI" e "não anexei" são o mesmo texto. */
+function semAcento(s: string): string {
+  return s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+}
+
+/** O motivo que ABRE com "não anexei" (e logo em seguida um "·" ou o fim) — não "não anexei ainda: …" nem "não anexado(s)". */
+const ABRE_COM_NAO_ANEXEI = /^nao anexei\s*(?:·|$)/;
+
+/**
+ * O que um cartão de E-MAIL (EDP ou ENEL) diz além da recomendação. `null` para o cartão
+ * de portal (CPFL): nada muda nele.
+ *
+ * Como saber que o cartão é de e-mail: `ludmilla_email_registrar` grava sempre `assunto`
+ * e `remetente` no `raw` (mesmo nulos, a chave existe); o `raw` do portal traz as colunas
+ * da tabela da concessionária ("Última atualização", …) e nunca essas duas.
+ *
+ * Bloqueio: o robô escreve "não anexei · o documento é de …" no `motivo` quando o titular
+ * do documento é de outra pessoa (e, na EDP, quando nenhum arquivo é do protocolo). O
+ * "não anexei ainda: …" da ENEL (a IA ainda não leu, tenta de novo) NÃO é bloqueio.
+ */
+export function detalheDoCartaoDeEmail(u: {
+  raw?: Record<string, unknown> | null;
+  casamento?: string | null;
+  detectado_em?: string | null;
+}): DetalheDoCartaoDeEmail | null {
+  const raw = u.raw;
+  if (!raw || typeof raw !== 'object' || !('assunto' in raw || 'remetente' in raw)) return null;
+
+  const motivo = textoDeRaw(raw, 'motivo');
+  const recebido = dataValida(textoDeRaw(raw, 'recebido_em'));
+  const lido = dataValida(limpo(u.detectado_em));
+  return {
+    achado: textoDoAchado(u.casamento),
+    motivo,
+    data: recebido ? { iso: recebido, rotulo: 'e-mail recebido em' }
+      : lido ? { iso: lido, rotulo: 'lido pela Ludmilla em' } : null,
+    bloqueio: motivo !== null && ABRE_COM_NAO_ANEXEI.test(semAcento(motivo)),
+  };
+}
+
+/**
+ * Qual quadro de avisos a última leitura da ENEL mostra. O `avisos` do robô soma SINOS
+ * tocados (a RPC devolve o ROW_COUNT, cerca de 6 por aviso); `avisos_mensagens` conta as
+ * MENSAGENS que geraram aviso. Run antigo não tem a segunda chave: cai nos sinos, com o
+ * rótulo que diz o que o número é.
+ */
+export function quadroDosAvisos(resultado: Record<string, unknown> | null | undefined): { chave: string; rotulo: string } {
+  return typeof resultado?.avisos_mensagens === 'number'
+    ? { chave: 'avisos_mensagens', rotulo: 'avisos (mensagens)' }
+    : { chave: 'avisos', rotulo: 'sinos tocados' };
+}
+
 const NO_HISTORICO = 'Ficou no histórico com você como autor e a Ludmilla como origem.';
 
 /** O aviso depois de "Aplicar": com etapa o card foi movido; sem etapa só o protocolo mudou. */

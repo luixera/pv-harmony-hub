@@ -4,7 +4,7 @@ import { MainLayout } from '@/components/layout/MainLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Radar, CheckCircle2, XCircle, ArrowRight, ExternalLink, RefreshCw, Loader2, Clock, KeyRound, MonitorSmartphone, ShieldQuestion, ChevronRight, Paperclip, MessageSquare, ClipboardCheck, Mail, Globe, Inbox, AlertTriangle } from 'lucide-react';
+import { Radar, CheckCircle2, XCircle, ArrowRight, ExternalLink, RefreshCw, Loader2, Clock, KeyRound, MonitorSmartphone, ShieldQuestion, ChevronRight, Paperclip, MessageSquare, ClipboardCheck, Mail, Globe, Inbox, AlertTriangle, ShieldAlert } from 'lucide-react';
 import {
   estadoDaEstacao, PortalCaptcha, PortalRun, PortalUpdate, PassoCriacao, urlDoPrint,
   useAplicarUpdate, useIgnorarUpdate, useLudmillaDisponivel, usePedirRun, usePortalAccounts,
@@ -14,7 +14,7 @@ import {
 import { useAgentConfig, type AgentConfigSafe } from '@/hooks/useAgentConfig';
 import { RegrasEmail } from '@/components/ludmilla/RegrasEmail';
 import { ContadoresEmail, MensagensEmail } from '@/components/ludmilla/MensagensEmail';
-import { identidadeDoCartao, mensagemDeErro, textoDaTrocaDeProtocolo } from '@/lib/ludmillaCartao';
+import { detalheDoCartaoDeEmail, identidadeDoCartao, mensagemDeErro, textoDaTrocaDeProtocolo } from '@/lib/ludmillaCartao';
 import { useStatusLabel, useStatusOrder } from '@/hooks/useStatusLabel';
 import { useEnergyConcessionaires } from '@/hooks/useEnergyConcessionaires';
 import { cn } from '@/lib/utils';
@@ -105,9 +105,22 @@ export function LinhaRecomendacao({ u }: { u: PortalUpdate }) {
   const [etapa, setEtapa] = useState<string>(u.recomendacao ?? '');
   const pendente = u.situacao === 'pendente';
   const { titular, noPortal, empresa } = identidadeDoCartao(u);
+  // Só o cartão de E-MAIL (EDP, ENEL) tem detalhe; o da CPFL devolve null e fica como era.
+  const email = detalheDoCartaoDeEmail(u);
 
   return (
-    <div className={cn('rounded-xl border bg-card p-4 space-y-3', !pendente && 'opacity-70')}>
+    <div className={cn('rounded-xl border bg-card p-4 space-y-3', !pendente && 'opacity-70', email?.bloqueio && 'border-red-300 overflow-hidden')}>
+      {/* Bloqueio: o documento NÃO foi anexado. Sem a faixa, o cartão parecia uma
+          recomendação comum (revisão final, I-1) — e o motivo ficava só no banco. */}
+      {email?.bloqueio && (
+        <div className="-mx-4 -mt-4 flex items-start gap-2 border-b border-red-300 bg-red-100 px-4 py-2 text-red-900">
+          <ShieldAlert size={16} className="mt-0.5 shrink-0" />
+          <div className="min-w-0 text-sm">
+            <b>Documento não anexado</b>
+            {email.motivo && <span className="block break-words text-xs">{email.motivo}</span>}
+          </div>
+        </div>
+      )}
       <div className="flex flex-wrap items-start gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
@@ -145,6 +158,25 @@ export function LinhaRecomendacao({ u }: { u: PortalUpdate }) {
             )}
             {u.raw?.['Última atualização'] ? ` · atualizado no portal em ${u.raw['Última atualização']}` : ''}
           </div>
+          {/* E-mail: COMO o projeto foi achado (sempre — achado só pelo nome pede mais
+              cuidado de quem confere), o dia do e-mail e o porquê (ressalva). No bloqueio
+              o motivo já está na faixa vermelha, não se repete. */}
+          {email && (
+            <div className="mt-1 space-y-0.5 text-xs text-muted-foreground">
+              {(email.achado || email.data) && (
+                <div>
+                  {email.achado}
+                  {email.achado && email.data ? ' · ' : ''}
+                  {email.data && `${email.data.rotulo} ${quando(email.data.iso)}`}
+                </div>
+              )}
+              {email.motivo && !email.bloqueio && (
+                <p className="inline-flex items-start gap-1 break-words text-amber-700">
+                  <AlertTriangle size={12} className="mt-0.5 shrink-0" /> {email.motivo}
+                </p>
+              )}
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-2 text-sm">
           {u.status_anterior && (

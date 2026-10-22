@@ -1023,7 +1023,16 @@ outro projeto, mas nada vai para o card dele.
 
 "Levanta a mão" = linha no grupo de atenção da `/ludmilla` com o motivo e
 `concluida = true` (não é falha passageira; insistir não resolve). "Ler de novo"
-recupera depois que o cadastro for corrigido.
+recupera depois que o cadastro for corrigido. **Se a nova leitura achar OUTRO
+projeto** (o cadastro foi corrigido, ou a segunda leitura leu o PDF e a primeira só o
+texto), o banco **abre um cartão novo para o projeto novo** e o cartão pendente do
+primeiro fica intacto (C-1 da revisão final, migração `20261022120000`). Antes
+disso, a chave da mensagem da ENEL é fixa (`''`), então a 2ª leitura corrigia o
+cartão pendente da 1ª: ele passava a levar a recomendação, o protocolo e a troca do
+projeto B, e o "Aplicar" gravava etapa e protocolo **no projeto A**. Hoje o
+`_upd` (cartão da mensagem) só é reaproveitado se for do mesmo `project_id`; se não
+for, é descartado e nasce um cartão novo (a mensagem, uma só por chave, passa a
+apontar para ele).
 
 ### O nome do titular — por que é um trecho inteiro
 
@@ -1074,8 +1083,27 @@ LTDA": sem dois nomes de 3+ letras) conta como **falta de dado**, nunca divergê
 senão o próprio nome se bloquearia. O prompt da edge function pede o titular "na
 ordem natural, sem vírgula", e a função filtra o eco do exemplo do prompt ("NOME
 SOBRENOME"): uma ordem invertida ("SILVA, MARIA") viraria falso bloqueio de documento
-legítimo. O bloqueio abre cartão (sem etapa) com o motivo, para a equipe ver; o
-documento não sobe.
+legítimo. O bloqueio abre cartão (sem etapa) **com o motivo** (`não anexei · o
+documento é de <titular do PDF> e o projeto é de <titular do cadastro>`), para a
+equipe ver; o documento não sobe.
+Isso só é verdade desde a rodada de fechamento de 22/10 (revisão final, I-1): antes,
+o cartão saía como uma recomendação comum, porque a tela não lia `raw.motivo`, e o
+robô mandava junto o **veredito do documento de outra pessoa** ("CARTA_PROJETO ·
+FAVORAVEL" no cartão e no sino, num projeto que nem era dele). Agora o robô manda
+`veredito: null` e `resumo: null` no bloqueio, e a tela desenha a faixa vermelha
+"Documento não anexado" com o motivo (ver "A tela").
+
+**Sem a leitura da IA, a ENEL não anexa o PDF que precisa da trava (I-2, decisão de
+22/10).** Antes, com a `ludmilla-parecer` fora do ar (falha passageira), a trava não
+tinha como rodar e o PDF subia para o projeto achado **só pelo texto**; na tentativa
+seguinte o anexo já estava `enviado`, e se o titular do documento fosse outro a
+trava chegava tarde. Agora o anexo exige `regra.anexar && !passageira`: a ressalva
+diz "não anexei ainda: preciso ler o documento para conferir o titular", a mensagem
+fica `concluida = false` e **espera a próxima tentativa** (até 5). Efeito para quem
+acompanha: um documento de e-mail **achado pelo texto** (protocolo, UC ou nome no
+assunto) também espera a IA voltar para chegar ao card. Vale só para os PDFs que a
+regra manda ler; regra com `ler_pdf = false` segue como antes (não há trava a
+esperar). A EDP não muda.
 
 ### O que o e-mail diz: classificação e etapas
 
@@ -1184,7 +1212,7 @@ linha decidida já era de troca. O "Aplicar" grava `portal_updates.protocolo` em
   cosmético aceito: projeto sem protocolo e com UC de 8 dígitos sai com o código
   (`PRJ-…`) no cartão e no comentário.
 - **`p_casamento`**: como o projeto foi achado (`protocolo`, `uc`, `titular`); a tela
-  mostra o selo.
+  diz sempre "achado pelo protocolo / pela UC / pelo nome do titular" (ver "A tela").
 - **`p_abrir_cartao`.** Cartão só quando há o que decidir: uma etapa **ou** gravar a
   NT (`recomendacao !== null || atualizarProtocolo`), mais o bloqueio por titular.
   99 respostas automáticas não viram 99 cartões. A mensagem é gravada sempre.
@@ -1237,7 +1265,10 @@ linha decidida já era de troca. O "Aplicar" grava `portal_updates.protocolo` em
 
 Migrações: `20261013120000` (base), `20261014120000` (regra do `atendimento.edsp`),
 `20261016120000` (Aplicar), `20261016130000` e `20261016140000` (titular e troca de
-protocolo, com a trava), `20261019120000` (chave do anexo). O `registrar` e o
+protocolo, com a trava), `20261019120000` (chave do anexo), `20261022120000`
+(fechamento da revisão final: o cartão pendente só é corrigido se for do mesmo
+projeto — C-1; a trava compara também a UC pontuada — M2; `recebido_em` no `raw` do
+cartão). O `registrar` e o
 `anexo_novo` mudaram de assinatura: `CREATE OR REPLACE` sozinho criaria uma segunda
 função ao lado, então a antiga sai (`DROP FUNCTION` da assinatura anterior). Os
 parâmetros novos têm DEFAULT, e a chamada da EDP resolve para a nova sem mudança.
@@ -1261,16 +1292,48 @@ Todo cartão, em qualquer meio (CPFL, EDP, ENEL), mostra **titular** e **empresa
 project_general_data(holder_name))`. O titular é o do **cadastro**; o nome do portal
 (CPFL) aparece à parte como "no portal: …" quando difere. O banco grava
 `titular_portal` com o titular do cadastro nos cartões de e-mail, então o nome
-aparece uma vez só. O selo do casamento mostra "protocolo", "CPF/CNPJ", "UC" ou
-"nome do titular"; a troca de protocolo tem um selo violeta ("protocolo novo —
-casado por …; no cadastro está …"), e o "Atualizar protocolo" sem etapa agora diz
-"Protocolo do cadastro atualizado", não "Card movido". Erro na consulta dos cartões
-aparece em vermelho, com "Tentar de novo", e não como "Nada pendente".
+aparece uma vez só.
+
+**O cartão de e-mail (EDP e ENEL) diz o porquê** (revisão final, I-1; a lógica é a
+função pura `detalheDoCartaoDeEmail` em `ludmillaCartao.ts`, com teste; o cartão da
+CPFL não muda). Antes, o "casamento" só aparecia **dentro do selo violeta da troca**,
+e o `raw.motivo` não aparecia em lugar nenhum: um cartão achado só pelo nome não se
+distinguia de um achado pela NT, e o bloqueio parecia uma recomendação comum. Agora
+**sempre** aparecem:
+
+- **como o projeto foi achado**, a partir de `casamento`: "achado pelo protocolo",
+  "achado pela UC", "achado pelo nome do titular" (ou "pelo CPF/CNPJ");
+- **o dia do e-mail**: `raw.recebido_em` ("e-mail recebido em …"), que o banco grava
+  nos cartões novos (migração `20261022120000`). Nos cartões antigos o campo não
+  existe e a tela usa `detectado_em` com outro rótulo, **"lido pela Ludmilla em …"**,
+  para não fingir que é a data do e-mail;
+- **o motivo** (`raw.motivo`: as ressalvas do robô — a NT que a Carta traz, o aprovado
+  com observações, o arquivo barrado…), em âmbar.
+
+**O bloqueio fica visivelmente diferente**: faixa vermelha "Documento não anexado"
+no alto do cartão, com o motivo dentro dela, e a borda vermelha. A tela reconhece o
+bloqueio pelo motivo que **abre** com "não anexei" seguido de "·" (ou do fim); o
+"não anexei ainda: preciso ler o documento…" da espera da IA (I-2) e o "N arquivo(s)
+não anexado(s)" das ressalvas comuns **não** são bloqueio. A tela sabe que o cartão é
+de e-mail porque `ludmilla_email_registrar` grava sempre `assunto` e `remetente` no
+`raw`; o `raw` do portal traz as colunas da CPFL ("Última atualização"…).
+
+O selo do casamento (`rotuloCasamento`) continua dentro do selo violeta da troca de
+protocolo ("protocolo novo — casado por …; no cadastro está …"), e o "Atualizar
+protocolo" sem etapa diz "Protocolo do cadastro atualizado", não "Card movido". Erro
+na consulta dos cartões aparece em vermelho, com "Tentar de novo", e não como "Nada
+pendente".
 
 **Contadores da ENEL** (`MensagensEmail.tsx`, `ContadoresEmail`, quando
 `identificacao = 'remetente'`): `lidos`, `por_protocolo`, `por_uc`, `por_titular`,
-`nao_identificados` + `conflitos` somados ("levantei a mão"), `bloqueados`, `avisos`,
-`anexados`, `imagens_ignoradas`, `a_tentar_de_novo`, `falhas`. **As chaves são as de
+`nao_identificados` + `conflitos` somados ("levantei a mão"), `bloqueados`,
+`avisos_mensagens`, `anexados`, `imagens_ignoradas`, `a_tentar_de_novo`, `falhas`.
+**O quadro de avisos:** o `avisos` do robô soma **sinos tocados** (a RPC devolve o
+`ROW_COUNT`: admin + staff do tenant, cerca de **6 por aviso**), e não é o número de
+avisos. O fechamento A cria `avisos_mensagens` (quantas **mensagens** geraram aviso) e
+a tela mostra essa chave como "avisos (mensagens)"; num run **sem** a chave (os
+antigos, como o de 14/10) mostra `avisos` como **"sinos tocados"**
+(`quadroDosAvisos`, com teste). **As chaves são as de
 `resultadoEnel`** (`worker/ludmilla/src/email/enel/run.ts`): `contadorDoRun`
 devolve `null` para uma chave que não existe e o quadro some **sem erro**, então
 renomear lá zera aqui em silêncio — há um comentário nos dois lugares. Só no
@@ -1321,9 +1384,12 @@ agora" no cartão da ENEL antes de o robô da VPS ser atualizado.**
 em 21/10, no commit `13200de`, o da rodada 4 da classificação), SQL em `begin; …
 rollback;`, revisão independente de cada tarefa e
 mutações. Nunca foi exercido: o IMAP com os remetentes reais, a `ludmilla-parecer`
-em modo ENEL contra PDF real, o embed novo da tela contra o PostgREST real (exige
-login) e o laço `executarVarreduraEnel` (sem teste, como o da EDP). O roteiro diz o
-que olhar. Resíduos conhecidos, aceitos de propósito:
+em modo ENEL contra PDF real e o laço `executarVarreduraEnel` (sem teste, como o da
+EDP). O embed novo da tela **foi provado no PostgREST real** pela revisão final (sonda
+anônima: `200 []`, e o controle com coluna inexistente deu `400 42703`, então a
+consulta chega a ser planejada), mas com linhas de verdade só se prova abrindo
+`/ludmilla` depois do deploy. O roteiro diz o que olhar. Resíduos conhecidos, aceitos
+de propósito:
 
 - **Nome:** romano/ordinal e letra de bloco no **meio** do cadastro são omissíveis
   ("CONDOMINIO SOLAR" × "CONDOMINIO II SOLAR" com o irmão concluído); cadastro com
@@ -1336,14 +1402,28 @@ que olhar. Resíduos conhecidos, aceitos de propósito:
   antes de reprovada vira `null`; "Duvidamos que…"). Todas caem em `null` (só
   anota). A rodada 4 (`13200de`) só corrigiu data, hora e número no caminho da
   vistoria, que viravam "outro sujeito".
-- **Troca de protocolo:** o resíduo da Carta de pendência antiga (acima); uma troca
-  **ignorada** pode voltar numa 3ª passada pendente; a trava do banco compara a UC
-  só por pedaço, então uma UC pontuada ("3.928.129-57") passa; uma recomendação
-  ignorada pode reaparecer numa 3ª passada.
+- **Troca de protocolo:** o resíduo da Carta de pendência antiga (acima); uma
+  recomendação ignorada pode reaparecer numa 3ª passada (M3 da Task 5).
+- **RISCO CONHECIDO, aceito (M1 da Task 5): uma troca de protocolo IGNORADA pode voltar
+  numa 3ª passada pendente.** O cabeçalho da migração `20261016140000` diz "nunca
+  repete uma troca ignorada", e isso é forte demais. O que de fato acontece: o UPDATE
+  do cartão **pendente** faz `atualizar_protocolo = u.atualizar_protocolo OR _pedir`, e
+  a decisão de ignorar vive no cartão antigo, que o UPDATE não olha. Um caminho: passada
+  1 abre o cartão com a troca e a equipe **ignora**; a passada 2 abre um cartão novo só
+  de etapa (a troca não vai, porque a linha decidida já era de troca); a passada 3 — a
+  mensagem ainda pendente — corrige esse cartão novo, e o pedido válido **religa a
+  troca nele**. Dano: um cartão a mais para ignorar de novo; nada é aplicado sem a
+  equipe. A migração `20261022120000` descreve o comportamento real; a antiga não foi
+  editada. Corrigir exigiria lembrar a decisão por mensagem, e não vale o custo antes
+  de ver o primeiro run.
+- **UC pontuada na trava (M2 da Task 5) — fechada.** A trava do banco comparava a UC
+  só por pedaço, então "3.928.129-57" passava; a `20261022120000` compara também os
+  dígitos colados (`regexp_replace(uc_number,'\D','','g')`, sem zeros à esquerda). Sem
+  exposição real na ENEL até aqui.
 - **Run:** a sugestão de etapa **não olha a data do e-mail**: uma "vistoria
   reprovada" de três semanas atrás, com o projeto já reaprovado e de volta em
-  Vistoria solicitada, vira cartão "Vistoria reprovada" — confira o `recebido_em`
-  antes de Aplicar. PDF barrado de **outro** titular bloqueia o e-mail inteiro (lado
+  Vistoria solicitada, vira cartão "Vistoria reprovada" — confira a data do e-mail
+  (`recebido_em`, que o cartão novo mostra) antes de Aplicar. PDF barrado de **outro** titular bloqueia o e-mail inteiro (lado
   seguro); o erro "sem remetente" mostra o texto genérico de "sem regras"; a
   retomada do anexo pode rebaixar o texto do comentário de NT para código;
   `comunicado` em `TIPOS_SEM_SINAL` é morto (a regra de comunicado nem é buscada).
