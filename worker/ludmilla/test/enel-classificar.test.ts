@@ -705,6 +705,25 @@ test('depois de número, separador com espaço continua sendo outro sujeito, e o
   ]) assert.equal(classificarCorpo(frase), null, frase);
 });
 
+// Fechamento A · M-2 (Task 3): separador colado em dígito e seguido de LETRA, sem espaço,
+// também é outro sujeito ("UC 12345/o projeto"). M-1: os mesmos com espaço, que já davam null.
+test('depois de número, separador colado em letra também é outro sujeito', () => {
+  for (const frase of [
+    'Sobre a vistoria da UC 12345/o projeto foi aprovado.',
+    'Sobre a vistoria da UC 12345,o projeto foi aprovado.',
+    'Sobre a vistoria de 10/08/2026/o projeto foi aprovado.',
+    'Sobre a vistoria da UC 12345:o projeto foi aprovado.',
+    'Sobre a vistoria da UC 12345;o projeto foi aprovado.',
+  ]) assert.equal(classificarCorpo(frase), null, frase);
+});
+
+test('M-1: "; o" e "/ o" depois de número continuam sendo outro sujeito', () => {
+  for (const frase of [
+    'Sobre a vistoria da UC 12345; o projeto foi aprovado.',
+    'Sobre a vistoria da UC 12345/ o projeto foi aprovado.',
+  ]) assert.equal(classificarCorpo(frase), null, frase);
+});
+
 // ---------------------------------------------------------------------------
 // Rodada 4 · N-2: nome herdado de Object.prototype não é entidade
 // ---------------------------------------------------------------------------

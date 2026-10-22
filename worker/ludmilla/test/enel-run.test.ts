@@ -4,7 +4,9 @@
 // endereços são 100% inventados.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { tratarMensagemEnel, type DepsEnel, type ParecerEnel } from '../src/email/enel/run.js';
+import {
+  contaEnelZerada, resultadoEnel, somarEnel, tratarMensagemEnel, type DepsEnel, type ParecerEnel, type TratamentoEnel,
+} from '../src/email/enel/run.js';
 import { referenciaDoProjeto, type ProjetoEnel } from '../src/email/enel/identificar.js';
 import type { MensagemLida } from '../src/email/caixa.js';
 import { idArquivoDeEmail, type RegraEmail } from '../src/email/util.js';
@@ -245,6 +247,22 @@ test('9. titular do documento é OUTRA pessoa: bloqueado, nada anexado, cartão 
   assert.equal(reg.concluida, true, 'bloqueio é definitivo: não paga a IA de novo a cada run');
 });
 
+// Fechamento A · I-1: o veredito e o resumo são do documento de OUTRA pessoa. O banco
+// escreve o veredito no cartão e no sino ("CARTA_PROJETO · FAVORAVEL"); o projeto nem é dele.
+test('I-1. bloqueio: o veredito e o resumo do documento de outra pessoa não vão para o cartão', async () => {
+  const { deps, d } = dubles({ parecer: carta({ titular: 'HERMINIO TAVARES BRANDALISE', veredito: 'favoravel', resumo: 'Projeto aprovado.' }) });
+  const r = await tratar(mensagem(), deps);
+  assert.equal(r.situacao, 'bloqueado');
+  const reg = unico(d);
+  assert.equal(reg.veredito, null);
+  assert.equal(reg.resumo, null);
+  // o resto do bloqueio segue: o motivo com os dois nomes, o arquivo lido, o cartão aberto
+  assert.match(String(reg.motivo), /não anexei · o documento é de "HERMINIO TAVARES BRANDALISE"/);
+  assert.equal(reg.arquivoLido, 'CARTA.pdf');
+  assert.equal(reg.abrirCartao, true);
+  assert.equal(reg.tipoDocumento, 'carta_projeto');
+});
+
 test('10. arquivo com a NT de B ao tratar A: não vai para o card de A', async () => {
   const { deps, d } = dubles();
   const r = await tratar(mensagem({ anexos: [pdf('CARTA.pdf', 200), pdf('NT_391000020.pdf', 50)] }), deps);
@@ -344,23 +362,34 @@ test('16. Carta sem nada no texto, projeto achado pela UC e sem protocolo: suger
   assert.match(String(reg.motivo), /a Carta traz a NT 391000001; o cadastro tem nenhum — o cartão sugere gravar a NT/);
 });
 
-test('16b. a 2ª tentativa da mesma Carta (a IA voltou e leu a NT) não sobe o documento em dobro', async () => {
+// Fechamento A · I-2: com a IA fora, a trava do titular não roda — o anexo ESPERA a leitura.
+// Antes, a 1ª tentativa subia o documento só pelo texto e a 2ª o achava `enviado`: a trava
+// nunca rodava para ele. Agora a 1ª não anexa; a 2ª (a IA voltou) confere e anexa uma vez.
+test('16b. a 2ª tentativa da mesma Carta (a IA voltou e leu a NT): só ela anexa, uma vez; a 3ª não sobe de novo', async () => {
   const banco = new Map<string, 'pendente' | 'enviado'>();
-  // 1ª: a IA falhou; o projeto foi achado pela UC no assunto e o anexo subiu
+  // 1ª: a IA falhou; o projeto foi achado pela UC no assunto — o anexo espera a leitura
   const um = dubles({ banco, parecer: { ...carta(), ok: false, veredito: null, titular: null, nt: null, tipo: null, erro: 'a leitura do documento respondeu 503' } });
   const m = mensagem({ assunto: 'Geração Distribuída – Carta – Instalação 77001122' });
   const r1 = await tratar(m, um.deps);
   assert.equal(r1.concluida, false);
   assert.equal(um.d.registros[0].atualizarProtocolo, undefined);
-  assert.equal(um.d.subidos.length, 1);
-  // 2ª: a IA voltou e leu a NT — o texto do comentário muda, a chave não
-  const dois = dubles({ banco, parecer: carta({ nt: '391000001', uc: '77001122', titular: PC.titular }) });
-  await tratar(m, dois.deps);
-  assert.deepEqual(dois.d.chavesDoAnexo, um.d.chavesDoAnexo, 'a chave do anexo não pode virar a NT');
-  assert.notDeepEqual(dois.d.protocolosDoAnexo, um.d.protocolosDoAnexo, 'o texto, sim, passa a ser a NT');
-  assert.equal(dois.d.subidos.length, 0, 'não subiu de novo');
+  assert.equal(um.d.anexosPedidos.length, 0, 'sem a leitura, a trava do titular não rodou: nada vai para o card');
+  assert.match(String(um.d.registros[0].motivo), /não anexei ainda: preciso ler o documento para conferir o titular/);
+  // 2ª: a IA voltou e leu a NT — anexa agora, com a chave de sempre e o texto da NT
+  const leitura = carta({ nt: '391000001', uc: '77001122', titular: PC.titular });
+  const dois = dubles({ banco, parecer: leitura });
+  const r2 = await tratar(m, dois.deps);
+  assert.equal(r2.concluida, true);
+  assert.deepEqual(dois.d.chavesDoAnexo, [PC.project_id], 'a chave do anexo é o project_id, nunca a NT');
+  assert.deepEqual(dois.d.protocolosDoAnexo, ['391000001'], 'o texto do comentário é a NT');
+  assert.equal(dois.d.subidos.length, 1);
   assert.equal(dois.d.registros[0].referencia, '391000001');
   assert.equal(dois.d.registros[0].atualizarProtocolo, true);
+  // 3ª ("Ler de novo"): mesma chave, já resolvido — não sobe em dobro
+  const tres = dubles({ banco, parecer: leitura });
+  await tratar(m, tres.deps);
+  assert.deepEqual(tres.d.chavesDoAnexo, [PC.project_id]);
+  assert.equal(tres.d.subidos.length, 0, 'não subiu de novo');
 });
 
 test('16c. M-7: "Ler de novo" DEPOIS de aplicar a troca (o projeto já com a NT) não sobe o documento de novo', async () => {
@@ -521,15 +550,50 @@ test('23b. R4: pendências vazias ou em branco não viram ressalva', async () =>
   assert.doesNotMatch(String(unico(d).motivo), /observações/);
 });
 
-test('24. projeto achado pelo texto e a IA falha: anexa, mas NÃO conclui (a Carta precisa do veredito)', async () => {
+// Fechamento A · I-2: antes este teste fixava "anexa, mas não conclui". Sem a leitura a
+// trava do titular não roda, e o documento subia para o projeto achado só pelo texto.
+test('24. projeto achado pelo texto e a IA falha: NÃO anexa ainda (falta conferir o titular) e NÃO conclui', async () => {
   const { deps, d } = dubles({ parecer: { ...carta(), ok: false, veredito: null, titular: null, nt: null, tipo: null, erro: 'a leitura do documento respondeu 503' } });
   const r = await tratar(mensagem({ assunto: 'Geração Distribuída – Carta – NT 391000010' }), deps);
   assert.equal(r.situacao, 'tratado');
   assert.equal(r.concluida, false);
-  assert.equal(d.subidos.length, 1);
+  assert.equal(r.anexados, 0);
+  assert.equal(r.deOutroProjeto, 0, 'o arquivo que espera não é "de outro projeto"');
+  assert.equal(d.anexosPedidos.length, 0, 'nem a linha do anexo é aberta');
+  assert.equal(d.subidos.length, 0);
   const reg = unico(d);
-  assert.equal(reg.concluida, false);
+  assert.equal(reg.concluida, false, 'a mensagem fica para a próxima tentativa');
+  assert.equal(reg.anexos, 0);
   assert.match(String(reg.motivo), /não consegui ler o documento/);
+  assert.match(String(reg.motivo), /não anexei ainda: preciso ler o documento para conferir o titular/);
+  assert.doesNotMatch(String(reg.motivo), /número de outro projeto/);
+});
+
+test('I-2. a IA fora e, na tentativa seguinte, a Carta é de OUTRA pessoa: o documento nunca chega ao card', async () => {
+  const banco = new Map<string, 'pendente' | 'enviado'>();
+  const m = mensagem({ assunto: 'Geração Distribuída – Carta – NT 391000010' });
+  const um = dubles({ banco, parecer: { ...carta(), ok: false, veredito: null, titular: null, nt: null, tipo: null, erro: 'a leitura do documento respondeu 503' } });
+  const r1 = await tratar(m, um.deps);
+  assert.equal(r1.concluida, false);
+  const dois = dubles({ banco, parecer: carta({ titular: 'HERMINIO TAVARES BRANDALISE' }) });
+  const r2 = await tratar(m, dois.deps);
+  assert.equal(r2.situacao, 'bloqueado');
+  assert.equal(um.d.anexosPedidos.length + dois.d.anexosPedidos.length, 0);
+  assert.equal(um.d.subidos.length + dois.d.subidos.length, 0);
+});
+
+test('I-2. regra com ler_pdf: false (atendimento.edsp) segue anexando como antes: não há leitura a esperar', async () => {
+  const pv = { ...PA, status: 'vistoria_solicitada' };
+  // a IA "fora" não muda nada: esta regra nunca chama a leitura
+  const { deps, d } = dubles({ parecer: { ...carta(), ok: false, veredito: null, titular: null, nt: null, tipo: null, erro: 'a leitura do documento respondeu 503' } });
+  const r = await tratar(mensagem({
+    remetente: 'atendimento.edsp@enel.com', assunto: 'Comunicado técnico sobre a nota: 391000010 - Vistoria aprovada',
+    texto: CORPO_GENERICO, anexos: [pdf('COMUNICADO.pdf')],
+  }), deps, [pv, PB]);
+  assert.equal(d.leituras, 0);
+  assert.equal(r.concluida, true);
+  assert.equal(d.subidos.length, 1);
+  assert.doesNotMatch(String(unico(d).motivo), /não anexei ainda/);
 });
 
 // ── Rodada de correção 1 ─────────────────────────────────────────────────────
@@ -738,4 +802,42 @@ test('M-5 (Task 3). devolução que cita "a vistoria … está REPROVADA": só o
   const reg = unico(d);
   assert.equal(reg.recomendacao, null, 'a devolução não sugere vistoria_reprovada');
   assert.doesNotMatch(String(reg.motivo), /vistoria/);
+});
+
+// ── Fechamento A · rótulo dos avisos ─────────────────────────────────────────
+// A RPC de aviso devolve o ROW_COUNT (um sino por pessoa da equipe: ~6 por aviso). `avisos`
+// soma SINOS e fica como está (a tela antiga lê essa chave); `avisos_mensagens` conta
+// as MENSAGENS que tocaram pelo menos um sino.
+
+const tratamento = (o: Partial<TratamentoEnel> = {}): TratamentoEnel => ({
+  situacao: 'tratado', por: 'protocolo', anexados: 0, imagensIgnoradas: 0, recusados: 0, semNome: 0,
+  deOutroProjeto: 0, avisos: 0, concluida: true, ...o,
+});
+
+test('avisos_mensagens conta MENSAGENS com aviso; avisos segue somando os sinos', () => {
+  const n = contaEnelZerada();
+  somarEnel(n, tratamento({ avisos: 6 }));
+  somarEnel(n, tratamento({ avisos: 0 }));
+  somarEnel(n, tratamento({ avisos: 5 }));
+  somarEnel(n, tratamento({ situacao: 'nao_identificado', por: null, avisos: 6 })); // devolução sem projeto
+  const r = resultadoEnel(n, 4, 30, 0);
+  assert.equal(r.avisos, 17);
+  assert.equal(r.avisos_mensagens, 3);
+});
+
+test('avisos_mensagens: run sem aviso dá 0 (a chave existe)', () => {
+  const r = resultadoEnel(contaEnelZerada(), 1, 1, 0);
+  assert.equal(r.avisos_mensagens, 0);
+  assert.equal(r.avisos, 0);
+});
+
+test('avisos_mensagens: do tratamento ao resultado, uma vistoria aprovada com 6 sinos é 1 mensagem', async () => {
+  const { deps } = dubles();
+  const seis: DepsEnel = { ...deps, avisar: async () => 6 };
+  const t = await tratar(VISTORIA_OK(), seis);
+  const n = contaEnelZerada();
+  somarEnel(n, t);
+  const r = resultadoEnel(n, 1, 1, 0);
+  assert.equal(r.avisos, 6);
+  assert.equal(r.avisos_mensagens, 1);
 });

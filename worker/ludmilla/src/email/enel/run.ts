@@ -221,10 +221,12 @@ export async function tratarMensagemEnel(
   const lido = ler && parecer.ok && pdf ? pdf.nome : null;
 
   // O titular do DOCUMENTO de outra pessoa é o único bloqueio (como na EDP), nos dois sentidos.
+  // O veredito e o resumo são DESSE documento, que não é do projeto: não vão para o cartão
+  // nem para o sino (o banco escreveria "CARTA_PROJETO · FAVORAVEL" no projeto errado).
   if (parecer.ok && titularDeOutraPessoa(projeto.titular, parecer.titular)) {
     await deps.registrarEmailLido({
       ...base, projectId: projeto.project_id, referencia, casamento: id.por, abrirCartao: true,
-      tipoDocumento: regra.tipo_documento, veredito: parecer.veredito, resumo: parecer.resumo || null, anexos: 0,
+      tipoDocumento: regra.tipo_documento, veredito: null, resumo: null, anexos: 0,
       motivo: `não anexei · o documento é de "${parecer.titular}" e o projeto é de "${projeto.titular}"`,
       recomendacao: null, concluida: true, arquivoLido: lido,
     });
@@ -265,9 +267,15 @@ export async function tratarMensagemEnel(
   }
   if (passageira) ressalvas.push(`não consegui ler o documento: ${parecer.erro}`);
 
-  const paraAnexar = regra.anexar ? semImagem.filter(a => !nomeTrazOutroProjeto(a.nome, projeto, projetos)) : [];
-  const barrados = regra.anexar ? semImagem.filter(a => !paraAnexar.includes(a)) : [];
+  const candidatos = regra.anexar ? semImagem.filter(a => !nomeTrazOutroProjeto(a.nome, projeto, projetos)) : [];
+  const barrados = regra.anexar ? semImagem.filter(a => !candidatos.includes(a)) : [];
   if (barrados.length) ressalvas.push(`${barrados.length} arquivo(s) não anexado(s): o nome traz o número de outro projeto (${nomes(barrados.map(a => a.nome))})`);
+  // A IA não leu (passageira): a trava do titular não rodou. Nada vai para o card ainda — o
+  // projeto foi achado só pelo texto, e o documento pode ser de outra pessoa. Na tentativa
+  // seguinte (a mensagem fica `concluida = false`) a leitura confere e anexa. Só acontece em
+  // regra com `ler_pdf`: regra que não lê não tem trava a esperar e anexa como sempre.
+  const paraAnexar = regra.anexar && !passageira ? candidatos : [];
+  if (passageira && candidatos.length) ressalvas.push('não anexei ainda: preciso ler o documento para conferir o titular');
 
   const aceitos: (typeof paraAnexar[number] & { mime: string })[] = [];
   const recusados: string[] = [];
@@ -333,18 +341,24 @@ export interface ContaEnel {
   lidos: number; tratados: number; porProtocolo: number; porUc: number; porTitular: number;
   naoIdentificados: number; conflitos: number; inativos: number; bloqueados: number; ignorados: number;
   anexados: number; deOutroProjeto: number; recusados: number; semNome: number; imagens: number;
-  avisos: number; pulados: number; aTentarDeNovo: number; naoLidas: number;
+  /** SINOS tocados (a RPC devolve o ROW_COUNT: um por pessoa da equipe) */
+  avisos: number;
+  /** MENSAGENS que tocaram pelo menos um sino */
+  avisosMensagens: number;
+  pulados: number; aTentarDeNovo: number; naoLidas: number;
   limpos: number; falhasBusca: number; falhasTratamento: number;
 }
 export const contaEnelZerada = (): ContaEnel => ({
   lidos: 0, tratados: 0, porProtocolo: 0, porUc: 0, porTitular: 0, naoIdentificados: 0, conflitos: 0,
   inativos: 0, bloqueados: 0, ignorados: 0, anexados: 0, deOutroProjeto: 0, recusados: 0, semNome: 0,
-  imagens: 0, avisos: 0, pulados: 0, aTentarDeNovo: 0, naoLidas: 0, limpos: 0, falhasBusca: 0, falhasTratamento: 0,
+  imagens: 0, avisos: 0, avisosMensagens: 0, pulados: 0, aTentarDeNovo: 0, naoLidas: 0, limpos: 0,
+  falhasBusca: 0, falhasTratamento: 0,
 });
 
 export function somarEnel(n: ContaEnel, r: TratamentoEnel): void {
   n.anexados += r.anexados; n.imagens += r.imagensIgnoradas; n.recusados += r.recusados;
   n.semNome += r.semNome; n.deOutroProjeto += r.deOutroProjeto; n.avisos += r.avisos;
+  if (r.avisos > 0) n.avisosMensagens++;
   if (!r.concluida) n.aTentarDeNovo++;
   if (r.situacao === 'tratado') {
     n.tratados++;
@@ -356,7 +370,11 @@ export function somarEnel(n: ContaEnel, r: TratamentoEnel): void {
   else n.ignorados++;
 }
 
-/** O `resultado` do run — é daqui que a tela lê os contadores. */
+/**
+ * O `resultado` do run — é daqui que a tela lê os contadores. `avisos` são SINOS (~6 por
+ * aviso) e fica com esse nome porque a tela antiga lê a chave; `avisos_mensagens` é
+ * quantas MENSAGENS geraram aviso, a que a tela nova mostra.
+ */
 export function resultadoEnel(n: ContaEnel, remetentes: number, projetosAtivos: number, falhas: number): Record<string, number> {
   return {
     remetentes, projetos_ativos: projetosAtivos, lidos: n.lidos, tratados: n.tratados,
@@ -364,7 +382,7 @@ export function resultadoEnel(n: ContaEnel, remetentes: number, projetosAtivos: 
     nao_identificados: n.naoIdentificados, conflitos: n.conflitos, inativos: n.inativos,
     bloqueados: n.bloqueados, ignorados: n.ignorados, anexados: n.anexados,
     anexos_de_outro_projeto: n.deOutroProjeto, anexos_recusados: n.recusados, anexos_sem_nome: n.semNome,
-    imagens_ignoradas: n.imagens, avisos: n.avisos, pulados: n.pulados,
+    imagens_ignoradas: n.imagens, avisos: n.avisos, avisos_mensagens: n.avisosMensagens, pulados: n.pulados,
     a_tentar_de_novo: n.aTentarDeNovo, nao_lidas: n.naoLidas,
     falhas, falhas_busca: n.falhasBusca, falhas_tratamento: n.falhasTratamento,
   };

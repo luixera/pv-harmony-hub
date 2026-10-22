@@ -652,3 +652,42 @@ test('nomeTrazOutroProjeto vê a UC de 7 ou 8 dígitos de outro projeto', () => 
   assert.equal(nomeTrazOutroProjeto('CARTA_88101266.pdf', UC8, COM_UC_CURTA), false); // a própria UC
   assert.equal(nomeTrazOutroProjeto('CARTA_123456.pdf', A, COM_UC_CURTA), false);    // 6 dígitos não conta
 });
+
+// ── Fechamento A: testes da UC curta (mutações que sobreviviam) ──
+
+test('nomeTrazOutroProjeto: protocolo de 8 dígitos de outro projeto NÃO barra (protocolo segue com 9)', () => {
+  assert.equal(nomeTrazOutroProjeto('CARTA_12345678.pdf', A, [A, P({ protocolo: '12345678' })]), false);
+});
+
+test('UC curta repetida entre um projeto ativo e um concluído: conflito, no texto e no documento', () => {
+  const ATIVO = P({ project_id: 'r1', codigo: 'PRJ-R1', uc: '0088101266', titular: 'RENATA SOUZA OLIVEIRA' });
+  const CONCLUIDO = P({ project_id: 'r2', codigo: 'PRJ-R2', uc: '88101266', titular: 'CARLA MENDES ROCHA', status: 'completed', ativo: false });
+  for (const lista of [[ATIVO, CONCLUIDO], [CONCLUIDO, ATIVO]]) {
+    const t = identificarPorTexto(txt('RE: Carta', 'Instalação: 88101266'), lista);
+    assert.equal(t.tipo, 'conflito', 'texto');
+    assert.deepEqual(t.tipo === 'conflito' && [...t.codigos].sort(), ['PRJ-R1', 'PRJ-R2']);
+    const d = identificarPorDocumento({ nt: null, uc: '88101266', titular: null }, lista);
+    assert.equal(d.tipo, 'conflito', 'documento');
+  }
+});
+
+test('"88101266" junto com "188101266": cada número casa o seu projeto, por inteiro', () => {
+  const PROT = P({ project_id: 'p9', codigo: 'PRJ-P9', protocolo: '188101266', uc: '0055001001', titular: 'CARLA MENDES ROCHA' });
+  const lista = [...COM_UC_CURTA, PROT];
+  // só o de 9: é o protocolo do PRJ-P9; a UC 88101266 (PRJ-U8) não é achada dentro dele
+  const so9 = identificarPorTexto(txt('NT 188101266'), lista);
+  assert.equal(so9.tipo === 'achado' && so9.projeto.codigo, 'PRJ-P9');
+  assert.equal(so9.tipo === 'achado' && so9.por, 'protocolo');
+  // só o de 8: é a UC do PRJ-U8, não um pedaço do protocolo do PRJ-P9
+  const so8 = identificarPorTexto(txt('RE: Carta', 'Instalação: 88101266'), lista);
+  assert.equal(so8.tipo === 'achado' && so8.projeto.codigo, 'PRJ-U8');
+  assert.equal(so8.tipo === 'achado' && so8.por, 'uc');
+  // os dois juntos: dois projetos → conflito
+  const juntos = identificarPorTexto(txt('NT 188101266', 'Instalação: 88101266'), lista);
+  assert.equal(juntos.tipo, 'conflito');
+  assert.deepEqual(juntos.tipo === 'conflito' && [...juntos.codigos].sort(), ['PRJ-P9', 'PRJ-U8']);
+  // no nome do arquivo, também por inteiro
+  assert.equal(nomeTrazOutroProjeto('CARTA_188101266.pdf', UC8, lista), true);   // o protocolo do PRJ-P9
+  assert.equal(nomeTrazOutroProjeto('CARTA_188101266.pdf', PROT, lista), false); // o próprio
+  assert.equal(nomeTrazOutroProjeto('CARTA_88101266.pdf', PROT, lista), true);   // a UC do PRJ-U8
+});

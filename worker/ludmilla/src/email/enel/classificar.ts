@@ -191,12 +191,13 @@ const NEGACOES = 'nao|nem|nunca|jamais|nenhum|nenhuma|ninguem|nada|tampouco';
 const PALAVRAS_QUE_QUEBRAM = `vistoria|ainda|sem|se|${NEGACOES}|foi|esta|estao|sera|serao|e|ou|mas|porem|que`;
 // O ponto entre dígitos ("10.08.2026") não fecha o caminho; o "/", ":", "," e ";" colados
 // em dígito ("10/08/2026", "10:30", "5,5", "UC 12345/6") não são outro sujeito — com
-// espaço depois ("UC 12345, o projeto"), continuam sendo.
+// espaço depois ("UC 12345, o projeto") ou colados numa letra ("UC 12345/o projeto"),
+// continuam sendo.
 const CAMINHO_ATE_O_VERBO = String.raw`((?:(?!\b(?:${PALAVRAS_QUE_QUEBRAM})\b)(?:[^.]|(?<=\d)\.(?=\d))){0,160}?)`;
 const VISTORIA_COM_RESULTADO = new RegExp(
   String.raw`\bvistoria\b${CAMINHO_ATE_O_VERBO}\b(?:esta|foi)\s+(aprovad[ao]|reprovad[ao])\b`,
 );
-const OUTRO_SUJEITO_NO_CAMINHO = /(?<!\d)[,:;\/]\s*\S|(?<=\d)[,:;\/]\s+\S|[?!()|\u2013\u2014&]\s*\S|\s-\s*\S/;
+const OUTRO_SUJEITO_NO_CAMINHO = /(?<!\d)[,:;\/]\s*\S|(?<=\d)[,:;\/](?:\s+\S|[^\d\s])|[?!()|\u2013\u2014&]\s*\S|\s-\s*\S/;
 const NUCLEO_QUE_NAO_E_A_VISTORIA = /\b(?:solicitacao|pedido|agendamento|reagendamento|requerimento|abertura|marcacao|taxa|data|prazo|protocolo|nota|ordem|cadastro|documentacao|projeto|relatorio|laudo|formulario|ficha|termo|orcamento)\s+(?:de|da|do|para|pra)\s+(?:a\s+|sua\s+|essa\s+)?$/;
 const NEGA_OU_CONDICIONA = new RegExp(String.raw`\b(?:${NEGACOES}|ainda|sem|impossivel|se)\b`);
 // Fim de frase: ponto/;/!/? seguido de espaço (ou do fim). "21.08.2026" não quebra, e o
