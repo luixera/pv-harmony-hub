@@ -37,9 +37,9 @@ Valem para TODA tarefa, além do que ela pede.
 4. **"Bloqueado"** = cartão cujo `raw.motivo` abre com "não anexei ·" (a mesma regra de `detalheDoCartaoDeEmail`, da rodada da ENEL). A EDP bloqueada não abre cartão — segue visível em "O que ela leu na caixa", na aba Concessionárias. **"Dispensar"** = Ignorar.
 5. **A fazer feito aparece em "Aplicadas"**; "Ignoradas" nunca tem A fazer.
 6. **Selos "Documento anexado/bloqueado" nas linhas** vêm do `raw` do cartão de e-mail; na CPFL os anexos e pareceres aparecem só no detalhe.
-7. **Celular**: detalhe por cima (Sheet em tela cheia, não modal, com rodapé fixo); lado a lado só a partir de 1024 px. A barra das abas fica logo ACIMA da barra de atalhos do app (as duas visíveis).
+7. **Celular**: detalhe por cima (Sheet em tela cheia, não modal, com rodapé fixo); lado a lado só a partir de 1024 px. **A barra das abas fica NO TOPO da tela** (decisão do usuário, 22/10/2026 — embaixo já existe a barra de atalhos do app; duas barras empilhadas confundem). Isto VALE MAIS que qualquer trecho deste plano que ponha as abas embaixo.
 8. **O aviso do Desfazer aparece no alto** (não cobre os botões fixos do celular) e é clicável mesmo com o detalhe aberto.
-9. **Contador da barra lateral não muda** (só recomendações). A aba "Decidir" conta recomendações + A fazer.
+9. **Contador da barra lateral conta TUDO: recomendações pendentes + A fazer abertos** (decisão do usuário, 22/10/2026). A aba "Decidir" conta o mesmo. Isto VALE MAIS que qualquer trecho deste plano que mantenha o contador só com recomendações.
 10. **Criações na CPFL** mostram o código do projeto e o número da CPFL (`resultado.node`, senão `projects.cpfl_node_id`).
 11. **Migração** com timestamp `20261022200000` (a frente da ENEL já usa `20261022120000`).
 
