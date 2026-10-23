@@ -75,6 +75,9 @@ describe('cartaoBloqueado — só "não anexei · …"', () => {
     expect(cartaoBloqueado(comMotivo('não anexei ainda: a IA não leu o documento'))).toBe(false);
     expect(cartaoBloqueado(comMotivo('2 arquivo(s) não anexado(s): o nome traz outro número'))).toBe(false);
   });
+  it('só cartão de e-mail bloqueia: no portal o mesmo texto no raw não é bloqueio', () => {
+    expect(cartaoBloqueado({ ...U_CPFL, raw: { motivo: 'não anexei · x' } })).toBe(false);
+  });
   it('cartão do portal, sem motivo, não é', () => {
     expect(cartaoBloqueado(U_CPFL)).toBe(false);
   });
@@ -116,8 +119,38 @@ describe('filtrarItens — situação, tipo, concessionária e busca', () => {
     expect(chaves(filtrarItens(itens, { ...FILTRO_INICIAL, busca: 'jose alves' }))).toEqual(['u:u-cpfl-sem']);
   });
   it('busca por protocolo ignora zeros à esquerda (EDP)', () => {
-    expect(chaves(filtrarItens(itens, { ...FILTRO_INICIAL, busca: '45006443920' }))).toEqual(['u:u-edp']);
-    expect(chaves(filtrarItens(itens, { ...FILTRO_INICIAL, busca: '0045006443920' }))).toEqual(['u:u-edp']);
+    expect(chaves(filtrarItens(itens, { ...FILTRO_INICIAL, busca: '45000000001' }))).toEqual(['u:u-edp']);
+    expect(chaves(filtrarItens(itens, { ...FILTRO_INICIAL, busca: '0045000000001' }))).toEqual(['u:u-edp']);
+  });
+  it('busca por cada campo da linha: código, empresa, titular do cadastro e nome do portal', () => {
+    expect(chaves(filtrarItens(itens, { ...FILTRO_INICIAL, busca: 'prj-10001' }))).toEqual(['u:u-cpfl']);
+    expect(chaves(filtrarItens(itens, { ...FILTRO_INICIAL, busca: 'energia boa' }))).toEqual(['f:f-vistoria', 'u:u-edp']);
+    expect(chaves(filtrarItens(itens, { ...FILTRO_INICIAL, busca: 'diego martins' }))).toEqual(['f:f-vistoria']);
+    expect(chaves(filtrarItens(itens, { ...FILTRO_INICIAL, busca: 'ufv marta' }))).toEqual(['u:u-cpfl']);
+  });
+  it('busca pelo nome da concessionária acha a recomendação e o A fazer', () => {
+    expect(chaves(filtrarItens(itens, { ...FILTRO_INICIAL, busca: 'enel' })))
+      .toEqual(['u:u-enel-bloq', 'f:f-vistoria', 'u:u-enel-troca', 'f:f-devolucao']);
+    expect(chaves(filtrarItens(itens, { ...FILTRO_INICIAL, busca: 'cpfl paulista' }))).toEqual(['u:u-cpfl', 'u:u-cpfl-sem']);
+  });
+  it('o título do aviso não entra na busca (a spec não pede)', () => {
+    expect(chaves(filtrarItens(itens, { ...FILTRO_INICIAL, busca: 'voltou' }))).toEqual([]);
+    expect(chaves(filtrarItens(itens, { ...FILTRO_INICIAL, busca: 'virtual' }))).toEqual([]);
+  });
+  it('busca numérica: zeros a mais à esquerda ainda acham o protocolo (pelo começo do número)', () => {
+    expect(chaves(filtrarItens(itens, { ...FILTRO_INICIAL, busca: '0045000' }))).toEqual(['u:u-edp']);
+    expect(chaves(filtrarItens(itens, { ...FILTRO_INICIAL, busca: '0045000000002' }))).toEqual([]);
+  });
+  it('busca numérica não casa por engano: o termo sem zeros vale só contra o protocolo', () => {
+    // só zeros: virava "0" e casava com qualquer item que tivesse um 0 no texto (ex.: o protocolo 7009999)
+    expect(chaves(filtrarItens(itens, { ...FILTRO_INICIAL, situacao: 'todas', busca: '000000000' }))).toEqual([]);
+    const com000 = chaves(filtrarItens(itens, { ...FILTRO_INICIAL, busca: '000' }));
+    expect(com000).not.toContain('u:u-cpfl-sem');
+    expect(com000).not.toContain('f:f-devolucao');
+    // "0234" virava "234" e casava com o MEIO do protocolo 7001234; zero à esquerda não é trecho do meio
+    expect(chaves(filtrarItens(itens, { ...FILTRO_INICIAL, busca: '0234' }))).toEqual([]);
+    // um trecho literal continua casando: "0123" está dentro de 7001234
+    expect(chaves(filtrarItens(itens, { ...FILTRO_INICIAL, busca: '0123' }))).toEqual(['u:u-cpfl']);
   });
   it('o que foi decidido agora (esperando o Desfazer) sai da lista', () => {
     expect(chaves(filtrarItens(itens, FILTRO_INICIAL, new Set(['u:u-cpfl'])))).not.toContain('u:u-cpfl');
@@ -140,6 +173,8 @@ describe('proximaDepoisDe — o painel vai para a próxima pendente', () => {
     const todas = filtrarItens(itens, { ...FILTRO_INICIAL, situacao: 'todas' });
     expect(proximaDepoisDe(todas, 'u:u-enel-bloq')).toBe('f:f-vistoria');
     expect(proximaDepoisDe(todas.slice(0, 4), 'u:u-enel-bloq')).toBeNull();
+    // para baixo também: depois da ignorada vêm a aplicada (decidida) e só então a pendente
+    expect(proximaDepoisDe(todas, 'u:u-ignorada')).toBe('u:u-enel-bloq');
   });
   it('chave que sumiu da lista: a primeira pendente', () => expect(proximaDepoisDe(lista, 'u:nao-existe')).toBe('u:u-enel-bloq'));
 });

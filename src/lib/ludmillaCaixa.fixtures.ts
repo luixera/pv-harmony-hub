@@ -89,11 +89,11 @@ export const U_ENEL_BLOQUEADO = cartao('u-enel-bloq', {
 });
 /** EDP: parecer favorável, 2 documentos no card, protocolo com zero à esquerda. */
 export const U_EDP = cartao('u-edp', {
-  account_id: 'conta-edp', protocolo: '045006443920', titular_portal: 'Rita de Cássia Prado',
+  account_id: 'conta-edp', protocolo: '045000000001', titular_portal: 'Rita de Cássia Prado',
   status_portal: 'PARECER · FAVORAVEL', status_anterior: 'analysis', project_id: 'p-4', recomendacao: 'approved',
   detectado_em: '2026-10-21T14:00:00Z',
   raw: raw({
-    assunto: 'Parecer de acesso 045006443920', remetente: 'gd@edp.exemplo.test', resumo: 'Parecer favorável.',
+    assunto: 'Parecer de acesso 045000000001', remetente: 'gd@edp.exemplo.test', resumo: 'Parecer favorável.',
     anexos: 2, motivo: null, arquivo_lido: 'parecer.pdf',
   }),
   project: projeto('p-4', 'PRJ-10004', 'analysis', 'Rita de Cássia Prado', 'Energia Boa'),

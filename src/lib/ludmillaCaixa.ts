@@ -59,6 +59,8 @@ export interface ItemDaCaixa {
   selos: Selo[];
   /** já normalizado (sem acento, minúsculo) */
   textoDeBusca: string;
+  /** só os dígitos do protocolo, com os zeros à esquerda: a busca numérica sem zeros compara SÓ com ele */
+  protocoloNumerico: string;
   update: PortalUpdate | null;
   afazer: Afazer | null;
 }
@@ -124,9 +126,25 @@ export function rotuloDoAfazer(f: Pick<Afazer, 'tipo' | 'titulo'>): string {
   return t ? `A fazer: ${t}` : 'A fazer';
 }
 
-function textoDeBusca(partes: (string | null | undefined)[], protocolo: string | null | undefined): string {
-  const digitos = (protocolo ?? '').replace(/\D/g, '');
-  return normalizar([...partes, digitos ? semZeros(digitos) : null].filter(Boolean).join(' | '));
+/**
+ * O que a busca varre: o que a linha mostra — código, titular, nome no portal, empresa,
+ * concessionária e protocolo — nos DOIS tipos de linha. O título do A fazer não entra.
+ */
+function textoDeBusca(partes: (string | null | undefined)[]): string {
+  return normalizar(partes.filter(Boolean).join(' | '));
+}
+
+const soDigitos = (s: string | null | undefined) => (s ?? '').replace(/\D/g, '');
+
+/**
+ * Zero à esquerda é enfeite no número do protocolo (EDP: 045006443920 = 45006443920).
+ * Termo de dígitos que começa com zero ("0045006…") acha o protocolo pelo COMEÇO do número,
+ * ignorando os zeros dos dois lados. Só vale com algum dígito diferente de zero ("0000" não
+ * vira "0") e só contra os dígitos do protocolo — nunca contra o resto do texto.
+ */
+function casaProtocoloSemZeros(protocoloNumerico: string, termo: string): boolean {
+  const m = /^0+([1-9]\d*)$/.exec(termo);
+  return m !== null && semZeros(protocoloNumerico).startsWith(m[1]);
 }
 
 function selosDaRecomendacao(u: PortalUpdate, rotulo: EntradaDaCaixa['rotuloEtapa']): Selo[] {
@@ -157,29 +175,33 @@ export function itensDaCaixa(e: EntradaDaCaixa): ItemDaCaixa[] {
 
   const daRecomendacao = (u: PortalUpdate): ItemDaCaixa => {
     const { titular, noPortal, empresa } = identidadeDoCartao(u);
+    const concessionaria = e.nomeDaConta(u.account_id);
     const codigo = u.project?.code ?? null;
     return {
       chave: `u:${u.id}`, origem: 'recomendacao', id: u.id, accountId: u.account_id,
-      concessionaria: e.nomeDaConta(u.account_id), meio: meioDaConta(contaPorId.get(u.account_id)),
+      concessionaria, meio: meioDaConta(contaPorId.get(u.account_id)),
       quando: u.detectado_em, codigo, projectId: u.project?.id ?? u.project_id ?? null,
       titular, noPortal, empresa, protocolo: u.protocolo?.trim() || null,
       situacao: u.situacao, tipos: tiposDaRecomendacao(u), selos: selosDaRecomendacao(u, e.rotuloEtapa),
-      textoDeBusca: textoDeBusca([codigo, titular, noPortal, empresa, u.protocolo], u.protocolo),
+      textoDeBusca: textoDeBusca([codigo, titular, noPortal, empresa, concessionaria, u.protocolo]),
+      protocoloNumerico: soDigitos(u.protocolo),
       update: u, afazer: null,
     };
   };
 
   const doAfazer = (f: Afazer): ItemDaCaixa => {
     const { titular, empresa } = identidadeDoCartao({ titular_portal: null, project: f.project ?? null });
+    const concessionaria = e.nomeDaConta(f.account_id);
     const codigo = f.project?.code ?? null;
     return {
       chave: `f:${f.id}`, origem: 'afazer', id: f.id, accountId: f.account_id,
-      concessionaria: e.nomeDaConta(f.account_id), meio: meioDaConta(contaPorId.get(f.account_id)),
+      concessionaria, meio: meioDaConta(contaPorId.get(f.account_id)),
       quando: f.criado_em, codigo, projectId: f.project?.id ?? f.project_id ?? null,
       titular, noPortal: null, empresa, protocolo: null,
       situacao: f.feito_em ? 'feito' : 'pendente', tipos: ['afazer'],
       selos: [{ texto: rotuloDoAfazer(f), tom: 'afazer' }],
-      textoDeBusca: textoDeBusca([codigo, titular, empresa, f.titulo], null),
+      textoDeBusca: textoDeBusca([codigo, titular, empresa, concessionaria]),
+      protocoloNumerico: '',
       update: null, afazer: f,
     };
   };
@@ -187,11 +209,11 @@ export function itensDaCaixa(e: EntradaDaCaixa): ItemDaCaixa[] {
   return [...e.updates.map(daRecomendacao), ...e.afazeres.map(doAfazer)];
 }
 
-/** Todas as palavras precisam aparecer; número também casa sem os zeros à esquerda. */
+/** Todas as palavras precisam aparecer; o número do protocolo também casa com zeros a mais à esquerda. */
 export function casaBusca(item: ItemDaCaixa, busca: string): boolean {
   const termos = normalizar(busca).split(' ').filter(Boolean);
   return termos.every(t =>
-    item.textoDeBusca.includes(t) || (/^\d+$/.test(t) && item.textoDeBusca.includes(semZeros(t))));
+    item.textoDeBusca.includes(t) || casaProtocoloSemZeros(item.protocoloNumerico, t));
 }
 
 function casaSituacao(item: ItemDaCaixa, s: SituacaoDoFiltro): boolean {
