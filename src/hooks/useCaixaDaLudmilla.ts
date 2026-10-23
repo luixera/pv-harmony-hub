@@ -3,7 +3,7 @@ import { usePortalAccounts, usePortalUpdates } from '@/hooks/useLudmilla';
 import { useAfazeres } from '@/hooks/useLudmillaDecidir';
 import { useEnergyConcessionaires } from '@/hooks/useEnergyConcessionaires';
 import { useStatusLabel } from '@/hooks/useStatusLabel';
-import { itensDaCaixa, unirPorId, type SituacaoDoFiltro } from '@/lib/ludmillaCaixa';
+import { itensDaCaixa, unirDecididoPrimeiro, type SituacaoDoFiltro } from '@/lib/ludmillaCaixa';
 import { contagemDaLudmilla } from '@/lib/ludmillaContador';
 
 /**
@@ -26,8 +26,9 @@ export function useCaixaDaLudmilla(situacao: SituacaoDoFiltro) {
   }, [contas, concessionarias]);
 
   const itens = useMemo(() => itensDaCaixa({
-    updates: unirPorId(pendentes.data ?? [], daSituacao.data ?? []),
-    afazeres: unirPorId(afazeresPendentes.data ?? [], afazeresDaSituacao.data ?? []),
+    // no mesmo id vale a lista da situação (a decidida), não o pendente do cache velho
+    updates: unirDecididoPrimeiro(pendentes.data ?? [], daSituacao.data ?? []),
+    afazeres: unirDecididoPrimeiro(afazeresPendentes.data ?? [], afazeresDaSituacao.data ?? []),
     contas, nomeDaConta, rotuloEtapa: rotulo,
   }), [pendentes.data, daSituacao.data, afazeresPendentes.data, afazeresDaSituacao.data, contas, nomeDaConta, rotulo]);
 

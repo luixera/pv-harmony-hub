@@ -282,3 +282,15 @@ export function unirPorId<T extends { id: string }>(...listas: T[][]): T[] {
   for (const l of listas) for (const x of l) if (!vistos.has(x.id)) vistos.set(x.id, x);
   return [...vistos.values()];
 }
+
+/**
+ * Junta a consulta de PENDENTES com a consulta da SITUAÇÃO escolhida (que repete ids
+ * quando a situação é "todas"). Uma decisão só anda para frente (pendente → aplicada,
+ * ignorada ou feito), então no mesmo id vale a versão da lista da SITUAÇÃO, nunca a
+ * pendente, que é o cache compartilhado com a barra lateral e pode estar velho. Por
+ * isso `unirPorId` recebe a lista da situação PRIMEIRO (o primeiro repetido vence):
+ * inverter a ordem traz de volta o pendente velho por cima da decisão.
+ */
+export function unirDecididoPrimeiro<T extends { id: string }>(pendentes: T[], daSituacao: T[]): T[] {
+  return unirPorId(daSituacao, pendentes);
+}

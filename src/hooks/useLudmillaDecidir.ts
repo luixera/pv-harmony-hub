@@ -1,7 +1,10 @@
+import { useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
-import { useLudmillaDisponivel, type MensagemEmail } from '@/hooks/useLudmilla';
+import {
+  useAplicarUpdate, useIgnorarUpdate, useLudmillaDisponivel, type MensagemEmail,
+} from '@/hooks/useLudmilla';
 import type { Afazer, SituacaoDoFiltro } from '@/lib/ludmillaCaixa';
 import type {
   AnexoDoPortal, EventoDoProjeto, ParecerDoPortal, ProjetoDaCriacao, ProjetoDoDetalhe,
@@ -70,6 +73,44 @@ export function useMarcarAfazerFeito() {
     },
     onError: (e: Error) => toast.error(e.message),
   });
+}
+
+/**
+ * As três decisões da caixa (Aplicar, Ignorar, Feito) como a página as chama. Cada uma
+ * ESPERA a mutação (`mutateAsync` REJEITA na falha: é assim que a fila de decisões
+ * sabe que o banco recusou) e só então atualiza o que o painel de detalhe mostra.
+ * Aplicar e Ignorar (useLudmilla.ts) só invalidam `portal-updates` e `projects`; sem
+ * isto a "linha do tempo" e o "Quem" (UC/protocolo) do projeto ficavam com o que
+ * havia antes da decisão. A atualização não é esperada: a decisão já está gravada.
+ */
+export function useAcoesDaCaixa() {
+  const qc = useQueryClient();
+  const { mutateAsync: aplicarAsync } = useAplicarUpdate();
+  const { mutateAsync: ignorarAsync } = useIgnorarUpdate();
+  const { mutateAsync: feitoAsync } = useMarcarAfazerFeito();
+
+  return useMemo(() => {
+    const atualizarDetalhe = () => {
+      void qc.invalidateQueries({ queryKey: ['ludmilla-linha-do-tempo'] });
+      void qc.invalidateQueries({ queryKey: ['projeto-do-detalhe'] });
+    };
+    return {
+      aplicar: async (id: string, etapa: string | null): Promise<void> => {
+        await aplicarAsync({ id, status: etapa ?? undefined });
+        atualizarDetalhe();
+      },
+      ignorar: async (id: string): Promise<void> => {
+        await ignorarAsync(id);
+        atualizarDetalhe();
+      },
+      /** `false` = alguém da equipe já tinha marcado (o aviso já saiu em `useMarcarAfazerFeito`) */
+      feito: async (id: string): Promise<boolean> => {
+        const marcou = await feitoAsync(id);
+        atualizarDetalhe();
+        return marcou;
+      },
+    };
+  }, [qc, aplicarAsync, ignorarAsync, feitoAsync]);
 }
 
 /** "Este projeto na Ludmilla". */

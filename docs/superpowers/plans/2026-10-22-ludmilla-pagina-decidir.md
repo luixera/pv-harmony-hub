@@ -53,8 +53,9 @@ Valem para TODA tarefa, além do que ela pede.
 | `src/lib/ludmillaPainel.ts` (+ `.test.ts`) | 3 | saúde das contas, chips, alertas, "o que chegou", ações, textos, UC, criação |
 | `src/lib/ludmillaFilaDeDecisoes.ts` (+ `.test.ts`) | 4 | espera de 8 s com Desfazer, descarregar, falha |
 | `src/hooks/useFilaDeDecisoes.ts` | 4 | a fila em React: itens ocultos, aviso com Desfazer, `beforeunload` |
-| `src/hooks/useLudmillaDecidir.ts` | 5 | consultas novas (A fazer, mensagem, projeto, documentos, linha do tempo, criações) e "Feito" |
-| `src/hooks/useCaixaDaLudmilla.ts` | 5 | junta os hooks de hoje + A fazer e devolve os itens |
+| `src/hooks/useLudmillaDecidir.ts` | 5 | consultas novas (A fazer, mensagem, projeto, documentos, linha do tempo, criações), "Feito" e `useAcoesDaCaixa` (Aplicar/Ignorar/Feito + atualização do detalhe) |
+| `src/hooks/useCaixaDaLudmilla.ts` | 5 | junta os hooks de hoje + A fazer e devolve os itens; `useContadorDaLudmilla` (número da Sidebar) |
+| `src/lib/ludmillaContador.ts` (+ `.test.ts`) | 5 | `contagemDaLudmilla`: recomendações pendentes + A fazer abertos, via `contarPendentes` |
 | `src/hooks/useAgora.ts` | 6 | relógio de minuto para "há X min" |
 | `src/components/ludmilla/decidir/visual.ts` | 6 | ícones, cores, data curta |
 | `src/components/ludmilla/decidir/LinhaDaCaixa.tsx` | 6 | a linha compacta |
@@ -2171,13 +2172,18 @@ git show --stat HEAD
 **Files:**
 - Create: `src/hooks/useLudmillaDecidir.ts`
 - Create: `src/hooks/useCaixaDaLudmilla.ts`
+- Create: `src/lib/ludmillaContador.ts` (+ `ludmillaContador.test.ts`) — a soma do contador (decisão 9)
+- Create: `src/hooks/useLudmillaDecidir.test.ts`, `src/lib/ludmillaCaixa.unir.test.ts` — rodada de correção 1
+- Modify (só acrescentar): `src/lib/ludmillaCaixa.ts` (`unirDecididoPrimeiro`)
 - Test: `$RASCUNHO/verificar-selects.mjs` (fora do repositório; não commitar)
 
 **Interfaces:**
-- Consumes: `supabase` (`@/integrations/supabase/client`); `useLudmillaDisponivel`, `usePortalAccounts`, `usePortalUpdates`, tipos `MensagemEmail` (`@/hooks/useLudmilla`); `useEnergyConcessionaires`; `useStatusLabel`; de `@/lib/ludmillaCaixa`: `Afazer`, `SituacaoDoFiltro`, `itensDaCaixa`, `unirPorId`; de `@/lib/ludmillaPainel`: `AnexoDoPortal`, `ParecerDoPortal`, `EventoDoProjeto`, `ProjetoDoDetalhe`, `ProjetoDaCriacao`. RPCs `ludmilla_afazer_feito(p_afazer_id)` e `ludmilla_linha_do_tempo(p_project_id, p_limite)` (Task 1).
+- Consumes: `supabase` (`@/integrations/supabase/client`); `useLudmillaDisponivel`, `usePortalAccounts`, `usePortalUpdates`, `useAplicarUpdate`, `useIgnorarUpdate`, tipos `MensagemEmail` (`@/hooks/useLudmilla`); `useEnergyConcessionaires`; `useStatusLabel`; de `@/lib/ludmillaCaixa`: `Afazer`, `SituacaoDoFiltro`, `itensDaCaixa`, `contarPendentes`, `unirDecididoPrimeiro` (que usa `unirPorId`); de `@/lib/ludmillaPainel`: `AnexoDoPortal`, `ParecerDoPortal`, `EventoDoProjeto`, `ProjetoDoDetalhe`, `ProjetoDaCriacao`. RPCs `ludmilla_afazer_feito(p_afazer_id)` e `ludmilla_linha_do_tempo(p_project_id, p_limite)` (Task 1).
 - Produces:
-  - em `@/hooks/useLudmillaDecidir`: constantes `SELECT_AFAZER`, `SELECT_MENSAGEM`, `SELECT_PROJETO_DO_DETALHE`, `SELECT_ANEXOS_DO_PROJETO`, `SELECT_PARECERES_DO_PROJETO`, `SELECT_PROJETO_DA_CRIACAO`; `urlDoDocumento(caminho): Promise<string | null>`; `useAfazeres(situacao)` (queryKey `['portal-afazeres', situacao]`); `useMarcarAfazerFeito()` (mutação `(id: string) => Promise<boolean>`); `useLinhaDoTempo(projectId)`; `useMensagemDaRecomendacao(updateId)`; `useProjetoDoDetalhe(projectId)`; `useDocumentosDoProjeto(projectId)` → `{ anexos, pareceres }`; `useProjetosDasCriacoes(ids)`.
-  - em `@/hooks/useCaixaDaLudmilla`: `useCaixaDaLudmilla(situacao): { itens: ItemDaCaixa[]; contas: PortalAccount[]; nomeDaConta(id): string; carregando: boolean; buscando: boolean; erro: unknown; tentarDeNovo(): void }`.
+  - em `@/hooks/useLudmillaDecidir`: constantes `SELECT_AFAZER`, `SELECT_MENSAGEM`, `SELECT_PROJETO_DO_DETALHE`, `SELECT_ANEXOS_DO_PROJETO`, `SELECT_PARECERES_DO_PROJETO`, `SELECT_PROJETO_DA_CRIACAO`; `urlDoDocumento(caminho): Promise<string | null>`; `useAfazeres(situacao)` (queryKey `['portal-afazeres', situacao]`); `useMarcarAfazerFeito()` (mutação `(id: string) => Promise<boolean>`); `useLinhaDoTempo(projectId)`; `useMensagemDaRecomendacao(updateId)`; `useProjetoDoDetalhe(projectId)`; `useDocumentosDoProjeto(projectId)` → `{ anexos, pareceres }`; `useProjetosDasCriacoes(ids)`; **`useAcoesDaCaixa(): { aplicar(id, etapa: string | null): Promise<void>; ignorar(id): Promise<void>; feito(id): Promise<boolean> }`** — espera `mutateAsync` (que REJEITA na falha) e só então invalida `['ludmilla-linha-do-tempo']` e `['projeto-do-detalhe']`, além do que a mutação original já invalida (`useAplicarUpdate`/`useIgnorarUpdate` só invalidam `portal-updates` e `projects`); é o que a Task 6 usa no lugar dos `mutateAsync` diretos.
+  - em `@/hooks/useCaixaDaLudmilla`: `useCaixaDaLudmilla(situacao): { itens: ItemDaCaixa[]; contas: PortalAccount[]; nomeDaConta(id): string; carregando: boolean; buscando: boolean; erro: unknown; tentarDeNovo(): void }` (une pendentes + situação com `unirDecididoPrimeiro`: no mesmo id vale a versão da situação, não o pendente do cache velho); **`useContadorDaLudmilla(): { total: number; porConta: Record<string, number>; carregando: boolean; erro: boolean }`** — o número da barra lateral (decisão 9: recomendações pendentes + A fazer abertos), leve, com as mesmas chaves de `useCaixaDaLudmilla`; é o que a Task 8 põe na Sidebar.
+  - em `@/lib/ludmillaContador`: `contagemDaLudmilla(updates, afazeres, ocultos?): { total; porConta }` — monta a entrada de `contarPendentes` (Task 2), que decide a soma; é o que `useContadorDaLudmilla` chama.
+  - em `@/lib/ludmillaCaixa` (acrescentada): `unirDecididoPrimeiro<T extends { id: string }>(pendentes: T[], daSituacao: T[]): T[]` — o repetido da lista da situação (decidida, mais nova) vence; inverter a ordem traz o pendente velho de volta.
 
 - [ ] **Step 1: Medir o baseline do tsc**
 
@@ -2416,7 +2422,7 @@ import { usePortalAccounts, usePortalUpdates } from '@/hooks/useLudmilla';
 import { useAfazeres } from '@/hooks/useLudmillaDecidir';
 import { useEnergyConcessionaires } from '@/hooks/useEnergyConcessionaires';
 import { useStatusLabel } from '@/hooks/useStatusLabel';
-import { itensDaCaixa, unirPorId, type SituacaoDoFiltro } from '@/lib/ludmillaCaixa';
+import { itensDaCaixa, unirDecididoPrimeiro, type SituacaoDoFiltro } from '@/lib/ludmillaCaixa';
 
 /**
  * Os itens da caixa: as pendentes SEMPRE (para os contadores) e as da situação
@@ -2438,8 +2444,9 @@ export function useCaixaDaLudmilla(situacao: SituacaoDoFiltro) {
   }, [contas, concessionarias]);
 
   const itens = useMemo(() => itensDaCaixa({
-    updates: unirPorId(pendentes.data ?? [], daSituacao.data ?? []),
-    afazeres: unirPorId(afazeresPendentes.data ?? [], afazeresDaSituacao.data ?? []),
+    // no mesmo id vale a lista da situação (a decidida), não o pendente do cache velho
+    updates: unirDecididoPrimeiro(pendentes.data ?? [], daSituacao.data ?? []),
+    afazeres: unirDecididoPrimeiro(afazeresPendentes.data ?? [], afazeresDaSituacao.data ?? []),
     contas, nomeDaConta, rotuloEtapa: rotulo,
   }), [pendentes.data, daSituacao.data, afazeresPendentes.data, afazeresDaSituacao.data, contas, nomeDaConta, rotulo]);
 
@@ -2456,6 +2463,8 @@ export function useCaixaDaLudmilla(situacao: SituacaoDoFiltro) {
   };
 }
 ```
+
+> **Acréscimos já feitos no código (commit da Task 5 e da rodada de correção 1; o bloco acima mostra só o hook principal).** Em `useCaixaDaLudmilla.ts` mora também `useContadorDaLudmilla()` (decisão 9, soma por `contagemDaLudmilla` de `src/lib/ludmillaContador.ts`). Em `useLudmillaDecidir.ts` mora também `useAcoesDaCaixa()`. Em `ludmillaCaixa.ts` foi acrescentada `unirDecididoPrimeiro(pendentes, daSituacao)`. O código real é a fonte; a lista de "Produces" acima diz o contrato de cada um.
 
 - [ ] **Step 6: Rodar a verificação e ver passar**
 
@@ -2505,7 +2514,7 @@ git show --stat HEAD
 - Test (harness, apagar antes do commit): `harness-ludmilla.html`, `src/harness-ludmilla.tsx`
 
 **Interfaces:**
-- Consumes: Tasks 2–5 (`ItemDaCaixa`, `FiltroDaCaixa`, `filtrarItens`, `proximaDepoisDe`, `selecaoValida`, `acoesDoItem`, `textoDaDecisao`, `situacaoDecidida`, `oQueChegou`, `ressalvaDoCartao`, `ucDoProjeto`, `cartaoBloqueado`, `useFilaDeDecisoes`, os hooks de `useLudmillaDecidir`, `useCaixaDaLudmilla`); `useAplicarUpdate`, `useIgnorarUpdate` (`@/hooks/useLudmilla`); `textoDaTrocaDeProtocolo`, `rotuloCasamento`, `mensagemDeErro` (`@/lib/ludmillaCartao`); `useStatusLabel`, `useStatusOrder`; `useWindowSize`.
+- Consumes: Tasks 2–5 (`ItemDaCaixa`, `FiltroDaCaixa`, `filtrarItens`, `proximaDepoisDe`, `selecaoValida`, `acoesDoItem`, `textoDaDecisao`, `situacaoDecidida`, `oQueChegou`, `ressalvaDoCartao`, `ucDoProjeto`, `cartaoBloqueado`, `useFilaDeDecisoes`, os hooks de `useLudmillaDecidir` — entre eles `useAcoesDaCaixa`, que NÃO se troca por `useAplicarUpdate`/`useIgnorarUpdate`/`useMarcarAfazerFeito` diretos: só ele atualiza a linha do tempo e o detalhe do projeto depois da decisão —, `useCaixaDaLudmilla`); `textoDaTrocaDeProtocolo`, `rotuloCasamento`, `mensagemDeErro` (`@/lib/ludmillaCartao`); `useStatusLabel`, `useStatusOrder`; `useWindowSize`.
 - Produces:
   - `useAgora(intervaloMs?: number): number`.
   - `visual.ts`: `ICONE_DO_MEIO`, `NOME_DO_MEIO`, `COR_DO_SELO`, `corDoStatusDoPortal(status)`, `dataCurta(iso)`.
@@ -3336,10 +3345,9 @@ export function DetalheConectado({ item, layout, etapas, rotuloEtapa, onDecidir,
 Crie `src/components/ludmilla/decidir/AbaDecidirConectada.tsx`:
 
 ```tsx
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAplicarUpdate, useIgnorarUpdate } from '@/hooks/useLudmilla';
-import { useMarcarAfazerFeito } from '@/hooks/useLudmillaDecidir';
+import { useAcoesDaCaixa } from '@/hooks/useLudmillaDecidir';
 import { useCaixaDaLudmilla } from '@/hooks/useCaixaDaLudmilla';
 import { useStatusLabel, useStatusOrder } from '@/hooks/useStatusLabel';
 import { useWindowSize } from '@/hooks/useWindowSize';
@@ -3357,19 +3365,12 @@ export function AbaDecidirConectada({ contaId, ocultos, decidir, agora }: {
 }) {
   const [filtro, setFiltro] = useState<FiltroDaCaixa>(FILTRO_INICIAL);
   const caixa = useCaixaDaLudmilla(filtro.situacao);
-  const aplicar = useAplicarUpdate();
-  const ignorar = useIgnorarUpdate();
-  const feito = useMarcarAfazerFeito();
+  // espera a mutação (rejeita na falha) e atualiza a linha do tempo e o detalhe do projeto
+  const acoes: AcoesDaCaixa = useAcoesDaCaixa();
   const rotulo = useStatusLabel();
   const etapas = useStatusOrder();
   const navigate = useNavigate();
   const { isDesktop } = useWindowSize();
-
-  const acoes = useMemo<AcoesDaCaixa>(() => ({
-    aplicar: (id, etapa) => aplicar.mutateAsync({ id, status: etapa ?? undefined }),
-    ignorar: id => ignorar.mutateAsync(id),
-    feito: id => feito.mutateAsync(id),
-  }), [aplicar.mutateAsync, ignorar.mutateAsync, feito.mutateAsync]);
 
   return (
     <AbaDecidir
@@ -3768,7 +3769,7 @@ git show --stat HEAD
 - Test (harness, apagar antes do commit): `harness-pagina.html`, `src/harness-pagina.tsx`, `src/harness-duble/supabase.ts`, `src/harness-duble/AuthContext.tsx`, `vite.harness.config.ts`
 
 **Interfaces:**
-- Consumes: tudo das Tasks 1–7 (`AbaDecidirConectada`, `useFilaDeDecisoes`, `useCaixaDaLudmilla`, `useAgora`, `FaixaDeSaude`, `AlertasDasContas`, `BarraDeAbas`, `ABAS_DA_LUDMILLA`, `chipsDaFaixa`, `alertasDasContas`, `contarPendentes`, `rotuloDaCriacao`, `useProjetosDasCriacoes`, `dataCurta`); de `@/hooks/useLudmilla`: `estadoDaEstacao`, `useLudmillaDisponivel`, `usePedirRun`, `usePortalCaptchas`, `useRunsCriacaoCpfl`, `useResponderCaptcha`, `urlDoPrint`, `usePassosCriacao`, `useRegistroLudmilla`, `useUltimoRunEmail` e tipos; `useAgentConfig`; `RegrasEmail`; `ContadoresEmail`, `MensagensEmail`.
+- Consumes: tudo das Tasks 1–7 (`AbaDecidirConectada`, `useFilaDeDecisoes`, `useCaixaDaLudmilla`, **`useContadorDaLudmilla`** (Task 5; para a Sidebar — a soma vem de `contagemDaLudmilla`, não se reimplementa), `useAgora`, `FaixaDeSaude`, `AlertasDasContas`, `BarraDeAbas`, `ABAS_DA_LUDMILLA`, `chipsDaFaixa`, `alertasDasContas`, `contarPendentes`, `rotuloDaCriacao`, `useProjetosDasCriacoes`, `dataCurta`); de `@/hooks/useLudmilla`: `estadoDaEstacao`, `useLudmillaDisponivel`, `usePedirRun`, `usePortalCaptchas`, `useRunsCriacaoCpfl`, `useResponderCaptcha`, `urlDoPrint`, `usePassosCriacao`, `useRegistroLudmilla`, `useUltimoRunEmail` e tipos; `useAgentConfig`; `RegrasEmail`; `ContadoresEmail`, `MensagensEmail`.
 - Produces: a rota `/ludmilla` nova (export default `Ludmilla`, mesmo caminho, nada muda em `App.tsx`). Some o export `LinhaRecomendacao` (ninguém mais o importa).
 
 - [ ] **Step 0: Portão — a rodada da ENEL já foi commitada?**
@@ -4406,6 +4407,15 @@ Confira que ninguém importava o que sumiu:
 
 Run: `grep -rn "LinhaRecomendacao" src`
 Expected: nenhuma linha.
+
+**Sidebar (decisão 9 do usuário — o contador soma recomendações pendentes + A fazer abertos).** Em `src/components/layout/Sidebar.tsx`, troque as linhas ~105-106 (`const { data: recomendacoes = [] } = usePortalUpdates('pendente');` e `const ludmillaBadge = recomendacoes.length;`) por exatamente:
+
+```tsx
+const { total, carregando, erro } = useContadorDaLudmilla();
+const ludmillaBadge = carregando ? 0 : total;
+```
+
+(importe `useContadorDaLudmilla` de `@/hooks/useCaixaDaLudmilla` e tire `usePortalUpdates` do import de `@/hooks/useLudmilla`, se mais nada na Sidebar o usar). O selo da Ludmilla só é desenhado no menu em gaveta (`badge`, linhas ~178-192; o menu fixo de computador, ~260, hoje só conta tarefas e não muda): quando `erro` for verdadeiro e o item for `/ludmilla`, ponha um `title` de aviso no selo, por exemplo `title="Não foi possível atualizar o número de pendências da Ludmilla"`; o número continua sendo `ludmillaBadge`. O hook só consulta para a equipe do GD Manager (`useLudmillaDisponivel` já está dentro dele) e usa as mesmas chaves da página, então não há requisição a mais. Prova: `grep -n "usePortalUpdates\|recomendacoes" src/components/layout/Sidebar.tsx` não lista mais a contagem antiga.
 
 - [ ] **Step 8: Verificar tipos e build antes da prova**
 
