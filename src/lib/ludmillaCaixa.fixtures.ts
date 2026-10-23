@@ -5,6 +5,7 @@
  */
 import type { MensagemEmail, PortalAccount, PortalUpdate } from '@/hooks/useLudmilla';
 import type { Afazer } from '@/lib/ludmillaCaixa';
+import type { AnexoDoPortal, EventoDoProjeto, ParecerDoPortal } from '@/lib/ludmillaPainel';
 
 export const TENANT = '00000000-0000-4000-8000-0000000000aa';
 /** "Agora" fixo dos testes: 22/10/2026 12:00 UTC. */
@@ -147,3 +148,38 @@ export const MENSAGEM_DA_TROCA: MensagemEmail = {
   concluida: true, tentativas: 1, arquivo_lido: 'carta-900000222.pdf', update_id: 'u-enel-troca',
   created_at: '2026-10-21T09:00:00Z', project: null,
 };
+
+export const DOCUMENTOS_DE_EXEMPLO: { anexos: AnexoDoPortal[]; pareceres: ParecerDoPortal[] } = {
+  anexos: [
+    {
+      id: 'a-1', protocolo: '900000222', nome_arquivo: 'carta-900000222.pdf', situacao: 'enviado', motivo: null,
+      enviado_em: '2026-10-21T09:01:00Z', created_at: '2026-10-21T09:00:30Z',
+      document: { file_url: 'exemplo/p-2/carta-900000222.pdf', file_name: 'carta-900000222.pdf' },
+    },
+    {
+      id: 'a-2', protocolo: '900000222', nome_arquivo: 'assinatura.png', situacao: 'bloqueado',
+      motivo: 'imagem de assinatura', enviado_em: null, created_at: '2026-10-21T09:00:31Z', document: null,
+    },
+  ],
+  pareceres: [
+    { id: 'pa-1', protocolo: '7001234', data: '19/10/2026', analise: 'Análise técnica', status: 'APROVADO', created_at: '2026-10-20T11:00:00Z' },
+  ],
+};
+
+export const LINHA_DO_TEMPO_DE_EXEMPLO: EventoDoProjeto[] = [
+  {
+    quando: '2026-10-21T09:00:00Z', ator: 'ludmilla', quem: 'Ludmilla', acao: 'email',
+    titulo: 'E-mail lido: Carta de aprovação do projeto', detalhe: 'naoresponda@enel.exemplo.test · A ENEL aprovou o projeto.',
+    situacao: 'ok', project_id: 'p-2', projeto: 'PRJ-10002', protocolo: null,
+  },
+  {
+    quando: '2026-10-21T09:00:00Z', ator: 'ludmilla', quem: 'Ludmilla', acao: 'recomendacao',
+    titulo: 'Mudança no portal: CARTA_PROJETO · FAVORAVEL', detalhe: 'Protocolo 900000222 · sugere approved',
+    situacao: 'ok', project_id: 'p-2', projeto: 'PRJ-10002', protocolo: '900000222',
+  },
+  {
+    quando: '2026-10-10T14:00:00Z', ator: 'equipe', quem: 'Bia Souza', acao: 'aplicada',
+    titulo: 'Recomendação aplicada', detalhe: 'Protocolo 900000111 → documentation',
+    situacao: 'ok', project_id: 'p-2', projeto: 'PRJ-10002', protocolo: '900000111',
+  },
+];
