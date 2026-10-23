@@ -4,6 +4,7 @@
 // vira protocolo e a trava do titular. Dados 100% inventados.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync, readdirSync } from 'node:fs';
 import {
   avisosEnel, janelaDeBusca, precisaLerPdf, recomendacaoCabe, recomendacaoEnel, remetentesDoRun,
   remetentesParaBuscar, titularDeOutraPessoa, trocaDeProtocolo,
@@ -192,4 +193,72 @@ test('M-2: nome que nem bate consigo mesmo (sem dois nomes de 3+ letras) é falt
 test('R2: pessoa claramente diferente bloqueia; o mesmo nome com acento e caixa não', () => {
   assert.equal(titularDeOutraPessoa('ZULMIRA PEDROSO CAVALHEIRO', 'HERMINIO TAVARES BRANDALISE'), true);
   assert.equal(titularDeOutraPessoa('ZULMIRA PEDROSO CAVALHEIRO', 'Zulmira Pedroso Cavalheiro'), false);
+});
+
+// ── A fazer da equipe: o TIPO sai do TÍTULO do aviso ────────────────────────────
+// A RPC `ludmilla_email_avisar` (migração 20261022200000) deduz `portal_afazeres.tipo`
+// do título que `avisosEnel` manda, por ILIKE. Se alguém reescrever o texto do aviso, o
+// A fazer cairia em 'aviso' em silêncio e a tela perderia o ícone e a ação certa.
+// Este teste lê o CASE da migração MAIS RECENTE que define a função e o aplica aos
+// títulos reais, então cai tanto se o aviso mudar quanto se o padrão do banco mudar.
+const PASTA_DAS_MIGRACOES = new URL('../../../../supabase/migrations/', import.meta.url);
+
+interface RegrasDoTipo { padroes: Array<{ ilike: string; tipo: string }>; senao: string }
+
+function regrasDoTipoDoAfazer(): RegrasDoTipo {
+  const arquivos = readdirSync(PASTA_DAS_MIGRACOES).filter(f => f.endsWith('.sql')).sort();
+  let funcao = '';
+  for (const f of arquivos) {
+    const sql = readFileSync(new URL(f, PASTA_DAS_MIGRACOES), 'utf8');
+    const i = sql.search(/CREATE OR REPLACE FUNCTION public\.ludmilla_email_avisar\(/i);
+    if (i >= 0) funcao = sql.slice(i); // a última migração que a (re)define é a que vale
+  }
+  assert.notEqual(funcao, '', 'nenhuma migração define ludmilla_email_avisar');
+  const aposInsert = funcao.slice(funcao.search(/INSERT INTO public\.portal_afazeres/i));
+  const caso = /CASE\b([\s\S]*?)\bEND\b/.exec(aposInsert);
+  assert.ok(caso, 'o CASE do tipo do A fazer não foi achado na migração');
+  const padroes = [...caso[1].matchAll(/WHEN\s+p_titulo\s+ILIKE\s+'([^']+)'\s+THEN\s+'([^']+)'/gi)]
+    .map(m => ({ ilike: m[1], tipo: m[2] }));
+  const senao = /ELSE\s+'([^']+)'/i.exec(caso[1]);
+  assert.ok(senao, 'o ELSE do tipo do A fazer não foi achado na migração');
+  return { padroes, senao: senao[1] };
+}
+
+/** ILIKE do Postgres: `%` = qualquer trecho, `_` = um caractere, sem diferenciar maiúscula. */
+function casaIlike(padrao: string, texto: string): boolean {
+  const fonte = [...padrao].map(c =>
+    c === '%' ? '[\\s\\S]*' : c === '_' ? '[\\s\\S]' : c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('');
+  return new RegExp(`^${fonte}$`, 'iu').test(texto);
+}
+
+/** O que o banco grava em `tipo` para este título: o primeiro WHEN que casa, senão o ELSE. */
+function tipoNoBanco(titulo: string, r: RegrasDoTipo): string {
+  return r.padroes.find(p => casaIlike(p.ilike, titulo))?.tipo ?? r.senao;
+}
+
+test('A fazer: o parser achou os padrões da migração (senão o teste abaixo não provaria nada)', () => {
+  const r = regrasDoTipoDoAfazer();
+  assert.deepEqual(r.padroes.map(p => p.tipo), ['devolucao', 'vistoria_aprovada', 'troca_falhou']);
+  assert.equal(r.senao, 'aviso');
+  assert.equal(casaIlike('%vistoria%aprovada%', 'Vistoria virtual APROVADA na ENEL'), true);
+  assert.equal(casaIlike('%rel_gio%', 'A ENEL não trocou o relógio'), true);
+  assert.equal(casaIlike('%voltou%', 'nada a ver'), false);
+});
+
+test('A fazer: os 3 títulos REAIS de avisosEnel viram o tipo certo no banco (e nenhum cai em "aviso")', () => {
+  const r = regrasDoTipoDoAfazer();
+  const p = { codigo: 'PRJ-A' };
+  const [devolucao] = avisosEnel('devolucao', null, null, null);
+  const [vistoria] = avisosEnel('resultado_vistoria', { tipo: 'resultado_vistoria', aprovada: true }, null, p);
+  const [troca] = avisosEnel('troca_relogio', { tipo: 'troca_relogio', estado: 'nao_executada', motivo: 'x' }, null, p);
+  assert.equal(tipoNoBanco(devolucao.titulo, r), 'devolucao', devolucao.titulo);
+  assert.equal(tipoNoBanco(vistoria.titulo, r), 'vistoria_aprovada', vistoria.titulo);
+  assert.equal(tipoNoBanco(troca.titulo, r), 'troca_falhou', troca.titulo);
+  // o vídeo aprovado que chega pela carta (leitura do PDF) usa o mesmo título
+  const [pelaCarta] = avisosEnel('carta_projeto', null, { ok: true, tipo: 'resultado_vistoria', veredito: 'favoravel' }, p);
+  assert.equal(pelaCarta.titulo, vistoria.titulo);
+});
+
+test('A fazer: título que ninguém previu vira "aviso" (a tela mostra o próprio título)', () => {
+  assert.equal(tipoNoBanco('📡 Algo que a ENEL mandou e ninguém previu', regrasDoTipoDoAfazer()), 'aviso');
 });
