@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  acoesDoItem, alertasDasContas, chipsDaFaixa, haQuantoTempo, oQueChegou, ressalvaDoCartao, rotuloDaCriacao,
+  acoesDoItem, alertasDasContas, chipsDaFaixa, etapaEfetiva, haQuantoTempo, oQueChegou, ressalvaDoCartao, rotuloDaCriacao,
   saudeDaConta, situacaoDecidida, textoDaDecisao, ucDoProjeto,
 } from './ludmillaPainel';
 import { itensDaCaixa } from './ludmillaCaixa';
@@ -16,6 +16,10 @@ const itens = itensDaCaixa({
   nomeDaConta: nomeDaContaDeExemplo, rotuloEtapa: rotuloDeExemplo,
 });
 const item = (c: string) => itens.find(i => i.chave === c)!;
+const ESTACAO_ONLINE = { online: true, texto: 'estação online' };
+const ESTACAO_OFFLINE = { online: false, texto: 'estação offline há 2 h' };
+/** O mesmo item, mas o cartão não traz etapa recomendada (o que o `coalesce` do banco usaria). */
+const semSugestao = (c: string) => ({ ...item(c), update: { ...item(c).update!, recomendacao: null } });
 
 describe('haQuantoTempo', () => {
   it('minutos, horas e dias', () => {
@@ -83,7 +87,7 @@ describe('alertasDasContas', () => {
   it('erro e sessão expirada viram alerta; conta em dia não', () => {
     const a = alertasDasContas(
       [{ ...CONTA_CPFL, situacao: 'erro', ultimo_erro: 'Tempo esgotado ao abrir a lista' }, CONTA_ELEKTRO, CONTA_ENEL],
-      nomeDaContaDeExemplo, true);
+      nomeDaContaDeExemplo, true, () => ESTACAO_ONLINE);
     expect(a).toEqual([
       { chave: 'erro:conta-cpfl', tom: 'erro', titulo: 'CPFL Paulista: a última leitura deu erro', detalhe: 'Tempo esgotado ao abrir a lista' },
       { chave: 'sessao:conta-elektro', tom: 'atencao', titulo: 'Elektro: sessão expirada', detalhe: 'A estação espera alguém entrar no portal e digitar o código da imagem.' },
@@ -117,7 +121,7 @@ describe('oQueChegou e ressalvaDoCartao', () => {
   it('ressalva: a da mensagem, senão a do cartão; vazio é null', () => {
     expect(ressalvaDoCartao(U_ENEL_BLOQUEADO, null)).toBe('não anexei · o documento é de "Carlos Souza" e o projeto é de "Ana Paula Reis"');
     expect(ressalvaDoCartao(U_EDP, null)).toBeNull();
-    expect(ressalvaDoCartao(U_EDP, { ...MENSAGEM_DA_TROCA, motivo: '  ' })).toBeNull();
+    expect(ressalvaDoCartao(U_EDP, { ...MENSAGEM_DA_TROCA, update_id: 'u-edp', motivo: '  ' })).toBeNull();
   });
 });
 
@@ -125,7 +129,7 @@ describe('acoesDoItem — os botões do detalhe', () => {
   it('troca de protocolo: com etapa "Aplicar etapa e protocolo", sem etapa "Atualizar protocolo"', () => {
     expect(acoesDoItem(item('u:u-enel-troca'), 'approved').principal)
       .toEqual({ acao: 'aplicar', rotulo: 'Aplicar etapa e protocolo', habilitada: true, porque: null });
-    expect(acoesDoItem(item('u:u-enel-troca'), null).principal).toMatchObject({ rotulo: 'Atualizar protocolo', habilitada: true });
+    expect(acoesDoItem(semSugestao('u:u-enel-troca'), null).principal).toMatchObject({ rotulo: 'Atualizar protocolo', habilitada: true });
   });
   it('mudar etapa: "Aplicar" e "Ignorar"', () => {
     expect(acoesDoItem(item('u:u-cpfl'), 'approved')).toEqual({
@@ -134,7 +138,7 @@ describe('acoesDoItem — os botões do detalhe', () => {
     });
   });
   it('sem etapa escolhida, o Aplicar espera e diz por quê', () => {
-    expect(acoesDoItem(item('u:u-cpfl'), '').principal)
+    expect(acoesDoItem(semSugestao('u:u-cpfl'), '').principal)
       .toEqual({ acao: 'aplicar', rotulo: 'Aplicar', habilitada: false, porque: 'Escolha a etapa para onde mover o card.' });
   });
   it('bloqueado: "Dispensar"', () => {
@@ -157,12 +161,12 @@ describe('acoesDoItem — os botões do detalhe', () => {
 
 describe('textoDaDecisao — o aviso com Desfazer diz o que vai acontecer', () => {
   it('cada caso', () => {
-    expect(textoDaDecisao(item('u:u-cpfl'), 'aplicar', 'Aprovado')).toBe('PRJ-10001 vai para Aprovado');
-    expect(textoDaDecisao(item('u:u-enel-troca'), 'aplicar', 'Aprovado')).toBe('PRJ-10002 vai para Aprovado e grava o protocolo 900000222');
-    expect(textoDaDecisao(item('u:u-enel-troca'), 'aplicar', null)).toBe('PRJ-10002: o protocolo do cadastro vai virar 900000222');
-    expect(textoDaDecisao(item('u:u-cpfl'), 'ignorar', null)).toBe('PRJ-10001: recomendação ignorada');
-    expect(textoDaDecisao(item('u:u-enel-bloq'), 'ignorar', null)).toBe('PRJ-10003: documento bloqueado dispensado');
-    expect(textoDaDecisao(item('f:f-devolucao'), 'feito', null)).toBe('ENEL SP: marcado como feito');
+    expect(textoDaDecisao(item('u:u-cpfl'), 'aplicar', 'approved', rotuloDeExemplo)).toBe('PRJ-10001 vai para Aprovado');
+    expect(textoDaDecisao(item('u:u-enel-troca'), 'aplicar', 'approved', rotuloDeExemplo)).toBe('PRJ-10002 vai para Aprovado e grava o protocolo 900000222');
+    expect(textoDaDecisao(semSugestao('u:u-enel-troca'), 'aplicar', null, rotuloDeExemplo)).toBe('PRJ-10002: o protocolo do cadastro vai virar 900000222');
+    expect(textoDaDecisao(item('u:u-cpfl'), 'ignorar', null, rotuloDeExemplo)).toBe('PRJ-10001: recomendação ignorada');
+    expect(textoDaDecisao(item('u:u-enel-bloq'), 'ignorar', null, rotuloDeExemplo)).toBe('PRJ-10003: documento bloqueado dispensado');
+    expect(textoDaDecisao(item('f:f-devolucao'), 'feito', null, rotuloDeExemplo)).toBe('ENEL SP: marcado como feito');
   });
 });
 
@@ -188,14 +192,14 @@ describe('rotuloDaCriacao — o cartão da criação na CPFL', () => {
   const projetos = { 'p-1': { id: 'p-1', code: 'PRJ-10001', cpfl_node_id: null }, 'p-9': { id: 'p-9', code: 'PRJ-10009', cpfl_node_id: '611111' } };
   const projetoDe = (id: string) => projetos[id as keyof typeof projetos] ?? null;
   it('código do projeto e número que a criação devolveu', () => {
-    expect(rotuloDaCriacao({ dados: { project_id: 'p-1' }, resultado: { node: '598536' } }, projetoDe)).toEqual({ titulo: 'PRJ-10001', numeroCpfl: '598536' });
+    expect(rotuloDaCriacao({ dados: { project_id: 'p-1' }, resultado: { node: '500001' } }, projetoDe)).toEqual({ titulo: 'PRJ-10001', numeroCpfl: '500001' });
   });
   it('sem número no run: o do cadastro', () => {
     expect(rotuloDaCriacao({ dados: { project_id: 'p-9' }, resultado: null }, projetoDe)).toEqual({ titulo: 'PRJ-10009', numeroCpfl: '611111' });
   });
   it('projeto desconhecido ou ausente', () => {
     expect(rotuloDaCriacao({ dados: { project_id: 'abcdef1234' }, resultado: null }, projetoDe)).toEqual({ titulo: 'Projeto abcdef12…', numeroCpfl: null });
-    expect(rotuloDaCriacao({ dados: null, resultado: { node: 598536 } }, projetoDe)).toEqual({ titulo: 'Criar na CPFL', numeroCpfl: '598536' });
+    expect(rotuloDaCriacao({ dados: null, resultado: { node: 500001 } }, projetoDe)).toEqual({ titulo: 'Criar na CPFL', numeroCpfl: '500001' });
   });
 });
 
@@ -312,7 +316,7 @@ describe('oQueChegou — a mensagem manda; o cartão cobre o que falta', () => {
   };
   const M = {
     ...MENSAGEM_DA_TROCA, assunto: 'assunto da mensagem', remetente: 'msg@enel.exemplo.test', resumo: 'resumo da mensagem',
-    arquivo_lido: 'mensagem.pdf', recebido_em: '2026-10-21T08:55:00Z', anexos: 0,
+    arquivo_lido: 'mensagem.pdf', recebido_em: '2026-10-21T08:55:00Z', anexos: 0, update_id: 'u-edp',
   };
   it('com mensagem: cada campo vem dela', () => {
     expect(oQueChegou(U, M, 'email')).toMatchObject({
@@ -341,8 +345,8 @@ describe('acoesDoItem — casos de borda', () => {
   it('item sem recomendação nem A fazer (não deveria existir): nenhum botão, sem quebrar', () => {
     expect(acoesDoItem({ ...item('u:u-cpfl'), update: null, afazer: null }, 'approved')).toEqual({ principal: null, secundaria: null });
   });
-  it('sem etapa (null), o Aplicar comum espera', () => {
-    expect(acoesDoItem(item('u:u-cpfl'), null).principal).toMatchObject({ rotulo: 'Aplicar', habilitada: false });
+  it('sem etapa (null) e sem sugestão, o Aplicar comum espera', () => {
+    expect(acoesDoItem(semSugestao('u:u-cpfl'), null).principal).toMatchObject({ rotulo: 'Aplicar', habilitada: false });
   });
   it('todo tipo de A fazer pede só "Marcar como feito"', () => {
     for (const chave of ['f:f-vistoria', 'f:f-devolucao']) {
@@ -355,16 +359,199 @@ describe('acoesDoItem — casos de borda', () => {
 
 describe('textoDaDecisao — sem código nem concessionária', () => {
   it('cai em "Item"', () => {
-    expect(textoDaDecisao({ ...item('f:f-devolucao'), codigo: null, concessionaria: '' }, 'feito', null)).toBe('Item: marcado como feito');
+    expect(textoDaDecisao({ ...item('f:f-devolucao'), codigo: null, concessionaria: '' }, 'feito', null, rotuloDeExemplo)).toBe('Item: marcado como feito');
   });
 });
 
 describe('rotuloDaCriacao — o número do run e o do cadastro', () => {
   const projetoDe = (id: string) => (id === 'p-9' ? { id: 'p-9', code: 'PRJ-10009', cpfl_node_id: '611111' } : null);
   it('o número que a criação devolveu vale mais que o do cadastro', () => {
-    expect(rotuloDaCriacao({ dados: { project_id: 'p-9' }, resultado: { node: '598536' } }, projetoDe)).toEqual({ titulo: 'PRJ-10009', numeroCpfl: '598536' });
+    expect(rotuloDaCriacao({ dados: { project_id: 'p-9' }, resultado: { node: '500001' } }, projetoDe)).toEqual({ titulo: 'PRJ-10009', numeroCpfl: '500001' });
   });
   it('project_id que não é texto é ignorado', () => {
     expect(rotuloDaCriacao({ dados: { project_id: 123 }, resultado: null }, projetoDe)).toEqual({ titulo: 'Criar na CPFL', numeroCpfl: null });
+  });
+});
+
+// ── rodada de correção 1 ─────────────────────────────────────────────────────
+// Pedidos da revisão: o que o usuário quer e o plano não dizia.
+
+describe('I1 — cartão bloqueado não oferece Aplicar', () => {
+  it('mesmo com etapa escolhida, o bloqueado só pode ser dispensado', () => {
+    expect(acoesDoItem(item('u:u-enel-bloq'), 'approved')).toEqual({
+      principal: null, secundaria: { acao: 'ignorar', rotulo: 'Dispensar' },
+    });
+  });
+  it('bloqueado com troca de protocolo também não aplica nada', () => {
+    const base = item('u:u-enel-bloq');
+    const comTroca = { ...base, update: { ...base.update!, atualizar_protocolo: true, recomendacao: 'approved' } };
+    expect(acoesDoItem(comTroca, 'approved').principal).toBeNull();
+  });
+  it('quem não é bloqueado segue com o Aplicar', () => {
+    expect(acoesDoItem(item('u:u-cpfl'), 'approved').principal).toMatchObject({ acao: 'aplicar', habilitada: true });
+  });
+  it('bloqueado já decidido não tem botão nenhum (nem Dispensar)', () => {
+    for (const situacao of ['ignorada', 'aplicada'] as const) {
+      expect(acoesDoItem({ ...item('u:u-enel-bloq'), situacao }, 'approved')).toEqual({ principal: null, secundaria: null });
+    }
+  });
+});
+
+describe('I2 — os alertas saem por urgência, não pela ordem das contas', () => {
+  const erroCpfl = { ...CONTA_CPFL, situacao: 'erro' as const, ultimo_erro: 'Tempo esgotado' };
+  const erroEnel = { ...CONTA_ENEL, situacao: 'erro' as const, ultimo_erro: 'A caixa recusou o acesso' };
+  const chaves = (contas: typeof CONTAS_DE_EXEMPLO, caixaPronta = false) =>
+    alertasDasContas(contas, nomeDaContaDeExemplo, caixaPronta, () => ESTACAO_ONLINE).map(a => a.chave);
+  it('erro, depois sessão expirada, depois caixa — qualquer que seja a ordem das contas', () => {
+    const contas = [CONTA_EDP, CONTA_ELEKTRO, erroCpfl];
+    expect(chaves(contas)).toEqual(['erro:conta-cpfl', 'sessao:conta-elektro', 'caixa']);
+    expect(chaves([...contas].reverse())).toEqual(['erro:conta-cpfl', 'sessao:conta-elektro', 'caixa']);
+    expect(chaves([CONTA_ELEKTRO, CONTA_EDP, erroCpfl])).toEqual(['erro:conta-cpfl', 'sessao:conta-elektro', 'caixa']);
+  });
+  it('mesma gravidade: pelo nome da concessionária, nas duas ordens', () => {
+    expect(chaves([erroEnel, erroCpfl], true)).toEqual(['erro:conta-cpfl', 'erro:conta-enel']);
+    expect(chaves([erroCpfl, erroEnel], true)).toEqual(['erro:conta-cpfl', 'erro:conta-enel']);
+  });
+  it('mesmo grau e mesmo nome: pela chave, nas duas ordens', () => {
+    const mesmoNome = () => 'Mesma Concessionária';
+    for (const contas of [[erroCpfl, erroEnel], [erroEnel, erroCpfl]]) {
+      expect(alertasDasContas(contas, mesmoNome, true).map(a => a.chave)).toEqual(['erro:conta-cpfl', 'erro:conta-enel']);
+    }
+  });
+  it('o alerta da caixa lista as concessionárias em ordem de nome, nas duas ordens', () => {
+    for (const contas of [[CONTA_EDP, CONTA_ENEL], [CONTA_ENEL, CONTA_EDP]]) {
+      expect(alertasDasContas(contas, nomeDaContaDeExemplo, false)[0].detalhe)
+        .toBe('Sem ela a Ludmilla não lê EDP São Paulo nem ENEL SP. Configure em Claudinho / Agente de e-mails.');
+    }
+  });
+  it('o erro vem antes da sessão expirada mesmo quando o nome dela vem primeiro', () => {
+    const sessaoCpfl = { ...CONTA_CPFL, situacao: 'sessao_expirada' as const };
+    expect(chaves([sessaoCpfl, { ...CONTA_ELEKTRO, situacao: 'erro' as const }], true)).toEqual(['erro:conta-elektro', 'sessao:conta-cpfl']);
+  });
+});
+
+describe('I3 — "leitura atrasada" só vale para o portal (o e-mail não tem agendamento)', () => {
+  const base = { estacao: null, caixaPronta: true, agora: AGORA };
+  it('e-mail lido há 30 h (ou 30 dias) continua em dia', () => {
+    expect(saudeDaConta({ ...CONTA_ENEL, ultima_varredura_em: iso(AGORA - 30 * H) }, base)).toEqual({ tom: 'ok', texto: 'em dia' });
+    expect(saudeDaConta({ ...CONTA_EDP, ultima_varredura_em: iso(AGORA - 30 * 24 * H) }, base)).toEqual({ tom: 'ok', texto: 'em dia' });
+  });
+  it('portal lido há 30 h está atrasado (a VPS e a estação local)', () => {
+    expect(saudeDaConta({ ...CONTA_CPFL, ultima_varredura_em: iso(AGORA - 30 * H) }, base).texto).toBe('leitura atrasada');
+    expect(saudeDaConta({ ...CONTA_ELEKTRO, situacao: 'ok', ultima_varredura_em: iso(AGORA - 30 * H) }, { ...base, estacao: ESTACAO_ONLINE }).texto)
+      .toBe('leitura atrasada');
+  });
+  it('e-mail que nunca leu continua "ainda não leu a caixa"', () => {
+    expect(saudeDaConta(CONTA_EDP, base)).toEqual({ tom: 'parada', texto: 'ainda não leu a caixa' });
+  });
+});
+
+describe('M1 — sessão expirada com a estação offline', () => {
+  it('diz que a estação está offline, não que ela espera o código', () => {
+    expect(alertasDasContas([CONTA_ELEKTRO], nomeDaContaDeExemplo, true, () => ESTACAO_OFFLINE)).toEqual([{
+      chave: 'sessao:conta-elektro', tom: 'atencao', titulo: 'Elektro: sessão expirada',
+      detalhe: 'A estação está offline; ligue o computador do escritório.',
+    }]);
+  });
+  it('estação online: ela espera o código da imagem', () => {
+    const [a] = alertasDasContas([CONTA_ELEKTRO], nomeDaContaDeExemplo, true, () => ESTACAO_ONLINE);
+    expect(a.detalhe).toBe('A estação espera alguém entrar no portal e digitar o código da imagem.');
+  });
+  it('sem a informação da estação: mantém o texto do código', () => {
+    const [a] = alertasDasContas([CONTA_ELEKTRO], nomeDaContaDeExemplo, true);
+    expect(a.detalhe).toBe('A estação espera alguém entrar no portal e digitar o código da imagem.');
+  });
+  it('conta da VPS não fala de estação, mesmo que a função devolva uma offline', () => {
+    const [a] = alertasDasContas([{ ...CONTA_CPFL, situacao: 'sessao_expirada' }], nomeDaContaDeExemplo, true, () => ESTACAO_OFFLINE);
+    expect(a.detalhe).toBe('Ela tenta entrar de novo na próxima visita.');
+  });
+});
+
+describe('M2 — etapa efetiva: sem etapa escolhida, o banco usa a recomendação', () => {
+  it('etapaEfetiva', () => {
+    expect(etapaEfetiva(item('u:u-cpfl'), null)).toBe('approved');
+    expect(etapaEfetiva(item('u:u-cpfl'), '')).toBe('approved');
+    expect(etapaEfetiva(item('u:u-cpfl'), 'documentation')).toBe('documentation');
+    expect(etapaEfetiva(semSugestao('u:u-cpfl'), null)).toBeNull();
+    expect(etapaEfetiva(item('f:f-vistoria'), null)).toBeNull();
+  });
+  it('etapaEfetiva: etapa em branco não é etapa (o banco faz nullif(trim()))', () => {
+    expect(etapaEfetiva(item('u:u-cpfl'), '   ')).toBe('approved');
+    expect(etapaEfetiva(semSugestao('u:u-cpfl'), '   ')).toBeNull();
+  });
+  it('etapaEfetiva: recomendação em branco não é etapa', () => {
+    const base = item('u:u-cpfl');
+    expect(etapaEfetiva({ ...base, update: { ...base.update!, recomendacao: '   ' } }, null)).toBeNull();
+  });
+  it('acoesDoItem: com recomendação e sem etapa escolhida, o Aplicar vale', () => {
+    expect(acoesDoItem(item('u:u-cpfl'), null).principal).toEqual({ acao: 'aplicar', rotulo: 'Aplicar', habilitada: true, porque: null });
+    expect(acoesDoItem(item('u:u-cpfl'), '').principal).toMatchObject({ habilitada: true });
+  });
+  it('acoesDoItem: troca de protocolo com recomendação e sem etapa escolhida move o card também', () => {
+    expect(acoesDoItem(item('u:u-enel-troca'), null).principal)
+      .toEqual({ acao: 'aplicar', rotulo: 'Aplicar etapa e protocolo', habilitada: true, porque: null });
+  });
+  it('textoDaDecisao: sem etapa escolhida, diz para onde a recomendação leva', () => {
+    expect(textoDaDecisao(item('u:u-cpfl'), 'aplicar', null, rotuloDeExemplo)).toBe('PRJ-10001 vai para Aprovado');
+    expect(textoDaDecisao(item('u:u-enel-troca'), 'aplicar', '', rotuloDeExemplo)).toBe('PRJ-10002 vai para Aprovado e grava o protocolo 900000222');
+  });
+  it('textoDaDecisao: a etapa escolhida vale mais que a recomendação', () => {
+    expect(textoDaDecisao(item('u:u-cpfl'), 'aplicar', 'documentation', rotuloDeExemplo)).toBe('PRJ-10001 vai para Documentação');
+  });
+  it('textoDaDecisao: sem etapa e sem recomendação, nunca escreve "null"', () => {
+    const troca = semSugestao('u:u-enel-troca');
+    const semNumero = { ...troca, protocolo: null, update: { ...troca.update!, protocolo: '' } };
+    expect(textoDaDecisao(semNumero, 'aplicar', null, rotuloDeExemplo)).toBe('PRJ-10002: recomendação aplicada');
+    expect(textoDaDecisao(semSugestao('u:u-cpfl'), 'aplicar', null, rotuloDeExemplo)).toBe('PRJ-10001: recomendação aplicada');
+    expect(textoDaDecisao(semNumero, 'aplicar', null, rotuloDeExemplo)).not.toContain('null');
+  });
+  it('textoDaDecisao: troca sem número de protocolo diz só a etapa', () => {
+    const base = item('u:u-enel-troca');
+    expect(textoDaDecisao({ ...base, protocolo: null }, 'aplicar', 'approved', rotuloDeExemplo)).toBe('PRJ-10002 vai para Aprovado');
+  });
+});
+
+describe('M4 — caixa ainda carregando (null): não alerta e não pinta de parado', () => {
+  const opcoes = {
+    nomeDaConta: nomeDaContaDeExemplo, pendentesPorConta: {}, estacaoDe: () => null, caixaPronta: null, agora: AGORA,
+  };
+  it('saudeDaConta', () => {
+    expect(saudeDaConta(CONTA_ENEL, { estacao: null, caixaPronta: null, agora: AGORA })).toEqual({ tom: 'ok', texto: 'em dia' });
+  });
+  it('alertasDasContas: sem alerta de caixa', () => {
+    expect(alertasDasContas([CONTA_EDP, CONTA_ENEL], nomeDaContaDeExemplo, null)).toEqual([]);
+  });
+  it('chips: saúde normal, e "Verificar agora" espera a caixa', () => {
+    const [chip] = chipsDaFaixa([CONTA_ENEL], opcoes);
+    expect(chip.saude).toEqual({ tom: 'ok', texto: 'em dia' });
+    expect(chip.podeVerificar).toBe(false);
+  });
+  it('conta de portal não muda', () => {
+    expect(chipsDaFaixa([CONTA_CPFL], opcoes)[0]).toMatchObject({ podeVerificar: true, saude: { tom: 'ok' } });
+  });
+  it('false continua sendo "não configurada"', () => {
+    expect(saudeDaConta(CONTA_ENEL, { estacao: null, caixaPronta: false, agora: AGORA }).texto).toBe('caixa não configurada');
+    expect(alertasDasContas([CONTA_ENEL], nomeDaContaDeExemplo, false)).toHaveLength(1);
+  });
+});
+
+describe('M5 — a mensagem de OUTRO cartão é ignorada', () => {
+  const doutro = MENSAGEM_DA_TROCA; // update_id: 'u-enel-troca'
+  const rawEdp = U_EDP.raw as Record<string, string>;
+  it('oQueChegou usa só o cartão quando a mensagem é de outro', () => {
+    expect(oQueChegou(U_EDP, doutro, 'email')).toMatchObject({
+      assunto: rawEdp.assunto, remetente: rawEdp.remetente, resumo: rawEdp.resumo, arquivoLido: rawEdp.arquivo_lido,
+      anexos: 2, veredito: null, tipoDocumento: null, recebidoEm: null,
+    });
+  });
+  it('mensagem que não pertence a cartão nenhum (update_id nulo) também é ignorada', () => {
+    expect(oQueChegou(U_EDP, { ...doutro, update_id: null }, 'email')).toMatchObject({ assunto: rawEdp.assunto, veredito: null });
+  });
+  it('a mensagem do próprio cartão continua valendo', () => {
+    expect(oQueChegou(U_ENEL_TROCA, doutro, 'email')).toMatchObject({ assunto: doutro.assunto, veredito: 'favoravel' });
+  });
+  it('ressalvaDoCartao também ignora a mensagem de outro cartão', () => {
+    expect(ressalvaDoCartao(U_EDP, { ...doutro, motivo: 'ressalva alheia' })).toBeNull();
+    expect(ressalvaDoCartao(U_ENEL_TROCA, doutro)).toBe(doutro.motivo);
   });
 });

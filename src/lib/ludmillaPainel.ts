@@ -74,22 +74,33 @@ export interface SaudeDaConta { tom: TomDaSaude; texto: string }
 /** O que `estadoDaEstacao` (useLudmilla.ts) devolve; quem chama passa pronto. */
 export interface EstadoDaEstacao { online: boolean; texto: string }
 
-/** Duas leituras por dia (11h e 20h UTC): mais de 18 h sem ler é rodada perdida. */
+/**
+ * Duas varreduras de portal por dia (cron `ludmilla-08h`/`ludmilla-17h`, 11h e 20h UTC):
+ * mais de 18 h sem ler é rodada perdida. Vale SÓ para o portal. O e-mail (EDP, ENEL) não
+ * tem agendamento: `ludmilla_agendar_varreduras` só enfileira conta com login e `secret_id`,
+ * e o run de e-mail só nasce do "Verificar agora" (docs/modules/integrations/ludmilla.md,
+ * "A proteção acidental do agendador"). Horas sem ler uma caixa de e-mail não são falha.
+ */
 export const HORAS_SEM_LER_ATRASADA = 18;
 
+/**
+ * `caixaPronta`: true = configurada; false = NÃO configurada; null = ainda carregando
+ * (nesse caso nada é dito sobre a caixa: nem alerta, nem ponto de "parada").
+ */
 export function saudeDaConta(
-  conta: PortalAccount, o: { estacao: EstadoDaEstacao | null; caixaPronta: boolean; agora: number },
+  conta: PortalAccount, o: { estacao: EstadoDaEstacao | null; caixaPronta: boolean | null; agora: number },
 ): SaudeDaConta {
   if (!conta.enabled) return { tom: 'parada', texto: 'desligada' };
   if (conta.situacao === 'erro') return { tom: 'erro', texto: 'com erro' };
   if (conta.situacao === 'sessao_expirada') return { tom: 'atencao', texto: 'sessão expirada' };
-  if (conta.acompanhamento === 'email' && !o.caixaPronta) return { tom: 'parada', texto: 'caixa não configurada' };
+  if (conta.acompanhamento === 'email' && o.caixaPronta === false) return { tom: 'parada', texto: 'caixa não configurada' };
   if (conta.situacao === 'nao_configurado') return { tom: 'parada', texto: 'sem acesso' };
   if (o.estacao && !o.estacao.online) return { tom: 'atencao', texto: o.estacao.texto };
   if (!conta.ultima_varredura_em) {
     return { tom: 'parada', texto: conta.acompanhamento === 'email' ? 'ainda não leu a caixa' : 'ainda não varreu' };
   }
-  if (o.agora - Date.parse(conta.ultima_varredura_em) > HORAS_SEM_LER_ATRASADA * 60 * MIN) {
+  if (conta.acompanhamento === 'portal'
+    && o.agora - Date.parse(conta.ultima_varredura_em) > HORAS_SEM_LER_ATRASADA * 60 * MIN) {
     return { tom: 'atencao', texto: 'leitura atrasada' };
   }
   return { tom: 'ok', texto: 'em dia' };
@@ -112,7 +123,8 @@ export function chipsDaFaixa(contas: PortalAccount[], o: {
   nomeDaConta: (id: string) => string;
   pendentesPorConta: Record<string, number>;
   estacaoDe: (c: PortalAccount) => EstadoDaEstacao | null;
-  caixaPronta: boolean;
+  /** true = configurada · false = não configurada · null = ainda carregando */
+  caixaPronta: boolean | null;
   agora: number;
 }): ChipDaConta[] {
   return contas
@@ -123,7 +135,7 @@ export function chipsDaFaixa(contas: PortalAccount[], o: {
       saude: saudeDaConta(c, { estacao: o.estacaoDe(c), caixaPronta: o.caixaPronta, agora: o.agora }),
       lida: c.ultima_varredura_em ? `lida ${haQuantoTempo(c.ultima_varredura_em, o.agora)}` : 'nunca lida',
       pendentes: o.pendentesPorConta[c.id] ?? 0,
-      podeVerificar: c.acompanhamento === 'email' ? o.caixaPronta : !!c.login,
+      podeVerificar: c.acompanhamento === 'email' ? o.caixaPronta === true : !!c.login,
       tipoDoRun: (c.acompanhamento === 'email' ? 'varredura_email' : 'varredura') as ChipDaConta['tipoDoRun'],
     }))
     .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
@@ -131,33 +143,53 @@ export function chipsDaFaixa(contas: PortalAccount[], o: {
 
 export interface AlertaUrgente { chave: string; tom: 'erro' | 'atencao'; titulo: string; detalhe: string | null }
 
-/** Os alertas que vão acima de tudo (o código da imagem da Elektro vem à parte, do `portal_captchas`). */
+/**
+ * Os alertas que vão acima de tudo (o código da imagem da Elektro vem à parte, do `portal_captchas`).
+ *
+ * Saem em ordem de urgência, não na ordem das contas (que vêm do banco sem `order`): erro,
+ * sessão expirada, caixa de e-mail; no mesmo grau, pelo nome da concessionária.
+ *
+ * `caixaPronta` null = ainda carregando: não alerta. `estacaoDe` (a mesma origem de `saudeDaConta`)
+ * deixa o alerta da sessão expirada da estação local dizer a verdade: com a estação offline, ela
+ * não está esperando código nenhum — alguém precisa ligar o computador.
+ */
 export function alertasDasContas(
-  contas: PortalAccount[], nomeDaConta: (id: string) => string, caixaPronta: boolean,
+  contas: PortalAccount[], nomeDaConta: (id: string) => string, caixaPronta: boolean | null,
+  estacaoDe?: (c: PortalAccount) => EstadoDaEstacao | null,
 ): AlertaUrgente[] {
   const nome = (c: PortalAccount) => nomeDaConta(c.id) || c.connector.toUpperCase();
-  const alertas: AlertaUrgente[] = [];
+  const lista: { grau: number; nome: string; alerta: AlertaUrgente }[] = [];
   for (const c of contas) {
     if (!c.enabled) continue;
     if (c.situacao === 'erro') {
-      alertas.push({ chave: `erro:${c.id}`, tom: 'erro', titulo: `${nome(c)}: a última leitura deu erro`, detalhe: limpo(c.ultimo_erro) });
+      lista.push({
+        grau: 0, nome: nome(c),
+        alerta: { chave: `erro:${c.id}`, tom: 'erro', titulo: `${nome(c)}: a última leitura deu erro`, detalhe: limpo(c.ultimo_erro) },
+      });
     } else if (c.situacao === 'sessao_expirada') {
-      alertas.push({
-        chave: `sessao:${c.id}`, tom: 'atencao', titulo: `${nome(c)}: sessão expirada`,
-        detalhe: c.modo === 'local'
-          ? 'A estação espera alguém entrar no portal e digitar o código da imagem.'
-          : 'Ela tenta entrar de novo na próxima visita.',
+      const estacao = c.modo === 'local' ? (estacaoDe?.(c) ?? null) : null;
+      const detalhe = c.modo !== 'local' ? 'Ela tenta entrar de novo na próxima visita.'
+        : estacao && !estacao.online ? 'A estação está offline; ligue o computador do escritório.'
+        : 'A estação espera alguém entrar no portal e digitar o código da imagem.';
+      lista.push({
+        grau: 1, nome: nome(c),
+        alerta: { chave: `sessao:${c.id}`, tom: 'atencao', titulo: `${nome(c)}: sessão expirada`, detalhe },
       });
     }
   }
   const porEmail = contas.filter(c => c.enabled && c.acompanhamento === 'email');
-  if (porEmail.length > 0 && !caixaPronta) {
-    alertas.push({
-      chave: 'caixa', tom: 'atencao', titulo: 'A caixa de e-mail não está configurada',
-      detalhe: `Sem ela a Ludmilla não lê ${porEmail.map(nome).join(' nem ')}. Configure em Claudinho / Agente de e-mails.`,
+  if (porEmail.length > 0 && caixaPronta === false) {
+    lista.push({
+      grau: 2, nome: '',
+      alerta: {
+        chave: 'caixa', tom: 'atencao', titulo: 'A caixa de e-mail não está configurada',
+        detalhe: `Sem ela a Ludmilla não lê ${porEmail.map(nome).sort((a, b) => a.localeCompare(b, 'pt-BR')).join(' nem ')}. Configure em Claudinho / Agente de e-mails.`,
+      },
     });
   }
-  return alertas;
+  return lista
+    .sort((a, b) => a.grau - b.grau || a.nome.localeCompare(b.nome, 'pt-BR') || a.alerta.chave.localeCompare(b.alerta.chave))
+    .map(x => x.alerta);
 }
 
 // ── o detalhe (§3.2) ─────────────────────────────────────────────────────────
@@ -174,8 +206,18 @@ export type OQueChegou =
     }
   | { meio: 'portal'; de: string | null; para: string; atualizadoNoPortal: string | null };
 
+/**
+ * A mensagem só vale para o cartão a que está ligada (`update_id`). Quem chama pode buscar a
+ * mensagem pelo projeto ou pelo protocolo e trazer a de OUTRO cartão (o mesmo projeto tem vários
+ * e-mails): usar assunto, veredito e ressalva alheios no detalhe seria dizer o que não é deste cartão.
+ */
+function mensagemDoCartao(u: PortalUpdate, m: MensagemEmail | null): MensagemEmail | null {
+  return m && m.update_id === u.id ? m : null;
+}
+
 /** E-mail (EDP, ENEL): a mensagem ligada ao cartão manda; o `raw` cobre o que ela não tiver. */
-export function oQueChegou(u: PortalUpdate, m: MensagemEmail | null, meio: MeioDoItem): OQueChegou {
+export function oQueChegou(u: PortalUpdate, mensagem: MensagemEmail | null, meio: MeioDoItem): OQueChegou {
+  const m = mensagemDoCartao(u, mensagem);
   const r = (u.raw ?? {}) as Record<string, unknown>;
   if (meio === 'email') {
     return {
@@ -195,8 +237,8 @@ export function oQueChegou(u: PortalUpdate, m: MensagemEmail | null, meio: MeioD
 }
 
 /** A ressalva da robô (o porquê): a da mensagem, senão a do `raw` do cartão. */
-export function ressalvaDoCartao(u: PortalUpdate, m: MensagemEmail | null): string | null {
-  return limpo(m?.motivo) ?? limpo((u.raw as Record<string, unknown> | null)?.motivo);
+export function ressalvaDoCartao(u: PortalUpdate, mensagem: MensagemEmail | null): string | null {
+  return limpo(mensagemDoCartao(u, mensagem)?.motivo) ?? limpo((u.raw as Record<string, unknown> | null)?.motivo);
 }
 
 export type AcaoDaDecisao = 'aplicar' | 'ignorar' | 'feito';
@@ -206,7 +248,20 @@ export interface AcoesDoItem {
   secundaria: { acao: 'ignorar'; rotulo: 'Ignorar' | 'Dispensar' } | null;
 }
 
-/** Os botões. A trava do Aplicar é a de sempre: precisa de projeto e (etapa ou troca de protocolo). */
+/**
+ * A etapa para onde o card vai de fato. É o que `ludmilla_aplicar_update` faz no banco:
+ * `coalesce(nullif(trim(p_status), ''), recomendacao)` — sem etapa escolhida, vale a recomendada.
+ * Só a recomendação tem etapa; o A fazer não move card.
+ */
+export function etapaEfetiva(item: ItemDaCaixa, etapa: string | null): string | null {
+  return etapa?.trim() || item.update?.recomendacao?.trim() || null;
+}
+
+/**
+ * Os botões. A trava do Aplicar é a de sempre: precisa de projeto e (etapa efetiva ou troca de
+ * protocolo). Cartão bloqueado (o documento é de outra pessoa) NÃO oferece Aplicar: com uma etapa
+ * escolhida ele moveria o projeto a partir do cartão errado. Só "Dispensar".
+ */
 export function acoesDoItem(item: ItemDaCaixa, etapa: string | null): AcoesDoItem {
   if (item.situacao !== 'pendente') return { principal: null, secundaria: null };
   if (item.afazer) {
@@ -214,30 +269,41 @@ export function acoesDoItem(item: ItemDaCaixa, etapa: string | null): AcoesDoIte
   }
   const u = item.update;
   if (!u) return { principal: null, secundaria: null };
-  const comEtapa = !!etapa;
+  if (cartaoBloqueado(u)) return { principal: null, secundaria: { acao: 'ignorar', rotulo: 'Dispensar' } };
+  const comEtapa = etapaEfetiva(item, etapa) !== null;
   const rotulo = u.atualizar_protocolo ? (comEtapa ? 'Aplicar etapa e protocolo' : 'Atualizar protocolo') : 'Aplicar';
   const porque = !u.project ? 'Sem projeto casado: não há card para mover.'
     : (!comEtapa && !u.atualizar_protocolo) ? 'Escolha a etapa para onde mover o card.'
     : null;
   return {
     principal: { acao: 'aplicar', rotulo, habilitada: porque === null, porque },
-    secundaria: { acao: 'ignorar', rotulo: cartaoBloqueado(u) ? 'Dispensar' : 'Ignorar' },
+    secundaria: { acao: 'ignorar', rotulo: 'Ignorar' },
   };
 }
 
-/** O texto do aviso com "Desfazer": diz o que VAI acontecer quando a espera acabar. */
-export function textoDaDecisao(item: ItemDaCaixa, acao: AcaoDaDecisao, rotuloDaEtapa: string | null): string {
+/**
+ * O texto do aviso com "Desfazer": diz o que VAI acontecer quando a espera acabar. `etapa` é a
+ * escolhida na tela (pode ser vazia: vale a recomendada, como no banco); `rotuloEtapa` traduz a chave.
+ */
+export function textoDaDecisao(
+  item: ItemDaCaixa, acao: AcaoDaDecisao, etapa: string | null,
+  rotuloEtapa: (status: string | null | undefined) => string,
+): string {
   const quem = item.codigo || item.concessionaria || 'Item';
   if (acao === 'feito') return `${quem}: marcado como feito`;
   if (acao === 'ignorar') {
     return item.update && cartaoBloqueado(item.update) ? `${quem}: documento bloqueado dispensado` : `${quem}: recomendação ignorada`;
   }
-  if (rotuloDaEtapa) {
-    return item.update?.atualizar_protocolo
-      ? `${quem} vai para ${rotuloDaEtapa} e grava o protocolo ${item.protocolo}`
-      : `${quem} vai para ${rotuloDaEtapa}`;
+  const destino = etapaEfetiva(item, etapa);
+  const gravaProtocolo = !!item.update?.atualizar_protocolo && !!item.protocolo;
+  if (destino) {
+    return gravaProtocolo
+      ? `${quem} vai para ${rotuloEtapa(destino)} e grava o protocolo ${item.protocolo}`
+      : `${quem} vai para ${rotuloEtapa(destino)}`;
   }
-  return `${quem}: o protocolo do cadastro vai virar ${item.protocolo}`;
+  return gravaProtocolo
+    ? `${quem}: o protocolo do cadastro vai virar ${item.protocolo}`
+    : `${quem}: recomendação aplicada`;
 }
 
 export interface SituacaoDecidida { rotulo: 'Aplicada' | 'Ignorada' | 'Feito'; em: string | null; por: string | null }
