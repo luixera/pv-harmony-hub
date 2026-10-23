@@ -3763,6 +3763,7 @@ git show --stat HEAD
 - Create: `src/components/ludmilla/abas/CriacoesCpfl.tsx`
 - Create: `src/components/ludmilla/abas/RegistroDaLudmilla.tsx`
 - Modify (reescrita inteira): `src/pages/Ludmilla.tsx`
+- Modify: `src/components/layout/Sidebar.tsx` (decisão 9 do usuário: o contador da Ludmilla soma recomendações pendentes + A fazer abertos, pelo hook leve que a Task 5 expõe; hoje é `usePortalUpdates('pendente')` + `recomendacoes.length`, linhas ~105-106)
 - Modify: `docs/modules/integrations/ludmilla.md`, `CLAUDE.md`
 - Test (harness, apagar antes do commit): `harness-pagina.html`, `src/harness-pagina.tsx`, `src/harness-duble/supabase.ts`, `src/harness-duble/AuthContext.tsx`, `vite.harness.config.ts`
 
@@ -4748,7 +4749,7 @@ só da equipe (`ludmilla_equipe_ok`), sem política de escrita. `ludmilla_email_
 `false` já estava feito — vale para a equipe toda. `ludmilla_linha_do_tempo(projeto,
 limite)` = os ramos de `ludmilla_registro` com projeto + e-mails lidos + A fazer.
 `ludmilla_aplicar_update`, `ludmilla_registro`, a varredura e o worker não mudaram.
-O sino e o contador da barra lateral (só recomendações) continuam iguais.
+O sino continua igual. O contador da barra lateral passa a somar recomendações pendentes + A fazer abertos (decisão do usuário, 22/10/2026).
 ```
 
 Em `CLAUDE.md`, na linha da Ludmilla da tabela de módulos, troque o trecho `Elektro pela estação local — aguarda aceite; só GD Manager` por `Elektro pela estação local — aguarda aceite; página = caixa de decisões (Decidir + A fazer); só GD Manager` (se a rodada da ENEL mudou essa linha, acrescente `página = caixa de decisões (Decidir + A fazer)` antes de `só GD Manager`).
