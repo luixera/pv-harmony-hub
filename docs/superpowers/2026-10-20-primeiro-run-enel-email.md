@@ -36,9 +36,12 @@ Contexto do módulo: [docs/modules/integrations/ludmilla.md](../modules/integrat
 > não sabe qual robô está na VPS, e o robô antigo pega o run assim que ele entra na
 > fila. A proteção é combinar com quem tem acesso à tela, e o passo 0 abaixo.
 
-**Passo 0 — a fila da ENEL: conferir e cancelar, antes de atualizar o robô.** Se algum
-run da ENEL estiver parado na fila (um clique perdido), o robô — velho ou novo — o
-pegaria na hora. Confira (só leitura):
+**Passo 0 — a fila da ENEL: conferir, e cancelar o que estiver parado.** O robô da VPS
+pega a fila **a cada 30 s**: um clique de hoje vira `rodando` em até 30 s, e `rodando`
+**não se cancela por SQL**. Por isso o `cancelar-fila-da-enel` só pega run **parado**,
+o que acontece com o serviço fora do ar (parado, reiniciando, ou no meio do passo
+1.3); com o serviço no ar a fila esvazia sozinha e o que se vê é `rodando`. **A
+proteção real é o aviso do começo desta seção, não este SQL.** Confira (só leitura):
 
 ```sql
 -- /tmp/fila-da-enel.sql
@@ -50,7 +53,7 @@ SELECT s.id, s.tipo, s.situacao, s.pedido_em
 ```
 
 O esperado é **nenhuma linha**. Se houver `na_fila` (no banco o run pendente se chama
-`na_fila`), cancele **antes** de publicar o robô:
+`na_fila`; é run parado, com o serviço fora), cancele **antes** de publicar o robô:
 
 ```sql
 -- /tmp/cancelar-fila-da-enel.sql
@@ -61,7 +64,8 @@ UPDATE public.portal_sync_runs s
 RETURNING s.id, s.tipo, s.situacao;
 ```
 
-Um run `rodando` **não** se cancela por aqui: veja a seção 8 ("Parar já"). Repita a
+Um run `rodando` **não** se cancela por aqui: é o incidente de 14/10 em andamento (o
+robô velho lendo a ENEL como a EDP) — vá direto para a seção 8 ("Parar já"). Repita a
 conferência logo antes de disparar o `ludmilla-worker.yml` (passo 1.3).
 
 Quem faz o quê: o **push** e a hora de publicar são do usuário. Este roteiro não faz
@@ -71,10 +75,11 @@ Estado (os itens de git e de Actions foram conferidos em 22/10; **refazer se dem
 
 | O quê | Estado |
 |---|---|
-| Migrações da ENEL (`20261013120000` … `20261019120000`, 6 arquivos) | **todas aplicadas** no banco vivo (passo 3 confere pelas funções). A `20261022120000` (fechamento A: cartão do projeto certo, UC pontuada, `recebido_em`) entra à parte: o pré-voo mostra se já está |
-| Commits à frente do `origin/main` | **conte na hora**: `git rev-list --count origin/main..HEAD` e `git log origin/main..HEAD --oneline`. Em 22/10 o push **já foi feito** (01:38; `origin/main` = `832bb24`, run `39723536161` do `deploy.yml` em `success`); sobrou só o commit de docs `68c8a53` e os do fechamento. O que ele levou **além da ENEL**: o financeiro (`bd8ed0b`, recebimento em lote por etapa) e a correção da criação na CPFL (`b956468`, migração `20261021130000` já aplicada) |
+| Migrações da ENEL (`20261013120000` … `20261019120000`, 6 arquivos) | **todas aplicadas** no banco vivo (passo 3 confere pelas funções) |
+| Migração do fechamento A (`20261022120000`: cartão do projeto certo, UC pontuada, `recebido_em`) | **aplicada, conferido em 22/10**: o `ludmilla_email_registrar` vivo tem 20 parâmetros e `recebido_em` no `raw` (`tem_recebido_no_raw = true`, passo 3). A `20261022200000_ludmilla_afazeres.sql` (outra frente, o "A fazer" da equipe) também já está aplicada; não é da ENEL |
+| Commits à frente do `origin/main` | **conte na hora**: `git fetch origin`, `git rev-list --count origin/main..HEAD` e `git log origin/main..HEAD --oneline`. O **primeiro push já foi feito** em 22/10 (01:38; `origin/main` = `832bb24`, run `39723536161` do `deploy.yml` em `success`) e levou, além da ENEL, o financeiro (`bd8ed0b`, recebimento em lote por etapa) e a correção da criação na CPFL (`b956468`, migração `20261021130000` já aplicada). **O `origin/main` NÃO tem o worker do fechamento A (`e9ab61f`).** O **próximo push** (6 commits na conferência de 22/10) leva: o **worker do A** (`e9ab61f`: `run.ts` e `classificar.ts`, os testes e o arquivo da migração `20261022120000`, já aplicada); a **tela do B** (`5d78b6e`); a migração `20261022200000_ludmilla_afazeres.sql` (de outra frente, já aplicada no banco); e a doc e os planos (`68c8a53`, `981d0a4`, `47e7bae`: spec e plano da página nova da Ludmilla) |
 | `ludmilla-parecer` no ar | do `deploy.yml` de 22/10: **tem** o modo ENEL (`08e59f2`) e a correção `455b4d2`. **Confira o passo, não a cor do run** (passo 1.2): o job tem `continue-on-error: true` |
-| Robô da VPS | do deploy de 16/10 (último `ludmilla-worker.yml` com sucesso): tem `identificar.ts` e `classificar.ts`, **não tem** `run.ts` nem `rotear.ts` — roda a ENEL como a EDP. **É o que falta publicar** |
+| Robô da VPS | do deploy de 16/10 (último `ludmilla-worker.yml` com sucesso): tem `identificar.ts` e `classificar.ts`, **não tem** `run.ts` nem `rotear.ts` — roda a ENEL como a EDP. **É o que falta publicar**, e só depois do push do worker do A (o workflow publica o que está no GitHub: trava do passo 1.3) |
 | Tela `/ludmilla` no ar | a de 22/10 (titular e empresa nos cartões, quadros da ENEL). Os cartões de e-mail com o **motivo**, o "achado pela …", a data e a faixa de bloqueio, e o rótulo "avisos (mensagens)", são do fechamento B: só no ar depois do próximo push |
 | Conta da ENEL | **ligada** (conferido no banco em 22/10: `conta_ligada = true`) e **assim fica**, por decisão do usuário. Sem robô novo na VPS, ninguém clica em "Verificar agora" |
 
@@ -82,19 +87,27 @@ Estado (os itens de git e de Actions foram conferidos em 22/10; **refazer se dem
 
 ### 1.1 O push e o `deploy.yml` (do usuário)
 
-**Em 22/10 o push já foi feito** (ver "Estado" acima). Para o que vier depois — as
-correções do fechamento, por exemplo — confira antes o que vai junto:
+O **primeiro** push já foi feito em 22/10 (ver "Estado" acima), mas **falta o próximo**:
+o `origin/main` (`832bb24`) **não tem o worker do fechamento A** (`e9ab61f`), e o robô
+da VPS só pode ser atualizado depois dele (trava do 1.3). Confira o que vai junto, na
+hora:
 
 ```bash
+git fetch origin
 git rev-list --count origin/main..HEAD     # quantos commits estão à frente, na hora
 git log origin/main..HEAD --oneline        # e quais são
 git push origin main
 ```
 
-**Não é só a ENEL.** O push anterior levou também o **financeiro** (`bd8ed0b`,
-recebimento em lote por etapa) e a **correção da criação na CPFL** (`b956468`: grava
-o número do projeto; a migração `20261021130000` já estava aplicada). Todo push da
-`main` publica o que estiver nela, de qualquer frente.
+**O que o próximo push leva** (6 commits na conferência de 22/10; refaça a contagem):
+o **worker do fechamento A** (`e9ab61f`); a **tela do fechamento B** (`5d78b6e`); a
+migração `20261022200000_ludmilla_afazeres.sql` (**de outra frente**, o "A fazer" da
+equipe, e **já aplicada** no banco); e a **doc e os planos** (`68c8a53`, `981d0a4`,
+`47e7bae`: spec e plano da página nova da Ludmilla). **Não é só a ENEL.** O primeiro
+push já tinha levado o **financeiro** (`bd8ed0b`, recebimento em lote por etapa) e a
+**correção da criação na CPFL** (`b956468`: grava o número do projeto; a migração
+`20261021130000` já estava aplicada). Todo push da `main` publica o que estiver nela,
+de qualquer frente.
 
 O `deploy.yml` publica as edge functions (entre elas a `ludmilla-parecer`, com
 `--no-verify-jwt`), **define o segredo `LUDMILLA_WORKER_KEY`** a partir do mesmo
@@ -152,8 +165,22 @@ distingue é o (a) e o (b) acima.
 
 ### 1.3 Atualizar o robô da VPS — à mão
 
-**Antes:** a fila da ENEL vazia (passo 0, `fila-da-enel.sql`). E, até este passo
-terminar em `success`, ninguém clica em "Verificar agora" no cartão da ENEL.
+**Antes, duas travas:**
+
+1. **O GitHub tem de ter o código do robô novo.** O `ludmilla-worker.yml` publica o que
+   está no **GitHub**, não o que está nesta máquina. O `origin/main` (`832bb24`) **não**
+   tem o worker do fechamento A (`e9ab61f`). Rode, e a saída tem de ser **VAZIA**:
+
+   ```bash
+   git fetch origin
+   git diff --stat origin/main..HEAD -- worker/ludmilla/src
+   ```
+
+   Se mostrar qualquer arquivo (em 22/10 mostrava `classificar.ts` e `run.ts`), o
+   workflow publicaria o robô **velho** com cara de novo: **faça primeiro o push** (1.1)
+   e rode de novo até vir vazio.
+2. **A fila da ENEL conferida** (passo 0, `fila-da-enel.sql`). E, até este passo
+   terminar em `success`, ninguém clica em "Verificar agora" no cartão da ENEL.
 
 ```bash
 gh workflow run ludmilla-worker.yml
@@ -161,17 +188,21 @@ gh run list --workflow ludmilla-worker.yml --limit 1     # esperar "completed / 
 ```
 
 O workflow é manual (`workflow_dispatch`) e usa o código **que está no GitHub**:
-por isso só depois do push. Ele roda os testes do robô (`npm test`), compila,
-sincroniza `/opt/ludmilla` e reinicia o serviço `ludmilla-worker`.
+por isso só depois do push. Ele roda os testes do robô (`npm test`), compila, monta o
+pacote da estação local, sincroniza `/opt/ludmilla` ("Sincronizar código") e reinicia o
+serviço `ludmilla-worker` ("Instalar / reiniciar").
 
 Dois cuidados:
 
 1. **Só siga com `success`.** O `npm test` do workflow pode cair em 3 testes
-   instáveis. Se o passo "Testes do robô" falhar, o workflow para **antes** de
-   sincronizar e reiniciar: o robô velho
-   (o que roda a ENEL como a EDP) **continua no ar**. `failure` ou `cancelled` quer
-   dizer que a VPS **não** foi atualizada — rode de novo (`gh run rerun <id>
-   --failed`) ou conserte; **não** passe para o passo 4.
+   instáveis. Leia **onde** parou, com `gh run view <id>`:
+   - falhou em "Testes do robô" ou "Compilar" (antes de "Sincronizar código"): a VPS
+     ficou **intacta**, o robô velho (o que roda a ENEL como a EDP) **continua no ar**.
+     Rode de novo (`gh run rerun <id> --failed`) ou conserte;
+   - falhou **depois** de "Sincronizar código" (em "Instalar / reiniciar"), ou foi
+     `cancelled` no meio: o estado é **incerto** — código novo na pasta e serviço velho,
+     parado ou meio reiniciado. A prova, nesse caso, é o `grep` e o `systemctl` abaixo.
+   Em qualquer dos dois, **não** passe para o passo 4 até os comandos abaixo baterem.
 2. **Rode fora do horário do cron da CPFL: 8h e 17h** (`ludmilla-08h`/`ludmilla-17h`,
    horário de Brasília). O restart do serviço **interrompe** o run da CPFL que
    estiver no meio (se ele ficar `rodando`, marque como `erro` à mão, como no passo
@@ -181,6 +212,7 @@ Para ter certeza de que o robô novo está lá (SSH na VPS, porta 22022):
 
 ```bash
 grep -c executarVarreduraEnel /opt/ludmilla/dist/email/rotear.js    # maior que 0
+grep -c avisos_mensagens /opt/ludmilla/dist/email/enel/run.js       # maior que 0 (o código do fechamento A)
 systemctl is-active ludmilla-worker                                  # active
 ```
 
@@ -206,9 +238,13 @@ Confira:
 3. o cartão da ENEL diz "Acompanho por: e-mail". **Já existe um run de 14/10** (o do
    incidente: `ok`, 18 lidos), então o cartão mostra **"Na última leitura da caixa —
    14/10"** com os poucos quadros que aquele run gravou — **não** o texto "Ela ainda
-   não leu a caixa…". Esse texto só aparece em conta sem nenhum run de e-mail. O
-   quadro de 14/10 é do modo da EDP: não estranhe os quadros de "achei pela UC / pelo
-   nome" ausentes;
+   não leu a caixa…". Esse texto só aparece em conta sem nenhum run de e-mail. O run
+   de 14/10 é do modo da EDP e gravou só estas chaves: `lidos` (18), `bloqueados`,
+   `anexados`, `imagens_ignoradas` (1), `a_tentar_de_novo`, `falhas` (e outras que a
+   tela não lê). Então aparecem esses quadros, e **somem** os de "achei pelo protocolo
+   / pela UC / pelo nome", o de "levantei a mão" e **o de avisos**: o run de 14/10 não
+   tem `avisos` **nem** `avisos_mensagens`, e `contadorDoRun` devolve `null` para chave
+   que não existe — o quadro some, sem erro. Não é defeito;
 4. as 8 regras aparecem, editáveis (a escrita é só do `admin`).
 
 Se o aviso vermelho aparecer, **pare**: o erro (ambiguidade de relacionamento, política
@@ -223,17 +259,33 @@ barra lateral junto.
 **Desfazer** (se não der para consertar o embed na hora): reverter o front e fazer
 push. O embed e o aviso vermelho vieram em `789b60d` (titular e empresa, quadros da
 ENEL) e `8a79e80` (o aviso de erro e a etapa que acompanha o refetch); o commit do
-fechamento B (cartão de e-mail com motivo, o mais recente de `git log --oneline --
-src/lib/ludmillaCartao.ts`) mexe nos mesmos arquivos e tem de sair junto:
+fechamento B (`5d78b6e`: cartão de e-mail com motivo) mexe nos mesmos arquivos e tem de
+sair junto. **O `5d78b6e` também traz a doc e este roteiro**, que **não** podem ser
+desfeitos: por isso o revert é sem commit, e a doc volta ao que está no `HEAD`:
 
 ```bash
-git revert --no-edit <fechamento-B> 8a79e80 789b60d    # do mais novo para o mais velho
-git push origin main                                    # o deploy.yml sobe o front de antes
+git revert --no-commit 5d78b6e 8a79e80 789b60d     # do mais novo para o mais velho; só prepara
+# CONFLITO ESPERADO em MensagensEmail.tsx (o cc8627c mexeu no mesmo comentário): fique com o
+# lado de ANTES do embed, que no revert é o "theirs":
+git checkout --theirs src/components/ludmilla/MensagensEmail.tsx && git add src/components/ludmilla/MensagensEmail.tsx
+git restore --staged --worktree docs/              # a doc NÃO é revertida: fica como está no HEAD
+git status --short                                 # só src/ pode aparecer: Ludmilla.tsx, useLudmilla.ts,
+                                                   # MensagensEmail.tsx, RegrasEmail.tsx, e ludmillaCartao.ts
+                                                   # e .test.ts apagados
+git commit -m "revert(ludmilla): volta a tela sem o embed de titular e empresa"
+git push origin main                               # o deploy.yml sobe o front de antes
 ```
 
-Se o `revert` der conflito em `Ludmilla.tsx`, resolva mantendo a consulta antiga
-(`select('*, project:projects(id, code, status, title)')`). O banco não precisa
-voltar: nada do banco depende desse front.
+Testado em 22/10 num `git worktree` descartável: com o `checkout --theirs`, os quatro
+arquivos de tela ficam **idênticos ao que eram antes do `789b60d`** e o `git status`
+mostra só `src/`. **Cuidado com o `git restore … docs/`:** ele descarta **qualquer**
+mudança de `docs/` no índice ou na árvore, a sua e a de **outra sessão** (já aconteceu).
+Antes, rode `git status`: se houver arquivo de `docs/` que não seja efeito do revert,
+**guarde-o** (`git stash push -- docs/`) ou faça o revert num `git worktree` à parte.
+**E, se outra sessão já mexeu em `Ludmilla.tsx` por cima** (a página nova da Ludmilla
+está em obra), o revert conflita nesses arquivos: resolva à mão, mantendo a consulta
+antiga (`select('*, project:projects(id, code, status, title)')`), em vez de aceitar um
+lado às cegas. O banco não precisa voltar: nada do banco depende desse front.
 
 ## 3. Pré-voo em SQL
 
@@ -317,22 +369,28 @@ Esperado: **uma** versão de cada (`versoes = 1`); `ludmilla_email_registrar` co
 `parametros = 20` e `tem_troca_de_protocolo = true`; `ludmilla_email_anexo_novo` com
 `parametros = 8` e `tem_p_chave = true`; `ludmilla_aplicar_update` com
 `tem_troca_de_protocolo = true` (o ramo que se perdeu em 22/09). E
-`ludmilla_email_registrar` com **`tem_recebido_no_raw = true`** quando a migração
-`20261022120000` do fechamento A estiver aplicada: se vier `false`, ela **ainda não
-está** — o run funciona, mas o "Ler de novo" tem a falha C-1 (seção 8) e os cartões
-novos saem sem a data do e-mail (a tela usa "lido pela Ludmilla em").
+`ludmilla_email_registrar` com **`tem_recebido_no_raw = true`**: a migração
+`20261022120000` do fechamento A **está aplicada** (conferido em 22/10). Se vier
+`false`, algo desfez isso (ou é outro banco): o run funciona, mas o "Ler de novo" tem
+a falha C-1 (seção 8) e os cartões novos saem sem a data do e-mail (a tela usa "lido
+pela Ludmilla em") — aplique a migração antes de seguir.
 
 **Crédito na Anthropic**: confira o saldo no extrato de IA do console. Sem crédito,
 a leitura do PDF volta `ok:false`: as Cartas não se identificam (a NT e a UC estão no
 PDF), o motivo diz "não consegui ler o anexo para descobrir o projeto", e as
-mensagens ficam para a próxima (até 5 vezes). **E, desde o I-2 (22/10), sem a IA
-nenhum PDF que a regra manda ler é anexado**: a trava de titular precisa da leitura, e
-o robô não anexa "às cegas". Isso vale também para o documento de um e-mail achado só
-**pelo texto** (protocolo, UC ou nome no assunto): ele espera a IA voltar, com a
-ressalva "não anexei ainda: preciso ler o documento para conferir o titular", e
-tenta de novo na leitura seguinte (até 5). Sem crédito, o run termina "limpo" e com
-**zero anexos** — não é defeito, é a trava esperando. Regra com `ler_pdf = false` não
-depende da IA e anexa como antes.
+mensagens ficam para a próxima (até 5 vezes). **E, desde o I-2 (22/10), o PDF que
+precisa da trava de titular não é anexado sem a leitura da IA**: o robô não anexa "às
+cegas", e a mensagem espera a próxima tentativa, com a ressalva "não anexei ainda:
+preciso ler o documento para conferir o titular" (até 5 tentativas). **Só espera quem
+precisa ler** (`precisaLerPdf`, `decidir.ts`): a regra tem `ler_pdf` **e** (o texto não
+achou o projeto, **ou** a regra é Carta/resultado de vistoria e o texto não classificou
+o e-mail). **Não espera:** o e-mail que o texto **achou e classificou** (protocolo, UC ou
+nome no assunto, mais um assunto que o classificador reconhece), e o que o texto achou
+numa regra que não espera veredito (troca do relógio, por exemplo) — esses não chamam a
+IA e anexam **sem leitura e sem a trava de titular**, como antes do I-2; e a regra com
+`ler_pdf = false`, que não depende da IA. Então, sem crédito, ficam esperando os
+e-mails que o texto **não identificou** e as Cartas e os resultados de vistoria que o
+texto achou mas **não classificou**; o resto anexa normalmente.
 
 ## 4. Disparar o run
 
@@ -466,9 +524,11 @@ tratar esta mensagem".
 `avisos` é a soma de **sinos tocados**: cada aviso vai para os 6 admin/staff, então um
 aviso vale cerca de **6**. Com o fechamento A há a chave `avisos_mensagens` (quantas
 **mensagens** geraram aviso) — use essa para dizer "quantos avisos". Na tela, o quadro
-diz **"avisos (mensagens)"** num run novo e **"sinos tocados"** num run sem a chave
-(como o de 14/10). Sem o fechamento A no robô (VPS ainda com o código velho), só
-existe o segundo número — e ele **não é** o número de avisos.
+diz **"avisos (mensagens)"** num run novo, e **"sinos tocados"** num run que tenha só
+`avisos`. **O run de 14/10 não tem nenhum dos dois** (as chaves reais dele não incluem
+`avisos`): nele o quadro de avisos **some**, sem erro. Sem o fechamento A no robô (VPS
+ainda com o código velho), um run da ENEL traria só `avisos` — e ele **não é** o número
+de avisos.
 
 E, mensagem por mensagem (as 60 mais recentes; o `achou_por` só existe nas que
 abriram cartão):
@@ -502,7 +562,7 @@ SELECT m.recebido_em::date AS dia,
 | **`anexados`** (= `documentos_anexados`) | documentos que chegaram a um card. Cada um se confere à mão (abaixo) |
 | **`imagens_ignoradas`** | a robô não anexa imagem (quase sempre logo de assinatura). Se a ENEL mandar documento **escaneado**, este é o único lugar onde aparece |
 | **`anexos_recusados`** · **`anexos_sem_nome`** · **`anexos_de_outro_projeto`** | os mesmos da EDP: arquivo que o bucket não aceita (p7s, dwg, zip, acima de 10 MB); anexo sem nome; arquivo cujo nome traz o número de **outro** projeto nosso (a robô acertou em não anexar — mas alguém leva o arquivo ao card certo à mão) |
-| **`a_tentar_de_novo`** | a IA ou o anexo falhou, **ou o PDF esperou a leitura** ("não anexei ainda: preciso ler o documento…", I-2). Normal ser > 0; preocupante ficar igual run após run, ou vir com "não consegui ler o anexo" em todas (crédito acabou?). Separe as que **morreram no meio** (`confere-morreu-no-meio`) |
+| **`a_tentar_de_novo`** | a IA ou o anexo falhou, **ou o PDF esperou a leitura** ("não anexei ainda: preciso ler o documento…", I-2 — só quando o e-mail precisa ler: projeto não achado pelo texto, ou Carta/resultado de vistoria sem classificação pelo texto). Normal ser > 0; preocupante ficar igual run após run, ou vir com "não consegui ler o anexo" em todas (crédito acabou?). Separe as que **morreram no meio** (`confere-morreu-no-meio`) |
 | **`nao_lidas`** | corpo que o parser não leu. Condição permanente: no run de 14/10 foram 2 |
 | **`falhas_busca` · `falhas_tratamento`** | > 0: olhe o log do robô (`o tratamento desta mensagem falhou`, `a busca na caixa falhou`) |
 | **`duracao`** | só envelopes + IA para os pendentes; o run de 14/10, sem IA, levou 45 s para 18 mensagens. Se passar de uns 15 minutos, meça antes de falar em agendamento |
@@ -698,11 +758,13 @@ cartão de uma Carta de pendência antiga, ou de uma "vistoria reprovada" velha,
 sugerir etapa para um projeto que já andou (veja a data antes de Aplicar). Avise a
 equipe **antes** de clicar, para ninguém tomar o sino por urgência.
 
-**Dois efeitos do I-2 (22/10) na primeira leitura.** (1) Os documentos de e-mails
-achados **pelo texto** também esperam a IA: se ela estiver fora do ar (crédito, cota,
-erro), a primeira leitura termina com muita coisa em `a_tentar_de_novo` e **nenhum
-PDF anexado**. É o esperado, e não é defeito: a trava de titular não roda sem a
-leitura. (2) O sino que nasce da classificação **por texto** (assunto e corpo) não
+**Dois efeitos do I-2 (22/10) na primeira leitura.** (1) Os documentos que precisam da
+trava de titular esperam a IA: se ela estiver fora do ar (crédito, cota, erro), as
+Cartas e os resultados de vistoria **sem pista no assunto** (e os e-mails que o texto
+não identificou) ficam em `a_tentar_de_novo`, sem PDF anexado, até a leitura voltar. É
+o esperado, e não é defeito. **Não esperam** os e-mails que o texto achou **e**
+classificou (anexam sem leitura e sem a trava, como antes) nem as regras com `ler_pdf =
+false`. (2) O sino que nasce da classificação **por texto** (assunto e corpo) não
 espera a IA: os avisos de 30 dias podem tocar mesmo com a leitura fora do ar.
 
 **Decisão do usuário (opcional, não implementada):** para a primeira leitura **não
@@ -785,15 +847,15 @@ RETURNING n.id;
 - **Mensagem travada** (`concluida = false`, `tentativas = 5`) → a tela mostra em
   destaque; "Ler de novo" zera o contador (não zera `aviso_em`: o sino não toca de
   novo).
-- **"Ler de novo" numa mensagem que já abriu cartão — cuidado até o fechamento A
-  entrar.** Enquanto a migração `20261022120000` **não estiver aplicada** (o pré-voo
-  mostra `tem_recebido_no_raw = false`), a chave da mensagem da ENEL é fixa (`''`) e a
-  releitura que achar **outro projeto** reescreve o cartão pendente do primeiro: ele
-  passa a levar a recomendação, o protocolo e a troca do projeto novo, e o "Aplicar"
-  grava etapa e protocolo **no projeto errado** (C-1 da revisão final). Regra até lá:
-  **ignore o cartão pendente ANTES de clicar em "Ler de novo"**. Com o fechamento A
-  aplicado, a releitura abre um cartão **novo** para o outro projeto e o primeiro fica
-  intacto — e a regra deixa de ser necessária.
+- **"Ler de novo" numa mensagem que já abriu cartão — regra só se o pré-voo vier
+  `false`.** A migração `20261022120000` **está aplicada** (conferido em 22/10), então,
+  com o pré-voo em `tem_recebido_no_raw = true`, a releitura que achar **outro projeto**
+  abre um cartão **novo** para o outro projeto e o primeiro fica intacto: **não há regra
+  a seguir**. Só se o pré-voo vier `false` (a migração não está lá) vale o que o C-1 da
+  revisão final achou: a chave da mensagem da ENEL é fixa (`''`) e a releitura que
+  achar outro projeto reescreve o cartão pendente do primeiro, e o "Aplicar" grava
+  etapa e protocolo **no projeto errado**. Nesse caso, **ignore o cartão pendente ANTES
+  de clicar em "Ler de novo"** — e aplique a migração.
 - **Quadros vazios na tela com o run `ok`** → renomearam uma chave de `resultadoEnel`
   (veja o comentário em `MensagensEmail.tsx`); o dado está em `confere-run.sql`.
 

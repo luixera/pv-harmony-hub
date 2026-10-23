@@ -183,6 +183,16 @@ describe('detalheDoCartaoDeEmail — o que o cartão de e-mail diz além da reco
     expect(detalheDoCartaoDeEmail({ raw: undefined })).toBeNull();
   });
 
+  it('é cartão de e-mail com UMA das duas marcas: só assunto, ou só remetente (o banco grava as duas, mas basta uma)', () => {
+    const soAssunto = detalheDoCartaoDeEmail({ raw: { assunto: 'Resposta da solicitação', motivo: null }, casamento: 'uc' });
+    expect(soAssunto).not.toBeNull();
+    expect(soAssunto?.achado).toBe('achado pela UC');
+    const soRemetente = detalheDoCartaoDeEmail({ raw: { remetente: 'atendimento@exemplo.test', motivo: 'não anexei · titular diverge' }, casamento: 'titular' });
+    expect(soRemetente).not.toBeNull();
+    expect(soRemetente?.achado).toBe('achado pelo nome do titular');
+    expect(soRemetente?.bloqueio).toBe(true);
+  });
+
   it('e-mail comum: diz como achou, a data do e-mail e o motivo (ressalva)', () => {
     const d = detalheDoCartaoDeEmail({
       raw: rawEmail({ motivo: 'a Carta traz a NT 900000222; o cadastro tem nenhum', recebido_em: '2026-10-13T14:32:00+00:00' }),

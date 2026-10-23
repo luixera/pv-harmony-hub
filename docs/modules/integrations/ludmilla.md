@@ -468,11 +468,12 @@ menor disjuntor da classe que comporta o do projeto > maior da classe).
 0b. **Primeiro run da ENEL por e-mail** — manual e acompanhado, antes de
    qualquer agendamento, pelo
    [roteiro](../../superpowers/2026-10-20-primeiro-run-enel-email.md). Antes
-   dele, nesta ordem: o push da `main` (decisão do usuário, depende da frente
-   de assinatura), a `ludmilla-parecer` com o modo ENEL no ar e o **robô da VPS
-   atualizado** (`ludmilla-worker.yml`, à mão) — até lá, "Verificar agora" no
-   cartão da ENEL roda no modo da EDP (foi o incidente de 14/10). Depende do
-   usuário:
+   dele, nesta ordem: o **push do worker do fechamento A** (o `origin/main` ainda
+   não o tem) e, depois, **atualizar o robô da VPS** (`ludmilla-worker.yml`, à
+   mão; ver o roteiro, passo 1.3, com a trava de que o GitHub tenha o código). O
+   primeiro push e a `ludmilla-parecer` (v108, com o modo ENEL) já estão no ar
+   desde 22/10. Até o robô novo subir, "Verificar agora" no cartão da ENEL roda
+   no modo da EDP (foi o incidente de 14/10). Depende do usuário:
    - "a troca … já foi realizada através da nota de serviço" existe em e-mail da
      ENEL e hoje **só anota** (a robô não a classifica): vira sino ou sugestão
      de Concluído?
@@ -1025,8 +1026,10 @@ outro projeto, mas nada vai para o card dele.
 `concluida = true` (não é falha passageira; insistir não resolve). "Ler de novo"
 recupera depois que o cadastro for corrigido. **Se a nova leitura achar OUTRO
 projeto** (o cadastro foi corrigido, ou a segunda leitura leu o PDF e a primeira só o
-texto), o banco **abre um cartão novo para o projeto novo** e o cartão pendente do
-primeiro fica intacto (C-1 da revisão final, migração `20261022120000`). Antes
+texto), o banco **abre um cartão novo para o projeto novo — quando a leitura pede
+cartão** (`p_abrir_cartao`: há etapa sugerida, troca de protocolo ou bloqueio; sem
+nada disso só a mensagem é gravada e nenhum cartão nasce) — e o cartão pendente do
+primeiro fica intacto (C-1 da revisão final, migração `20261022120000`, aplicada). Antes
 disso, a chave da mensagem da ENEL é fixa (`''`), então a 2ª leitura corrigia o
 cartão pendente da 1ª: ele passava a levar a recomendação, o protocolo e a troca do
 projeto B, e o "Aplicar" gravava etapa e protocolo **no projeto A**. Hoje o
@@ -1099,11 +1102,16 @@ tinha como rodar e o PDF subia para o projeto achado **só pelo texto**; na tent
 seguinte o anexo já estava `enviado`, e se o titular do documento fosse outro a
 trava chegava tarde. Agora o anexo exige `regra.anexar && !passageira`: a ressalva
 diz "não anexei ainda: preciso ler o documento para conferir o titular", a mensagem
-fica `concluida = false` e **espera a próxima tentativa** (até 5). Efeito para quem
-acompanha: um documento de e-mail **achado pelo texto** (protocolo, UC ou nome no
-assunto) também espera a IA voltar para chegar ao card. Vale só para os PDFs que a
-regra manda ler; regra com `ler_pdf = false` segue como antes (não há trava a
-esperar). A EDP não muda.
+fica `concluida = false` e **espera a próxima tentativa** (até 5). **Só espera quem
+precisa ler** (`precisaLerPdf`, `decidir.ts`): a regra tem `ler_pdf` **e** (o texto não
+achou o projeto, **ou** a regra é Carta/resultado de vistoria e o texto não classificou
+o e-mail). Então, sem a IA, esperam os e-mails que o texto **não identificou** e as
+Cartas e resultados de vistoria que o texto achou mas **não classificou**. **Não
+esperam:** o e-mail que o texto **achou e classificou** (protocolo, UC ou nome no
+assunto, mais um assunto que o classificador reconhece), e o achado pelo texto numa
+regra que não espera veredito (troca do relógio) — esses não chamam a IA e anexam sem
+leitura e **sem a trava de titular**, como antes; e a regra com `ler_pdf = false`
+segue como antes (não há trava a esperar). A EDP não muda.
 
 ### O que o e-mail diz: classificação e etapas
 
@@ -1331,9 +1339,12 @@ pendente".
 **O quadro de avisos:** o `avisos` do robô soma **sinos tocados** (a RPC devolve o
 `ROW_COUNT`: admin + staff do tenant, cerca de **6 por aviso**), e não é o número de
 avisos. O fechamento A cria `avisos_mensagens` (quantas **mensagens** geraram aviso) e
-a tela mostra essa chave como "avisos (mensagens)"; num run **sem** a chave (os
-antigos, como o de 14/10) mostra `avisos` como **"sinos tocados"**
-(`quadroDosAvisos`, com teste). **As chaves são as de
+a tela mostra essa chave como "avisos (mensagens)"; num run **sem** a chave mas
+**com** `avisos` mostra `avisos` como **"sinos tocados"** (`quadroDosAvisos`, com
+teste). **O run de 14/10 não tem nenhum dos dois** (as chaves reais dele são
+`lidos`, `tratados`, `anexados`, `bloqueados`, `imagens_ignoradas`, `a_tentar_de_novo`,
+`falhas` e outras, sem `avisos`): nele o quadro de avisos simplesmente **some**.
+**As chaves são as de
 `resultadoEnel`** (`worker/ludmilla/src/email/enel/run.ts`): `contadorDoRun`
 devolve `null` para uma chave que não existe e o quadro some **sem erro**, então
 renomear lá zera aqui em silêncio — há um comentário nos dois lugares. Só no
