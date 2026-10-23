@@ -35,6 +35,22 @@ export function useFilaDeDecisoes(itens: ItemDaCaixa[]) {
 
   useEffect(() => () => fila.descarregar(), [fila]);
 
+  // O celular mata a página sem aviso: no iOS o `beforeunload` não dispara e no Android não
+  // é confiável. Sair de vista (`pagehide`, ou a aba indo para o fundo) grava na hora —
+  // senão a decisão sumiria em silêncio, com o aviso já dito "aplicada". Custo aceito: trocar
+  // de app dentro dos 8 s grava e tira o Desfazer. Ligado desde o primeiro desenho, sem
+  // esperar a decisão aparecer em `emEspera` (não deixa janela entre decidir e o efeito).
+  useEffect(() => {
+    const saiu = () => fila.descarregar();
+    const mudouAVista = () => { if (document.visibilityState === 'hidden') fila.descarregar(); };
+    window.addEventListener('pagehide', saiu);
+    document.addEventListener('visibilitychange', mudouAVista);
+    return () => {
+      window.removeEventListener('pagehide', saiu);
+      document.removeEventListener('visibilitychange', mudouAVista);
+    };
+  }, [fila]);
+
   useEffect(() => {
     if (emEspera.length === 0) return;
     const segurar = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ''; };
@@ -52,8 +68,7 @@ export function useFilaDeDecisoes(itens: ItemDaCaixa[]) {
 
   const decidir = useCallback((chave: string, texto: string, executar: () => Promise<unknown>) => {
     setOcultos(o => new Set(o).add(chave));
-    fila.adiar({ chave, executar });
-    toast(texto, {
+    const idDoAviso = toast(texto, {
       duration: ESPERA_DO_DESFAZER_MS,
       // no alto: embaixo ele cobriria os botões fixos do detalhe no celular
       position: 'top-center',
@@ -65,6 +80,16 @@ export function useFilaDeDecisoes(itens: ItemDaCaixa[]) {
           if (fila.desfazer(chave)) setOcultos(o => semChave(o, chave));
           else toast.info('Já foi gravado. Para voltar, mude a etapa no card do projeto.');
         },
+      },
+    });
+    // No ponto sem volta (a fila vai gravar, pelo relógio ou por sair da página) o aviso
+    // com o "Desfazer" sai da tela: depois disso o botão só enganaria. O id é obrigatório —
+    // `toast.dismiss()` sem id fecharia TODOS os avisos da tela.
+    fila.adiar({
+      chave,
+      executar: () => {
+        toast.dismiss(idDoAviso);
+        return executar();
       },
     });
   }, [fila]);
