@@ -45,7 +45,7 @@ export function recomendacaoEnel(c: Classificacao, p: LeituraParaDecidir): strin
 const ANTES_DA_APROVACAO = new Set(['pending', 'analysis', 'documentation', 'approval', 'pendencia']);
 
 /**
- * A sugestão cabe na etapa em que o projeto está? A primeira leitura traz 30 dias
+ * A sugestão cabe na etapa em que o projeto está? A primeira leitura traz 120 dias
  * de e-mails: uma Carta de aprovação de um projeto que já está em vistoria não
  * pode virar sugestão de voltar para Aprovado.
  */
@@ -83,11 +83,13 @@ export function avisosEnel(
   return [];
 }
 
-export const JANELA_MAXIMA_DIAS = 30;
+export const JANELA_MAXIMA_DIAS = 120;
+/** Até quantos dias de idade o e-mail ainda toca o sino (decisão do usuário, 24/10/2026). */
+export const DIAS_PARA_AVISAR = 30;
 const DIA = 86_400_000;
 
 /**
- * A janela é FIXA: os últimos 30 dias, em todo run. Uma janela "desde a última
+ * A janela é FIXA: os últimos 120 dias, em todo run. Uma janela "desde a última
  * varredura" fazia a mensagem pendente (IA sem cota por dias, por exemplo) e o
  * "Ler de novo" sumirem da busca sem aviso. O envelope é barato: a pendência
  * filtra as já concluídas e a IA só roda para as pendentes.
@@ -95,6 +97,20 @@ const DIA = 86_400_000;
 export function janelaDeBusca(agora: Date): Date {
   return new Date(agora.getTime() - JANELA_MAXIMA_DIAS * DIA);
 }
+
+/**
+ * A janela lê 120 dias de histórico, mas o sino só toca para e-mail de até 30:
+ * o que é mais velho já foi resolvido pela equipe, e avisar de novo inundaria o
+ * sino. O e-mail antigo é tratado, anexado e registrado do mesmo jeito; só o aviso
+ * cala. Sem data (ou data ilegível), na dúvida, avisa. Exatamente 30 dias ainda avisa.
+ */
+export function deveAvisar(recebidoEm: Date | null, agora: Date): boolean {
+  if (!recebidoEm || Number.isNaN(recebidoEm.getTime())) return true;
+  return agora.getTime() - recebidoEm.getTime() <= DIAS_PARA_AVISAR * DIA;
+}
+
+/** A ressalva do histórico quando houve aviso a tocar e ele calou por idade. */
+export const RESSALVA_AVISO_ANTIGO = `aviso não tocado: e-mail de mais de ${DIAS_PARA_AVISAR} dias`;
 
 /** Os remetentes a procurar: os das regras, sem repetir, sem o comunicado (que é ignorado sem nem ser buscado). */
 export function remetentesParaBuscar(regras: RegraEmail[]): string[] {

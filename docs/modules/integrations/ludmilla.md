@@ -933,7 +933,7 @@ rodam: o Claudinho segue como está, e o mesmo e-mail pode gerar sugestão no
 | | EDP | ENEL |
 |---|---|---|
 | Ponto de partida | o **projeto** (cada protocolo em andamento) | o **e-mail** (cada remetente das regras) |
-| Busca na caixa | pelo número do protocolo | `SEARCH FROM <remetente> SINCE <hoje − 30 dias>` |
+| Busca na caixa | pelo número do protocolo | `SEARCH FROM <remetente> SINCE <hoje − 120 dias>` (sino só para e-mail de até 30 dias) |
 | Identificação | protocolo **no assunto**, chave única | protocolo/NT, UC ou nome, no assunto, no corpo **ou no PDF** |
 | Chave da linha da mensagem | o protocolo | **fixa, `''`** (`CHAVE_DA_MENSAGEM_ENEL`) |
 | Run | `executarVarreduraEmail` (não foi alterado) | `executarVarreduraEnel` (`worker/ludmilla/src/email/enel/run.ts`) |
@@ -1159,9 +1159,9 @@ vazio: tudo está no PDF. A tentativa é contada **antes** da chamada
 até 5 vezes. Lê o maior PDF do e-mail; se o nome dele traz o número de **outro**
 projeto, o que ele diz não vale para este (nem etapa, nem troca, nem sino).
 
-### `recomendacaoCabe` — 30 dias de e-mail não sugerem etapa para trás
+### `recomendacaoCabe` — 120 dias de e-mail não sugerem etapa para trás
 
-A primeira leitura traz 30 dias. Uma Carta de aprovação de projeto que já está em
+A primeira leitura traz 120 dias (eram 30 até 24/10/2026). Uma Carta de aprovação de projeto que já está em
 vistoria não pode virar sugestão de voltar para Aprovado. A sugestão só vale se o
 projeto **não está já nessa etapa**; Aprovado e Pendência só vêm de etapas anteriores
 à aprovação (`pending`, `analysis`, `documentation`, `approval`, `pendencia`);
@@ -1234,13 +1234,25 @@ linha decidida já era de troca. O "Aplicar" grava `portal_updates.protocolo` em
 
 ### Janela fixa, aviso antes do registro, sino uma vez
 
-- **Janela de busca FIXA de 30 dias** (`janelaDeBusca`, `JANELA_MAXIMA_DIAS`). A
-  primeira versão lia "desde a última varredura, −2 dias": a mensagem pendente (IA
-  sem cota por alguns dias) e o "Ler de novo" sumiam da busca sem aviso, e o
-  recuperar só funcionava para e-mail com menos de ~3 dias. Custo: cada run relê os
-  envelopes dos últimos 30 dias (barato: sem corpo); a pendência filtra o que já
-  concluiu, e a IA só roda para as pendentes. `ultima_varredura_em` não muda mais
-  nada na ENEL.
+- **Janela de busca FIXA de 120 dias** (`janelaDeBusca`, `JANELA_MAXIMA_DIAS`; eram
+  30 até 24/10/2026). A primeira versão lia "desde a última varredura, −2 dias": a
+  mensagem pendente (IA sem cota por alguns dias) e o "Ler de novo" sumiam da busca
+  sem aviso, e o recuperar só funcionava para e-mail com menos de ~3 dias. Custo:
+  cada run relê os envelopes dos últimos 120 dias (barato: sem corpo); a pendência
+  filtra o que já concluiu, e a IA só roda para as pendentes. `ultima_varredura_em`
+  não muda mais nada na ENEL.
+- **O sino só toca para e-mail de até 30 dias** (`deveAvisar`, `DIAS_PARA_AVISAR`).
+  Decisão do usuário em 24/10/2026: ler mais histórico (anexar os documentos, abrir
+  cartão de etapa ou de troca de protocolo) **sem inundar o sino** com coisas que a
+  equipe já resolveu. Vale para os três avisos (vistoria virtual aprovada, troca do
+  relógio não executada, e-mail nosso devolvido), nos **dois** caminhos do run (com e
+  sem projeto). Mais de 30 dias (30 dias e 1 minuto já é mais; exatamente 30 ainda
+  avisa) não chama `avisar`; sem data no e-mail, na dúvida, avisa. Todo o resto é
+  igual: a mensagem é tratada, anexada e registrada, e o cartão abre se houver etapa
+  ou troca de protocolo. Quando havia aviso a tocar e ele calou, o `motivo` ganha
+  a ressalva **"aviso não tocado: e-mail de mais de 30 dias"**, para a equipe ver no
+  histórico que houve aviso e por que não tocou (e-mail sem aviso a tocar não ganha a
+  ressalva). A ordem não mudou: o aviso, quando toca, continua **antes** do registro.
 - **Aviso ANTES de registrar como concluída.** O sino é tocado antes de
   `ludmilla_email_registrar`: se o aviso falhasse depois do registro concluído, a
   mensagem não voltaria e o sino sumiria para sempre. Com o aviso antes, a exceção

@@ -12,8 +12,8 @@ import {
 } from '../util.js';
 import { classificarAssunto, classificarCorpo, type Classificacao } from './classificar.js';
 import {
-  avisosEnel, janelaDeBusca, precisaLerPdf, recomendacaoCabe, recomendacaoEnel, remetentesDoRun,
-  titularDeOutraPessoa, trocaDeProtocolo,
+  avisosEnel, deveAvisar, janelaDeBusca, precisaLerPdf, RESSALVA_AVISO_ANTIGO, recomendacaoCabe, recomendacaoEnel,
+  remetentesDoRun, titularDeOutraPessoa, trocaDeProtocolo,
 } from './decidir.js';
 import {
   combinar, identificarPorDocumento, identificarPorTexto, nomeTrazOutroProjeto, referenciaDoProjeto,
@@ -132,8 +132,13 @@ function naoCabe(sugerida: string, status: string): string {
   return `não sugeri "${sugerida}": o projeto já está à frente, em "${status}"`;
 }
 
+/**
+ * `agora` só existe para o teste fixar o relógio: o sino toca só para e-mail de até
+ * 30 dias (`deveAvisar`), e com o relógio real os e-mails dos testes envelheceriam.
+ */
 export async function tratarMensagemEnel(
   run: Run, m: MensagemLida, regras: RegraEmail[], projetos: ProjetoEnel[], deps: DepsEnel = DEPS_ENEL,
+  agora: Date = new Date(),
 ): Promise<TratamentoEnel> {
   const base = {
     runId: run.id, accountId: run.account_id, messageId: m.messageId, protocolo: CHAVE_DA_MENSAGEM_ENEL,
@@ -192,14 +197,20 @@ export async function tratarMensagemEnel(
     // O sino ANTES do registro: se o aviso falhar, a exceção sobe com a linha ainda
     // `concluida = false` (aberta em abrirTentativa) e a retentativa toca. O banco é
     // idempotente por `aviso_em`: não toca duas vezes. Sem projeto, só a devolução avisa.
+    // E-mail de mais de 30 dias só anota: o aviso que existiria não toca (`deveAvisar`).
     let avisos = 0;
-    for (const a of avisosEnel(regra.tipo_documento, null, null, null)) {
-      avisos += await deps.avisar({ accountId: run.account_id, messageId: m.messageId, protocolo: CHAVE_DA_MENSAGEM_ENEL, projectId: null, ...a });
+    const aAvisar = avisosEnel(regra.tipo_documento, null, null, null);
+    const tocarSino = deveAvisar(m.recebidoEm, agora);
+    if (tocarSino) {
+      for (const a of aAvisar) {
+        avisos += await deps.avisar({ accountId: run.account_id, messageId: m.messageId, protocolo: CHAVE_DA_MENSAGEM_ENEL, projectId: null, ...a });
+      }
     }
     await deps.registrarEmailLido({
       ...base, projectId: null, tipoDocumento: regra.tipo_documento,
       veredito: parecer.ok ? parecer.veredito : null, resumo: parecer.resumo || null, anexos: 0,
-      motivo, recomendacao: null, concluida: !passageira, arquivoLido: null, abrirCartao: false,
+      motivo: aAvisar.length > 0 && !tocarSino ? `${motivo} · ${RESSALVA_AVISO_ANTIGO}` : motivo,
+      recomendacao: null, concluida: !passageira, arquivoLido: null, abrirCartao: false,
     });
     log('e-mail sem projeto certo', { nivel: 'aviso', situacao: id.tipo, codigos: id.tipo === 'conflito' ? id.codigos : undefined });
     return {
@@ -308,9 +319,16 @@ export async function tratarMensagemEnel(
 
   // O sino ANTES do registro concluído (ver o caminho sem projeto): na vistoria
   // aprovada não há cartão, e o sino é o único sinal.
+  // E-mail de mais de 30 dias só anota: o aviso que existiria não toca (`deveAvisar`), e a
+  // ressalva diz isso no histórico. A mensagem segue tratada, anexada e registrada.
   let avisos = 0;
-  for (const a of avisosEnel(regra.tipo_documento, classificacao, leitura, projeto)) {
-    avisos += await deps.avisar({ accountId: run.account_id, messageId: m.messageId, protocolo: CHAVE_DA_MENSAGEM_ENEL, projectId: projeto.project_id, ...a });
+  const aAvisar = avisosEnel(regra.tipo_documento, classificacao, leitura, projeto);
+  if (deveAvisar(m.recebidoEm, agora)) {
+    for (const a of aAvisar) {
+      avisos += await deps.avisar({ accountId: run.account_id, messageId: m.messageId, protocolo: CHAVE_DA_MENSAGEM_ENEL, projectId: projeto.project_id, ...a });
+    }
+  } else if (aAvisar.length > 0) {
+    ressalvas.push(RESSALVA_AVISO_ANTIGO);
   }
 
   const concluida = !passageira && !anexoFalhou;
@@ -389,8 +407,9 @@ export function resultadoEnel(n: ContaEnel, remetentes: number, projetosAtivos: 
 }
 
 /**
- * A janela de busca é FIXA (30 dias, `janelaDeBusca`), então o run não depende da
- * última varredura: a retentativa e o "Ler de novo" alcançam o e-mail antigo.
+ * A janela de busca é FIXA (120 dias, `janelaDeBusca`), então o run não depende da
+ * última varredura: a retentativa e o "Ler de novo" alcançam o e-mail antigo. O sino,
+ * porém, só toca para e-mail de até 30 dias (`deveAvisar`).
  */
 export async function executarVarreduraEnel(run: Run): Promise<void> {
   log('varredura por e-mail (por remetente) iniciada', { run: run.id });

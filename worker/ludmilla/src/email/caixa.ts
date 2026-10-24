@@ -174,7 +174,7 @@ export function uidsDaBuscaPorRemetente(resultado: number[] | false | undefined,
 
 /**
  * Puro: o critério do SEARCH por remetente. O `since` é o que segura a janela de
- * 30 dias — sem ele a caixa inteira seria lida, e cada mensagem da ENEL custaria
+ * 120 dias — sem ele a caixa inteira seria lida, e cada mensagem da ENEL custaria
  * IA —, por isso mora numa função que o teste consegue ler.
  */
 export function criterioPorRemetente(remetente: string, desde: Date): SearchObject {

@@ -21,7 +21,7 @@ test('busca por remetente: a mensagem de erro cita o remetente (que é nosso, n�
   assert.throws(() => uidsDaBuscaPorRemetente(false, 'tecnico.abc@enel.com'), /tecnico\.abc@enel\.com/);
 });
 
-// O critério da busca. `since` é o que segura o teto de 30 dias: sem ele a caixa
+// O critério da busca. `since` é o que segura o teto de 120 dias: sem ele a caixa
 // INTEIRA seria lida (e cada mensagem nova da ENEL custaria IA).
 test('critério da busca por remetente: remetente E data, nada além', () => {
   const desde = new Date('2026-09-18T00:00:00Z');

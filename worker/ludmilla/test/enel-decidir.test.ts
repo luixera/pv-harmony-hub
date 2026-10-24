@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import {
-  avisosEnel, janelaDeBusca, precisaLerPdf, recomendacaoCabe, recomendacaoEnel, remetentesDoRun,
+  avisosEnel, deveAvisar, janelaDeBusca, precisaLerPdf, recomendacaoCabe, recomendacaoEnel, remetentesDoRun,
   remetentesParaBuscar, titularDeOutraPessoa, trocaDeProtocolo,
 } from '../src/email/enel/decidir.js';
 import { classificarErroEmail } from '../src/erros.js';
@@ -77,9 +77,32 @@ test('R5: a devolução diz que UM DOS DESTINATÁRIOS não recebeu — nunca que
   assert.match(semProjeto.mensagem, /^Um dos destinatários de um e-mail não recebeu/);
 });
 
-test('I-2: a janela é FIXA em 30 dias, em todo run (a retentativa e o "Ler de novo" alcançam e-mail antigo)', () => {
-  assert.equal(janelaDeBusca(new Date('2026-10-13T12:00:00Z')).toISOString(), '2026-09-13T12:00:00.000Z');
-  assert.equal(janelaDeBusca(new Date('2026-12-01T00:00:00Z')).toISOString(), '2026-11-01T00:00:00.000Z');
+test('I-2: a janela é FIXA em 120 dias, em todo run (a retentativa e o "Ler de novo" alcançam e-mail antigo)', () => {
+  assert.equal(janelaDeBusca(new Date('2026-10-13T12:00:00Z')).toISOString(), '2026-06-15T12:00:00.000Z');
+  assert.equal(janelaDeBusca(new Date('2026-12-01T00:00:00Z')).toISOString(), '2026-08-03T00:00:00.000Z');
+});
+
+// Decisão do usuário (24/10/2026): a janela lê 120 dias, mas o sino só toca para e-mail de até 30.
+const AGORA_AVISO = new Date('2026-10-24T12:00:00Z');
+const HA = (dias: number, minutos = 0) => new Date(AGORA_AVISO.getTime() - dias * 86_400_000 - minutos * 60_000);
+
+test('deveAvisar: sem data, na dúvida, avisa', () => {
+  assert.equal(deveAvisar(null, AGORA_AVISO), true);
+  assert.equal(deveAvisar(new Date('data inválida'), AGORA_AVISO), true);
+});
+test('deveAvisar: e-mail de 29 dias avisa', () => {
+  assert.equal(deveAvisar(HA(29), AGORA_AVISO), true);
+});
+test('deveAvisar: com EXATAMENTE 30 dias ainda avisa; com 30 dias e 1 minuto já não', () => {
+  assert.equal(deveAvisar(HA(30), AGORA_AVISO), true);
+  assert.equal(deveAvisar(HA(30, 1), AGORA_AVISO), false);
+});
+test('deveAvisar: e-mail de 31 dias (ou de 119) não avisa', () => {
+  assert.equal(deveAvisar(HA(31), AGORA_AVISO), false);
+  assert.equal(deveAvisar(HA(119), AGORA_AVISO), false);
+});
+test('deveAvisar: data no futuro (relógio da caixa adiantado) avisa', () => {
+  assert.equal(deveAvisar(new Date(AGORA_AVISO.getTime() + 3_600_000), AGORA_AVISO), true);
 });
 
 test('remetentes: os das regras, sem repetir e sem o comunicado (o atendimento.edsp agora É buscado)', () => {

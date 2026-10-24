@@ -954,3 +954,8 @@ de `varredura_email` é sempre manual.
    entre 22/09 e 16/10 (PRJ-36467 → 2233593787; PRJ-89660 → 2250770386), e se vale
    repetir o run depois de corrigir regra ou cadastro.
 3. Só então se fala em agendamento.
+
+> **24/10: janela passou a 120 dias; avisos só para e-mails de até 30 dias.** As seções
+> 5, 6 e 7 acima falam em 30 dias porque foram escritas antes: hoje o run lê 120 dias, e
+> o sino só toca para e-mail de até 30 (o mais antigo é tratado, anexado e registrado,
+> com a ressalva "aviso não tocado" no histórico).

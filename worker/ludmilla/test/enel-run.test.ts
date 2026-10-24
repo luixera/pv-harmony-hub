@@ -116,8 +116,15 @@ async function comLogs<T>(f: () => Promise<T>): Promise<{ r: T; logs: string }> 
   try { return { r: await f(), logs: linhas.join('\n') }; } finally { console.log = original; }
 }
 
+/**
+ * O "agora" dos testes é FIXO: o sino só toca para e-mail de até 30 dias, e com o
+ * relógio real os e-mails de 10/10 envelheceriam e os testes quebrariam sozinhos.
+ */
+const AGORA = new Date('2026-10-24T12:00:00Z');
+const haDias = (dias: number): Date => new Date(AGORA.getTime() - dias * 86_400_000);
+
 const tratar = async (m: MensagemLida, deps: DepsEnel, projetos = PROJETOS) =>
-  (await comLogs(() => tratarMensagemEnel(RUN, m, REGRAS, projetos, deps))).r;
+  (await comLogs(() => tratarMensagemEnel(RUN, m, REGRAS, projetos, deps, AGORA))).r;
 
 const unico = (d: Diario): EmailLido => { assert.equal(d.registros.length, 1); return d.registros[0]; };
 
@@ -623,6 +630,86 @@ test('I-1. o aviso vem ANTES do registro nos dois caminhos', async () => {
   const semProjeto = dubles();
   await tratar(mensagem({ remetente: 'postmaster@enel.com', assunto: 'Undeliverable: pedido de vistoria', anexos: [] }), semProjeto.deps);
   assert.ok(semProjeto.d.ordem.indexOf('avisar') < semProjeto.d.ordem.indexOf('registrarEmailLido'));
+});
+
+// ── 24/10/2026 · janela de 120 dias, sino só para e-mail de até 30 ───────────────
+// O e-mail antigo continua sendo tratado, anexado e registrado; só não toca o sino.
+// A ressalva no motivo deixa a equipe ver no histórico que houve aviso e por que calou.
+
+const RESSALVA_ANTIGO = /aviso não tocado: e-mail de mais de 30 dias/;
+const DEVOLUCAO = (o: Partial<MensagemLida> = {}) =>
+  mensagem({ remetente: 'postmaster@enel.com', assunto: 'Undeliverable: pedido de vistoria', anexos: [], ...o });
+
+test('janela 120. vistoria aprovada de 40 dias: 0 chamadas a avisar e a ressalva no motivo; o resto segue igual', async () => {
+  const { deps, d } = dubles();
+  const r = await tratar(VISTORIA_OK({ recebidoEm: haDias(40) }), deps);
+  assert.equal(d.avisos.length, 0);
+  assert.equal(d.ordem.includes('avisar'), false);
+  assert.equal(r.situacao, 'tratado');
+  assert.equal(r.avisos, 0);
+  assert.equal(r.concluida, true);
+  const reg = unico(d);
+  assert.equal(reg.concluida, true);
+  assert.equal(reg.projectId, PA.project_id);
+  assert.match(String(reg.motivo), /vistoria virtual aprovada — falta a troca do relógio/, 'a anotação de sempre continua');
+  assert.match(String(reg.motivo), RESSALVA_ANTIGO);
+});
+
+test('janela 120. a MESMA vistoria aprovada de 5 dias atrás: 1 chamada a avisar e nenhuma ressalva', async () => {
+  const { deps, d } = dubles();
+  const r = await tratar(VISTORIA_OK({ recebidoEm: haDias(5) }), deps);
+  assert.equal(d.avisos.length, 1);
+  assert.equal(r.avisos, 1);
+  assert.doesNotMatch(String(unico(d).motivo), /aviso não tocado/);
+});
+
+test('janela 120. e-mail sem data (recebidoEm null): na dúvida, avisa', async () => {
+  const { deps, d } = dubles();
+  await tratar(VISTORIA_OK({ recebidoEm: null }), deps);
+  assert.equal(d.avisos.length, 1);
+  assert.doesNotMatch(String(unico(d).motivo), /aviso não tocado/);
+});
+
+test('janela 120. troca não executada de 40 dias: não toca o sino, anota a ressalva', async () => {
+  const { deps, d } = dubles();
+  await tratar(mensagem({
+    remetente: 'Canal GD <canalgd.sp@br.enel.com>', assunto: 'RE: TROCA DE RELÓGIO - NT 391000010',
+    texto: 'Prezado(a), bom dia! Identificamos que a tentativa de troca do medidor no dia 15/09 , não foi executada pelo seguinte motivo: Cliente Não Permitiu Execução. Atenciosamente',
+    anexos: [], recebidoEm: haDias(40),
+  }), deps);
+  assert.equal(d.avisos.length, 0);
+  const motivo = String(unico(d).motivo);
+  assert.match(motivo, /Cliente Não Permitiu Execução/, 'a anotação da troca continua no histórico');
+  assert.match(motivo, RESSALVA_ANTIGO);
+});
+
+test('janela 120. devolução sem projeto: de 40 dias não toca o sino (e anota a ressalva); de 5 dias toca', async () => {
+  const antigo = dubles();
+  const r = await tratar(DEVOLUCAO({ recebidoEm: haDias(40) }), antigo.deps);
+  assert.equal(r.situacao, 'nao_identificado');
+  assert.equal(r.avisos, 0);
+  assert.equal(antigo.d.avisos.length, 0);
+  assert.equal(antigo.d.ordem.includes('avisar'), false);
+  const reg = unico(antigo.d);
+  assert.equal(reg.concluida, true);
+  assert.match(String(reg.motivo), /não reconheci de qual projeto é este e-mail/, 'o motivo de sempre continua');
+  assert.match(String(reg.motivo), RESSALVA_ANTIGO);
+
+  const recente = dubles();
+  await tratar(DEVOLUCAO({ recebidoEm: haDias(5) }), recente.deps);
+  assert.equal(recente.d.avisos.length, 1);
+  assert.doesNotMatch(String(unico(recente.d).motivo), /aviso não tocado/);
+});
+
+test('janela 120. Carta de 40 dias: segue tratada, anexada e abre o cartão; sem aviso a tocar, sem ressalva', async () => {
+  const { deps, d } = dubles();
+  const r = await tratar(mensagem({ recebidoEm: haDias(40) }), deps);
+  assert.equal(r.situacao, 'tratado');
+  assert.equal(d.subidos.length, 1);
+  const reg = unico(d);
+  assert.equal(reg.recomendacao, 'approved');
+  assert.equal(reg.abrirCartao, true);
+  assert.doesNotMatch(String(reg.motivo ?? ''), /aviso não tocado/, 'a ressalva é só para o aviso que existiria');
 });
 
 test('I-3a. a IA põe a UC do próprio projeto no campo nt: sem troca e sem cartão vazio', async () => {
