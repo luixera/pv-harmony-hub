@@ -340,3 +340,40 @@ export function rotuloDaCriacao(
     numeroCpfl: doRun ?? limpo(projeto?.cpfl_node_id),
   };
 }
+
+// ── o que o painel de detalhe mostra (§3.2) ──────────────────────────────────
+
+export interface VisibilidadeDoDetalhe {
+  /** a seção "A sugestão" (só a recomendação tem) */
+  sugestao: boolean;
+  /**
+   * O seletor de etapa: recomendação pendente, com projeto casado e não bloqueada. Bloqueado (o
+   * documento é de outra pessoa) não move card; sem projeto não há card; A fazer não tem etapa.
+   */
+  seletor: boolean;
+  /** a explicação "Aplicar grava X no cadastro": só quando o Aplicar existe e vai gravar */
+  trocaDeProtocolo: boolean;
+  /** o aviso vermelho "Documento não anexado" */
+  avisoDeBloqueio: boolean;
+  /** a ressalva em âmbar na sugestão; no bloqueado ela já vai dentro do aviso vermelho */
+  ressalvaNaSugestao: boolean;
+  /** "Protocolo no e-mail" / "Protocolo no portal" no Quem; null = A fazer (não tem protocolo) */
+  rotuloDoProtocolo: string | null;
+  /** "Este projeto na Ludmilla" */
+  linhaDoTempo: boolean;
+}
+
+export function visibilidadeDoDetalhe(item: ItemDaCaixa): VisibilidadeDoDetalhe {
+  const u = item.update;
+  const bloqueado = !!u && cartaoBloqueado(u);
+  const pendente = item.situacao === 'pendente';
+  return {
+    sugestao: !!u,
+    seletor: !!u && pendente && !bloqueado && !!u.project,
+    trocaDeProtocolo: !!u && pendente && !bloqueado && !!u.atualizar_protocolo,
+    avisoDeBloqueio: bloqueado,
+    ressalvaNaSugestao: !!u && !bloqueado,
+    rotuloDoProtocolo: u ? (item.meio === 'email' ? 'Protocolo no e-mail' : 'Protocolo no portal') : null,
+    linhaDoTempo: !!item.projectId,
+  };
+}

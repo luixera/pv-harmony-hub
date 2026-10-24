@@ -1,10 +1,11 @@
-import type { ReactNode } from 'react';
+import { useRef, type ReactNode } from 'react';
 import { AlertTriangle, Loader2, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import type { FiltroDaCaixa, ItemDaCaixa } from '@/lib/ludmillaCaixa';
 import { FiltrosDaCaixa } from './FiltrosDaCaixa';
 import { LinhaDaCaixa } from './LinhaDaCaixa';
+import { NOME_DO_MEIO, dataCurta } from './visual';
 
 export interface PropsDaCaixa {
   lista: ItemDaCaixa[];
@@ -27,6 +28,13 @@ export interface PropsDaCaixa {
 export function CaixaDeDecisoes(p: PropsDaCaixa) {
   const aberto = p.lista.find(i => i.chave === p.selecionada) ?? null;
   const semFiltro = p.filtro.situacao === 'pendente' && !p.filtro.busca && p.filtro.tipos.length === 0 && !p.filtro.contaId;
+  const raiz = useRef<HTMLDivElement>(null);
+
+  // A folha fecha com animação: decidido o ÚLTIMO item, `aberto` vira null na hora e ela
+  // deslizaria vazia. Durante a saída ela continua mostrando o que estava aberto.
+  const ultimoAberto = useRef<ItemDaCaixa | null>(null);
+  if (aberto) ultimoAberto.current = aberto;
+  const naFolha = aberto ?? ultimoAberto.current;
 
   const lista = (
     <ul className="divide-y overflow-hidden rounded-xl border bg-card">
@@ -39,7 +47,7 @@ export function CaixaDeDecisoes(p: PropsDaCaixa) {
   );
 
   return (
-    <div className="space-y-3">
+    <div ref={raiz} tabIndex={-1} className="space-y-3 outline-none">
       <FiltrosDaCaixa filtro={p.filtro} onFiltro={p.onFiltro} />
 
       {/* Consulta que falhou NÃO é lista vazia: "Nada pendente" esconderia as recomendações. */}
@@ -86,14 +94,28 @@ export function CaixaDeDecisoes(p: PropsDaCaixa) {
               const alvo = e.target as Element | null;
               if (alvo?.closest?.('[data-sonner-toaster]')) e.preventDefault();
             }}
+            // fechada a folha, o foco volta à linha que estava aberta (sem ela — decidida —, à primeira;
+            // lista vazia, à própria caixa: a busca abriria o teclado do celular sem ninguém pedir)
+            onCloseAutoFocus={e => {
+              const chave = ultimoAberto.current?.chave;
+              const linhas = [...(raiz.current?.querySelectorAll<HTMLElement>('[data-linha]') ?? [])];
+              const destino = linhas.find(l => l.dataset.linha === chave) ?? linhas[0] ?? raiz.current;
+              if (destino) {
+                e.preventDefault();
+                destino.focus();
+              }
+            }}
           >
-            {aberto && (
+            {naFolha && (
               <>
-                <SheetHeader className="shrink-0 border-b px-4 py-3 pr-12 text-left">
-                  <SheetTitle className="text-base">{aberto.codigo ?? 'Sem projeto casado'}</SheetTitle>
-                  <SheetDescription>{aberto.concessionaria}{aberto.titular ? ` · ${aberto.titular}` : ''}</SheetDescription>
+                <SheetHeader className="shrink-0 space-y-0.5 border-b px-4 py-3 pr-14 text-left">
+                  <SheetTitle className="text-base">{naFolha.codigo ?? 'Sem projeto casado'}</SheetTitle>
+                  <SheetDescription>
+                    {naFolha.concessionaria} · por {NOME_DO_MEIO[naFolha.meio]} · {dataCurta(naFolha.quando)}
+                    {naFolha.titular && <span className="block truncate">{naFolha.titular}</span>}
+                  </SheetDescription>
                 </SheetHeader>
-                {p.renderDetalhe(aberto, 'folha')}
+                {p.renderDetalhe(naFolha, 'folha')}
               </>
             )}
           </SheetContent>

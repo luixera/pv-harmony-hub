@@ -1,7 +1,10 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useMemo, useRef, useState, type ReactNode } from 'react';
 import { filtrarItens, proximaDepoisDe, selecaoValida, type FiltroDaCaixa, type ItemDaCaixa } from '@/lib/ludmillaCaixa';
 import { textoDaDecisao, type AcaoDaDecisao } from '@/lib/ludmillaPainel';
 import { CaixaDeDecisoes } from './CaixaDeDecisoes';
+
+/** Depois de uma decisão, as que chegarem antes disto são o mesmo gesto repetido, não uma decisão nova. */
+const INTERVALO_ENTRE_DECISOES_MS = 700;
 
 /**
  * As três gravações possíveis — no app, `useAcoesDaCaixa()` (espera a mutação, REJEITA na
@@ -43,8 +46,14 @@ export function AbaDecidir(p: PropsDaAbaDecidir) {
     [p.itens, p.filtro, p.contaId, p.ocultos],
   );
   const efetiva = selecaoValida(lista, selecionada, p.modo === 'lado_a_lado');
+  const ultimaDecisaoEm = useRef(0);
 
   const decidirItem = (item: ItemDaCaixa, acao: AcaoDaDecisao, etapa: string | null) => {
+    // Decidido, o painel troca NA HORA para o próximo item com os botões no mesmo lugar: o
+    // segundo clique de um clique duplo (ou um toque repetido) cairia no item seguinte.
+    const agora = Date.now();
+    if (agora - ultimaDecisaoEm.current < INTERVALO_ENTRE_DECISOES_MS) return;
+    ultimaDecisaoEm.current = agora;
     const proxima = proximaDepoisDe(lista, item.chave);
     const executar = acao === 'feito' ? () => p.acoes.feito(item.id)
       : acao === 'ignorar' ? () => p.acoes.ignorar(item.id)

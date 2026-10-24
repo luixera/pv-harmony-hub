@@ -16,17 +16,26 @@ export function DetalheConectado({ item, layout, etapas, rotuloEtapa, onDecidir,
 }) {
   const ehEmail = item.origem === 'recomendacao' && item.meio === 'email';
   const { data: mensagem = null } = useMensagemDaRecomendacao(ehEmail ? item.id : null);
-  const { data: projeto = null } = useProjetoDoDetalhe(item.projectId);
+  const projeto = useProjetoDoDetalhe(item.projectId);
   const { data: documentos = null } = useDocumentosDoProjeto(item.projectId);
-  const { data: linha } = useLinhaDoTempo(item.projectId);
+  const linha = useLinhaDoTempo(item.projectId);
+
+  // consulta que falhou NÃO é "carregando" para sempre, nem "—" (que diria que não há)
+  const doProjeto: DadosDoDetalhe['projeto'] = !item.projectId ? null
+    : projeto.data ? { uc: ucDoProjeto(projeto.data), protocoloNoCadastro: projeto.data.protocol_number?.trim() || null }
+    : projeto.isError ? 'erro'
+    : projeto.isPending ? 'carregando'
+    : null;
+  const daLinha: DadosDoDetalhe['linhaDoTempo'] = !item.projectId ? []
+    : linha.data ?? (linha.isError ? 'erro' : 'carregando');
 
   const dados: DadosDoDetalhe = {
     item,
     chegou: item.update ? oQueChegou(item.update, mensagem, item.meio) : null,
     ressalva: item.update ? ressalvaDoCartao(item.update, mensagem) : null,
-    projeto: projeto ? { uc: ucDoProjeto(projeto), protocoloNoCadastro: projeto.protocol_number?.trim() || null } : null,
+    projeto: doProjeto,
     documentos,
-    linhaDoTempo: item.projectId ? (linha ?? null) : [],
+    linhaDoTempo: daLinha,
     etapas,
     rotuloEtapa,
   };
