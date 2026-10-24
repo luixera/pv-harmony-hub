@@ -93,7 +93,7 @@ Nota repetida (a ENEL reenvia ou reprograma) **não** duplica: a cobrança exist
 
 - "bom dia" vira "boa tarde" depois do meio-dia, na hora do envio.
 - A partir da 2ª cobrança, a primeira linha passa a ser "Prezados, retomando o e-mail abaixo: …", e o resto segue igual.
-- **{ASSINATURA}**: o nome que o usuário definir (pergunta aberta).
+- **{ASSINATURA}**: **"Equipe GD Manager"** (aprovado pelo usuário em 24/10, junto com o texto: "Pode ser, ótimo"). Fica num lugar só (constante ou configuração do tenant), fácil de trocar.
 
 ## 6. Riscos
 - **E-mail errado para a ENEL.** Mitigação: o clique humano, o destinatário travado na ENEL e o texto editável.
