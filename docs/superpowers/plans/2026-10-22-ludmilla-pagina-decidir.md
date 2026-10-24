@@ -59,6 +59,9 @@ O código das Tasks 6–8 deste plano foi escrito ANTES das rodadas de correçã
 10. **Task 8 — caixa e estação no topo** (revisão da Task 7): `const { data: agente, isLoading: carregandoAgente } = useAgentConfig()`; `caixaPronta = carregandoAgente ? null : !!agente?.is_configured && !!agente.gmail_email` (o código antigo da Task 8, `false` enquanto carrega, acendia o alerta falso "caixa não configurada" em toda abertura). `alertasDasContas(contas, caixaPronta, agora, c => estadoDaEstacao(c, agora))` — o 4º argumento SEMPRE.
 11. **Task 8 — onde fica a `BarraDeAbas`**: filha direta do contêiner da página (ou do `<Tabs>`), ANTES dos `TabsContent` — o `sticky top-14` só gruda dentro do pai. No celular a ordem é: barra de abas (sticky, no topo — decisão 7) → alertas → faixa de saúde → conteúdo da aba. Tirar o `pb-16` (o `MainLayout` já dá `pb-20` no celular).
 12. **`ABAS_DA_LUDMILLA`** passa a morar em `src/components/ludmilla/topo/abas.ts` (revisão da Task 7: evita o aviso do react-refresh); importar de lá.
+13. **Task 8 — o aviso tardio do Aplicar** (revisão da Task 6): `useAplicarUpdate` (`useLudmilla.ts:~494`) faz `toast.success('Card movido…')` no `onSuccess`, 8 s depois da decisão e embaixo da tela — no celular cobre o rodapé. Na Task 8 (que pode editar `useLudmilla.ts`): aceitar uma opção `{ silencioso: true }` (ou equivalente) no hook e usá-la pelo `useAcoesDaCaixa`, mantendo o toast de hoje para quem chama sem a opção. Mensagem duplicada não.
+14. **Task 8 — altura da caixa**: `calc(100vh-16rem)` em `CaixaDeDecisoes.tsx` foi medido sem o topo (alertas + chips + abas). Medir com o topo real e ajustar, garantindo que os botões fixos do detalhe ficam à vista em 1280×800.
+15. **Task 8 — filtro da caixa** vive em `useState` de `AbaDecidirConectada` e some ao trocar de aba: subir o estado para a página (ou guardar em `sessionStorage` com try/catch).
 
 ## Mapa de arquivos
 
