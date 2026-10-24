@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { filtrarItens, proximaDepoisDe, selecaoValida, type FiltroDaCaixa, type ItemDaCaixa } from '@/lib/ludmillaCaixa';
 import { textoDaDecisao, type AcaoDaDecisao } from '@/lib/ludmillaPainel';
 import { CaixaDeDecisoes } from './CaixaDeDecisoes';
@@ -48,6 +48,24 @@ export function AbaDecidir(p: PropsDaAbaDecidir) {
   const efetiva = selecaoValida(lista, selecionada, p.modo === 'lado_a_lado');
   const ultimaDecisaoEm = useRef(0);
 
+  // O FOCO vai para o detalhe só a pedido de um gesto: depois de uma decisão (o botão clicado
+  // desmonta e o foco cairia no <body>; na folha não modal o Tab a fecharia) ou, no computador,
+  // quando a pessoa escolhe uma linha. NUNCA na abertura da página: quem usa teclado ou leitor
+  // de tela começa pelo topo. No celular, abrir a folha fica com o foco automático do Radix.
+  const focarDetalhe = useRef(false);
+  useEffect(() => {
+    if (!focarDetalhe.current) return;
+    focarDetalhe.current = false;
+    if (!efetiva) return; // decidido o último item: a folha fecha e devolve o foco à lista
+    const alvo = [...document.querySelectorAll<HTMLElement>('[data-detalhe]')].find(d => d.dataset.detalhe === efetiva);
+    alvo?.focus({ preventScroll: true });
+  });
+
+  const escolher = (chave: string | null) => {
+    if (chave && p.modo === 'lado_a_lado') focarDetalhe.current = true;
+    setSelecionada(chave);
+  };
+
   const decidirItem = (item: ItemDaCaixa, acao: AcaoDaDecisao, etapa: string | null) => {
     // Decidido, o painel troca NA HORA para o próximo item com os botões no mesmo lugar: o
     // segundo clique de um clique duplo (ou um toque repetido) cairia no item seguinte.
@@ -60,13 +78,14 @@ export function AbaDecidir(p: PropsDaAbaDecidir) {
       : () => p.acoes.aplicar(item.id, etapa);
     // sem etapa escolhida vale a recomendada (o coalesce do banco): textoDaDecisao já sabe
     p.decidir(item.chave, textoDaDecisao(item, acao, etapa, p.rotuloEtapa), executar);
+    focarDetalhe.current = true;
     setSelecionada(proxima);
   };
 
   return (
     <CaixaDeDecisoes
       lista={lista} filtro={{ ...p.filtro, contaId: p.contaId }} onFiltro={f => p.onFiltro({ ...f, contaId: null })}
-      selecionada={efetiva} onSelecionar={setSelecionada} modo={p.modo}
+      selecionada={efetiva} onSelecionar={escolher} modo={p.modo}
       carregando={p.carregando} buscando={p.buscando} erro={p.erro} onTentarDeNovo={p.onTentarDeNovo} agora={p.agora}
       renderDetalhe={(item, layout) => p.detalhe(item, layout, (acao, etapa) => decidirItem(item, acao, etapa))}
     />

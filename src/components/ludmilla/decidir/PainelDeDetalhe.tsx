@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import {
   AlertTriangle, ArrowRight, CheckCheck, CheckCircle2, ClipboardCheck, ClipboardList, ExternalLink, FileText,
   Mail, MessageSquare, Paperclip, Radar, ShieldAlert, ShieldQuestion, XCircle, type LucideIcon,
@@ -361,16 +361,6 @@ export function DetalheDaDecisao({ dados, layout, onDecidir, onAbrirProjeto, url
   const [etapa, setEtapa] = useState<string>(item.update?.recomendacao ?? '');
   const v = visibilidadeDoDetalhe(item);
 
-  // Decidir desmonta o botão clicado e o foco cairia no <body>: o Tab recomeçaria do topo da
-  // página e, na folha não modal, sair dela a fecha. O foco vem para o detalhe novo — só quando
-  // estava perdido (não rouba de quem está na busca, num filtro ou numa linha).
-  const raiz = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (document.activeElement === document.body || document.activeElement === null) {
-      raiz.current?.focus({ preventScroll: true });
-    }
-  }, [item.chave]);
-
   const quem = <Quem item={item} projeto={dados.projeto} v={v} />;
   const chegou = <OQueChegouSecao item={item} chegou={dados.chegou} ressalva={dados.ressalva} v={v} />;
   const documentos = <DocumentosDoProjeto documentos={dados.documentos} urlDoDocumento={urlDoDocumento} />;
@@ -407,7 +397,8 @@ export function DetalheDaDecisao({ dados, layout, onDecidir, onAbrirProjeto, url
   // Nos dois layouts o corpo rola e os botões ficam à vista embaixo (a decisão é a ação
   // principal; com documentos e a troca de protocolo o corpo passa da altura da tela).
   return (
-    <div ref={raiz} tabIndex={-1} data-detalhe={item.chave} className="flex min-h-0 flex-1 flex-col outline-none">
+    // tabIndex -1: a AbaDecidir põe o foco aqui depois de uma decisão ou de escolher a linha
+    <div tabIndex={-1} data-detalhe={item.chave} className="flex min-h-0 flex-1 flex-col outline-none">
       <div className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain p-4">
         {cabecalho}
         {quem}{chegou}{documentos}{sugestao}{linha}
