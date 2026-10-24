@@ -43,6 +43,20 @@ Valem para TODA tarefa, além do que ela pede.
 10. **Criações na CPFL** mostram o código do projeto e o número da CPFL (`resultado.node`, senão `projects.cpfl_node_id`).
 11. **Migração** com timestamp `20261022200000` (a frente da ENEL já usa `20261022120000`).
 
+## Ajustes das revisões das Tasks 1–5 (23/10/2026) — VALEM MAIS que o código das Tasks 6–8 abaixo
+
+O código das Tasks 6–8 deste plano foi escrito ANTES das rodadas de correção. Onde ele divergir disto, vale isto (e o código real dos commits, que o `tsc` confere):
+
+1. **`textoDaDecisao(item, acao, etapa, rotuloEtapa)`** (Task 3, `ff9dac3`): recebe a CHAVE da etapa e a função de rótulo. Sem etapa escolhida vale a recomendada (o `coalesce` do banco).
+2. **`alertasDasContas(contas, caixaPronta, agora, estacaoDe)`**: o 4º parâmetro (`estadoDaEstacao` de cada conta) é obrigatório na tela — sem ele o alerta da Elektro offline sai com texto falso. `caixaPronta` aceita `null` (ainda carregando: sem alerta nem chip parado). Os alertas já saem ordenados por urgência.
+3. **Cartão bloqueado**: `acoesDoItem(...).principal === null` — a tela NÃO mostra Aplicar nem o seletor de etapa; só "Dispensar".
+4. **Seletor de etapa** sem opção vazia quando o cartão tem recomendação (começa nela).
+5. **Ações**: usar `useAcoesDaCaixa()` (Task 5, `602e239`) — rejeita na falha e invalida linha do tempo + detalhe. Não chamar `useAplicarUpdate().mutateAsync` direto.
+6. **Lista**: `useCaixaDaLudmilla` já usa `unirDecididoPrimeiro` (a versão decidida vence o cache velho de pendentes).
+7. **Contador da barra lateral** (Task 8): `const { total, carregando, erro } = useContadorDaLudmilla()` → mostrar `carregando ? 0 : total`; com `erro`, `title` de aviso.
+8. **Fila do Desfazer** (Task 4, `7ae7243`): já grava em `pagehide`/`visibilitychange` oculto e fecha o aviso pelo id; a tela só consome `useFilaDeDecisoes`.
+9. **Dados de teste e harness**: o número de nó da CPFL dos exemplos é `500001` (o antigo era real). Protocolo da EDP inventado: `045000000001`.
+
 ## Mapa de arquivos
 
 | Arquivo | Tarefa | Responsabilidade |
@@ -1471,14 +1485,14 @@ describe('rotuloDaCriacao — o cartão da criação na CPFL', () => {
   const projetos = { 'p-1': { id: 'p-1', code: 'PRJ-10001', cpfl_node_id: null }, 'p-9': { id: 'p-9', code: 'PRJ-10009', cpfl_node_id: '611111' } };
   const projetoDe = (id: string) => projetos[id as keyof typeof projetos] ?? null;
   it('código do projeto e número que a criação devolveu', () => {
-    expect(rotuloDaCriacao({ dados: { project_id: 'p-1' }, resultado: { node: '598536' } }, projetoDe)).toEqual({ titulo: 'PRJ-10001', numeroCpfl: '598536' });
+    expect(rotuloDaCriacao({ dados: { project_id: 'p-1' }, resultado: { node: '500001' } }, projetoDe)).toEqual({ titulo: 'PRJ-10001', numeroCpfl: '500001' });
   });
   it('sem número no run: o do cadastro', () => {
     expect(rotuloDaCriacao({ dados: { project_id: 'p-9' }, resultado: null }, projetoDe)).toEqual({ titulo: 'PRJ-10009', numeroCpfl: '611111' });
   });
   it('projeto desconhecido ou ausente', () => {
     expect(rotuloDaCriacao({ dados: { project_id: 'abcdef1234' }, resultado: null }, projetoDe)).toEqual({ titulo: 'Projeto abcdef12…', numeroCpfl: null });
-    expect(rotuloDaCriacao({ dados: null, resultado: { node: 598536 } }, projetoDe)).toEqual({ titulo: 'Criar na CPFL', numeroCpfl: '598536' });
+    expect(rotuloDaCriacao({ dados: null, resultado: { node: 500001 } }, projetoDe)).toEqual({ titulo: 'Criar na CPFL', numeroCpfl: '500001' });
   });
 });
 ```
@@ -4507,11 +4521,11 @@ const TABELAS: Record<string, Linha[]> = {
   portal_email_regras: [{ id: 'r-1', account_id: 'conta-enel', remetente: 'naoresponda@enel.exemplo.test', assunto: 'Carta', tipo_documento: 'carta_projeto', anexar: true, ler_pdf: true, ativo: true, ordem: 1, created_at: '2026-10-01T00:00:00Z' }],
   portal_captchas: [{ id: 'cap-1', account_id: 'conta-elektro', run_id: null, imagem_path: 'captcha/exemplo.png', situacao: 'aguardando', tentativa: 1, mensagem: null, criado_em: new Date().toISOString(), expira_em: new Date(Date.now() + 4 * 60_000).toISOString() }],
   portal_sync_runs: [
-    { id: 'run-c1', account_id: 'conta-cpfl', tipo: 'criar_projeto', situacao: 'ok', pedido_em: '2026-10-21T15:00:00Z', iniciado_em: null, terminado_em: null, erro: null, print_path: null, resultado: { node: '598536' }, dados: { project_id: 'p-1' } },
+    { id: 'run-c1', account_id: 'conta-cpfl', tipo: 'criar_projeto', situacao: 'ok', pedido_em: '2026-10-21T15:00:00Z', iniciado_em: null, terminado_em: null, erro: null, print_path: null, resultado: { node: '500001' }, dados: { project_id: 'p-1' } },
     { id: 'run-e1', account_id: 'conta-enel', tipo: 'varredura_email', situacao: 'ok', pedido_em: '2026-10-22T10:30:00Z', iniciado_em: null, terminado_em: null, erro: null, print_path: null, resultado: { lidos: 12, por_protocolo: 3, por_uc: 1, por_titular: 1, nao_identificados: 2, conflitos: 0, bloqueados: 1, avisos: 2, anexados: 4, imagens_ignoradas: 3, a_tentar_de_novo: 0, falhas: 0 }, dados: null },
   ],
   projects: [
-    { id: 'p-1', code: 'PRJ-10001', status: 'analysis', protocol_number: '7001234', cpfl_node_id: '598536', project_general_data: { uc_number: '0123456789' } },
+    { id: 'p-1', code: 'PRJ-10001', status: 'analysis', protocol_number: '7001234', cpfl_node_id: '500001', project_general_data: { uc_number: '0123456789' } },
     { id: 'p-2', code: 'PRJ-10002', status: 'documentation', protocol_number: 'Sem protocolo', cpfl_node_id: null, project_general_data: { uc_number: '0987654321' } },
   ],
 };
@@ -4684,7 +4698,7 @@ document.body.textContent.includes('O que ela leu na caixa')   // true
 [...document.querySelectorAll('button')].filter(b => b.textContent.includes('Acesso ao portal')).length   // 2 (CPFL e Elektro)
 ```
 
-Aba "Criações na CPFL": `document.body.textContent.includes('PRJ-10001') && document.body.textContent.includes('CPFL nº 598536')` → `true`. Aba "Registro": `document.body.textContent.includes('Leitura dos e-mails da ENEL SP')` → `true`. `document.documentElement.scrollWidth <= innerWidth` → `true`.
+Aba "Criações na CPFL": `document.body.textContent.includes('PRJ-10001') && document.body.textContent.includes('CPFL nº 500001')` → `true`. Aba "Registro": `document.body.textContent.includes('Leitura dos e-mails da ENEL SP')` → `true`. `document.documentElement.scrollWidth <= innerWidth` → `true`.
 
 - [ ] **Step 11: Provar a página no celular (390 × 812)**
 
