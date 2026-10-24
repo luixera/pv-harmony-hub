@@ -18,6 +18,7 @@ const itens = itensDaCaixa({
 const item = (c: string) => itens.find(i => i.chave === c)!;
 const ESTACAO_ONLINE = { online: true, texto: 'estação online' };
 const ESTACAO_OFFLINE = { online: false, texto: 'estação offline há 2 h' };
+const SEM_ESTACAO = () => null; // conta da VPS ou teste que não fala de estação
 /** O mesmo item, mas o cartão não traz etapa recomendada (o que o `coalesce` do banco usaria). */
 const semSugestao = (c: string) => ({ ...item(c), update: { ...item(c).update!, recomendacao: null } });
 
@@ -94,13 +95,13 @@ describe('alertasDasContas', () => {
     ]);
   });
   it('caixa de e-mail não configurada: um alerta só, com as concessionárias', () => {
-    expect(alertasDasContas([CONTA_CPFL, CONTA_EDP, CONTA_ENEL], nomeDaContaDeExemplo, false)).toEqual([{
+    expect(alertasDasContas([CONTA_CPFL, CONTA_EDP, CONTA_ENEL], nomeDaContaDeExemplo, false, SEM_ESTACAO)).toEqual([{
       chave: 'caixa', tom: 'atencao', titulo: 'A caixa de e-mail não está configurada',
       detalhe: 'Sem ela a Ludmilla não lê EDP São Paulo nem ENEL SP. Configure em Claudinho / Agente de e-mails.',
     }]);
   });
   it('conta desligada não alerta', () => {
-    expect(alertasDasContas([{ ...CONTA_CPFL, enabled: false, situacao: 'erro' }], nomeDaContaDeExemplo, true)).toEqual([]);
+    expect(alertasDasContas([{ ...CONTA_CPFL, enabled: false, situacao: 'erro' }], nomeDaContaDeExemplo, true, SEM_ESTACAO)).toEqual([]);
   });
 });
 
@@ -277,32 +278,32 @@ describe('chipsDaFaixa — o ponto de saúde e o nome vêm de verdade', () => {
 
 describe('alertasDasContas — os casos que faltavam', () => {
   it('sessão expirada de conta da VPS: ela tenta de novo sozinha', () => {
-    expect(alertasDasContas([{ ...CONTA_CPFL, situacao: 'sessao_expirada' }], nomeDaContaDeExemplo, true)).toEqual([{
+    expect(alertasDasContas([{ ...CONTA_CPFL, situacao: 'sessao_expirada' }], nomeDaContaDeExemplo, true, SEM_ESTACAO)).toEqual([{
       chave: 'sessao:conta-cpfl', tom: 'atencao', titulo: 'CPFL Paulista: sessão expirada',
       detalhe: 'Ela tenta entrar de novo na próxima visita.',
     }]);
   });
   it('sessão expirada da Elektro (estação local) pede o código da imagem', () => {
-    const [a] = alertasDasContas([CONTA_ELEKTRO], nomeDaContaDeExemplo, true);
+    const [a] = alertasDasContas([CONTA_ELEKTRO], nomeDaContaDeExemplo, true, () => ESTACAO_ONLINE);
     expect(a).toMatchObject({ tom: 'atencao', titulo: 'Elektro: sessão expirada' });
     expect(a.detalhe).toContain('código da imagem');
   });
   it('caixa sem configurar: conta de e-mail desligada não entra na frase', () => {
-    expect(alertasDasContas([CONTA_ENEL, { ...CONTA_EDP, enabled: false }], nomeDaContaDeExemplo, false)).toEqual([{
+    expect(alertasDasContas([CONTA_ENEL, { ...CONTA_EDP, enabled: false }], nomeDaContaDeExemplo, false, SEM_ESTACAO)).toEqual([{
       chave: 'caixa', tom: 'atencao', titulo: 'A caixa de e-mail não está configurada',
       detalhe: 'Sem ela a Ludmilla não lê ENEL SP. Configure em Claudinho / Agente de e-mails.',
     }]);
   });
   it('caixa sem configurar, mas nenhuma conta lê e-mail: sem alerta', () => {
-    expect(alertasDasContas([CONTA_CPFL, { ...CONTA_EDP, enabled: false }], nomeDaContaDeExemplo, false)).toEqual([]);
+    expect(alertasDasContas([CONTA_CPFL, { ...CONTA_EDP, enabled: false }], nomeDaContaDeExemplo, false, SEM_ESTACAO)).toEqual([]);
   });
   it('erro sem texto de erro e sem nome cadastrado: usa o conector, detalhe nulo', () => {
-    expect(alertasDasContas([{ ...CONTA_CPFL, situacao: 'erro', ultimo_erro: null }], () => '', true)).toEqual([{
+    expect(alertasDasContas([{ ...CONTA_CPFL, situacao: 'erro', ultimo_erro: null }], () => '', true, SEM_ESTACAO)).toEqual([{
       chave: 'erro:conta-cpfl', tom: 'erro', titulo: 'CPFL: a última leitura deu erro', detalhe: null,
     }]);
   });
   it('contas sem nenhum problema: lista vazia', () => {
-    expect(alertasDasContas([CONTA_CPFL, CONTA_EDP, CONTA_ENEL], nomeDaContaDeExemplo, true)).toEqual([]);
+    expect(alertasDasContas([CONTA_CPFL, CONTA_EDP, CONTA_ENEL], nomeDaContaDeExemplo, true, SEM_ESTACAO)).toEqual([]);
   });
 });
 
@@ -415,12 +416,12 @@ describe('I2 — os alertas saem por urgência, não pela ordem das contas', () 
   it('mesmo grau e mesmo nome: pela chave, nas duas ordens', () => {
     const mesmoNome = () => 'Mesma Concessionária';
     for (const contas of [[erroCpfl, erroEnel], [erroEnel, erroCpfl]]) {
-      expect(alertasDasContas(contas, mesmoNome, true).map(a => a.chave)).toEqual(['erro:conta-cpfl', 'erro:conta-enel']);
+      expect(alertasDasContas(contas, mesmoNome, true, SEM_ESTACAO).map(a => a.chave)).toEqual(['erro:conta-cpfl', 'erro:conta-enel']);
     }
   });
   it('o alerta da caixa lista as concessionárias em ordem de nome, nas duas ordens', () => {
     for (const contas of [[CONTA_EDP, CONTA_ENEL], [CONTA_ENEL, CONTA_EDP]]) {
-      expect(alertasDasContas(contas, nomeDaContaDeExemplo, false)[0].detalhe)
+      expect(alertasDasContas(contas, nomeDaContaDeExemplo, false, SEM_ESTACAO)[0].detalhe)
         .toBe('Sem ela a Ludmilla não lê EDP São Paulo nem ENEL SP. Configure em Claudinho / Agente de e-mails.');
     }
   });
@@ -457,8 +458,8 @@ describe('M1 — sessão expirada com a estação offline', () => {
     const [a] = alertasDasContas([CONTA_ELEKTRO], nomeDaContaDeExemplo, true, () => ESTACAO_ONLINE);
     expect(a.detalhe).toBe('A estação espera alguém entrar no portal e digitar o código da imagem.');
   });
-  it('sem a informação da estação: mantém o texto do código', () => {
-    const [a] = alertasDasContas([CONTA_ELEKTRO], nomeDaContaDeExemplo, true);
+  it('estação sem informação (null): mantém o texto do código', () => {
+    const [a] = alertasDasContas([CONTA_ELEKTRO], nomeDaContaDeExemplo, true, SEM_ESTACAO);
     expect(a.detalhe).toBe('A estação espera alguém entrar no portal e digitar o código da imagem.');
   });
   it('conta da VPS não fala de estação, mesmo que a função devolva uma offline', () => {
@@ -519,7 +520,7 @@ describe('M4 — caixa ainda carregando (null): não alerta e não pinta de para
     expect(saudeDaConta(CONTA_ENEL, { estacao: null, caixaPronta: null, agora: AGORA })).toEqual({ tom: 'ok', texto: 'em dia' });
   });
   it('alertasDasContas: sem alerta de caixa', () => {
-    expect(alertasDasContas([CONTA_EDP, CONTA_ENEL], nomeDaContaDeExemplo, null)).toEqual([]);
+    expect(alertasDasContas([CONTA_EDP, CONTA_ENEL], nomeDaContaDeExemplo, null, SEM_ESTACAO)).toEqual([]);
   });
   it('chips: saúde normal, e "Verificar agora" espera a caixa', () => {
     const [chip] = chipsDaFaixa([CONTA_ENEL], opcoes);
@@ -531,7 +532,7 @@ describe('M4 — caixa ainda carregando (null): não alerta e não pinta de para
   });
   it('false continua sendo "não configurada"', () => {
     expect(saudeDaConta(CONTA_ENEL, { estacao: null, caixaPronta: false, agora: AGORA }).texto).toBe('caixa não configurada');
-    expect(alertasDasContas([CONTA_ENEL], nomeDaContaDeExemplo, false)).toHaveLength(1);
+    expect(alertasDasContas([CONTA_ENEL], nomeDaContaDeExemplo, false, SEM_ESTACAO)).toHaveLength(1);
   });
 });
 

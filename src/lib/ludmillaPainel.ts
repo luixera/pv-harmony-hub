@@ -151,11 +151,13 @@ export interface AlertaUrgente { chave: string; tom: 'erro' | 'atencao'; titulo:
  *
  * `caixaPronta` null = ainda carregando: não alerta. `estacaoDe` (a mesma origem de `saudeDaConta`)
  * deixa o alerta da sessão expirada da estação local dizer a verdade: com a estação offline, ela
- * não está esperando código nenhum — alguém precisa ligar o computador.
+ * não está esperando código nenhum — alguém precisa ligar o computador. É OBRIGATÓRIO de propósito
+ * (o compilador cobra quem esquecer): sem ele a Elektro offline sairia com o texto falso; quem não
+ * tem estação passa `() => null`.
  */
 export function alertasDasContas(
   contas: PortalAccount[], nomeDaConta: (id: string) => string, caixaPronta: boolean | null,
-  estacaoDe?: (c: PortalAccount) => EstadoDaEstacao | null,
+  estacaoDe: (c: PortalAccount) => EstadoDaEstacao | null,
 ): AlertaUrgente[] {
   const nome = (c: PortalAccount) => nomeDaConta(c.id) || c.connector.toUpperCase();
   const lista: { grau: number; nome: string; alerta: AlertaUrgente }[] = [];
@@ -167,7 +169,7 @@ export function alertasDasContas(
         alerta: { chave: `erro:${c.id}`, tom: 'erro', titulo: `${nome(c)}: a última leitura deu erro`, detalhe: limpo(c.ultimo_erro) },
       });
     } else if (c.situacao === 'sessao_expirada') {
-      const estacao = c.modo === 'local' ? (estacaoDe?.(c) ?? null) : null;
+      const estacao = c.modo === 'local' ? estacaoDe(c) : null;
       const detalhe = c.modo !== 'local' ? 'Ela tenta entrar de novo na próxima visita.'
         : estacao && !estacao.online ? 'A estação está offline; ligue o computador do escritório.'
         : 'A estação espera alguém entrar no portal e digitar o código da imagem.';
