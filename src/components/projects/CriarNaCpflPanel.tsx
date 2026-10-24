@@ -13,6 +13,8 @@ import {
 } from '@/hooks/useLudmilla';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery } from '@tanstack/react-query';
+import { useBeneficiarias } from '@/hooks/useBeneficiarias';
+import { formatarUcCpfl, resumirRateio } from '@/lib/beneficiarias';
 
 const NOMES_PASSO: Record<PassoCriacao['nome'], string> = {
   login:          'Login na CPFL',
@@ -98,6 +100,19 @@ export function CriarNaCpflPanel({ projectId, cpflNodeId, concessionaireName }: 
   const [runId, setRunId] = useState<string | null>(null);
   const criarMutation = useCriarProjetoCpfl();
 
+  // Pré-checagem das beneficiárias: o que o portal recusaria, dito antes de
+  // a Ludmilla começar (a RPC também recusa; isto é só para o botão não
+  // prometer o que não vai acontecer).
+  const { data: beneficiarias = [] } = useBeneficiarias(projectId);
+  const comOutroTitular = beneficiarias.filter(b => b.holder_mismatch);
+  const rateio = resumirRateio(beneficiarias.map(b => b.percent));
+  const bloqueio = comOutroTitular.length > 0
+    ? `Beneficiária de outro titular (${comOutroTitular.map(b => formatarUcCpfl(b.uc_number)).join(', ')}) — a CPFL recusa. Remova a linha ou confirme o titular pela conta.`
+    : rateio.estourou
+      ? `As beneficiárias somam ${rateio.soma}% — passa de 100. Ajuste os percentuais.`
+      : null;
+  const modalidade = beneficiarias.length > 0 ? 'autoconsumo remoto' : 'geração local';
+
   // Último run deste projeto ao montar (ativo ou o que acabou de terminar):
   // é o que mostra "na fila" e o erro de quem falhou antes do passo 1 (login).
   const { data: runRecente } = useQuery({
@@ -178,7 +193,8 @@ export function CriarNaCpflPanel({ projectId, cpflNodeId, concessionaireName }: 
               size="sm"
               variant={comErro ? 'destructive' : 'default'}
               onClick={() => iniciar(false)}
-              disabled={criarMutation.isPending}
+              disabled={criarMutation.isPending || !!bloqueio}
+              title={bloqueio ?? `Cria o projeto na CPFL em ${modalidade}`}
             >
               {criarMutation.isPending && (
                 <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
@@ -194,6 +210,19 @@ export function CriarNaCpflPanel({ projectId, cpflNodeId, concessionaireName }: 
           </Badge>
         )}
       </div>
+
+      {/* o que vai ser pedido ao portal, e o que impede de pedir */}
+      {!cpflNodeId && !rodando && (
+        <p className="text-xs text-muted-foreground">
+          Sistema de compensação: <strong>{modalidade}</strong>
+          {beneficiarias.length > 0 && ` · ${beneficiarias.length} ${beneficiarias.length === 1 ? 'beneficiária' : 'beneficiárias'} · geradora fica com ${rateio.estourou ? '—' : rateio.geradora + '%'}`}
+        </p>
+      )}
+      {bloqueio && !cpflNodeId && (
+        <p className="text-xs text-red-700 rounded-md border border-red-200 bg-red-50 dark:bg-red-950/20 px-3 py-2">
+          ⛔ {bloqueio}
+        </p>
+      )}
 
       {/* erro antes do passo 1 (login, dados do projeto): só o run sabe contar */}
       {run?.situacao === 'erro' && !passoComErro && run.erro && (

@@ -134,6 +134,16 @@ export async function executarCriacao(run: Run, contexto: BrowserContext): Promi
 
     const resultado = await roteiroCpfl60({ agente: ag, dados, log, registrar, simular });
 
+    // Beneficiárias como o portal as devolveu na busca (titular, documento,
+    // endereço): escreve de volta no GD Manager — na simulação também, porque
+    // é informação confirmada pelo portal, não depende do Salvar.
+    if (resultado.beneficiarias.length > 0) {
+      const { error } = await supabase().rpc('ludmilla_beneficiarias_confirmar' as never, {
+        p_run_id: run.id, p_project_id: projectId, p_linhas: resultado.beneficiarias,
+      } as never);
+      if (error) log('write-back das beneficiárias falhou (não derruba a criação)', { erro: error.message });
+    }
+
     if (resultado.nodeId) {
       const { error } = await supabase().rpc('ludmilla_salvar_node_cpfl' as never, { p_project_id: projectId, p_node_id: resultado.nodeId } as never);
       if (error) throw new Error(`ludmilla_salvar_node_cpfl: ${error.message}`);

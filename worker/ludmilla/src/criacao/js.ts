@@ -131,3 +131,115 @@ export const jsClicarTexto = (trecho: string, _tags = '') => `(() => {
   clicavel.click();
   return true;
 })()`;
+
+// ── Bloco "Unidades consumidoras beneficiárias" (autoconsumo remoto) ────────
+//
+// Os ids desse bloco NÃO estão no mapa de 17/09 (só existe em autoconsumo
+// remoto). Em vez de palpite de id, cada trecho acha o controle pelo TEXTO
+// (rótulo "Percentual", campo "Nº da UC", botão "Buscar") dentro da seção
+// cujo título é o do bloco, e devolve o que achou — o roteiro confere e,
+// se faltar, falha dizendo o quê. Os ids reais entram no mapa que o
+// registrador grava em erro (JS_MAPA) na primeira simulação.
+
+/** A seção do bloco: o menor elemento visível cujo texto começa com o título e contém "Nº da UC". */
+const JS_SECAO_BENEF = `
+  const limpo = s => (s || '').replace(/\\s+/g, ' ').trim();
+  const vis = el => el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden';
+  const cands = Array.from(document.querySelectorAll('fieldset, details, section, div')).filter(el =>
+    vis(el) && /unidades consumidoras benefici/i.test(limpo(el.textContent)) && /n[ºo°]?\\s*da uc/i.test(limpo(el.textContent)));
+  // o menor (mais interno) que ainda contém tudo
+  const sec = cands.sort((a, b) => a.textContent.length - b.textContent.length)[0] || null;
+`;
+
+/** Diagnóstico do bloco: o que há nele (para o log e para fechar os seletores). */
+export const JS_BENEF_MAPA = `(() => {${JS_SECAO_BENEF}
+  if (!sec) return { achou: false };
+  const rot = el => { const l = el.id && document.querySelector('label[for="' + CSS.escape(el.id) + '"]'); return limpo(l ? l.textContent : (el.closest('label') || {}).textContent).slice(0, 80) || null; };
+  return {
+    achou: true,
+    texto: limpo(sec.textContent).slice(0, 600),
+    controles: Array.from(sec.querySelectorAll('input, select, button, a')).filter(e => e.type !== 'hidden').map(e => ({
+      t: e.tagName.toLowerCase() + (e.type ? ':' + e.type : ''), id: e.id || null, name: e.name || null,
+      rotulo: rot(e), txt: limpo(e.textContent).slice(0, 40) || null, valor: e.value, vis: vis(e), ro: (e.readOnly || e.disabled) || undefined,
+    })),
+  };
+})()`;
+
+/** Marca o rádio "Percentual" dentro do bloco; devolve { marcado, rotulo } ou null. */
+export const JS_BENEF_MARCAR_PERCENTUAL = `(() => {${JS_SECAO_BENEF}
+  if (!sec) return null;
+  const radios = Array.from(sec.querySelectorAll('input[type="radio"]')).filter(vis);
+  const rot = el => { const l = el.id && document.querySelector('label[for="' + CSS.escape(el.id) + '"]'); return limpo(l ? l.textContent : (el.closest('label') || {}).textContent); };
+  const el = radios.find(r => /^percentual/i.test(rot(r)));
+  if (!el) return null;
+  const lab = el.id && document.querySelector('label[for="' + CSS.escape(el.id) + '"]');
+  if (!el.checked) (lab || el).click();
+  if (!el.checked) { el.checked = true; el.dispatchEvent(new Event('change', { bubbles: true })); }
+  return { marcado: el.checked, rotulo: rot(el).slice(0, 60) };
+})()`;
+
+/** Digita a UC no campo "Nº da UC" do bloco (o campo de busca, não o de uma linha). */
+export const jsBenefDigitarUc = (uc: string) => `(() => {${JS_SECAO_BENEF}
+  if (!sec) return null;
+  const rot = el => { const l = el.id && document.querySelector('label[for="' + CSS.escape(el.id) + '"]'); return limpo(l ? l.textContent : (el.closest('label') || {}).textContent); };
+  const campos = Array.from(sec.querySelectorAll('input[type="text"], input:not([type])')).filter(e => vis(e) && !e.readOnly && !e.disabled);
+  const el = campos.find(e => /n[ºo°]?\\s*da uc/i.test(rot(e)) || /n[ºo°]?\\s*da uc/i.test(e.placeholder || '')) || campos.find(e => !e.hasAttribute('data-ludmilla-uc'));
+  if (!el) return null;
+  el.focus(); el.value = ${j(uc)};
+  for (const t of ['input', 'keyup', 'change']) el.dispatchEvent(new Event(t, { bubbles: true }));
+  return { id: el.id || null, valor: el.value };
+})()`;
+
+/** Clica em "Buscar" dentro do bloco. */
+export const JS_BENEF_BUSCAR = `(() => {${JS_SECAO_BENEF}
+  if (!sec) return false;
+  const b = Array.from(sec.querySelectorAll('button, input[type="submit"], input[type="button"], a')).filter(vis)
+    .find(x => /^buscar/i.test(limpo(x.textContent || x.value)));
+  if (!b) return false;
+  b.click();
+  return true;
+})()`;
+
+/**
+ * As linhas que o portal montou: para cada uma, a UC (dígitos), endereço,
+ * titular, documento e o campo de percentual — que recebe
+ * data-ludmilla-uc="<uc>" para o roteiro preencher com jsSetValor.
+ */
+export const JS_BENEF_LINHAS = `(() => {${JS_SECAO_BENEF}
+  if (!sec) return null;
+  const saida = [];
+  const vistos = new Set();
+  // o campo de % de cada linha: input de texto editável que NÃO é o de busca
+  const rot = el => { const l = el.id && document.querySelector('label[for="' + CSS.escape(el.id) + '"]'); return limpo(l ? l.textContent : (el.closest('label') || {}).textContent); };
+  const campos = Array.from(sec.querySelectorAll('input[type="text"], input:not([type])')).filter(e => vis(e) && !/n[ºo°]?\\s*da uc/i.test(rot(e)));
+  for (const campo of campos) {
+    // sobe até o menor ancestral cujo texto tem uma UC (8–14 dígitos, com ou sem pontuação)
+    let linha = campo.parentElement; let uc = '';
+    for (let i = 0; i < 8 && linha && linha !== sec; i++) {
+      const m = limpo(linha.textContent).match(/N[ºo°]?\\s*da UC:?\\s*([\\d.\\-\\s]{8,20})/i);
+      if (m) { uc = m[1].replace(/\\D/g, ''); break; }
+      linha = linha.parentElement;
+    }
+    if (!uc || vistos.has(uc)) continue;
+    vistos.add(uc);
+    campo.setAttribute('data-ludmilla-uc', uc);
+    const t = limpo(linha.textContent);
+    const pega = (re) => { const m = t.match(re); return m ? limpo(m[1]) : null; };
+    saida.push({
+      uc,
+      endereco:  pega(/Endere[cç]o:?\\s*(.+?)\\s*Titular:/i),
+      titular:   pega(/Titular:?\\s*(.+?)\\s*Documento:/i),
+      documento: pega(/Documento:?\\s*([\\d.\\-\\/]+)/i),
+      percentual: campo.value,
+      id: campo.id || null,
+    });
+  }
+  return saida;
+})()`;
+
+/** O texto de "Percentual da sua microgeradora: X%" dentro do bloco. */
+export const JS_BENEF_PERCENTUAL_GERADORA = `(() => {${JS_SECAO_BENEF}
+  if (!sec) return null;
+  const m = limpo(sec.textContent).match(/Percentual da sua microgeradora:?\\s*\\S*\\s*([\\d.,]+\\s*%)/i);
+  return m ? m[1] : null;
+})()`;

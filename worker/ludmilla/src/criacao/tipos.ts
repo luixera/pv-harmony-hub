@@ -18,9 +18,23 @@ export interface DadosCriacaoCpfl {
   inversor: { fabricante: string; modelo: string; quantidade: number; potencia_kw: number } | null;
   /** padrão de entrada resolvido como no front (regra escolhida à mão > automática) */
   padrao: { categoria: string; num_fases: number | null; bitola: string | null; disjuntor: number | null; caixa: string | null; demanda_kw: string | null } | null;
+  /**
+   * Derivado no banco (v3, 22/10/2026): 'autoconsumo_remoto' se o projeto tem
+   * beneficiárias, 'geracao_local' se não. Escolhido no portal PELO RÓTULO
+   * (nunca pelo código numérico — regra aprendida a ferro em 16/09).
+   */
+  sistema_compensacao: 'autoconsumo_remoto' | 'geracao_local';
+  /** Beneficiárias na ordem de cadastro: UC só dígitos e percentual (4 casas). A geradora fica com o resto. */
+  beneficiarias: { uc: string; percentual: number }[];
   /** Respostas autônomas às escolhas do formulário; chave ausente = AUTONOMIA_PADRAO. */
   autonomia: Record<string, string>;
 }
+
+/** Como o portal rotula cada sistema de compensação (select "Sistema de Compensação", 21/10/2026). */
+export const ROTULO_COMPENSACAO: Record<DadosCriacaoCpfl['sistema_compensacao'], string> = {
+  autoconsumo_remoto: 'Microgeração Distribuída Caracterizada Como Autoconsumo Remoto',
+  geracao_local:      'Microgeração Distribuída Com Geração Local',
+};
 
 /** O que a Ludmilla responde sozinha num projeto de GD comum (roteiro de 17/09/2026). */
 export const AUTONOMIA_PADRAO: Record<string, string> = {
@@ -31,7 +45,10 @@ export const AUTONOMIA_PADRAO: Record<string, string> = {
   mudanca_ponto_entrega:    'nao',
   extensao_fase:            'nao',
   alteracao_carga:          'nao',
-  sistema_compensacao:      '2771',      // Microgeração Distribuída Com Geração Local
+  // Desde 22/10/2026 o sistema de compensação vem de `dados.sistema_compensacao`
+  // (derivado das beneficiárias). Esta chave só vale se o front mandar
+  // explicitamente em run.dados.autonomia — e aí é um rótulo ou código.
+  sistema_compensacao:      '',
   outorga_registro:         'nao',
   padrao_entrada:           '2761',      // categoria – GED 13
   tipo_atendimento:         '2866',      // aéreo

@@ -17,6 +17,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { Database } from '@/integrations/supabase/types';
 import { usePublicConcessionaires } from '@/hooks/useEnergyConcessionaires';
 import { validateFile, sanitizeFileName } from '@/lib/utils';
+import { BeneficiariasForm, validarLinhasDeEnvio } from '@/components/projects/BeneficiariasForm';
+import { gravarBeneficiariasDoEnvio, type LinhaDeEnvio } from '@/hooks/useBeneficiarias';
 import { upperizeStrings } from '@/lib/textCase';
 import { formatCpfCnpj, isPessoaJuridica, tipoPessoa, erroCpfCnpj } from '@/lib/cpfCnpj';
 import { dispatchNotification } from '@/lib/notify';
@@ -124,7 +126,10 @@ export default function PublicProjectForm() {
   });
 
   const [useCompanyContact, setUseCompanyContact] = useState<'manual' | 'company'>('manual');
+  // Beneficiárias como dado (UC + percentual + foto opcional), gravadas depois
+  // que o projeto nasce — mesmo bloco do formulário logado.
   const [hasBeneficiaries, setHasBeneficiaries] = useState(false);
+  const [beneficiarias, setBeneficiarias] = useState<LinhaDeEnvio[]>([]);
   const [noCircuitBreakerPhoto, setNoCircuitBreakerPhoto] = useState(false);
   const [circuitBreakerCurrent, setCircuitBreakerCurrent] = useState('');
 
@@ -205,7 +210,6 @@ export default function PublicProjectForm() {
         return true;
       case 3: {
         const hasEnergyBill = documents.energyBillGenerator.length > 0;
-        const hasBeneficiaryBills = !hasBeneficiaries || documents.energyBillBeneficiaries.length > 0;
         const hasHolderDoc = documents.holderDocument.length > 0;
         const hasEntrancePhoto = documents.entranceStandardPhoto.length > 0;
         const hasCircuitBreaker = noCircuitBreakerPhoto ? !!circuitBreakerCurrent : documents.circuitBreakerPhoto.length > 0;
@@ -218,10 +222,14 @@ export default function PublicProjectForm() {
             toast.warning(`Titular é pessoa jurídica e falta anexar: ${faltando.join(' e ')}. Você pode enviar assim e anexar depois.`, { duration: 7000 });
           }
         }
-        if (!hasEnergyBill || !hasBeneficiaryBills || !hasHolderDoc || !hasEntrancePhoto || !hasCircuitBreaker) {
+        if (!hasEnergyBill || !hasHolderDoc || !hasEntrancePhoto || !hasCircuitBreaker) {
           toast.error('Envie todos os documentos obrigatórios');
           return false;
         }
+        // as mesmas regras que o portal aplica às beneficiárias, conferidas aqui
+        const benef = validarLinhasDeEnvio(hasBeneficiaries, beneficiarias,
+          concessionaires.find(c => c.id === formData.concessionaireId)?.name);
+        if (!benef.ok) { toast.error(benef.erro ?? 'Confira as beneficiárias'); return false; }
         return true;
       }
       default:
@@ -353,7 +361,7 @@ export default function PublicProjectForm() {
 
       const docMappings: { files: File[]; type: DocumentType }[] = [
         { files: documents.energyBillGenerator, type: 'energy_bill_generator' },
-        { files: documents.energyBillBeneficiaries, type: 'energy_bill_beneficiaries' },
+        // a conta da beneficiária sobe junto com a linha dela (abaixo)
         { files: documents.holderDocument, type: 'holder_document' },
         { files: documents.entranceStandardPhoto, type: 'entrance_standard_photo' },
         { files: documents.circuitBreakerPhoto, type: 'breaker_photo' },
@@ -367,6 +375,23 @@ export default function PublicProjectForm() {
       for (const mapping of docMappings) {
         for (const file of mapping.files) {
           await uploadDocument(file, project.id, company.id, mapping.type);
+        }
+      }
+
+      // Beneficiárias: as linhas e as fotos, depois que o projeto existe
+      // (anônimo só pode INSERIR, em projeto recém-criado pelo formulário).
+      if (hasBeneficiaries) {
+        const benef = validarLinhasDeEnvio(true, beneficiarias,
+          concessionaires.find(c => c.id === formData.concessionaireId)?.name);
+        if (benef.ok) {
+          try {
+            await gravarBeneficiariasDoEnvio({
+              projectId: project.id, companyId: company.id, isPublicForm: true,
+              docGeradora: formData.holderCpfCnpj, linhas: benef.linhas,
+            });
+          } catch (e) {
+            console.warn('beneficiárias não gravadas:', e);
+          }
         }
       }
 
@@ -753,16 +778,11 @@ export default function PublicProjectForm() {
                 files={documents.energyBillGenerator}
                 onFilesChange={(files) => updateDocuments('energyBillGenerator', files)}
               />
-              <DocumentUploadField
-                id="energy_bill_beneficiaries"
-                label="Contas de energia das unidades beneficiárias"
-                multiple
-                files={documents.energyBillBeneficiaries}
-                onFilesChange={(files) => updateDocuments('energyBillBeneficiaries', files)}
-                conditionalCheckbox
-                conditionalLabel="Existem unidades beneficiárias?"
-                isConditionalActive={hasBeneficiaries}
-                onConditionalChange={setHasBeneficiaries}
+              <BeneficiariasForm
+                ativo={hasBeneficiaries} onAtivoChange={setHasBeneficiaries}
+                linhas={beneficiarias} onLinhasChange={setBeneficiarias}
+                concessionaria={concessionaires.find(c => c.id === formData.concessionaireId)?.name}
+                docGeradora={formData.holderCpfCnpj}
               />
               <DocumentUploadField
                 id="holder_document"

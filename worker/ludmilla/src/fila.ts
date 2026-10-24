@@ -214,6 +214,12 @@ export async function dadosCriacaoCpfl(
       categoria: s('rule_categoria'), num_fases: n('rule_num_fases'), bitola: s('rule_bitola') || null,
       disjuntor: n('rule_disjuntor'), caixa: s('rule_caixa') || null, demanda_kw: demanda,
     } : null,
+    // v3 (22/10/2026): o sistema de compensação vem do banco, derivado das
+    // beneficiárias — deixou de ser o 2771 fixo da autonomia
+    sistema_compensacao: s('sistema_compensacao') === 'autoconsumo_remoto' ? 'autoconsumo_remoto' : 'geracao_local',
+    beneficiarias: (Array.isArray(d['beneficiarias']) ? d['beneficiarias'] as Record<string, unknown>[] : [])
+      .map(b => ({ uc: String(b['uc'] ?? '').replace(/\D/g, ''), percentual: Number(b['percentual'] ?? 0) }))
+      .filter(b => b.uc && b.percentual > 0),
     autonomia: { ...AUTONOMIA_PADRAO, ...autonomiaRun },
   };
 }

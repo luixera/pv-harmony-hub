@@ -67,7 +67,7 @@ Detalhes: [docs/project/tech-stack.md](docs/project/tech-stack.md).
 | Usuários | ✅ | [modules/users](docs/modules/users/overview.md) |
 | Assinatura digital | 🟡 Fase 1 — só GD Manager | [modules/signatures](docs/modules/signatures/overview.md) |
 | Permissões (RLS) | ✅ | [modules/permissions](docs/modules/permissions/overview.md) |
-| Geração compartilhada | 🟡 Parcial | [modules/shared-generation](docs/modules/shared-generation/overview.md) |
+| Geração compartilhada / autoconsumo remoto | 🟡 Beneficiárias estruturadas (UC + % + foto, regras do portal conferidas antes); criação na CPFL em autoconsumo remoto escrita, aguarda 1ª simulação e deploy do robô | [modules/shared-generation](docs/modules/shared-generation/overview.md) |
 | Diagramas (unifilar) | 🟡 Alpha — só master/GD Manager | [modules/diagrams](docs/modules/diagrams/overview.md) |
 | Motor de Engenharia (regras) | 🟡 Fase 1 — só GD Manager | [modules/engineering](docs/modules/engineering/overview.md) |
 | Capacidade de rede em BT (BDGD) | 🟡 CPFL Paulista e Piratininga carregadas (295 mil trafos MT/BT, base 31/12/2025); mapa v3 em WebGL (deck.gl) com amostra por contagem, busca por código/coordenada/posto, alimentadores de MT como contexto, ficha da fonte, conta aberta e confronto com orçamentos/pareceres reais (taxa de acerto); GD lida de `DEM_CONT`; demais distribuidoras de SP pendentes; só GD Manager | [modules/engineering](docs/modules/engineering/overview.md) |

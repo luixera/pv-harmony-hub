@@ -22,6 +22,8 @@ import { DocumentUploadField } from '@/components/forms/DocumentUploadField';
 import { Database } from '@/integrations/supabase/types';
 import { useEnergyConcessionaires } from '@/hooks/useEnergyConcessionaires';
 import { validateFile, sanitizeFileName } from '@/lib/utils';
+import { BeneficiariasForm, validarLinhasDeEnvio } from '@/components/projects/BeneficiariasForm';
+import { gravarBeneficiariasDoEnvio, type LinhaDeEnvio } from '@/hooks/useBeneficiarias';
 import { formatCpfCnpj, isPessoaJuridica, tipoPessoa, erroCpfCnpj } from '@/lib/cpfCnpj';
 import { upperizeStrings } from '@/lib/textCase';
 import { useQuery } from '@tanstack/react-query';
@@ -282,7 +284,13 @@ export default function NewProject() {
   }, [useCompanyContact, companyData]);
 
   const { data: concessionaires = [] } = useEnergyConcessionaires();
+  // Beneficiárias viraram dado estruturado (UC + percentual + foto opcional):
+  // o checkbox abre o bloco de linhas, e as linhas são gravadas depois que o
+  // projeto nasce. O upload múltiplo de contas saiu — a foto é por linha.
   const [hasBeneficiaries, setHasBeneficiaries] = useState(false);
+  const [beneficiarias, setBeneficiarias] = useState<LinhaDeEnvio[]>([]);
+  // o formato da UC da beneficiária depende da concessionária (12 dígitos na CPFL)
+  const concessionariaEscolhida = concessionaires.find(c => c.id === formData.concessionaireId);
   const [noCircuitBreakerPhoto, setNoCircuitBreakerPhoto] = useState(false);
   const [circuitBreakerCurrent, setCircuitBreakerCurrent] = useState('');
   const [documents, setDocuments] = useState<FormDocuments>({
@@ -555,14 +563,17 @@ export default function NewProject() {
         return true;
       case 3: {
         const hasEnergyBill = documents.energyBillGenerator.length > 0;
-        const hasBeneficiaryBills = !hasBeneficiaries || documents.energyBillBeneficiaries.length > 0;
         const hasHolderDoc = documents.holderDocument.length > 0;
         const hasEntrancePhoto = documents.entranceStandardPhoto.length > 0;
         const hasCircuitBreaker = noCircuitBreakerPhoto ? !!circuitBreakerCurrent : documents.circuitBreakerPhoto.length > 0;
-        if (!hasEnergyBill || !hasBeneficiaryBills || !hasHolderDoc || !hasEntrancePhoto || !hasCircuitBreaker) {
+        if (!hasEnergyBill || !hasHolderDoc || !hasEntrancePhoto || !hasCircuitBreaker) {
           toast.error('Envie todos os documentos obrigatórios');
           return false;
         }
+        // Beneficiárias: as mesmas regras que o portal aplica (UC no formato
+        // da concessionária, percentual válido, soma ≤ 100), conferidas aqui.
+        const benef = validarLinhasDeEnvio(hasBeneficiaries, beneficiarias, concessionariaEscolhida?.name);
+        if (!benef.ok) { toast.error(benef.erro ?? 'Confira as beneficiárias'); return false; }
         // Documentos de PJ não travam o envio, mas o usuário é avisado do que
         // ainda falta — senão a pendência só apareceria lá na análise.
         if (ehPessoaJuridica) {
@@ -714,7 +725,7 @@ export default function NewProject() {
 
       const docMappings: { files: File[]; type: DocumentType }[] = [
         { files: documents.energyBillGenerator, type: 'energy_bill_generator' },
-        { files: documents.energyBillBeneficiaries, type: 'energy_bill_beneficiaries' },
+        // a conta da beneficiária sobe junto com a linha dela (abaixo)
         { files: documents.holderDocument, type: 'holder_document' },
         { files: documents.entranceStandardPhoto, type: 'entrance_standard_photo' },
         { files: documents.circuitBreakerPhoto, type: 'breaker_photo' },
@@ -732,6 +743,24 @@ export default function NewProject() {
           }
         }
       } catch (uploadErr) { console.warn('Non-critical: upload error:', uploadErr); }
+
+      // Beneficiárias: as linhas e as fotos, depois que o projeto existe. Se o
+      // banco recusar (soma, duplicada), o projeto já nasceu — avisa e deixa
+      // corrigir no modal, em vez de perder o envio inteiro.
+      if (hasBeneficiaries) {
+        const benef = validarLinhasDeEnvio(true, beneficiarias, concessionariaEscolhida?.name);
+        if (benef.ok) {
+          try {
+            await gravarBeneficiariasDoEnvio({
+              projectId: project.id, companyId: effectiveCompanyId, userId: user.id,
+              docGeradora: formData.holderCpfCnpj, linhas: benef.linhas,
+            });
+          } catch (e) {
+            console.warn('beneficiárias não gravadas:', e);
+            toast.warning('O projeto foi criado, mas as beneficiárias não foram gravadas. Confira no projeto.');
+          }
+        }
+      }
 
       // Auto-geocode se não tiver coordenadas
       if (!formData.coordinates) {
@@ -1382,7 +1411,11 @@ export default function NewProject() {
                 )}
 
                 <DocumentUploadField id="energy_bill_generator" label="Conta de energia da unidade geradora" required files={documents.energyBillGenerator} onFilesChange={files => updateDocuments('energyBillGenerator', files)} />
-                <DocumentUploadField id="energy_bill_beneficiaries" label="Contas de energia das unidades beneficiárias" multiple files={documents.energyBillBeneficiaries} onFilesChange={files => updateDocuments('energyBillBeneficiaries', files)} conditionalCheckbox conditionalLabel="Existem unidades beneficiárias?" isConditionalActive={hasBeneficiaries} onConditionalChange={setHasBeneficiaries} />
+                <BeneficiariasForm
+                  ativo={hasBeneficiaries} onAtivoChange={setHasBeneficiaries}
+                  linhas={beneficiarias} onLinhasChange={setBeneficiarias}
+                  concessionaria={concessionariaEscolhida?.name} docGeradora={formData.holderCpfCnpj}
+                />
                 <DocumentUploadField id="holder_document" label="Documento com foto do titular" required files={documents.holderDocument} onFilesChange={files => updateDocuments('holderDocument', files)} />
                 <DocumentUploadField id="entrance_standard_photo" label="Foto do padrão de entrada" required files={documents.entranceStandardPhoto} onFilesChange={files => updateDocuments('entranceStandardPhoto', files)} />
                 <DocumentUploadField id="circuit_breaker_photo" label="Foto do disjuntor de entrada" required files={documents.circuitBreakerPhoto} onFilesChange={files => updateDocuments('circuitBreakerPhoto', files)} hasAlternativeInput alternativeLabel="Corrente do disjuntor (A)" alternativeValue={circuitBreakerCurrent} onAlternativeChange={setCircuitBreakerCurrent} useAlternative={noCircuitBreakerPhoto} onUseAlternativeChange={setNoCircuitBreakerPhoto} />

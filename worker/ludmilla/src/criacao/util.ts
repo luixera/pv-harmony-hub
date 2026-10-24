@@ -72,3 +72,35 @@ export const pessoaFisica = (doc: string): boolean => doc.replace(/\D/g, '').len
 
 /** Área ocupada pelos arranjos: módulos × m² por módulo, arredondado. */
 export const areaArranjos = (modulos: number, m2PorModulo: number): string => String(Math.round(modulos * m2PorModulo));
+
+// ── beneficiárias (autoconsumo remoto, 22/10/2026) ───────────────────────────
+
+/** UC só com dígitos — como o portal da CPFL mostra na linha da beneficiária. */
+export const normalizarUc = (texto: string | null | undefined): string => (texto ?? '').replace(/\D/g, '');
+
+const arred4 = (n: number): number => Math.round(n * 10000) / 10000;
+
+/** O que fica com a geradora: 100 − soma das beneficiárias (4 casas; nunca negativo). */
+export function restoGeradora(percentuais: number[]): number {
+  const soma = arred4(percentuais.reduce((s, p) => s + (Number.isFinite(p) ? p : 0), 0));
+  return arred4(Math.max(0, 100 - soma));
+}
+
+/** Percentual como o campo do portal espera: vírgula, 4 casas ("30,0000"). */
+export const percentualPortal = (n: number): string => arred4(n).toFixed(4).replace('.', ',');
+
+/**
+ * Lê o que o portal mostra em "Percentual da sua microgeradora" ("0,0000%",
+ * "100,00%", " 20,0000 % "). Devolve null se não houver número.
+ */
+export function lerPercentualPortal(texto: string | null | undefined): number | null {
+  const m = (texto ?? '').match(/-?\d+(?:[.,]\d+)?/);
+  if (!m) return null;
+  const n = Number(m[0].replace('.', '').replace(',', '.'));
+  // "1.234,5" não existe aqui (percentual ≤ 100): o único separador é o decimal
+  const n2 = Number(m[0].replace(',', '.'));
+  return Number.isFinite(n2) ? arred4(n2) : Number.isFinite(n) ? arred4(n) : null;
+}
+
+/** Dois percentuais do portal são "iguais" dentro do arredondamento de 4 casas. */
+export const percentuaisBatem = (a: number, b: number): boolean => Math.abs(arred4(a) - arred4(b)) < 0.00005;

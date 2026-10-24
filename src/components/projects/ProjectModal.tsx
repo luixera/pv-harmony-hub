@@ -5,6 +5,7 @@ import { useWindowSize } from '@/hooks/useWindowSize';
 import { gradeColapsavel } from '@/mobile/breakpoints';
 import { formatCurrency, sanitizeFileName } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
+import { BeneficiariasBloco } from '@/components/projects/BeneficiariasBloco';
 import { useCompanyDisplay } from '@/hooks/useCompanyDisplay';
 import { useProject, useUpdateProjectStatus, useUpdateProjectData } from '@/hooks/useProjects';
 import { useConcessionaire } from '@/hooks/useEnergyConcessionaires';
@@ -746,6 +747,8 @@ function TabGeneral({ project, isEditing, onSave, onCancel, onEdit }: {
   const { data: concessionaria } = useConcessionaire((project as any).concessionaire_id ?? undefined);
   const gd = project.generalData;
   const eq = project.equipment;
+  // quem está olhando: decide se o bloco de beneficiárias mostra os controles
+  const { user: usuarioAtual } = useAuth();
 
   const [form, setForm] = useState({
     holder_name: gd?.holder_name || '',
@@ -993,6 +996,21 @@ function TabGeneral({ project, isEditing, onSave, onCancel, onEdit }: {
           entryRuleId={form.entry_rule_id}
           isEditing={isEditing}
           onChangeEntryRule={id => setForm(f => ({ ...f, entry_rule_id: id }))}
+        />
+
+        {/* Beneficiárias do autoconsumo remoto, ao lado da UC da geradora. A
+            tela só decide se MOSTRA os controles; quem permite é o banco
+            (empresa até a análise, equipe até a criação na CPFL). */}
+        <BeneficiariasBloco
+          projectId={project.id}
+          companyId={(project as any).company_id as string | null | undefined}
+          concessionaria={(project as any).concessionaireName as string | undefined}
+          docGeradora={gd?.holder_cpf_cnpj}
+          podeEditar={usuarioAtual?.role === 'company'
+            ? String(project.status) === 'pending'
+            : usuarioAtual?.role === 'admin' || usuarioAtual?.role === 'staff' || !!usuarioAtual?.isMaster}
+          cpflNodeId={(project as any).cpfl_node_id as string | null | undefined}
+          ehCpfl={/cpfl/i.test(String((project as any).concessionaireName ?? ''))}
         />
       </div>
 

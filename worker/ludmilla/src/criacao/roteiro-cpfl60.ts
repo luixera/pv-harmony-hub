@@ -1,11 +1,15 @@
 import { ErroLudmilla } from '../erros.js';
 import { decimalParaDms, parsearCoordenadas } from '../dms.js';
 import type { Navegador } from './navegador.js';
-import { AUTONOMIA_PADRAO, PERGUNTAS_CONDICIONAIS, type DadosCriacaoCpfl } from './tipos.js';
+import { AUTONOMIA_PADRAO, PERGUNTAS_CONDICIONAIS, ROTULO_COMPENSACAO, type DadosCriacaoCpfl } from './tipos.js';
 import {
-  JS_ERROS_VISIVEIS, jsAbrirSanfona, jsFormData, jsMarcarRadio, jsPerguntaVisivel, jsSetValor, jsValor, jsVisivel,
+  JS_BENEF_BUSCAR, JS_BENEF_LINHAS, JS_BENEF_MAPA, JS_BENEF_MARCAR_PERCENTUAL, JS_BENEF_PERCENTUAL_GERADORA,
+  JS_ERROS_VISIVEIS, jsAbrirSanfona, jsBenefDigitarUc, jsFormData, jsMarcarRadio, jsPerguntaVisivel, jsSetValor, jsValor, jsVisivel,
 } from './js.js';
-import { areaArranjos, camposFaltando, dataMais, errosDoHtml, extrairNodeId, numero, pessoaFisica, simNao, valorFases } from './util.js';
+import {
+  areaArranjos, camposFaltando, dataMais, errosDoHtml, extrairNodeId, lerPercentualPortal, numero, percentualPortal,
+  percentuaisBatem, pessoaFisica, restoGeradora, simNao, valorFases,
+} from './util.js';
 
 /**
  * Roteiro "60 - Microgeração Distribuída BT · Orçamento de Conexão" — escrito
@@ -32,6 +36,8 @@ export interface ResultadoRoteiro {
   simulado: boolean;
   /** o que a UC e o CPF devolveram (auditoria; nunca sai do bucket/banco) */
   leituras: Record<string, string>;
+  /** beneficiárias como o portal as devolveu na busca — para o write-back no GD Manager */
+  beneficiarias: { uc: string; titular: string | null; documento: string | null; endereco: string | null }[];
 }
 
 const URL_CRIAR_PROJETO = 'https://www.cpfl.com.br/gestao-projetos/criar-projeto';
@@ -133,6 +139,7 @@ export async function roteiroCpfl60(ctx: ContextoRoteiro): Promise<ResultadoRote
   const { agente: ag, dados } = ctx;
   const a = (k: string) => dados.autonomia[k] ?? AUTONOMIA_PADRAO[k] ?? '';
   const leituras: Record<string, string> = {};
+  const beneficiariasConfirmadas: ResultadoRoteiro['beneficiarias'] = [];
   const dataPrevista = dataMais(Number(a('dias_para_ligacao')) || 30);
   const fases = valorFases(dados.padrao?.num_fases, dados.entry_phase);
 
@@ -234,7 +241,13 @@ export async function roteiroCpfl60(ctx: ContextoRoteiro): Promise<ResultadoRote
     await marcar(ag, `#edit-field-consume-alteration-${a('alteracao_carga') === 'sim' ? 1 : 0}`, simNao(a('alteracao_carga')), 'alteração de carga de consumo');
     await definir(ag, '#edit-field-generating-source', a('fonte_geradora'), 'Fonte geradora');
     await definir(ag, '#edit-field-line-connection-date-0-value-date', dataPrevista, 'Data prevista para ligação');
-    await definir(ag, '#edit-field-compensation-system', a('sistema_compensacao'), 'Sistema de Compensação');
+    // Sistema de compensação: derivado das beneficiárias no banco e escolhido
+    // PELO RÓTULO (jsSetValor casa pelo texto da opção quando o value não
+    // bate) — nunca pelo código numérico. A autonomia só vence se o front
+    // mandou algo explicitamente.
+    await definir(ag, '#edit-field-compensation-system',
+      a('sistema_compensacao') || ROTULO_COMPENSACAO[dados.sistema_compensacao], 'Sistema de Compensação');
+    leituras.sistema_compensacao = dados.sistema_compensacao;
 
     await abrirSanfona(ag, 'Categorias do projeto');
     if (!p?.categoria) throw new ErroLudmilla('falhou', 'Não há categoria do padrão de entrada para este projeto (regras da CPFL no GD Manager).');
@@ -331,6 +344,72 @@ export async function roteiroCpfl60(ctx: ContextoRoteiro): Promise<ResultadoRote
     await marcar(ag, `[id^="edit-field-authorize-pay-connec-costs-${a('autoriza_documentos') === 'nao' ? 0 : 1}"]`, simNao(a('autoriza_documentos')), 'autoriza entrega dos contratos com o orçamento');
     await marcar(ag, `[id^="edit-field-solicitacao-de-vistoria-${a('contagem_prazo_vistoria') === 'nao' ? 0 : 1}"]`, simNao(a('contagem_prazo_vistoria')), 'contagem do prazo da vistoria');
 
+    // ── Unidades consumidoras beneficiárias (só em autoconsumo remoto) ──
+    // Telas de 21/10/2026: marcar "Percentual"; para cada beneficiária digitar
+    // a UC → Buscar → esperar a linha com AQUELA UC → preencher o %; no fim
+    // conferir o "Percentual da sua microgeradora" contra o resto calculado.
+    // Os controles são achados pelo TEXTO (js.ts): o bloco não está no mapa
+    // de 17/09, e palpite de id não entra. Se algo faltar, o passo falha
+    // dizendo o quê, e o registrador grava o mapa da tela.
+    if (dados.sistema_compensacao === 'autoconsumo_remoto') {
+      if (dados.beneficiarias.length === 0) {
+        throw new ErroLudmilla('falhou', 'Autoconsumo remoto sem beneficiária cadastrada no GD Manager.');
+      }
+      await abrirSanfona(ag, 'Unidades consumidoras beneficiárias');
+      await ag.esperar(800);
+      const mapa = await ag.js<{ achou: boolean; texto?: string; controles?: unknown[] }>(JS_BENEF_MAPA).catch(() => ({ achou: false }));
+      ctx.log('bloco de beneficiárias', mapa as Record<string, unknown>);
+      if (!mapa.achou) {
+        throw new ErroLudmilla('pagina_mudou', 'Não achei o bloco "Unidades consumidoras beneficiárias" na tela de dados do cliente — o sistema de compensação ficou em autoconsumo remoto?');
+      }
+
+      const radio = await ag.js<{ marcado: boolean; rotulo: string } | null>(JS_BENEF_MARCAR_PERCENTUAL);
+      if (!radio?.marcado) {
+        throw new ErroLudmilla('pagina_mudou', `Não consegui marcar "Percentual" no bloco de beneficiárias${radio ? ` (rótulo "${radio.rotulo}")` : ''}.`);
+      }
+      await ag.esperar(600);
+
+      for (const b of dados.beneficiarias) {
+        const digitado = await ag.js<{ id: string | null; valor: string } | null>(jsBenefDigitarUc(b.uc));
+        if (!digitado) throw new ErroLudmilla('pagina_mudou', `Não achei o campo "Nº da UC" para digitar a beneficiária ${b.uc}.`);
+        if (!(await ag.js<boolean>(JS_BENEF_BUSCAR))) throw new ErroLudmilla('pagina_mudou', `Não achei o botão "Buscar" das beneficiárias (UC ${b.uc}).`);
+
+        // a linha com esta UC aparece por AJAX; erro visível = o portal recusou
+        type Linha = { uc: string; endereco: string | null; titular: string | null; documento: string | null; percentual: string; id: string | null };
+        let linha: Linha | undefined;
+        const ate = Date.now() + 25_000;
+        while (Date.now() < ate && !linha) {
+          await ag.esperar(1_000);
+          const linhas = (await ag.js<Linha[] | null>(JS_BENEF_LINHAS)) ?? [];
+          linha = linhas.find(l => l.uc === b.uc);
+          if (!linha) {
+            const erros = await ag.js<{ mensagens: string[]; campos: string[] }>(JS_ERROS_VISIVEIS).catch(() => ({ mensagens: [], campos: [] }));
+            if (erros.mensagens.length) {
+              throw new ErroLudmilla('falhou', `A CPFL recusou a UC ${b.uc} como beneficiária: ${erros.mensagens.join(' | ').slice(0, 300)}. Normalmente é UC de outro titular.`);
+            }
+          }
+        }
+        if (!linha) throw new ErroLudmilla('pagina_mudou', `Busquei a UC ${b.uc} e a linha dela não apareceu em 25 s — o portal não a reconheceu ou a tela mudou.`);
+
+        await definir(ag, `[data-ludmilla-uc="${b.uc}"]`, percentualPortal(b.percentual), `Percentual da beneficiária ${b.uc}`);
+        beneficiariasConfirmadas.push({ uc: b.uc, titular: linha.titular, documento: linha.documento, endereco: linha.endereco });
+        leituras[`beneficiaria_${b.uc}`] = `${linha.titular ?? '?'} · ${linha.documento ?? '?'} · ${percentualPortal(b.percentual)}%`;
+        ctx.log('beneficiária na linha', { uc: b.uc, titular: linha.titular, percentual: b.percentual });
+      }
+
+      // a prova: o portal calcula a geradora como o resto; tem de bater
+      await ag.esperar(800);
+      const esperado = restoGeradora(dados.beneficiarias.map(b => b.percentual));
+      const textoGeradora = await ag.js<string | null>(JS_BENEF_PERCENTUAL_GERADORA);
+      const lido = lerPercentualPortal(textoGeradora);
+      leituras.percentual_geradora = textoGeradora ?? '';
+      if (lido === null || !percentuaisBatem(lido, esperado)) {
+        throw new ErroLudmilla('pagina_mudou',
+          `O portal mostra a geradora com "${textoGeradora ?? '?'}" e o GD Manager esperava ${percentualPortal(esperado)}% — os percentuais não ficaram como digitados. Não vou avançar assim.`);
+      }
+      ctx.log('rateio conferido', { geradora: esperado, beneficiarias: dados.beneficiarias.length });
+    }
+
     await avancar(ag, /Revisão do projeto/i, ctx);
   });
 
@@ -357,7 +436,7 @@ export async function roteiroCpfl60(ctx: ContextoRoteiro): Promise<ResultadoRote
   if (ctx.simular) {
     // passo final próprio: o painel sabe que acabou e que nada foi salvo
     await passo(ctx, 6, 'simulado', async () => { await ag.esperar(300); });
-    return { nodeId: null, simulado: true, leituras };
+    return { nodeId: null, simulado: true, leituras, beneficiarias: beneficiariasConfirmadas };
   }
 
   // ── 6. Envio de documentos: a Ludmilla PARA aqui (decisão da pessoa)
@@ -365,5 +444,5 @@ export async function roteiroCpfl60(ctx: ContextoRoteiro): Promise<ResultadoRote
     await ag.esperarCarga('networkidle');
     await ag.esperar(1_500);
   });
-  return { nodeId, simulado: false, leituras };
+  return { nodeId, simulado: false, leituras, beneficiarias: beneficiariasConfirmadas };
 }
