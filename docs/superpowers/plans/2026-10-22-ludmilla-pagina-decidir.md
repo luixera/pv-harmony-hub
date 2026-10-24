@@ -56,6 +56,9 @@ O código das Tasks 6–8 deste plano foi escrito ANTES das rodadas de correçã
 7. **Contador da barra lateral** (Task 8): `const { total, carregando, erro } = useContadorDaLudmilla()` → mostrar `carregando ? 0 : total`; com `erro`, `title` de aviso.
 8. **Fila do Desfazer** (Task 4, `7ae7243`): já grava em `pagehide`/`visibilitychange` oculto e fecha o aviso pelo id; a tela só consome `useFilaDeDecisoes`.
 9. **Dados de teste e harness**: o número de nó da CPFL dos exemplos é `500001` (o antigo era real). Protocolo da EDP inventado: `045000000001`.
+10. **Task 8 — caixa e estação no topo** (revisão da Task 7): `const { data: agente, isLoading: carregandoAgente } = useAgentConfig()`; `caixaPronta = carregandoAgente ? null : !!agente?.is_configured && !!agente.gmail_email` (o código antigo da Task 8, `false` enquanto carrega, acendia o alerta falso "caixa não configurada" em toda abertura). `alertasDasContas(contas, caixaPronta, agora, c => estadoDaEstacao(c, agora))` — o 4º argumento SEMPRE.
+11. **Task 8 — onde fica a `BarraDeAbas`**: filha direta do contêiner da página (ou do `<Tabs>`), ANTES dos `TabsContent` — o `sticky top-14` só gruda dentro do pai. No celular a ordem é: barra de abas (sticky, no topo — decisão 7) → alertas → faixa de saúde → conteúdo da aba. Tirar o `pb-16` (o `MainLayout` já dá `pb-20` no celular).
+12. **`ABAS_DA_LUDMILLA`** passa a morar em `src/components/ludmilla/topo/abas.ts` (revisão da Task 7: evita o aviso do react-refresh); importar de lá.
 
 ## Mapa de arquivos
 
