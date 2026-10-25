@@ -70,6 +70,13 @@ Valem para TODA tarefa, além do que ela pede.
 13. **Notas já lidas** (5 e-mails de "troca agendada" da ENEL no banco em 24/10/2026) não viram cobrança sozinhas: a Task 10 oferece "ler de novo" esses e-mails, só com o OK do usuário.
 14. **Comentário no card e histórico** quando a cobrança sai: comentário assinado pela Ludmilla (`00000000-10d1-4000-8000-000000000002`); histórico com a pessoa que aprovou como autora (a regra da casa: "Aplicar = pessoa autora, Ludmilla origem").
 
+## Respostas do usuário às dúvidas do plano (25/10/2026) — VALEM MAIS que o plano
+
+1. **Notas já lidas: só daqui para frente.** Os 5 e-mails de nota já lidos NÃO viram cobrança, nem por "ler de novo". A Task 10 tira essa oferta.
+2. **O comentário "cobrança enviada à ENEL" é VISÍVEL para a empresa integradora** (comentário comum do card, não interno). O histórico do projeto segue como está.
+3. **Antes da 1ª cobrança real, um teste para a própria caixa** (o `enviar_para_a_propria_caixa` da Task 6) — só depois, com o usuário, a primeira para a ENEL.
+4. **Se a HostGator bloquear o SMTP de saída: mandar pela API do Gmail** (não pedir liberação de porta). O plano segue com SMTP; a Task 6 (teste na VPS) decide: se `verificar` não conectar nem na 465 nem na 587, PARAR e abrir uma tarefa nova de envio pela Gmail API (`users.messages.send` com `threadId`, credencial OAuth do Google com escopo `gmail.send`, guardada no Vault — nunca no chat), em vez de insistir no SMTP.
+
 ## Mapa de arquivos
 
 | Arquivo | Tarefa | Responsabilidade |
