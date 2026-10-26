@@ -198,6 +198,35 @@ export function mesmoTitular(doSistema: string, doDocumento: string): boolean {
   return t !== null && trechoConforma(doDocumento, t);
 }
 
+/** As palavras que contam num nome de empresa: sem sufixo (LTDA, S/A…) e sem conector (DE, DA, E…). */
+const palavrasSignificativas = (palavras: string[]): string[] =>
+  semSufixoPJ(palavras).filter(p => !CONECTORES.has(p));
+
+/** Quantas palavras significativas o começo comum precisa ter para ser a mesma empresa. */
+export const MIN_PALAVRAS_DA_EMPRESA = 3;
+
+/**
+ * Um dos nomes é a razão social do outro, CORTADA no fim? ("Comercial Renova Recuperadora De
+ * Pecas" × "COMERCIAL RENOVA RECUPERADORA DE PEÇAS , ACESSÓRIOS PARA VEÍCULOS E AUTOMOTORES LTDA".)
+ * Só vale se TODAS as condições valem:
+ *  1. pelo menos um dos nomes termina em sufixo de empresa (LTDA, EPP, EIRELI, ME, MEI, S/A) — pessoa
+ *     física pai × filho ("JOSE CARLOS SANTOS" × "… FILHO") nunca entra aqui;
+ *  2. sem acento, pontuação, sufixo e conectores, as palavras de um nome são o COMEÇO das do outro;
+ *  3. esse começo tem `MIN_PALAVRAS_DA_EMPRESA` (3) ou mais palavras: duas palavras ("ALFA BETA") não
+ *     identificam empresa nenhuma.
+ * Quem chama decide se o contexto permite (o projeto foi achado por número): aqui é só o nome.
+ */
+export function mesmaEmpresaAbreviada(a: string, b: string): boolean {
+  const pa = palavrasDe(a);
+  const pb = palavrasDe(b);
+  const ePJ = (p: string[]): boolean => semSufixoPJ(p).length !== p.length;
+  if (!ePJ(pa) && !ePJ(pb)) return false;
+  const sa = palavrasSignificativas(pa);
+  const sb = palavrasSignificativas(pb);
+  const [curto, longo] = sa.length <= sb.length ? [sa, sb] : [sb, sa];
+  return curto.length >= MIN_PALAVRAS_DA_EMPRESA && curto.every((p, i) => p === longo[i]);
+}
+
 function decidir(porProtocolo: ProjetoEnel[], porUc: ProjetoEnel[], porTitular: ProjetoEnel[]): Identificacao {
   const fortes = new Map<string, ProjetoEnel>();
   for (const p of [...porProtocolo, ...porUc]) fortes.set(p.project_id, p);

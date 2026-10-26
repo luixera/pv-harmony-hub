@@ -121,6 +121,7 @@ function anotacao(c: Classificacao): string | null {
     ? 'vistoria virtual aprovada — falta a troca do relógio'
     : 'vistoria reprovada pela ENEL';
   if (c?.tipo === 'troca_relogio' && c.estado === 'agendada') return `troca do relógio agendada${c.prazoDias ? ` (prazo de até ${c.prazoDias} dias úteis)` : ''}`;
+  if (c?.tipo === 'troca_relogio' && c.estado === 'realizada') return 'a ENEL informa que a troca do relógio foi realizada';
   if (c?.tipo === 'troca_relogio') return `a troca do relógio não foi executada${c.motivo ? `: ${c.motivo}` : ''}`;
   return null;
 }
@@ -234,7 +235,7 @@ export async function tratarMensagemEnel(
   // O titular do DOCUMENTO de outra pessoa é o único bloqueio (como na EDP), nos dois sentidos.
   // O veredito e o resumo são DESSE documento, que não é do projeto: não vão para o cartão
   // nem para o sino (o banco escreveria "CARTA_PROJETO · FAVORAVEL" no projeto errado).
-  if (parecer.ok && titularDeOutraPessoa(projeto.titular, parecer.titular)) {
+  if (parecer.ok && titularDeOutraPessoa(projeto.titular, parecer.titular, id.por)) {
     await deps.registrarEmailLido({
       ...base, projectId: projeto.project_id, referencia, casamento: id.por, abrirCartao: true,
       tipoDocumento: regra.tipo_documento, veredito: null, resumo: null, anexos: 0,

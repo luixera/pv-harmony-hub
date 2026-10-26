@@ -10,6 +10,9 @@ import { semAcento } from '../util.js';
  *  · canalgd:   "a tentativa de troca do medidor no dia … não foi executada pelo
  *               seguinte motivo: …" (ou "… não sendo executada …", ou, no
  *               reenvio da nota, "Motivo da rejeição: …")
+ *  · canalgd:   "a troca do medidor referente à nota GD …, já foi realizada através da
+ *               nota de serviço … no dia …" e, no aviso da nota, "… para a troca do
+ *               medidor bidirecional, que se encontra executada em …"
  * Só vale a parte NOVA da mensagem: a citação traz o histórico (inclusive o
  * nosso pedido, "a NT … foi aprovada na etapa de vistoria").
  *
@@ -27,6 +30,8 @@ export type Classificacao =
   | { tipo: 'resultado_vistoria'; aprovada: boolean }
   | { tipo: 'troca_relogio'; estado: 'agendada'; prazoDias: number | null }
   | { tipo: 'troca_relogio'; estado: 'nao_executada'; motivo: string | null }
+  /** a ENEL diz que a troca JÁ foi feita: o cartão sugere Concluído (decisão do usuário, 24/10/2026) */
+  | { tipo: 'troca_relogio'; estado: 'realizada' }
   | null;
 
 // ── Entidades HTML ────────────────────────────────────────────────────────────
@@ -145,6 +150,17 @@ const FALHA_DA_TROCA = new RegExp([
 // "não foi executada" sozinho pode ser de outra coisa (uma visita, uma vistoria).
 const FALA_DA_TROCA = /\b(?:troca|medidor|nota de servico|substituicao|relogio)\b/;
 
+// ── A troca do relógio que JÁ FOI FEITA ───────────────────────────────────────
+// Duas redações reais do canalgd (as únicas do corpus de 340 e-mails da ENEL):
+//  · "a troca do medidor referente à nota GD …, já foi realizada através da nota de serviço …"
+//  · "nota de serviço … para a troca do medidor bidirecional, que se encontra executada em …"
+// O verbo tem de ser DA TROCA ("foi realizada" ligado a "troca do medidor/relógio"): "não foi
+// necessária a troca … foi realizada apenas a reprogramação" (também real) e "a troca do titular
+// foi realizada" não valem. Negação, "se", pergunta e "ainda" antes do verbo: null, que só anota.
+// A falha NÃO passa por aqui: "não foi realizada" é `FALHA_DA_TROCA`, e ela vem primeiro.
+const TROCA_REALIZADA = /\btroca (?:do medidor|do relogio|de medidor|de relogio)\b([^.]{0,80}?)\bfoi realizad[ao]\b/;
+const NOTA_DA_TROCA_EXECUTADA = /\bnota de servico[^.]{0,160}?\btroca do medidor([^.]{0,60}?)\bse encontra executad[ao]\b/;
+
 const INICIO_DO_MOTIVO = /(?:pelo seguinte motivo|motivo da rejeicao)\s*:?\s*/;
 // O motivo termina onde a frase termina (ponto que não é de data), na data que o
 // segue ("… Execução 21.08.2026", "… Medição em 14.05.2026") ou onde a frase
@@ -225,6 +241,27 @@ function afirmaAprovadaDaVistoria(t: string): boolean {
   return APROVADA_SEM_SUJEITO.test(t);
 }
 
+/** O texto ACABA a frase do verbo com "?"? Então é pergunta, não informação. */
+function eraPergunta(t: string, de: number): boolean {
+  const fim = new RegExp(FIM_DE_FRASE.source, 'g');
+  fim.lastIndex = de;
+  const m = fim.exec(t);
+  return m !== null && t[m.index] === '?';
+}
+
+/** A ENEL afirma que a troca do relógio foi feita? Sem negação, sem "se", sem pergunta. */
+function trocaRealizada(t: string): boolean {
+  for (const re of [TROCA_REALIZADA, NOTA_DA_TROCA_EXECUTADA]) {
+    const m = re.exec(t);
+    if (!m) continue;
+    if (NEGA_OU_CONDICIONA.test(m[1])) continue;
+    if (NEGA_OU_CONDICIONA.test(fraseAntes(t, m.index))) continue;
+    if (eraPergunta(t, m.index + m[0].length)) continue;
+    return true;
+  }
+  return false;
+}
+
 function resultadoDaVistoria(t: string): Classificacao {
   const v = VISTORIA_COM_RESULTADO.exec(t);
   if (!v) return null;
@@ -249,6 +286,9 @@ export function classificarCorpo(corpo: string | null | undefined): Classificaca
   if (FALA_DA_TROCA.test(t) && FALHA_DA_TROCA.test(t)) {
     return { tipo: 'troca_relogio', estado: 'nao_executada', motivo: extrairMotivo(t, origem, util) };
   }
+  // Sem negação (a falha já saiu): a troca que a ENEL diz estar feita. Antes do "agendada",
+  // porque o aviso de nota executada também traz "nota de serviço … troca do medidor".
+  if (FALA_DA_TROCA.test(t) && trocaRealizada(t)) return { tipo: 'troca_relogio', estado: 'realizada' };
   if (/nota de servico[^.]{0,160}troca do medidor/.test(t)) {
     const m = /prazo (?:de|para) execucao (?:e )?de ate (\d+) dias/.exec(t);
     return { tipo: 'troca_relogio', estado: 'agendada', prazoDias: m ? Number(m[1]) : null };

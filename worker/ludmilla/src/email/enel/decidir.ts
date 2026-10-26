@@ -1,7 +1,7 @@
 // worker/ludmilla/src/email/enel/decidir.ts
 import { chaveProtocolo, comparavelTitular, type RegraEmail, type Veredito } from '../util.js';
 import type { Classificacao } from './classificar.js';
-import { mesmoTitular, type Identificacao } from './identificar.js';
+import { mesmaEmpresaAbreviada, mesmoTitular, type Identificacao, type Sinal } from './identificar.js';
 
 /**
  * As decisões do run da ENEL que não precisam de banco nem de rede: ler o PDF
@@ -30,7 +30,9 @@ export function precisaLerPdf(regra: RegraEmail, idTexto: Identificacao, c: Clas
 /** Mapa de etapas (spec §8). O texto vale antes do PDF; sem leitura ok, não há sugestão do PDF. */
 export function recomendacaoEnel(c: Classificacao, p: LeituraParaDecidir): string | null {
   if (c?.tipo === 'resultado_vistoria') return c.aprovada ? null : 'vistoria_reprovada';
-  if (c?.tipo === 'troca_relogio') return null;
+  // A troca que a ENEL diz já ter feito: o cartão sugere Concluído (decisão do usuário, 24/10/2026).
+  // A agendada e a que falhou seguem sem etapa: uma é o pedido andando, a outra é aviso.
+  if (c?.tipo === 'troca_relogio') return c.estado === 'realizada' ? 'completed' : null;
   if (!p.ok) return null;
   if (p.tipo === 'carta_projeto') {
     // "aprovado, porém solicitamos observar…" também é favorável (os itens vão na ressalva)
@@ -51,6 +53,8 @@ const ANTES_DA_APROVACAO = new Set(['pending', 'analysis', 'documentation', 'app
  */
 export function recomendacaoCabe(recomendacao: string, statusAtual: string): boolean {
   if (recomendacao === statusAtual) return false;
+  // Concluído é a ÚLTIMA etapa: cabe em qualquer outra, nunca é "para trás".
+  if (recomendacao === 'completed') return true;
   if (recomendacao === 'approved' || recomendacao === 'pendencia') return ANTES_DA_APROVACAO.has(statusAtual);
   if (recomendacao === 'vistoria_reprovada') return statusAtual === 'approved' || statusAtual === 'vistoria_solicitada';
   return true;
@@ -211,10 +215,20 @@ export function trocaDeProtocolo(
  * Nome que não dá para comparar é FALTA DE DADO, nunca divergência — inclusive o
  * que não bate nem consigo mesmo ("LU SANTOS NETO", "ANA ME LTDA": sem dois nomes de
  * 3+ letras, `mesmoTitular(n, n)` é false e o próprio nome se bloqueava).
+ *
+ * Razão social CORTADA (decisão do usuário, 24/10/2026): o documento traz "Comercial Renova
+ * Recuperadora De Pecas" e o cadastro "… ACESSÓRIOS PARA VEÍCULOS E AUTOMOTORES LTDA" — é a
+ * mesma empresa, e a trava bloqueava (`mesmoTitular` quer o último nome igual). Só relaxa quando
+ * o projeto foi achado por NÚMERO (`por` = protocolo ou UC: o documento é do projeto certo e só o
+ * nome veio abreviado) e `mesmaEmpresaAbreviada` diz que um nome é o começo do outro. Achado pelo
+ * nome, a trava segue inteira: aí o nome é a ÚNICA prova, e abreviá-lo prova menos ainda.
+ * `por` ausente = como sempre.
  */
-export function titularDeOutraPessoa(doSistema: string | null, doDocumento: string | null): boolean {
+export function titularDeOutraPessoa(doSistema: string | null, doDocumento: string | null, por?: Sinal | null): boolean {
   if (!doSistema || !doDocumento) return false;
   if (!comparavelTitular(doSistema) || !comparavelTitular(doDocumento)) return false;
   if (!mesmoTitular(doSistema, doSistema) || !mesmoTitular(doDocumento, doDocumento)) return false;
-  return !mesmoTitular(doSistema, doDocumento) && !mesmoTitular(doDocumento, doSistema);
+  if (mesmoTitular(doSistema, doDocumento) || mesmoTitular(doDocumento, doSistema)) return false;
+  if ((por === 'protocolo' || por === 'uc') && mesmaEmpresaAbreviada(doSistema, doDocumento)) return false;
+  return true;
 }

@@ -891,6 +891,99 @@ test('M-5 (Task 3). devolução que cita "a vistoria … está REPROVADA": só o
   assert.doesNotMatch(String(reg.motivo), /vistoria/);
 });
 
+// ── "A troca do relógio já foi realizada" → cartão sugerindo Concluído (decisão do usuário, 24/10/2026) ──
+
+const TROCA_REALIZADA = 'Prezado, bom dia! De acordo com os registros em sistema, a troca do medidor referente à nota GD 391000010 , já foi realizada através da nota de serviço 400012345678 no dia 02/10/2026. Protocolo: 9876543210 . Atenciosamente';
+const deTroca = (texto: string): MensagemLida => mensagem({
+  remetente: 'Canal GD <canalgd.sp@br.enel.com>', assunto: 'RE: VISTORIA - NT 391000010', texto, anexos: [],
+});
+
+test('B1. troca já realizada, NT no assunto: abre o cartão sugerindo Concluído, sem IA e sem sino', async () => {
+  const { deps, d } = dubles();
+  const r = await tratar(deTroca(TROCA_REALIZADA), deps);
+  assert.equal(r.situacao, 'tratado');
+  assert.equal(d.leituras, 0);
+  assert.equal(d.avisos.length, 0, 'não toca o sino: o cartão basta');
+  const reg = unico(d);
+  assert.equal(reg.recomendacao, 'completed');
+  assert.equal(reg.abrirCartao, true);
+  assert.equal(reg.concluida, true);
+  assert.equal(reg.projectId, PA.project_id);
+  assert.equal('atualizarProtocolo' in reg, false);
+  assert.match(String(reg.motivo), /a ENEL informa que a troca do relógio foi realizada/);
+});
+
+test('B2. o projeto já está em vistoria ou em aprovado: Concluído continua cabendo', async () => {
+  for (const status of ['approved', 'vistoria_solicitada']) {
+    const { deps, d } = dubles();
+    await tratar(deTroca(TROCA_REALIZADA), deps, [{ ...PA, status }, PB]);
+    assert.equal(unico(d).recomendacao, 'completed', status);
+    assert.equal(unico(d).abrirCartao, true, status);
+  }
+});
+
+test('B3. "não foi realizada": é a falha (1 aviso), nunca Concluído', async () => {
+  const { deps, d } = dubles();
+  await tratar(deTroca('Prezado, bom dia! A troca do medidor referente à nota GD 391000010 não foi realizada pelo seguinte motivo: Cliente Ausente. Protocolo: 9876543210 .'), deps);
+  assert.equal(d.avisos.length, 1);
+  assert.match(d.avisos[0].mensagem, /Cliente Ausente/);
+  const reg = unico(d);
+  assert.equal(reg.recomendacao, null);
+  assert.equal(reg.abrirCartao, false);
+});
+
+test('B4. resposta automática que repete "a troca … foi realizada": não classifica, sem cartão', async () => {
+  const { deps, d } = dubles();
+  await tratar(mensagem({
+    remetente: 'ENEL <no-reply@enel.com>', assunto: 'RE: TROCA DE RELÓGIO - NT 391000010',
+    texto: `Recebemos o seu e-mail: "${TROCA_REALIZADA}". Atendimento SF0123456789.`, anexos: [],
+  }), deps);
+  assert.equal(d.avisos.length, 0);
+  assert.equal(unico(d).recomendacao, null);
+  assert.equal(unico(d).abrirCartao, false);
+});
+
+// ── Razão social cortada no documento: a trava do titular só relaxa para projeto achado por NÚMERO ──
+
+const PJ = projeto({
+  codigo: 'GD-T6-PJ', protocolo: '391000070', uc: '0055007007',
+  titular: 'ALFA BETA COMÉRCIO DE PEÇAS , ACESSÓRIOS PARA VEÍCULOS E AUTOMOTORES LTDA',
+});
+const PJ_CORTADO = 'Alfa Beta Comercio De Pecas';
+
+test('PJ1. razão social cortada no PDF, projeto achado pela UC: mesma empresa, anexa e trata', async () => {
+  const { deps, d } = dubles({ parecer: carta({ nt: null, uc: '55007007', titular: PJ_CORTADO }) });
+  const r = await tratar(mensagem(), deps, [PJ, PA]);
+  assert.equal(r.situacao, 'tratado');
+  assert.equal(r.por, 'uc');
+  assert.equal(d.subidos.length, 1);
+  assert.equal(unico(d).projectId, PJ.project_id);
+});
+
+test('PJ2. razão social cortada no PDF, projeto achado pelo protocolo: mesma empresa, anexa e trata', async () => {
+  const { deps, d } = dubles({ parecer: carta({ nt: '391000070', titular: PJ_CORTADO }) });
+  const r = await tratar(mensagem(), deps, [PJ, PA]);
+  assert.equal(r.situacao, 'tratado');
+  assert.equal(r.por, 'protocolo');
+  assert.equal(d.subidos.length, 1);
+});
+
+test('PJ3. o mesmo par com o projeto achado pelo NOME no assunto: bloqueado, nada anexado', async () => {
+  const { deps, d } = dubles({ parecer: carta({ nt: null, uc: null, titular: PJ_CORTADO }) });
+  const r = await tratar(mensagem({ assunto: `Geração Distribuída – Carta - ${PJ.titular} - GD` }), deps, [PJ, PA]);
+  assert.equal(r.situacao, 'bloqueado');
+  assert.equal(r.por, 'titular');
+  assert.equal(d.anexosPedidos.length, 0);
+});
+
+test('PJ4. pessoa física pai × filho, projeto achado pela UC: bloqueado', async () => {
+  const p = projeto({ codigo: 'GD-T6-PF', protocolo: '391000071', uc: '0055007171', titular: 'JOSE CARLOS SANTOS' });
+  const { deps, d } = dubles({ parecer: carta({ nt: null, uc: '55007171', titular: 'JOSE CARLOS SANTOS FILHO' }) });
+  const r = await tratar(mensagem(), deps, [p, PA]);
+  assert.equal(r.situacao, 'bloqueado');
+  assert.equal(d.anexosPedidos.length, 0);
+});
+
 // ── Fechamento A · rótulo dos avisos ─────────────────────────────────────────
 // A RPC de aviso devolve o ROW_COUNT (um sino por pessoa da equipe: ~6 por aviso). `avisos`
 // soma SINOS e fica como está (a tela antiga lê essa chave); `avisos_mensagens` conta

@@ -1085,7 +1085,20 @@ mesma pessoa de qualquer um dos lados e passa; o mesmo primeiro e último nome c
 nome do meio trocado bloqueia (era o que o `casaTitular`, da EDP, deixava entrar no
 card errado). Um nome que **não bate nem consigo mesmo** ("LU SANTOS NETO", "ANA ME
 LTDA": sem dois nomes de 3+ letras) conta como **falta de dado**, nunca divergência —
-senão o próprio nome se bloquearia. O prompt da edge function pede o titular "na
+senão o próprio nome se bloquearia.
+
+**Razão social cortada no documento não bloqueia** (decisão do usuário, 24/10/2026, caso
+real do PRJ-51472: o PDF dizia "Comercial Renova Recuperadora De Pecas" e o cadastro
+trazia a razão social inteira, "… ACESSÓRIOS PARA VEÍCULOS E AUTOMOTORES LTDA"; duas
+mensagens do `tecnico.oeste` achadas pela UC foram bloqueadas à toa). Os dois nomes
+contam como a mesma empresa quando **todas** as condições valem
+(`mesmaEmpresaAbreviada`, `identificar.ts`): (1) o projeto foi achado por **número**
+(`protocolo` ou `uc`) — achado pelo nome, o nome é a única prova e a trava segue inteira;
+(2) um dos nomes é de **PJ** (termina em LTDA, EPP, EIRELI, ME, MEI ou S/A) — pai × filho
+("JOSE CARLOS SANTOS" × "… FILHO") continua bloqueando, porque nenhum é empresa; (3) sem
+acento, pontuação, sufixo e conectores, as palavras de um nome são o **começo** das do
+outro, nos dois sentidos; (4) esse começo tem **3 ou mais palavras** significativas (DA,
+DE, DO, DAS, DOS e E não contam) — "ALFA BETA" não identifica empresa nenhuma. O prompt da edge function pede o titular "na
 ordem natural, sem vírgula", e a função filtra o eco do exemplo do prompt ("NOME
 SOBRENOME"): uma ordem invertida ("SILVA, MARIA") viraria falso bloqueio de documento
 legítimo. O bloqueio abre cartão (sem etapa) **com o motivo** (`não anexei · o
@@ -1137,6 +1150,7 @@ texto ("TROCA … NÃO CONCLUÍDA"), e classificar isso tocaria um sino falso.
 | Vistoria reprovada | texto/assunto, ou IA `resultado_vistoria` + `pendencia` | sugere **Vistoria reprovada** |
 | Vistoria aprovada | texto/assunto, ou IA `resultado_vistoria` + `favoravel` | **sem etapa**; sino "é hora de pedir a troca do relógio" |
 | Troca agendada | texto: "nota de serviço … troca do medidor" | só anota (com o prazo, "até N dias úteis") |
+| Troca realizada | texto: "a troca do medidor … já foi realizada" ou "nota de serviço … troca do medidor, que se encontra executada" | sugere **Concluído**, sem sino |
 | Troca não executada | texto: "não foi executada", "não sendo executada", "Motivo da rejeição"… | sino, com o motivo |
 | Devolução (`postmaster`) | regra | sino "um dos destinatários não recebeu" |
 | Resposta automática (`no-reply`) | regra | só anota |
@@ -1146,10 +1160,22 @@ sistema **não tem** etapa "vídeo aprovado, aguardando relógio" (criar uma mex
 Kanban de todos os tenants): o projeto fica em Vistoria solicitada e o histórico
 registra o passo. O sino da devolução diz "um dos destinatários", não "a ENEL não
 recebeu": a devolução de 30/09 chegou no mesmo minuto da resposta automática da ENEL,
-e quem não recebeu foi outro destinatário. Concluído continua **manual**: "troca
-feita" não apareceu em nenhuma amostra (a ENEL avisa quando cria a nota de serviço e
-quando a tentativa falha), e a frase "a troca … já foi realizada através da nota de
-serviço" hoje não é classificada — só anota.
+e quem não recebeu foi outro destinatário.
+
+**"A troca do relógio já foi realizada" sugere Concluído** (decisão do usuário,
+24/10/2026; `estado: 'realizada'` em `classificar.ts`, `completed` em
+`recomendacaoEnel`). Antes só anotava, porque "troca feita" não tinha aparecido nas
+primeiras amostras. No corpus real de 340 e-mails da ENEL há duas redações, e só elas
+valem: "a troca do medidor referente à nota GD …, já foi realizada através da nota de
+serviço …" (1 e-mail) e "nota de serviço … para a troca do medidor bidirecional, que se
+encontra executada em …" (3, que até então viravam "agendada" — a mensagem diz o
+contrário). O verbo precisa ser **da troca**: "não foi necessária a troca … foi realizada
+apenas a reprogramação" (2 e-mails reais) e "a troca do titular foi realizada" não
+contam, nem a reprogramação "executada". **A negação vence**: "não foi realizada" é a
+falha (`FALHA_DA_TROCA`, avaliada primeiro), e "se", "ainda", pergunta ou citação deixam
+`null`, que só anota — Concluído sugerido por engano é o erro caro. É só **sugestão**
+(cartão), **sem sino**: quem decide é a equipe. O histórico diz "a ENEL informa que a
+troca do relógio foi realizada".
 
 **Quando a IA é chamada** (`precisaLerPdf`; ~US$ 0,10 por PDF, lançado no extrato de
 IA do console com `kind = 'ludmilla_parecer'`): a regra tem `ler_pdf`, há PDF, não
@@ -1167,8 +1193,9 @@ A primeira leitura traz 120 dias (eram 30 até 24/10/2026). Uma Carta de aprova�
 vistoria não pode virar sugestão de voltar para Aprovado. A sugestão só vale se o
 projeto **não está já nessa etapa**; Aprovado e Pendência só vêm de etapas anteriores
 à aprovação (`pending`, `analysis`, `documentation`, `approval`, `pendencia`);
-Vistoria reprovada só de `approved` ou `vistoria_solicitada`. Quando não cabe, a
-ressalva diz por quê ("não sugeri … o projeto já está à frente, em …").
+Vistoria reprovada só de `approved` ou `vistoria_solicitada`. **Concluído cabe em
+qualquer etapa, menos em Concluído**: é a última, então nunca é "para trás". Quando não
+cabe, a ressalva diz por quê ("não sugeri … o projeto já está à frente, em …").
 
 ### Troca de protocolo pela NT da Carta
 

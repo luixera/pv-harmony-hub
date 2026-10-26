@@ -218,6 +218,76 @@ test('R2: pessoa claramente diferente bloqueia; o mesmo nome com acento e caixa 
   assert.equal(titularDeOutraPessoa('ZULMIRA PEDROSO CAVALHEIRO', 'Zulmira Pedroso Cavalheiro'), false);
 });
 
+// ── Razão social cortada no documento (decisão do usuário, 24/10/2026) ──────────
+// Caso real: o PDF traz "Comercial … Recuperadora De Pecas" e o cadastro a razão social inteira,
+// "… ACESSÓRIOS PARA VEÍCULOS E AUTOMOTORES LTDA". É a mesma empresa. A trava só relaxa quando o
+// projeto foi achado por NÚMERO (protocolo ou UC), um dos nomes é de PJ e as palavras de um são o
+// começo das do outro, com 3 ou mais significativas (conector não conta). Nomes inventados.
+
+const PJ_CADASTRO = 'ALFA BETA COMÉRCIO DE PEÇAS , ACESSÓRIOS PARA VEÍCULOS E AUTOMOTORES LTDA';
+const PJ_CORTADO = 'Alfa Beta Comercio De Pecas';
+
+test('PJ: razão social cortada no documento, projeto achado por UC ou protocolo → mesma empresa, não bloqueia', () => {
+  assert.equal(titularDeOutraPessoa(PJ_CADASTRO, PJ_CORTADO, 'uc'), false);
+  assert.equal(titularDeOutraPessoa(PJ_CADASTRO, PJ_CORTADO, 'protocolo'), false);
+});
+
+test('PJ: o sentido inverso (o documento mais longo que o cadastro) também é a mesma empresa', () => {
+  assert.equal(titularDeOutraPessoa(PJ_CORTADO, PJ_CADASTRO, 'uc'), false);
+  assert.equal(titularDeOutraPessoa('ALFA BETA COMÉRCIO DE PEÇAS', 'Alfa Beta Comercio De Pecas, Acessorios Para Veiculos E Automotores Ltda', 'protocolo'), false);
+});
+
+test('PJ: o mesmo par com o projeto achado pelo NOME (ou sem dizer como) continua bloqueando', () => {
+  assert.equal(titularDeOutraPessoa(PJ_CADASTRO, PJ_CORTADO, 'titular'), true);
+  assert.equal(titularDeOutraPessoa(PJ_CORTADO, PJ_CADASTRO, 'titular'), true);
+  assert.equal(titularDeOutraPessoa(PJ_CADASTRO, PJ_CORTADO), true);
+  assert.equal(titularDeOutraPessoa(PJ_CADASTRO, PJ_CORTADO, null), true);
+});
+
+test('PF: pai × filho (nenhum é PJ) continua bloqueando, mesmo achado por número', () => {
+  assert.equal(titularDeOutraPessoa('JOSE CARLOS SANTOS', 'JOSE CARLOS SANTOS FILHO', 'uc'), true);
+  assert.equal(titularDeOutraPessoa('JOSE CARLOS SANTOS FILHO', 'JOSE CARLOS SANTOS', 'protocolo'), true);
+  // nem sem sufixo de geração: prefixo de 3+ palavras entre duas pessoas físicas
+  assert.equal(titularDeOutraPessoa('MARIA DAS GRACAS SILVA PEREIRA', 'MARIA DAS GRACAS SILVA', 'uc'), true);
+  // dois nomes sem sufixo de empresa, mesmo com o formato de razão social, não são PJ
+  assert.equal(titularDeOutraPessoa('ALFA BETA COMERCIO DE PECAS', 'ALFA BETA COMERCIO', 'uc'), true);
+});
+
+test('PJ: prefixo de só 2 palavras significativas continua bloqueando (conector não conta)', () => {
+  assert.equal(titularDeOutraPessoa('ALFA BETA COMÉRCIO DE PEÇAS LTDA', 'Alfa Beta', 'uc'), true);
+  assert.equal(titularDeOutraPessoa('Alfa Beta', 'ALFA BETA COMÉRCIO DE PEÇAS LTDA', 'uc'), true);
+  assert.equal(titularDeOutraPessoa('ALFA DE BETA COMÉRCIO DE PEÇAS LTDA', 'Alfa De Beta', 'uc'), true);
+  // com 3 significativas, passa
+  assert.equal(titularDeOutraPessoa('ALFA BETA COMÉRCIO DE PEÇAS LTDA', 'Alfa Beta Comercio', 'uc'), false);
+});
+
+test('PJ: palavras diferentes no meio ou depois do prefixo: outra empresa, bloqueia', () => {
+  assert.equal(titularDeOutraPessoa('ALFA BETA COMÉRCIO DE PEÇAS E ACESSÓRIOS LTDA', 'Alfa Beta Industria De Pecas', 'uc'), true);
+  assert.equal(titularDeOutraPessoa('ALFA BETA COMÉRCIO DE PEÇAS E ACESSÓRIOS LTDA', 'Gama Alfa Beta Comercio De Pecas', 'uc'), true);
+  assert.equal(titularDeOutraPessoa('ALFA BETA COMÉRCIO DE PEÇAS E ACESSÓRIOS LTDA', 'Alfa Beta Comercio Pecas Veiculos', 'uc'), true);
+});
+
+// ── "A troca do relógio já foi realizada" → Concluído (decisão do usuário, 24/10/2026) ──
+
+test('troca realizada sugere Concluído, venha ou não leitura do PDF; sem sino', () => {
+  const realizada = { tipo: 'troca_relogio' as const, estado: 'realizada' as const };
+  assert.equal(recomendacaoEnel(realizada, { ok: true, tipo: null, veredito: null }), 'completed');
+  assert.equal(recomendacaoEnel(realizada, { ok: false, tipo: null, veredito: null }), 'completed');
+  // a troca agendada e a que falhou seguem sem etapa
+  assert.equal(recomendacaoEnel({ tipo: 'troca_relogio', estado: 'agendada', prazoDias: 7 }, { ok: true, tipo: null, veredito: null }), null);
+  assert.equal(recomendacaoEnel({ tipo: 'troca_relogio', estado: 'nao_executada', motivo: null }, { ok: true, tipo: null, veredito: null }), null);
+  // o cartão basta: nada de sino
+  assert.deepEqual(avisosEnel('troca_relogio', realizada, null, { codigo: 'PRJ-A' }), []);
+  assert.deepEqual(avisosEnel('troca_relogio', realizada, { ok: true, tipo: null, veredito: null }, null), []);
+});
+
+test('Concluído cabe em qualquer etapa, menos em Concluído (é a última, nunca "para trás")', () => {
+  for (const etapa of ['pending', 'analysis', 'documentation', 'approval', 'pendencia', 'approved', 'vistoria_solicitada', 'vistoria_reprovada']) {
+    assert.equal(recomendacaoCabe('completed', etapa), true, etapa);
+  }
+  assert.equal(recomendacaoCabe('completed', 'completed'), false);
+});
+
 // ── A fazer da equipe: o TIPO sai do TÍTULO do aviso ────────────────────────────
 // A RPC `ludmilla_email_avisar` (migração 20261022200000) deduz `portal_afazeres.tipo`
 // do título que `avisosEnel` manda, por ILIKE. Se alguém reescrever o texto do aviso, o

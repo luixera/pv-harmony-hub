@@ -756,3 +756,72 @@ test('entidade hexadecimal com X maiúsculo (&#XE7;) também decodifica', () => 
   const r = classificarCorpo('A troca do medidor não foi executada pelo seguinte motivo: X&#XE7;X. Protocolo: 9876543210');
   assert.equal(r && r.tipo === 'troca_relogio' && r.estado === 'nao_executada' && r.motivo, 'XçX');
 });
+
+// ---------------------------------------------------------------------------
+// "A troca do relógio já foi realizada" → estado `realizada` (decisão do usuário, 24/10/2026)
+// ---------------------------------------------------------------------------
+// As duas redações REAIS do corpus da ENEL (nomes, números e datas trocados):
+//  · o canalgd respondendo a uma pergunta nossa: "a troca do medidor referente à nota GD …,
+//    já foi realizada através da nota de serviço … no dia …";
+//  · o aviso da nota de serviço da troca: "… para a troca do medidor bidirecional, que se
+//    encontra executada em …" (até aqui virava "agendada", e a mensagem diz o contrário).
+const TROCA_JA_REALIZADA = 'Prezado, bom dia! De acordo com os registros em sistema, a troca do medidor referente à nota GD 391000001 , já foi realizada através da nota de serviço 400012345678 no dia 02/10/2026. Verificar o display dos registradores 03 e 103 no medidor. Protocolo: 9876543210 . Atenciosamente';
+const NOTA_EXECUTADA = 'Prezado(a), boa tarde! Identificamos a nota de serviço 400012345678 criada em 03/08/2026 , referente a instalação 2222222222 , para a troca do medidor bidirecional, que se encontra executada em 03/09/2026. Protocolo: 9876543210 . Atenciosamente';
+const REALIZADA = { tipo: 'troca_relogio', estado: 'realizada' };
+
+test('troca já realizada ("a troca do medidor … já foi realizada através da nota de serviço"): realizada', () => {
+  assert.deepEqual(classificarCorpo(TROCA_JA_REALIZADA), REALIZADA);
+  // como chega da caixa: com as entidades HTML do corpo real
+  const comEntidades = 'Prezado, bom dia! De acordo com os registros em sistema, a troca do medidor referente &agrave; nota GD 391000001 , j&aacute; foi realizada atrav&eacute;s da nota de servi&ccedil;o 400012345678 no dia 02/10/2026. Protocolo: 9876543210 .';
+  assert.deepEqual(classificarCorpo(comEntidades), REALIZADA);
+  // sem o "já", e com "relógio" no lugar de "medidor"
+  assert.deepEqual(classificarCorpo('Informamos que a troca do relógio foi realizada em 02/10/2026.'), REALIZADA);
+});
+
+test('nota de serviço da troca "que se encontra executada em …": realizada, não "agendada"', () => {
+  assert.deepEqual(classificarCorpo(NOTA_EXECUTADA), REALIZADA);
+  // a mesma frase do aviso, ainda pendente, continua "agendada"
+  assert.deepEqual(classificarCorpo(TROCA_AGENDADA), { tipo: 'troca_relogio', estado: 'agendada', prazoDias: 7 });
+});
+
+test('a NEGAÇÃO vence: "não foi realizada" é falha, nunca realizada', () => {
+  for (const frase of [
+    'A troca do medidor referente à nota GD 391000001 ainda não foi realizada através da nota de serviço 400012345678.',
+    'A troca do medidor não foi realizada no dia 02/10/2026.',
+    'A troca do relógio não foi realizada pelo seguinte motivo: Cliente Ausente.',
+  ]) {
+    const r = classificarCorpo(frase);
+    assert.equal(r && r.tipo === 'troca_relogio' && r.estado, 'nao_executada', frase);
+  }
+  // as duas na mesma mensagem: a falha manda, com o motivo
+  const mista = `${TROCA_JA_REALIZADA} A tentativa de troca do medidor no dia 15/09 , não foi executada pelo seguinte motivo: Cliente Ausente.`;
+  assert.deepEqual(classificarCorpo(mista), { tipo: 'troca_relogio', estado: 'nao_executada', motivo: 'Cliente Ausente' });
+  // e a nota "executada" na mesma mensagem de uma tentativa que falhou
+  const nota = `${NOTA_EXECUTADA} A tentativa anterior de troca do medidor não foi executada pelo seguinte motivo: Cliente Ausente.`;
+  assert.deepEqual(classificarCorpo(nota), { tipo: 'troca_relogio', estado: 'nao_executada', motivo: 'Cliente Ausente' });
+});
+
+test('na dúvida, null: pergunta, "se", reprogramação, outra troca, outro verbo', () => {
+  for (const frase of [
+    'Favor confirmar se a troca do medidor já foi realizada.',          // condicional ("se")
+    'Gostaríamos de saber quando a troca do medidor já foi realizada?', // pergunta
+    'A troca do medidor, se já foi realizada, deve constar no sistema.', // "se" entre a troca e o verbo
+    'A troca do titular foi realizada em 02/10/2026.',                  // não é a troca do relógio
+    'A vistoria foi realizada no dia 02/10/2026.',                      // não fala da troca
+    'Foram realizadas as verificações e medições da troca do medidor.', // plural: outra frase
+  ]) {
+    assert.equal(classificarCorpo(frase), null, frase);
+  }
+  // redação real: "não foi necessária a troca … foi realizada apenas a reprogramação" não é troca realizada
+  const reprogramacao = 'Prezado(a), boa tarde! Identificamos a nota de serviço 400012345678 criada em 03/08/2026 , referente a instalação 2222222222 , para a reprogramação do medidor bidirecional, que se encontra executada em 04/08/2026. Vale ressaltar que não foi necessária a troca, pois o medidor bidirecional já estava instalado. Foi realizada apenas a reprogramação do equipamento existente, portanto o local está apto e liberado para geração distribuída.';
+  assert.equal(classificarCorpo(reprogramacao), null);
+  // a nota que "não se encontra executada" é a agendada de sempre
+  const naoExecutada = 'Identificamos a nota de serviço 400012345678 , referente a instalação 2222222222 , para a troca do medidor bidirecional, que ainda não se encontra executada.';
+  assert.deepEqual(classificarCorpo(naoExecutada), { tipo: 'troca_relogio', estado: 'agendada', prazoDias: null });
+});
+
+test('a citação não vira realizada: só a parte nova da mensagem conta', () => {
+  const nova = 'Prezado, recebemos o seu pedido e vamos analisar.';
+  assert.equal(classificarCorpo(`${nova} -------------- Mensagem original -------------- ${TROCA_JA_REALIZADA}`), null);
+  assert.equal(classificarCorpo(`${nova} -------------- Mensagem original -------------- ${NOTA_EXECUTADA}`), null);
+});
