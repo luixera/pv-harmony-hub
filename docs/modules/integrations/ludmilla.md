@@ -1150,7 +1150,7 @@ texto ("TROCA … NÃO CONCLUÍDA"), e classificar isso tocaria um sino falso.
 | Vistoria reprovada | texto/assunto, ou IA `resultado_vistoria` + `pendencia` | sugere **Vistoria reprovada** |
 | Vistoria aprovada | texto/assunto, ou IA `resultado_vistoria` + `favoravel` | **sem etapa**; sino "é hora de pedir a troca do relógio" |
 | Troca agendada | texto: "nota de serviço … troca do medidor" | só anota (com o prazo, "até N dias úteis") |
-| Troca realizada | texto: "a troca do medidor … já foi realizada" ou "nota de serviço … troca do medidor, que se encontra executada" | sugere **Concluído**, sem sino |
+| Troca realizada | texto: "a troca do medidor … já foi realizada", "nota de serviço … troca (ou reprogramação) do medidor, que se encontra executada" ou "já houve a reprogramação do medidor" | sugere **Concluído**, sem sino |
 | Troca não executada | texto: "não foi executada", "não sendo executada", "Motivo da rejeição"… | sino, com o motivo |
 | Devolução (`postmaster`) | regra | sino "um dos destinatários não recebeu" |
 | Resposta automática (`no-reply`) | regra | só anota |
@@ -1165,13 +1165,19 @@ e quem não recebeu foi outro destinatário.
 **"A troca do relógio já foi realizada" sugere Concluído** (decisão do usuário,
 24/10/2026; `estado: 'realizada'` em `classificar.ts`, `completed` em
 `recomendacaoEnel`). Antes só anotava, porque "troca feita" não tinha aparecido nas
-primeiras amostras. No corpus real de 340 e-mails da ENEL há duas redações, e só elas
+primeiras amostras. No corpus real de 340 e-mails da ENEL há três redações, e só elas
 valem: "a troca do medidor referente à nota GD …, já foi realizada através da nota de
-serviço …" (1 e-mail) e "nota de serviço … para a troca do medidor bidirecional, que se
+serviço …" (1 e-mail); "nota de serviço … para a troca do medidor bidirecional, que se
 encontra executada em …" (3, que até então viravam "agendada" — a mensagem diz o
-contrário). O verbo precisa ser **da troca**: "não foi necessária a troca … foi realizada
-apenas a reprogramação" (2 e-mails reais) e "a troca do titular foi realizada" não
-contam, nem a reprogramação "executada". **A negação vence**: "não foi realizada" é a
+contrário); e a **reprogramação**: a ENEL abre a nota de troca *ou* de reprogramação, e
+com o medidor já bidirecional reprogramar é o fim do serviço — "… para a reprogramação do
+medidor bidirecional, que se encontra executada em …" (4, às vezes com "não foi
+necessária a troca, pois o medidor já estava instalado", que explica por que só
+reprogramaram e **não é falha**) e "já houve a reprogramação do medidor em …" (1; o "caso
+não esteja reprogramado" que vem depois não anula). O verbo precisa ser **da troca ou da
+reprogramação do medidor**: "a troca do titular foi realizada" e um "Foi realizada apenas a
+reprogramação" solto não contam, e nota **aberta** para reprogramação com prazo não existe
+no corpus (não tem classe: só a troca tem "agendada"). **A negação vence**: "não foi realizada" é a
 falha (`FALHA_DA_TROCA`, avaliada primeiro), e "se", "ainda", pergunta ou citação deixam
 `null`, que só anota — Concluído sugerido por engano é o erro caro. É só **sugestão**
 (cartão), **sem sino**: quem decide é a equipe. O histórico diz "a ENEL informa que a
