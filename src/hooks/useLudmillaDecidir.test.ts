@@ -44,8 +44,8 @@ describe('useAcoesDaCaixa (a cola das decisões)', () => {
     m.aplicar.mockImplementation(async () => { m.log.push('gravou'); });
     await useAcoesDaCaixa().aplicar('u-1', 'approved');
     expect(m.aplicar).toHaveBeenCalledWith({ id: 'u-1', status: 'approved' });
-    expect(m.log).toEqual(['gravou', 'invalidou', 'invalidou']);
-    expect(chavesInvalidadas()).toEqual(['ludmilla-linha-do-tempo', 'projeto-do-detalhe']);
+    expect(m.log).toEqual(['gravou', 'invalidou', 'invalidou', 'invalidou']);
+    expect(chavesInvalidadas()).toEqual(['ludmilla-linha-do-tempo', 'projeto-do-detalhe', 'ludmilla-registro']);
   });
 
   it('aplicar sem etapa (só o protocolo) manda status indefinido', async () => {
@@ -64,8 +64,8 @@ describe('useAcoesDaCaixa (a cola das decisões)', () => {
     m.ignorar.mockImplementation(async () => { m.log.push('gravou'); });
     await useAcoesDaCaixa().ignorar('u-3');
     expect(m.ignorar).toHaveBeenCalledWith('u-3');
-    expect(m.log).toEqual(['gravou', 'invalidou', 'invalidou']);
-    expect(chavesInvalidadas()).toEqual(['ludmilla-linha-do-tempo', 'projeto-do-detalhe']);
+    expect(m.log).toEqual(['gravou', 'invalidou', 'invalidou', 'invalidou']);
+    expect(chavesInvalidadas()).toEqual(['ludmilla-linha-do-tempo', 'projeto-do-detalhe', 'ludmilla-registro']);
   });
 
   it('ignorar REJEITA quando o banco recusa, e não atualiza nada', async () => {
@@ -77,8 +77,8 @@ describe('useAcoesDaCaixa (a cola das decisões)', () => {
   it('feito: devolve se foi esta pessoa que marcou e atualiza linha do tempo e detalhe', async () => {
     m.feito.mockImplementation(async () => { m.log.push('gravou'); return true; });
     expect(await useAcoesDaCaixa().feito('f-1')).toBe(true);
-    expect(m.log).toEqual(['gravou', 'invalidou', 'invalidou']);
-    expect(chavesInvalidadas()).toEqual(['ludmilla-linha-do-tempo', 'projeto-do-detalhe']);
+    expect(m.log).toEqual(['gravou', 'invalidou', 'invalidou', 'invalidou']);
+    expect(chavesInvalidadas()).toEqual(['ludmilla-linha-do-tempo', 'projeto-do-detalhe', 'ludmilla-registro']);
 
     m.feito.mockResolvedValue(false);
     expect(await useAcoesDaCaixa().feito('f-2')).toBe(false);
@@ -94,6 +94,25 @@ describe('useAcoesDaCaixa (a cola das decisões)', () => {
     m.opcoesDoAplicar.length = 0;
     useAcoesDaCaixa();
     expect(m.opcoesDoAplicar).toEqual([{ silencioso: true }]);
+  });
+
+  it('as três decisões atualizam o REGISTRO pelo prefixo: quem decide e abre a aba Registro vê a própria decisão', async () => {
+    m.aplicar.mockResolvedValue(undefined);
+    m.ignorar.mockResolvedValue(undefined);
+    m.feito.mockResolvedValue(true);
+    const acoes = useAcoesDaCaixa();
+    await acoes.aplicar('u-1', 'approved');
+    await acoes.ignorar('u-2');
+    await acoes.feito('f-1');
+    const doRegistro = m.invalidar.mock.calls
+      .map(c => c[0] as { queryKey: unknown[]; exact?: boolean })
+      .filter(o => o.queryKey[0] === 'ludmilla-registro');
+    expect(doRegistro).toHaveLength(3);
+    // só o prefixo, sem `exact`: a aba guarda ['ludmilla-registro', 60|400, 'todos'|'ludmilla'|'equipe']
+    for (const o of doRegistro) {
+      expect(o.queryKey).toEqual(['ludmilla-registro']);
+      expect(o.exact).toBeUndefined();
+    }
   });
 
   it('não espera o refetch: a decisão já está gravada quando a promessa resolve', async () => {

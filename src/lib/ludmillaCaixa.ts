@@ -137,8 +137,8 @@ function textoDeBusca(partes: (string | null | undefined)[]): string {
 const soDigitos = (s: string | null | undefined) => (s ?? '').replace(/\D/g, '');
 
 /**
- * Zero à esquerda é enfeite no número do protocolo (EDP: 045006443920 = 45006443920).
- * Termo de dígitos que começa com zero ("0045006…") acha o protocolo pelo COMEÇO do número,
+ * Zero à esquerda é enfeite no número do protocolo (EDP: 045000000001 = 45000000001).
+ * Termo de dígitos que começa com zero ("004500…") acha o protocolo pelo COMEÇO do número,
  * ignorando os zeros dos dois lados. Só vale com algum dígito diferente de zero ("0000" não
  * vira "0") e só contra os dígitos do protocolo — nunca contra o resto do texto.
  */

@@ -56,9 +56,12 @@ export default function Ludmilla() {
   const { data: captchas = [] } = usePortalCaptchas();
   // a caixa do agente de e-mails é por tenant: uma consulta serve para o topo e para todos os
   // cartões. Enquanto carrega, null — false acenderia o alerta "caixa não configurada" em toda abertura.
-  // Consulta que falhou também é null: não prova que a caixa falta.
+  // Consulta que falhou sem resposta anterior também é null (não prova que a caixa falta), e o cartão
+  // diz que não deu para conferir. Uma resposta já recebida vale mesmo se a atualização falhar depois.
   const { data: agente, isLoading: carregandoAgente, isError: erroDoAgente } = useAgentConfig();
-  const caixaPronta = carregandoAgente || erroDoAgente ? null : !!agente?.is_configured && !!agente.gmail_email;
+  const semResposta = carregandoAgente || agente === undefined;
+  const caixaPronta = semResposta ? null : !!agente?.is_configured && !!agente?.gmail_email;
+  const caixaFalhou = semResposta && erroDoAgente;
   const { data: runsCriacao = [] } = useRunsCriacaoCpfl();
   const pedir = usePedirRun();
   const agora = useAgora(60_000);
@@ -132,7 +135,8 @@ export default function Ludmilla() {
         </TabsContent>
         <TabsContent value="concessionarias" className="mt-0">
           <AbaConcessionarias
-            contas={caixa.contas} nomeDaConta={caixa.nomeDaConta} caixa={agente} caixaPronta={caixaPronta} agora={agora}
+            contas={caixa.contas} nomeDaConta={caixa.nomeDaConta} caixa={agente} caixaPronta={caixaPronta}
+            caixaFalhou={caixaFalhou} agora={agora}
             verificando={pedir.isPending} onVerificar={(accountId, tipo) => pedir.mutate({ accountId, tipo })}
           />
         </TabsContent>

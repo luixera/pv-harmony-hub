@@ -87,6 +87,29 @@ interface SidebarProps {
   onClose?: () => void;
 }
 
+const AVISO_DA_LUDMILLA = 'Não foi possível atualizar o número de pendências da Ludmilla';
+const ESTILO_DO_SELO = 'absolute -top-1.5 -right-1.5 min-w-[16px] h-[16px] px-0.5 rounded-full text-[10px] font-bold text-white flex items-center justify-center';
+
+/**
+ * O selo do ícone: o número (99+ acima de 99) ou, quando a contagem falhou, um "!" no lugar
+ * dele — um `title` sozinho não aparece no toque, e o número podia estar faltando sem ninguém saber.
+ */
+function SeloDoItem({ numero, aviso }: { numero: number; aviso?: string }) {
+  if (aviso) {
+    return (
+      <span role="img" aria-label={aviso} title={aviso} data-teste="selo-aviso" className={ESTILO_DO_SELO} style={{ background: '#E24B4A' }}>
+        !
+      </span>
+    );
+  }
+  if (numero <= 0) return null;
+  return (
+    <span className={ESTILO_DO_SELO} style={{ background: '#E24B4A' }}>
+      {numero > 99 ? '99+' : numero}
+    </span>
+  );
+}
+
 export function Sidebar({ open, onClose }: SidebarProps) {
   const { user } = useAuth();
   const location = useLocation();
@@ -104,9 +127,11 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   const assinaturaDisponivel = useAssinaturaDisponivel();
   const zeDisponivel = useZeDisponivel();
   // decisão do usuário (22/10/2026): recomendações pendentes + A fazer abertos — o mesmo número
-  // da aba Decidir. Só a equipe do GD Manager consulta; os outros recebem 0.
+  // da aba Decidir, nos DOIS menus. Só a equipe do GD Manager consulta; os outros recebem 0.
   const { total, carregando, erro: erroDaLudmilla } = useContadorDaLudmilla();
   const ludmillaBadge = carregando ? 0 : total;
+  // consulta que falhou: o número pode estar faltando — o selo vira "!"
+  const avisoDo = (path: string) => (path === '/ludmilla' && erroDaLudmilla ? AVISO_DA_LUDMILLA : undefined);
 
   // Rotas ocultadas conforme os recursos do plano do tenant
   const featureGate: Record<string, boolean> = {
@@ -179,13 +204,9 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                 {filteredItems.map((item) => {
                   const isActive = location.pathname === item.path;
                   const badge = item.path === '/tasks' && pendingCount > 0 ? pendingCount : item.path === '/email-updates' && emailBadge > 0 ? emailBadge : item.path === '/ludmilla' && ludmillaBadge > 0 ? ludmillaBadge : 0;
-                  // consulta que falhou: o número pode estar faltando (com selo ou sem) — o item avisa
-                  const aviso = item.path === '/ludmilla' && erroDaLudmilla
-                    ? 'Não foi possível atualizar o número de pendências da Ludmilla' : undefined;
                   return (
                     <button
                       key={item.path}
-                      title={aviso}
                       onClick={() => handleNavClick(item.path)}
                       className={cn(
                         "sidebar-item w-full min-h-[56px]",
@@ -194,11 +215,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                     >
                       <div className="relative flex-shrink-0">
                         <item.icon className="w-5 h-5" />
-                        {badge > 0 && (
-                          <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-[16px] px-0.5 rounded-full text-[10px] font-bold text-white flex items-center justify-center" style={{ background: '#E24B4A' }}>
-                            {badge > 99 ? '99+' : badge}
-                          </span>
-                        )}
+                        <SeloDoItem numero={badge} aviso={avisoDo(item.path)} />
                       </div>
                       <span className="truncate text-base">{item.label}</span>
                     </button>
@@ -264,7 +281,8 @@ export function Sidebar({ open, onClose }: SidebarProps) {
       <nav className="flex-1 py-6 px-3 space-y-1 overflow-y-auto scrollbar-thin">
         {filteredItems.map((item) => {
           const isActive = location.pathname === item.path;
-          const badge = item.path === '/tasks' && pendingCount > 0 ? pendingCount : 0;
+          // o selo do e-mail continua só na gaveta (fora do escopo); o da Ludmilla vale nos dois menus
+          const badge = item.path === '/tasks' && pendingCount > 0 ? pendingCount : item.path === '/ludmilla' ? ludmillaBadge : 0;
           return (
             <button
               key={item.path}
@@ -276,11 +294,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
             >
               <div className="relative flex-shrink-0">
                 <item.icon className="w-5 h-5" />
-                {badge > 0 && (
-                  <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-[16px] px-0.5 rounded-full text-[10px] font-bold text-white flex items-center justify-center" style={{ background: '#E24B4A' }}>
-                    {badge > 99 ? '99+' : badge}
-                  </span>
-                )}
+                <SeloDoItem numero={badge} aviso={avisoDo(item.path)} />
               </div>
               {!collapsed && (
                 <motion.span

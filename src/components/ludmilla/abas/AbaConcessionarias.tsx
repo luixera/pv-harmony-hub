@@ -9,12 +9,14 @@ import { CartaoDaConta } from './CartaoDaConta';
  * A caixa do agente de e-mails é por tenant, e o "Verificar agora" é o MESMO da faixa de saúde:
  * a página consulta e pede uma vez só e passa para todos os cartões.
  */
-export function AbaConcessionarias({ contas, nomeDaConta, caixa, caixaPronta, agora, verificando, onVerificar }: {
+export function AbaConcessionarias({ contas, nomeDaConta, caixa, caixaPronta, caixaFalhou, agora, verificando, onVerificar }: {
   contas: PortalAccount[];
   nomeDaConta: (id: string) => string;
   caixa: AgentConfigSafe | null | undefined;
-  /** true = configurada · false = não configurada · null = ainda carregando */
+  /** true = configurada · false = não configurada · null = sem resposta (carregando ou falhou) */
   caixaPronta: boolean | null;
+  /** a consulta da caixa falhou sem resposta anterior (com `caixaPronta` null) */
+  caixaFalhou: boolean;
   agora: number;
   verificando: boolean;
   onVerificar: (accountId: string, tipo: TipoRun) => void;
@@ -30,7 +32,7 @@ export function AbaConcessionarias({ contas, nomeDaConta, caixa, caixaPronta, ag
       )}
       {contas.map(c => (
         <CartaoDaConta
-          key={c.id} conta={c} nome={nomeDaConta(c.id)} caixa={caixa} caixaPronta={caixaPronta} agora={agora}
+          key={c.id} conta={c} nome={nomeDaConta(c.id)} caixa={caixa} caixaPronta={caixaPronta} caixaFalhou={caixaFalhou} agora={agora}
           verificando={verificando} onVerificar={tipo => onVerificar(c.id, tipo)}
           onAcessoAoPortal={() => navigate('/admin/energy-concessionaires')}
         />

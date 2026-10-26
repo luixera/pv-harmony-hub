@@ -81,7 +81,10 @@ export function useMarcarAfazerFeito() {
  * sabe que o banco recusou) e só então atualiza o que o painel de detalhe mostra.
  * Aplicar e Ignorar (useLudmilla.ts) só invalidam `portal-updates` e `projects`; sem
  * isto a "linha do tempo" e o "Quem" (UC/protocolo) do projeto ficavam com o que
- * havia antes da decisão. A atualização não é esperada: a decisão já está gravada.
+ * havia antes da decisão — e a aba Registro também: quem decide e a abre logo depois
+ * não via a própria decisão. O Registro é invalidado pelo PREFIXO da chave de
+ * `useRegistroLudmilla` (`['ludmilla-registro', limite, ator]`): vale para 60 ou 400
+ * linhas e para os três filtros. A atualização não é esperada: a decisão já está gravada.
  * O Aplicar é SILENCIOSO: o aviso com "Desfazer" já disse o que vai acontecer, e o
  * "Card movido" de `useAplicarUpdate` chegaria 8 s depois cobrindo o rodapé no celular.
  */
@@ -95,6 +98,7 @@ export function useAcoesDaCaixa() {
     const atualizarDetalhe = () => {
       void qc.invalidateQueries({ queryKey: ['ludmilla-linha-do-tempo'] });
       void qc.invalidateQueries({ queryKey: ['projeto-do-detalhe'] });
+      void qc.invalidateQueries({ queryKey: ['ludmilla-registro'] });
     };
     return {
       aplicar: async (id: string, etapa: string | null): Promise<void> => {

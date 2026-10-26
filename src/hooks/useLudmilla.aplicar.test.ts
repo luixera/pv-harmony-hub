@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { useAplicarUpdate } from './useLudmilla';
+import { useQuery } from '@tanstack/react-query';
+import { useAplicarUpdate, useRegistroLudmilla } from './useLudmilla';
 
 /**
  * O aviso de "Aplicar" (revisão da Task 6, item 13 do plano). A caixa de decisões já diz o
@@ -58,5 +59,21 @@ describe('useAplicarUpdate — o aviso de sucesso', () => {
     useOpcoes({ silencioso: true }).onError(new Error('já decidida'));
     useOpcoes().onError(new Error('sem rede'));
     expect(m.erro.mock.calls.map(c => c[0])).toEqual(['já decidida', 'sem rede']);
+  });
+});
+
+/**
+ * A outra ponta do teste de `useAcoesDaCaixa` (useLudmillaDecidir.test.ts): lá a decisão invalida
+ * o Registro pelo prefixo `['ludmilla-registro']`; aqui se prova que é a chave que o hook da aba
+ * usa DE VERDADE, em todas as variantes (60 ou 400 linhas, os três filtros).
+ */
+describe('useRegistroLudmilla — a chave que a caixa de decisões invalida', () => {
+  it('começa com "ludmilla-registro" em todas as variantes da aba', () => {
+    vi.mocked(useQuery).mockImplementation(((opcoes: unknown) => opcoes) as never);
+    const prefixo = (opcoes: unknown) => (opcoes as { queryKey: unknown[] }).queryKey[0];
+    expect(prefixo(useRegistroLudmilla(60))).toBe('ludmilla-registro');
+    expect(prefixo(useRegistroLudmilla(400))).toBe('ludmilla-registro');
+    expect(prefixo(useRegistroLudmilla(60, 'ludmilla'))).toBe('ludmilla-registro');
+    expect(prefixo(useRegistroLudmilla(400, 'equipe'))).toBe('ludmilla-registro');
   });
 });

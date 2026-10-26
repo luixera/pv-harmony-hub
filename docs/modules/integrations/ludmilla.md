@@ -610,7 +610,7 @@ varre por remetente nos últimos dias e nunca toca em anexo:
 
 A Ludmilla parte de **cada protocolo em andamento** e procura **o número** na
 caixa. Para a EDP, o protocolo do sistema é a nota com **um zero à esquerda**
-(`045006443920` equivale a `45006443920`) — confirmado contra três pares reais
+(`045000000001` equivale a `45000000001`) — confirmado contra três pares reais
 de projeto/e-mail. Toda comparação é por dígitos, com zeros à esquerda removidos
 e mínimo de 8 dígitos (`chaveProtocolo` / `casaProtocolo`).
 
@@ -672,7 +672,7 @@ etapa tendo tido uma.
 ### E-mail que cita VÁRIOS protocolos (rodada 3, 12/10/2026)
 
 O laço do run trata **um protocolo por vez**. Um assunto como
-`NOTAS 45006443920 e 45006443921` roda `tratarMensagem` duas vezes para a mesma
+`NOTAS 45000000001 e 45000000002` roda `tratarMensagem` duas vezes para a mesma
 mensagem. O código antigo, para cada vez, anexava **todos** os arquivos e lia o
 **maior** PDF — de qualquer um dos dois. O parecer de um cliente aparecia no card
 do outro (de outra integradora, até) com o comentário "titular conferido", e o
@@ -685,7 +685,7 @@ Agora:
    por dígitos, sem zero à esquerda, piso de 8). Número de pedido, CEP ou
    protocolo de atendimento no assunto não conta: só os da lista do run.
 2. **Com mais de um, só vai para o card o arquivo cujo NOME traz o número daquele
-   protocolo** (`PARECER_45006441002.pdf`; `separarPorProtocolo`). Arquivo que
+   protocolo** (`PARECER_45000000001.pdf`; `separarPorProtocolo`). Arquivo que
    traz os **dois** números é ambíguo e não vai para nenhum card. A IA lê o PDF
    **desse protocolo**, não o maior do e-mail — então o titular confere contra o
    documento certo.
@@ -1490,9 +1490,11 @@ de propósito:
 - **Banco:** `ludmilla_email_avisar` não filtra `profiles.active`; `LIMIT 2000` em
   `ludmilla_email_projetos`; o UPDATE do `protocol_number` no "Aplicar" não tem
   guarda de `''` nem filtro de tenant (igual ao de etapa, que já é assim).
-- **Tela:** o erro de `useMensagensEmail` vira "Nenhum e-mail lido ainda" e o
-  contador da Sidebar engole erro; entre o último refetch e o clique em "Aplicar"
-  há uma janela curta (a RPC devolve `VOID`).
+- **Tela:** o erro de `useMensagensEmail` vira "Nenhum e-mail lido ainda"; entre o
+  último refetch e o clique em "Aplicar" há uma janela curta (a RPC devolve
+  `VOID`). (O contador da Sidebar já não engole erro: desde a página nova, com a
+  consulta falhando o item mostra um "!" no lugar do número, nos dois menus — ver
+  [A página como caixa de decisões](#a-página-como-caixa-de-decisões-22102026).)
 - **Dados:** 13 dos 30 projetos ativos sem protocolo numérico (a robô os identifica
   pela UC ou pelo nome); 1 ativo com duas UCs na mesma célula, separadas por "/"
   (cada pedaço casa como número) e 1 com UC alfanumérica ("UQM…"), que não casa com
@@ -1560,17 +1562,21 @@ onde ela começa até o fim da janela (`decidir/altura.ts`, medida pela soma dos
 280 px. Em 1280 × 800, com um alerta e a faixa em duas linhas, os botões do detalhe
 ficam à vista sem rolar; com o código da imagem na tela, a página rola até eles.
 
-**A caixa de e-mail ainda carregando** (ou com a consulta falhando) é `null`, não
-`false`: nem alerta "caixa não configurada", nem chip parado, e o cartão diz
-"Conferindo a caixa…". O alerta da sessão expirada recebe o estado da estação
+**A caixa de e-mail ainda carregando** (ou com a consulta falhando sem nenhuma
+resposta antes) é `null`, não `false`: nem alerta "caixa não configurada", nem chip
+parado. Carregando, o cartão diz "Conferindo a caixa…"; na falha, "Não deu para
+conferir a caixa de e-mail agora" e por que o "Verificar agora" está desligado. Uma
+resposta já recebida vale mesmo se a atualização seguinte falhar. O alerta da sessão
+expirada recebe o estado da estação
 (`alertasDasContas(..., c => estadoDaEstacao(c, agora))`).
 
 **Contador da barra lateral** (decisão do usuário, 22/10/2026): recomendações
 pendentes + A fazer abertos — o mesmo número da aba Decidir —, por
-`useContadorDaLudmilla()` (`contagemDaLudmilla`). Enquanto carrega mostra 0; se uma
-das consultas falha, o item ganha um `title` de aviso ("Não foi possível atualizar o
-número de pendências da Ludmilla") em vez de engolir o erro. O selo só aparece no
-menu em gaveta (celular), como antes.
+`useContadorDaLudmilla()` (`contagemDaLudmilla`), no menu fixo do computador e no
+menu em gaveta do celular (`99+` acima de 99). Enquanto carrega mostra 0; se uma das
+consultas falha, o selo vira um **"!"** visível (o `title` sozinho não aparece no
+toque), com `aria-label` e `title` "Não foi possível atualizar o número de pendências
+da Ludmilla", em vez de engolir o erro.
 
 **Banco (migração `20261022200000_ludmilla_afazeres`).** `portal_afazeres (id,
 tenant_id, account_id, project_id, mensagem_id → portal_email_mensagens, tipo,

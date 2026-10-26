@@ -13,8 +13,8 @@ import { cn } from '@/lib/utils';
  * do agente de e-mails, por tenant. Traz os contadores da última leitura, as
  * regras que ensinam a robô a reconhecer os e-mails, e o que ela já leu.
  */
-function BlocoEmail({ conta, caixa, caixaPronta }: {
-  conta: PortalAccount; caixa: AgentConfigSafe | null | undefined; caixaPronta: boolean | null;
+function BlocoEmail({ conta, caixa, caixaPronta, caixaFalhou }: {
+  conta: PortalAccount; caixa: AgentConfigSafe | null | undefined; caixaPronta: boolean | null; caixaFalhou: boolean;
 }) {
   const { data: run = null } = useUltimoRunEmail(conta.id);
 
@@ -27,8 +27,13 @@ function BlocoEmail({ conta, caixa, caixaPronta }: {
             Caixa <b className="text-foreground">{caixa.gmail_email}</b> — a mesma do agente de e-mails.
             Ela só lê: nunca marca como lido nem move mensagem.
           </span>
+        ) : caixaFalhou ? (
+          // a consulta falhou: não afirmar que a caixa não existe, mas também não ficar "conferindo" para sempre
+          <span data-teste="caixa-falhou" className="text-amber-700">
+            Não deu para conferir a caixa de e-mail agora. Sem saber se ela está configurada, o
+            "Verificar agora" fica desligado — recarregue a página daqui a pouco.
+          </span>
         ) : caixaPronta === null ? (
-          // ainda carregando (ou a consulta falhou): não afirmar que a caixa não existe
           <span>Conferindo a caixa de e-mail do tenant…</span>
         ) : (
           <span className="text-amber-700">
@@ -63,12 +68,14 @@ function BlocoEmail({ conta, caixa, caixaPronta }: {
  * O cartão de cada conta — movido de `pages/Ludmilla.tsx` (era o `contas.map`). Mudou só o
  * pedido pela spec §3.3: as regras de e-mail recolhidas e o botão "Acesso ao portal".
  */
-export function CartaoDaConta({ conta: c, nome, caixa, caixaPronta, agora, verificando, onVerificar, onAcessoAoPortal }: {
+export function CartaoDaConta({ conta: c, nome, caixa, caixaPronta, caixaFalhou, agora, verificando, onVerificar, onAcessoAoPortal }: {
   conta: PortalAccount;
   nome: string;
   caixa: AgentConfigSafe | null | undefined;
-  /** true = configurada · false = não configurada · null = ainda carregando */
+  /** true = configurada · false = não configurada · null = sem resposta (carregando ou falhou) */
   caixaPronta: boolean | null;
+  /** a consulta da caixa falhou sem resposta anterior: o bloco de e-mail diz isso, e não "conferindo" */
+  caixaFalhou: boolean;
   agora: number;
   verificando: boolean;
   onVerificar: (tipo: TipoRun) => void;
@@ -102,7 +109,7 @@ export function CartaoDaConta({ conta: c, nome, caixa, caixaPronta, agora, verif
           : (c.ultima_varredura_em ? `última varredura ${quando(c.ultima_varredura_em)}` : 'ainda não varreu')}
       </div>
       {c.acompanhamento === 'email' ? (
-        <BlocoEmail conta={c} caixa={caixa} caixaPronta={caixaPronta} />
+        <BlocoEmail conta={c} caixa={caixa} caixaPronta={caixaPronta} caixaFalhou={caixaFalhou} />
       ) : (
         <>
           {/* conta na estação local (Elektro): a estação pulsa a cada minuto */}
