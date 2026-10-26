@@ -1241,6 +1241,14 @@ linha decidida já era de troca. O "Aplicar" grava `portal_updates.protocolo` em
   cada run relê os envelopes dos últimos 120 dias (barato: sem corpo); a pendência
   filtra o que já concluiu, e a IA só roda para as pendentes. `ultima_varredura_em`
   não muda mais nada na ENEL.
+- **A ENEL lê "Todos os e-mails" (`\All`), não só a Caixa de entrada** (25/10/2026).
+  Medido: na INBOX os e-mails da ENEL começavam em 09/10, mas a conta os tem desde
+  maio (provavelmente arquivados), então a janela de 120 dias não achava nada novo.
+  A pasta se acha pelo `specialUse`, nunca pelo nome; sem ela lê a INBOX e o log
+  avisa; o `resultado` ganhou `pasta_lida` e `email_mais_antigo`. A dedup é pelo
+  Message-ID (a mensagem que está nas duas pastas é pulada); risco: mensagem sem
+  Message-ID (`imap-uid-N`) muda de uid entre pastas e seria tratada uma vez a mais.
+  A EDP segue só na INBOX.
 - **O sino só toca para e-mail de até 30 dias** (`deveAvisar`, `DIAS_PARA_AVISAR`).
   Decisão do usuário em 24/10/2026: ler mais histórico (anexar os documentos, abrir
   cartão de etapa ou de troca de protocolo) **sem inundar o sino** com coisas que a

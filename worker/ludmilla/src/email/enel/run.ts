@@ -5,7 +5,7 @@ import {
   finalizarRun, mensagemPendente, projetosDoEmail, registrarEmailLido, regrasDoEmail, subirDocumento,
   type Run,
 } from '../../fila.js';
-import { abrirCaixa, type Caixa, type EnvelopeLido, type MensagemLida } from '../caixa.js';
+import { abrirCaixa, type Caixa, type EnvelopeLido, type MensagemLida, type OpcoesDaCaixa } from '../caixa.js';
 import {
   chaveProtocolo, destinoNoBucket, ehImagem, ocorrenciasPorNome, pdfDoParecer, regraQueCasa,
   type RegraEmail, type Veredito,
@@ -365,13 +365,30 @@ export interface ContaEnel {
   avisosMensagens: number;
   pulados: number; aTentarDeNovo: number; naoLidas: number;
   limpos: number; falhasBusca: number; falhasTratamento: number;
+  /** DIAGNÓSTICO: o caminho da pasta que o run leu ("[Gmail]/Todos os e-mails", ou "INBOX" na reserva) */
+  pastaLida: string | null;
+  /** DIAGNÓSTICO: o envelope mais antigo que a busca achou, de todos os remetentes, já tratados ou não */
+  maisAntigoEm: Date | null;
 }
 export const contaEnelZerada = (): ContaEnel => ({
   lidos: 0, tratados: 0, porProtocolo: 0, porUc: 0, porTitular: 0, naoIdentificados: 0, conflitos: 0,
   inativos: 0, bloqueados: 0, ignorados: 0, anexados: 0, deOutroProjeto: 0, recusados: 0, semNome: 0,
   imagens: 0, avisos: 0, avisosMensagens: 0, pulados: 0, aTentarDeNovo: 0, naoLidas: 0, limpos: 0,
-  falhasBusca: 0, falhasTratamento: 0,
+  falhasBusca: 0, falhasTratamento: 0, pastaLida: null, maisAntigoEm: null,
 });
+
+/**
+ * Guarda a data do envelope mais antigo visto no run. Conta TAMBÉM as mensagens que
+ * serão puladas por já tratadas: é isso que mostra até onde a pasta alcança (a pergunta
+ * "a busca chega em maio?"). Envelope sem data não conta; nunca troca por um mais novo.
+ */
+export function anotarEnvelopes(n: ContaEnel, envelopes: readonly EnvelopeLido[]): void {
+  for (const e of envelopes) {
+    if (e.recebidoEm && (n.maisAntigoEm === null || e.recebidoEm.getTime() < n.maisAntigoEm.getTime())) {
+      n.maisAntigoEm = e.recebidoEm;
+    }
+  }
+}
 
 export function somarEnel(n: ContaEnel, r: TratamentoEnel): void {
   n.anexados += r.anexados; n.imagens += r.imagensIgnoradas; n.recusados += r.recusados;
@@ -392,8 +409,13 @@ export function somarEnel(n: ContaEnel, r: TratamentoEnel): void {
  * O `resultado` do run — é daqui que a tela lê os contadores. `avisos` são SINOS (~6 por
  * aviso) e fica com esse nome porque a tela antiga lê a chave; `avisos_mensagens` é
  * quantas MENSAGENS geraram aviso, a que a tela nova mostra.
+ *
+ * `pasta_lida` e `email_mais_antigo` (texto/null, as únicas que não são número) são o
+ * diagnóstico de até onde a caixa alcança; nenhuma chave antiga mudou.
  */
-export function resultadoEnel(n: ContaEnel, remetentes: number, projetosAtivos: number, falhas: number): Record<string, number> {
+export function resultadoEnel(
+  n: ContaEnel, remetentes: number, projetosAtivos: number, falhas: number,
+): Record<string, number | string | null> {
   return {
     remetentes, projetos_ativos: projetosAtivos, lidos: n.lidos, tratados: n.tratados,
     por_protocolo: n.porProtocolo, por_uc: n.porUc, por_titular: n.porTitular,
@@ -403,15 +425,25 @@ export function resultadoEnel(n: ContaEnel, remetentes: number, projetosAtivos: 
     imagens_ignoradas: n.imagens, avisos: n.avisos, avisos_mensagens: n.avisosMensagens, pulados: n.pulados,
     a_tentar_de_novo: n.aTentarDeNovo, nao_lidas: n.naoLidas,
     falhas, falhas_busca: n.falhasBusca, falhas_tratamento: n.falhasTratamento,
+    pasta_lida: n.pastaLida, email_mais_antigo: n.maisAntigoEm?.toISOString() ?? null,
   };
 }
+
+/** Como o run abre a caixa; o teste troca por uma de mentira (o padrão é o IMAP de verdade). */
+export type AbridorDaCaixa = (c: { email: string; senha: string }, opcoes?: OpcoesDaCaixa) => Promise<Caixa>;
 
 /**
  * A janela de busca é FIXA (120 dias, `janelaDeBusca`), então o run não depende da
  * última varredura: a retentativa e o "Ler de novo" alcançam o e-mail antigo. O sino,
  * porém, só toca para e-mail de até 30 dias (`deveAvisar`).
+ *
+ * Lê "Todos os e-mails" (`\All`), não só a Caixa de entrada: o que foi arquivado sai da
+ * INBOX, e a janela de 120 dias não achava nada além do que já se tinha visto. Continua só
+ * leitura, e a mesma mensagem nas duas pastas tem o mesmo Message-ID (é a chave do "já
+ * tratei"): é pulada, não tratada duas vezes. Mensagem SEM Message-ID cai no `imap-uid-N`,
+ * e o uid muda de uma pasta para a outra: essa seria tratada uma vez a mais.
  */
-export async function executarVarreduraEnel(run: Run): Promise<void> {
+export async function executarVarreduraEnel(run: Run, abrir: AbridorDaCaixa = abrirCaixa): Promise<void> {
   log('varredura por e-mail (por remetente) iniciada', { run: run.id });
   let caixa: Caixa | null = null;
   try {
@@ -422,8 +454,9 @@ export async function executarVarreduraEnel(run: Run): Promise<void> {
     // sem remetente nenhum é o mesmo erro de "sem regras": nunca um run "ok" com 0 lidos
     const remetentes = remetentesDoRun(regras);
     const desde = janelaDeBusca(new Date());
-    caixa = await abrirCaixa(creds);
+    caixa = await abrir(creds, { pasta: 'todos' });
     const n = contaEnelZerada();
+    n.pastaLida = caixa.pasta;
     // Duas regras que se sobrepõem (um remetente contido no outro) achariam a mesma
     // mensagem duas vezes: tratada uma vez por run, a IA não é paga em dobro.
     const vistas = new Set<string>();
@@ -441,6 +474,8 @@ export async function executarVarreduraEnel(run: Run): Promise<void> {
       const envelopes: EnvelopeLido[] = [];
       try { for await (const env of caixa.envelopes(uids)) envelopes.push(env); }
       catch (e) { n.falhasBusca++; log('não consegui ler os envelopes deste remetente', { nivel: 'falha', remetente: rem, erro: (e as Error).message }); continue; }
+      // antes de pular os já tratados: o mais antigo conta mesmo sem precisar de tratamento
+      anotarEnvelopes(n, envelopes);
 
       const aprovados = new Map<number, EnvelopeLido>();
       for (const env of envelopes) {

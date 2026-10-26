@@ -1,5 +1,5 @@
 // worker/ludmilla/src/email/caixa.ts
-import { ImapFlow, type MailboxLockObject, type SearchObject } from 'imapflow';
+import { ImapFlow, type SearchObject } from 'imapflow';
 import { simpleParser, type ParsedMail } from 'mailparser';
 import { chaveProtocolo } from './util.js';
 
@@ -195,7 +195,74 @@ export async function buscarPorRemetente(client: BuscaImap, remetente: string, d
   return uidsDaBuscaPorRemetente(await client.search(criterioPorRemetente(remetente, desde), { uid: true }), remetente);
 }
 
+/**
+ * Qual pasta a robô abre:
+ *  · `entrada` — a INBOX. É o padrão e o que a EDP sempre fez;
+ *  · `todos`   — "Todos os e-mails", a pasta de uso especial `\All` do Gmail. Pega o que
+ *    foi ARQUIVADO (saiu da Caixa de entrada): medido em 24/10/2026, na INBOX os e-mails
+ *    da ENEL começavam em 09/10, e a conta tem e-mails da ENEL desde maio.
+ */
+export type PastaPreferida = 'entrada' | 'todos';
+
+export interface OpcoesDaCaixa {
+  /** Sem a opção, `entrada`: quem não pede nada (a EDP) continua lendo só a INBOX. */
+  pasta?: PastaPreferida;
+}
+
+/** O pedaço de cada linha do `LIST` que a escolha da pasta usa (o `ListResponse` do imapflow serve). */
+export interface PastaDaLista {
+  path: string;
+  /** a bandeira RFC 6154 que o SERVIDOR informa (`\All`, `\Sent`…); não vem do nome da pasta */
+  specialUse?: string;
+}
+
+export interface PastaEscolhida {
+  caminho: string;
+  /** true = pediu `todos`, a conta não tem `\All`, e a INBOX foi lida no lugar */
+  reserva: boolean;
+}
+
+/** Sem opção é `entrada`: o jeito que a EDP chama (`abrirCaixa(creds)`) não muda. */
+export const preferenciaDaPasta = (opcoes?: OpcoesDaCaixa): PastaPreferida =>
+  opcoes?.pasta === 'todos' ? 'todos' : 'entrada';
+
+/**
+ * Puro: qual pasta abrir. `todos` acha a `\All` pelo `specialUse` que o servidor
+ * informa — NUNCA pelo nome: ela se chama "[Gmail]/All Mail" ou "[Gmail]/Todos os
+ * e-mails" conforme o idioma da conta, e uma pasta comum com esse nome não é ela.
+ * Sem `\All`, cai na INBOX e AVISA (`reserva`), para a tela não mostrar uma INBOX
+ * como se fosse o histórico inteiro.
+ */
+export function escolherPasta(lista: readonly PastaDaLista[], preferencia: PastaPreferida): PastaEscolhida {
+  if (preferencia === 'entrada') return { caminho: 'INBOX', reserva: false };
+  const todos = lista.find(p => p.specialUse === '\\All');
+  return todos ? { caminho: todos.path, reserva: false } : { caminho: 'INBOX', reserva: true };
+}
+
+/** O pedaço do cliente IMAP que abre a pasta (o `ImapFlow` real serve; o teste usa um de mentira). */
+export interface ImapDePastas {
+  list(): Promise<readonly PastaDaLista[]>;
+  getMailboxLock(path: string, options: { readOnly: true }): Promise<{ release(): void }>;
+}
+
+/**
+ * Abre a pasta pedida SEMPRE em só leitura (`readOnly` = EXAMINE: o servidor recusa
+ * qualquer mudança de flag). `entrada` nem pergunta pela lista de pastas: o caminho
+ * da EDP não ganha nenhuma chamada nova ao servidor. Falha ao listar LANÇA: não vira
+ * "li a INBOX" em silêncio.
+ */
+export async function abrirPasta(
+  imap: ImapDePastas, preferencia: PastaPreferida,
+): Promise<PastaEscolhida & { lock: { release(): void } }> {
+  const lista = preferencia === 'todos' ? await imap.list() : [];
+  const { caminho, reserva } = escolherPasta(lista, preferencia);
+  const lock = await imap.getMailboxLock(caminho, { readOnly: true });
+  return { caminho, reserva, lock };
+}
+
 export interface Caixa {
+  /** o caminho da pasta que foi aberta ("INBOX", "[Gmail]/Todos os e-mails"…); não é dado de cliente */
+  pasta: string;
   /** uids das mensagens cujo assunto OU corpo tem o número do protocolo. */
   procurar(protocolo: string): Promise<number[]>;
   /** uids das mensagens DESTE remetente desde a data (granularidade de dia do IMAP). */
@@ -218,11 +285,15 @@ export interface Caixa {
 }
 
 /**
- * Abre a INBOX em só leitura. Quem chama PRECISA de `try/finally` com `caixa.fechar()`:
- * sem isso a conexão e o lock ficam abertos, e o Gmail limita 15 conexões IMAP por
- * conta — a mesma conta que o agente de e-mails do sistema usa.
+ * Abre a pasta pedida em só leitura (a INBOX, sem opção). Quem chama PRECISA de
+ * `try/finally` com `caixa.fechar()`: sem isso a conexão e o lock ficam abertos, e o
+ * Gmail limita 15 conexões IMAP por conta — a mesma conta que o agente de e-mails do
+ * sistema usa.
+ *
+ * `opcoes.pasta = 'todos'` abre "Todos os e-mails" (`\All`); sem `\All` na conta lê a
+ * INBOX e registra o aviso no log (sem dado de cliente).
  */
-export async function abrirCaixa(c: { email: string; senha: string }): Promise<Caixa> {
+export async function abrirCaixa(c: { email: string; senha: string }, opcoes?: OpcoesDaCaixa): Promise<Caixa> {
   const client = new ImapFlow({
     host: 'imap.gmail.com', port: 993, secure: true,
     auth: { user: c.email, pass: c.senha.replace(/\s+/g, '') },
@@ -241,11 +312,15 @@ export async function abrirCaixa(c: { email: string; senha: string }): Promise<C
   // mensagens que o parser não conseguiu interpretar nesta conexão (D3)
   let naoLidas = 0;
 
-  let lock: MailboxLockObject;
+  let lock: { release(): void };
+  let pasta: string;
   try {
     await client.connect();
     // readOnly = EXAMINE: o servidor recusa qualquer mudança de flag (reforça "só lê"; o fetch já usa PEEK).
-    lock = await client.getMailboxLock('INBOX', { readOnly: true });
+    const aberta = await abrirPasta(client, preferenciaDaPasta(opcoes));
+    lock = aberta.lock;
+    pasta = aberta.caminho;
+    if (aberta.reserva) log('a conta não tem a pasta "Todos os e-mails" (\\All): li a INBOX no lugar', { nivel: 'aviso' });
   } catch (e) {
     // Quem chamou nunca recebe o objeto Caixa e não tem como chamar fechar(): fecha o socket aqui.
     client.close();
@@ -253,6 +328,7 @@ export async function abrirCaixa(c: { email: string; senha: string }): Promise<C
   }
 
   return {
+    pasta,
     async procurar(protocolo: string): Promise<number[]> {
       verificarConexao();
       const n = chaveProtocolo(protocolo);
