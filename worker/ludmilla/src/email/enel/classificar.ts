@@ -11,8 +11,9 @@ import { semAcento } from '../util.js';
  *               seguinte motivo: …" (ou "… não sendo executada …", ou, no
  *               reenvio da nota, "Motivo da rejeição: …")
  *  · canalgd:   "a troca do medidor referente à nota GD …, já foi realizada através da
- *               nota de serviço … no dia …" e, no aviso da nota, "… para a troca do
- *               medidor bidirecional, que se encontra executada em …"
+ *               nota de serviço … no dia …" e, no aviso da nota, "… para a troca (ou a
+ *               reprogramação) do medidor bidirecional, que se encontra executada em …"
+ *               ou "já houve a reprogramação do medidor em …"
  * Só vale a parte NOVA da mensagem: a citação traz o histórico (inclusive o
  * nosso pedido, "a NT … foi aprovada na etapa de vistoria").
  *
@@ -151,15 +152,22 @@ const FALHA_DA_TROCA = new RegExp([
 const FALA_DA_TROCA = /\b(?:troca|medidor|nota de servico|substituicao|relogio)\b/;
 
 // ── A troca do relógio que JÁ FOI FEITA ───────────────────────────────────────
-// Duas redações reais do canalgd (as únicas do corpus de 340 e-mails da ENEL):
+// Três redações reais do canalgd (as únicas do corpus de 340 e-mails da ENEL):
 //  · "a troca do medidor referente à nota GD …, já foi realizada através da nota de serviço …"
-//  · "nota de serviço … para a troca do medidor bidirecional, que se encontra executada em …"
-// O verbo tem de ser DA TROCA ("foi realizada" ligado a "troca do medidor/relógio"): "não foi
-// necessária a troca … foi realizada apenas a reprogramação" (também real) e "a troca do titular
-// foi realizada" não valem. Negação, "se", pergunta e "ainda" antes do verbo: null, que só anota.
+//  · "nota de serviço … para a troca [ou a reprogramação] do medidor bidirecional, que se encontra
+//    executada em …" — a ENEL abre a nota de troca OU de reprogramação, e quando o medidor já é
+//    bidirecional a reprogramação executada É o fim do serviço (às vezes com "Vale ressaltar que
+//    não foi necessária a troca …": isso explica por que só reprogramaram, não é falha)
+//  · "verificamos que já houve a reprogramação do medidor em …" (o "caso não esteja reprogramado"
+//    que vem depois não anula)
+// O verbo tem de ser DA TROCA ou da REPROGRAMAÇÃO DO MEDIDOR: "a troca do titular foi realizada" e
+// "Foi realizada apenas a reprogramação" sozinho não valem. Negação, "se", pergunta e "ainda"
+// antes do verbo: null, que só anota. Não há, no corpus, nota ABERTA para reprogramação com
+// prazo: ela segue sem classe (só a troca tem "agendada").
 // A falha NÃO passa por aqui: "não foi realizada" é `FALHA_DA_TROCA`, e ela vem primeiro.
 const TROCA_REALIZADA = /\btroca (?:do medidor|do relogio|de medidor|de relogio)\b([^.]{0,80}?)\bfoi realizad[ao]\b/;
-const NOTA_DA_TROCA_EXECUTADA = /\bnota de servico[^.]{0,160}?\btroca do medidor([^.]{0,60}?)\bse encontra executad[ao]\b/;
+const NOTA_DA_TROCA_EXECUTADA = /\bnota de servico[^.]{0,160}?\b(?:troca|reprogramacao) do medidor([^.]{0,60}?)\bse encontra executad[ao]\b/;
+const JA_HOUVE_A_REPROGRAMACAO = /\bhouve a reprogramacao do medidor\b/;
 
 const INICIO_DO_MOTIVO = /(?:pelo seguinte motivo|motivo da rejeicao)\s*:?\s*/;
 // O motivo termina onde a frase termina (ponto que não é de data), na data que o
@@ -251,10 +259,10 @@ function eraPergunta(t: string, de: number): boolean {
 
 /** A ENEL afirma que a troca do relógio foi feita? Sem negação, sem "se", sem pergunta. */
 function trocaRealizada(t: string): boolean {
-  for (const re of [TROCA_REALIZADA, NOTA_DA_TROCA_EXECUTADA]) {
+  for (const re of [TROCA_REALIZADA, NOTA_DA_TROCA_EXECUTADA, JA_HOUVE_A_REPROGRAMACAO]) {
     const m = re.exec(t);
     if (!m) continue;
-    if (NEGA_OU_CONDICIONA.test(m[1])) continue;
+    if (NEGA_OU_CONDICIONA.test(m[1] ?? '')) continue;
     if (NEGA_OU_CONDICIONA.test(fraseAntes(t, m.index))) continue;
     if (eraPergunta(t, m.index + m[0].length)) continue;
     return true;

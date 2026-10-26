@@ -922,6 +922,15 @@ test('B2. o projeto já está em vistoria ou em aprovado: Concluído continua ca
   }
 });
 
+test('B2b. reprogramação executada (o medidor já era bidirecional): também sugere Concluído, sem aviso', async () => {
+  const { deps, d } = dubles();
+  await tratar(deTroca('Prezado, bom dia! Identificamos a nota de serviço 70712345678 criada em 23/09 , referente a instalação 2222222222 , para a reprogramação do medidor bidirecional, que se encontra executada em 24/09/2026. Vale ressaltar que não foi necessária a troca, pois o medidor bidirecional já estava instalado. Foi realizada apenas a reprogramação do equipamento existente. Protocolo: 9876543210 .'), deps);
+  assert.equal(d.avisos.length, 0, 'o "não foi necessária a troca" não é falha: nada de sino');
+  const reg = unico(d);
+  assert.equal(reg.recomendacao, 'completed');
+  assert.equal(reg.abrirCartao, true);
+});
+
 test('B3. "não foi realizada": é a falha (1 aviso), nunca Concluído', async () => {
   const { deps, d } = dubles();
   await tratar(deTroca('Prezado, bom dia! A troca do medidor referente à nota GD 391000010 não foi realizada pelo seguinte motivo: Cliente Ausente. Protocolo: 9876543210 .'), deps);
