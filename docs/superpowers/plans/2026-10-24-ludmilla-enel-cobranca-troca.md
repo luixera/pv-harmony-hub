@@ -77,6 +77,30 @@ Valem para TODA tarefa, além do que ela pede.
 3. **Antes da 1ª cobrança real, um teste para a própria caixa** (o `enviar_para_a_propria_caixa` da Task 6) — só depois, com o usuário, a primeira para a ENEL.
 4. **Se a HostGator bloquear o SMTP de saída: mandar pela API do Gmail** (não pedir liberação de porta). O plano segue com SMTP; a Task 6 (teste na VPS) decide: se `verificar` não conectar nem na 465 nem na 587, PARAR e abrir uma tarefa nova de envio pela Gmail API (`users.messages.send` com `threadId`, credencial OAuth do Google com escopo `gmail.send`, guardada no Vault — nunca no chat), em vez de insistir no SMTP.
 
+## Ajustes do corpus real (25/10/2026): VALEM MAIS que o código das Tasks 3 a 10
+
+Conferido pelo coordenador nos 155 e-mails da ENEL que falam de nota (`email_updates`).
+
+1. **O número da nota de serviço NÃO tem sempre 12 dígitos.** Nos e-mails reais ele aparece de dois jeitos:
+   - com **11 dígitos**: `707…`, por exemplo "nota de serviço 70706589202 criada em 23/09";
+   - com **12 dígitos e um zero à esquerda**: `0707…`.
+
+   O termo também varia: "nota de serviço", só "nota" ("através da nota 70706273627") ou "ordem". A "nota 39…" de 9 dígitos é a **NT**, e ela nunca pode casar.
+
+   **Forma canônica:** 12 dígitos com zero à esquerda (`num.padStart(12, '0')`). É isso que o CHECK do banco (`^[0-9]{12}$`, já aplicado na Task 1) aceita, então o banco não muda. Os dois jeitos de escrever viram a mesma nota, e a cobrança não duplica.
+
+   **Regex da Task 3:**
+   - o termo (`nota de servico|nota|ordem(?: de servico)?`), depois `\D{0,40}?`, depois `(?<!\d)(0?\d{11})(?!\d)`;
+   - 12 dígitos só valem com o zero na frente;
+   - qualquer outra coisa dá `null`, e a tela pede "confira o número da nota".
+
+   **No texto do e-mail** o número aparece SEM o zero (`70706589202`), como a ENEL escreve na maioria das vezes.
+
+   **Testes da Task 3:** em vez dos exemplos de 12 dígitos, use os dois formatos, que devem dar o mesmo canônico. Acrescente dois casos que dão `null`: "nota 391270174" (a NT) e um número de 12 dígitos sem zero.
+2. **Reprogramação.** A ENEL abre nota "de troca OU de reprogramação". Quando o medidor já é bidirecional, a reprogramação é o fim do serviço.
+   - "nota de serviço … para a reprogramação do medidor …, que se encontra executada em …" e "já houve a reprogramação do medidor em …" são `realizada`: encerram a cobrança e sugerem Concluído. Isso é feito pela frente da ENEL, no classificador, antes da Task 3.
+   - Uma nota de reprogramação ABERTA (com prazo) agenda a cobrança igual à da troca, desde que o classificador a dê como `agendada`. A frente da ENEL confere se essa redação existe no corpus.
+
 ## Mapa de arquivos
 
 | Arquivo | Tarefa | Responsabilidade |
