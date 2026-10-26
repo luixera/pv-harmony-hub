@@ -285,8 +285,17 @@ function resultadoDaVistoria(t: string): Classificacao {
   return { tipo: 'resultado_vistoria', aprovada };
 }
 
+/**
+ * A parte NOVA do corpo (sem a citação), com as entidades HTML decodificadas e achatada —
+ * exatamente o que o classificador lê. A cobrança (cobranca.ts) tira o número da nota
+ * daqui: a citação traz a nota ANTIGA do mesmo projeto.
+ */
+export function textoNovo(corpo: string | null | undefined): string {
+  return semCitacao(decodificarEntidades(corpo ?? ''));
+}
+
 export function classificarCorpo(corpo: string | null | undefined): Classificacao {
-  const util = semCitacao(decodificarEntidades(corpo ?? ''));
+  const util = textoNovo(corpo);
   const { t, origem } = normalizarComMapa(util);
   if (!t.trim()) return null;
 
