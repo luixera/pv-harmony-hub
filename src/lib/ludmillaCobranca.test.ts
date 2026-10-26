@@ -138,4 +138,8 @@ describe('resumoDaCobranca — o que a linha decidida diz', () => {
       .toBe('Encerrada: a ENEL avisou que a troca do relógio foi feita');
     expect(resumoDaCobranca({ ...COBRANCA_BASE, situacao: 'dispensada' })).toBe('Dispensada pela equipe: não sai mais cobrança desta nota.');
   });
+  it('o motivo que o banco grava com a nota de 12 dígitos chega sem o zero', () => {
+    expect(resumoDaCobranca({ ...COBRANCA_BASE, situacao: 'encerrada', motivo_encerramento: 'substituída pela nota 070700000456' }))
+      .toBe('Encerrada: substituída pela nota 70700000456');
+  });
 });

@@ -151,7 +151,8 @@ export function resumoDaCobranca(c: CobrancaDoAfazer): string {
         ? `Enviada ${c.enviadas}× (a última em ${dataBr(c.ultima_enviada_em ?? c.vence_em)}). Próxima cobrança em ${dataBr(c.vence_em)}, se a ENEL não responder.`
         : `Agendada para ${dataBr(c.vence_em)}.`;
     case 'encerrada':
-      return c.motivo_encerramento ? `Encerrada: ${c.motivo_encerramento}` : 'Encerrada.';
+      // o banco escreve "substituída pela nota <12 dígitos>": na tela, sem o zero
+      return c.motivo_encerramento ? `Encerrada: ${textoComNotaNaTela(c.motivo_encerramento)}` : 'Encerrada.';
     case 'dispensada':
       return 'Dispensada pela equipe: não sai mais cobrança desta nota.';
   }
