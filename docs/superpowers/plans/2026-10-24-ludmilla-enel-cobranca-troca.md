@@ -100,6 +100,28 @@ Conferido pelo coordenador nos 155 e-mails da ENEL que falam de nota (`email_upd
 2. **Reprogramação.** A ENEL abre nota "de troca OU de reprogramação". Quando o medidor já é bidirecional, a reprogramação é o fim do serviço.
    - "nota de serviço … para a reprogramação do medidor …, que se encontra executada em …" e "já houve a reprogramação do medidor em …" são `realizada`: encerram a cobrança e sugerem Concluído. Isso é feito pela frente da ENEL, no classificador, antes da Task 3.
    - Uma nota de reprogramação ABERTA (com prazo) agenda a cobrança igual à da troca, desde que o classificador a dê como `agendada`. A frente da ENEL confere se essa redação existe no corpus.
+   - **Resultado (26/10):** NÃO existe nota aberta de reprogramação com prazo no corpus. Só a troca dá `agendada`, e só ela agenda cobrança. A forma entregue é `{ tipo: 'troca_relogio'; estado: 'realizada' }`, já no ar no commit 3d24677. É isso que `trocaFoiRealizada` testa.
+
+## Ajustes da revisão da Task 1 (25–26/10/2026): VALEM MAIS que o código das Tasks 3, 5 e 8
+
+Migrações `20261025120000_ludmilla_cobranca_ajustes.sql` (rodada 1) e `20261025130000_ludmilla_cobranca_run_preso.sql` (rodada 2).
+
+3. **A trava do destinatário não aceita `%`.**
+   - `REGEX_DESTINATARIO_ENEL = /^[a-z0-9][a-z0-9._+-]*@(br\.)?enel\.com$/`, igual à do banco.
+   - O teste que compara com o banco lê a migração **`20261025120000`**, não a `20261024150000`.
+   - Acrescente o caso `x%evil.com@enel.com`, que tem de dar `false`.
+4. **Os cabeçalhos da resposta (`references` e `in_reply_to`) têm limite.**
+   - No máximo 20 itens (`MAX_REFERENCIAS`) e 2000 caracteres no total, sem nenhum caractere de controle (`[\x00-\x1f\x7f]`).
+   - O banco guarda NULL quando o valor passa disso. O worker manda só o que passa e, se nada passar, manda sem `References`.
+5. **Só uma PESSOA aprova e dispensa.**
+   - `ludmilla_pessoa_da_equipe(uid)`: perfil ativo, admin ou staff, do tenant biblioteca, com linha em `auth.identities`. Os agentes Ludmilla e Bidu não têm essa linha.
+   - `iniciar_envio` tem uma recusa nova: "a aprovação não é de uma pessoa ativa da equipe deste tenant". A Task 5 trata essa recusa como qualquer outra: não envia, não reenvia sozinha e mostra a frase.
+6. **O e-mail saiu, mas o registro falhou** (`enviada_sem_registro`).
+   - O worker REPETE `ludmilla_cobranca_enviada(run_id, message_id)`, com as mesmas assinaturas. A RPC aceita a confirmação atrasada pelo `run_id`, mesmo depois do reset de 30 min, e é idempotente.
+   - Nesse caso o worker **NUNCA** chama `ludmilla_cobranca_falhou`, porque isso marcaria como não enviado um e-mail que saiu.
+   - Se a repetição também falhar, o reset de 30 min trata a cobrança como **possivelmente enviada**: `ultima_enviada_em` = início do envio, mais 7 dias, e um A fazer dizendo "pode ter saído sem confirmação — confira na caixa de enviados". A regra é que e-mail para a ENEL nunca sai em dobro.
+7. **O comentário e o histórico não levam o endereço da ENEL.** O texto é "📡 Ludmilla: cobrança da nota N enviada à ENEL, aprovada por <nome>.". A tela da Task 8 não mostra o `para` para a empresa. Ela só aparece para a equipe.
+8. **Run preso** (rodada 2). Um run `rodando` há mais de 2 h é fechado por `ludmilla_agendar_email`. Se for um `enviar_cobranca` que não chegou a `enviando`, a cobrança volta para `aguardando_envio` com o aviso "o robô parou antes de enviar; nada saiu". O worker não precisa fazer nada a mais.
 
 ## Mapa de arquivos
 
