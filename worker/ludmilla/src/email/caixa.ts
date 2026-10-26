@@ -30,6 +30,12 @@ export interface MensagemLida {
    * documento de qualquer jeito. Existe para o descarte deixar rastro.
    */
   anexosSemNome: number;
+  /**
+   * Os Message-IDs do cabeçalho `References` (a conversa até aqui). A cobrança da troca
+   * responde NA conversa da nota e precisa deles (email/enel/cobranca.ts). Opcional: quem
+   * monta `MensagemLida` à mão (os testes) não precisa dizer.
+   */
+  referencias?: string[];
 }
 
 /**
@@ -113,6 +119,8 @@ export function extrairMensagem(p: ParsedMail, uid: number, messageIdDoEnvelope?
     texto: (p.text ?? '').replace(/\s+/g, ' ').trim(),
     anexos,
     anexosSemNome,
+    // mailparser devolve texto OU lista, conforme o e-mail; cada item pode ter vários ids
+    referencias: ([] as string[]).concat(p.references ?? []).flatMap(r => String(r).split(/\s+/)).filter(r => r.length > 0),
   };
 }
 

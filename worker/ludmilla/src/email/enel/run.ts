@@ -1,9 +1,9 @@
 // worker/ludmilla/src/email/enel/run.ts
 import { classificarErroEmail, razaoDeFalhaDeArquivo } from '../../erros.js';
 import {
-  abrirTentativaEmail, anexoDeEmail, anexoEnviado, anexoErro, avisarEquipe, credencialDaCaixa,
-  finalizarRun, mensagemPendente, projetosDoEmail, registrarEmailLido, regrasDoEmail, subirDocumento,
-  type Run,
+  abrirTentativaEmail, agendarCobranca, anexoDeEmail, anexoEnviado, anexoErro, avisarEquipe, credencialDaCaixa,
+  encerrarCobrancasPorTroca, finalizarRun, mensagemPendente, projetosDoEmail, registrarEmailLido, regrasDoEmail,
+  subirDocumento, type Run,
 } from '../../fila.js';
 import { abrirCaixa, type Caixa, type EnvelopeLido, type MensagemLida, type OpcoesDaCaixa } from '../caixa.js';
 import {
@@ -11,6 +11,7 @@ import {
   type RegraEmail, type Veredito,
 } from '../util.js';
 import { classificarAssunto, classificarCorpo, type Classificacao } from './classificar.js';
+import { cobrancaDaMensagem, dataBr, trocaFoiRealizada, vencimento } from './cobranca.js';
 import {
   avisosEnel, deveAvisar, janelaDeBusca, precisaLerPdf, RESSALVA_AVISO_ANTIGO, recomendacaoCabe, recomendacaoEnel,
   remetentesDoRun, titularDeOutraPessoa, trocaDeProtocolo,
@@ -94,10 +95,17 @@ export interface DepsEnel {
   registrarEmailLido: typeof registrarEmailLido;
   avisar: typeof avisarEquipe;
   lerParecer: (pdf: Buffer, tenantId: string) => Promise<ParecerEnel>;
+  /**
+   * Cobrança da troca do relógio (24/10/2026). OPCIONAIS só para os dublês que já
+   * existiam não mudarem; `DEPS_ENEL` (produção) tem as duas — um teste confere.
+   */
+  agendarCobranca?: typeof agendarCobranca;
+  encerrarCobrancas?: typeof encerrarCobrancasPorTroca;
 }
 export const DEPS_ENEL: DepsEnel = {
   abrirTentativa: abrirTentativaEmail, anexoDeEmail, subirDocumento, anexoEnviado, anexoErro,
   registrarEmailLido, avisar: avisarEquipe, lerParecer: lerParecerEnel,
+  agendarCobranca, encerrarCobrancas: encerrarCobrancasPorTroca,
 };
 
 export interface TratamentoEnel {
@@ -124,6 +132,21 @@ function anotacao(c: Classificacao): string | null {
   if (c?.tipo === 'troca_relogio' && c.estado === 'realizada') return 'a ENEL informa que a troca do relógio foi realizada';
   if (c?.tipo === 'troca_relogio') return `a troca do relógio não foi executada${c.motivo ? `: ${c.motivo}` : ''}`;
   return null;
+}
+
+/**
+ * A nota como a ENEL a escreve nos e-mails: 11 dígitos. O banco guarda a forma canônica, de 12
+ * dígitos com um zero na frente (cobranca.ts); a pessoa que lê o histórico compara com o e-mail.
+ */
+const notaComoNoEmail = (canonica: string): string => canonica.replace(/^0(?=\d{11}$)/, '');
+
+/**
+ * Do erro da cobrança só o CÓDIGO sai (o que `fila.ts` põe entre parênteses): a mensagem crua
+ * do banco ou da rede pode citar a linha recusada (assunto, nome do titular).
+ */
+function razaoDaCobranca(e: unknown): string {
+  const codigo = /\(código ([A-Za-z0-9_-]{1,20})\)/.exec(e instanceof Error ? e.message : '')?.[1];
+  return codigo ? `código ${codigo}` : 'erro sem código';
 }
 
 /** Por que a etapa lida não virou sugestão. */
@@ -332,7 +355,51 @@ export async function tratarMensagemEnel(
     ressalvas.push(RESSALVA_AVISO_ANTIGO);
   }
 
-  const concluida = !passageira && !anexoFalhou;
+  // A cobrança da troca do relógio (spec 2026-10-24 §3.2 e §3.5). ANTES do registro concluído:
+  // a resposta dela decide se a mensagem termina. Ela é um acessório do tratamento, então a
+  // falha NÃO derruba o run nem esta mensagem: cartão, anexo e sino seguem como sempre, a falha
+  // vai para o histórico e para o log (só o CÓDIGO: a mensagem do banco pode citar o e-mail) e a
+  // mensagem fica `concluida = false` — um run futuro lê de novo e agenda/encerra (as duas RPCs
+  // repetem sem efeito). Só o código do projeto vai para o log: a nota, o assunto e o endereço
+  // da cobrança ficam no banco.
+  let cobrancaFalhou = false;
+  // `trocaFoiRealizada` ANTES de `cobrancaDaMensagem`: só a primeira encerra a cobrança (a
+  // segunda devolve "nenhuma" para a troca feita).
+  if (trocaFoiRealizada(classificacao) && deps.encerrarCobrancas) {
+    try {
+      const n = await deps.encerrarCobrancas(run.account_id, projeto.project_id, (m.recebidoEm ?? agora).toISOString());
+      if (n > 0) ressalvas.push(`${n} cobrança(s) à ENEL encerrada(s): a troca foi feita`);
+      log('cobranças encerradas pela troca', { projeto: projeto.codigo, encerradas: n });
+    } catch (e) {
+      cobrancaFalhou = true;
+      const razao = razaoDaCobranca(e);
+      ressalvas.push(`não consegui encerrar a cobrança à ENEL (${razao}): tento de novo na próxima leitura`);
+      log('não consegui encerrar as cobranças da troca', { nivel: 'falha', projeto: projeto.codigo, razao });
+    }
+  }
+  const daNota = cobrancaDaMensagem(classificacao, m, agora);
+  if (daNota.tipo === 'nota' && deps.agendarCobranca) {
+    try {
+      const r = await deps.agendarCobranca({
+        accountId: run.account_id, messageId: m.messageId, projectId: projeto.project_id, ...daNota.dados,
+      });
+      if (r === 'criada' || r === 'atualizada') {
+        ressalvas.push(daNota.dados.nota
+          ? `cobrança da nota ${notaComoNoEmail(daNota.dados.nota)} à ENEL agendada para ${dataBr(vencimento(new Date(daNota.dados.dataNota)))}`
+          : 'cobrança à ENEL agendada SEM o número da nota (não achei no e-mail): confira antes de enviar');
+      }
+      log('cobrança da troca', { projeto: projeto.codigo, resultado: r, com_numero: daNota.dados.nota !== null });
+    } catch (e) {
+      cobrancaFalhou = true;
+      const razao = razaoDaCobranca(e);
+      ressalvas.push(`cobrança à ENEL NÃO agendada (${razao}): tento de novo na próxima leitura`);
+      log('não consegui agendar a cobrança da troca', { nivel: 'falha', projeto: projeto.codigo, razao });
+    }
+  } else if (daNota.tipo === 'fora_da_enel') {
+    log('nota de serviço de remetente fora da ENEL: não agendei cobrança', { nivel: 'aviso', projeto: projeto.codigo });
+  }
+
+  const concluida = !passageira && !anexoFalhou && !cobrancaFalhou;
   await deps.registrarEmailLido({
     ...base, projectId: projeto.project_id, referencia: referenciaDoCartao, casamento: id.por,
     // Cartão só quando há o que decidir: uma etapa, ou gravar a NT. 99 respostas

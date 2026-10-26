@@ -608,3 +608,36 @@ export async function registrarEmailLido(p: EmailLido): Promise<void> {
   } as never);
   if (error) throw new Error(`Não consegui registrar o e-mail lido: ${error.message}`);
 }
+
+// ── Cobrança da troca do relógio (ENEL) ──────────────────────────────────────
+// Nome SIMPLES, como as outras RPCs de e-mail: só a VPS chama (service_role). O erro
+// do PostgREST pode citar a linha recusada (assunto, nome) — por isso a exceção leva
+// só o CÓDIGO, nunca a mensagem crua (ela sobe para o log de quem chama).
+// Nomes e tipos dos parâmetros conferidos em pg_proc (banco vivo, 26/10/2026).
+
+export interface CobrancaParaAgendar {
+  accountId: string; messageId: string; projectId: string;
+  nota: string | null; dataNota: string; prazoDias: number | null;
+  para: string; assunto: string; inReplyTo: string | null; referencias: string[];
+}
+
+/** `criada | atualizada | mantida | mais_antiga | projeto_inativo | para_recusado | conta_recusada | mensagem_inexistente` */
+export async function agendarCobranca(p: CobrancaParaAgendar): Promise<string> {
+  const { data, error } = await supabase().rpc('ludmilla_cobranca_agendar' as never, {
+    p_account_id: p.accountId, p_message_id: p.messageId, p_project_id: p.projectId, p_nota: p.nota,
+    p_data_nota: p.dataNota, p_prazo_dias: p.prazoDias, p_para: p.para, p_assunto: p.assunto,
+    p_in_reply_to: p.inReplyTo, p_referencias: p.referencias.length ? p.referencias.join(' ') : null,
+  } as never);
+  // falha de rede traz `code: ''`: "código " vazio não diz nada, então o texto muda
+  if (error) throw new Error(`Não consegui agendar a cobrança da troca (${error.code ? `código ${error.code}` : 'sem código'})`);
+  return String(data ?? '');
+}
+
+/** A ENEL avisou que trocou: encerra as cobranças do projeto. Devolve quantas. */
+export async function encerrarCobrancasPorTroca(accountId: string, projectId: string, quando: string): Promise<number> {
+  const { data, error } = await supabase().rpc('ludmilla_cobranca_encerrar_por_troca' as never, {
+    p_account_id: accountId, p_project_id: projectId, p_quando: quando,
+  } as never);
+  if (error) throw new Error(`Não consegui encerrar as cobranças da troca (${error.code ? `código ${error.code}` : 'sem código'})`);
+  return Number(data ?? 0);
+}
