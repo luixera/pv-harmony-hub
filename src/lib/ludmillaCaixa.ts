@@ -10,9 +10,10 @@
  */
 import type { PortalAccount, PortalUpdate, ProjetoDoCartao } from '@/hooks/useLudmilla';
 import { detalheDoCartaoDeEmail, identidadeDoCartao } from '@/lib/ludmillaCartao';
+import { textoComNotaNaTela, type CobrancaDoAfazer } from '@/lib/ludmillaCobranca';
 
-/** O que o aviso pede (a RPC `ludmilla_email_avisar` deduz do título do sino). */
-export type TipoAfazer = 'vistoria_aprovada' | 'troca_falhou' | 'devolucao' | 'aviso';
+/** O que o aviso pede (a RPC `ludmilla_email_avisar` deduz do título do sino; `cobrar_troca` nasce da cobrança). */
+export type TipoAfazer = 'vistoria_aprovada' | 'troca_falhou' | 'devolucao' | 'aviso' | 'cobrar_troca';
 
 /** Uma linha de `portal_afazeres`, com o projeto e quem marcou "Feito" (embeds). */
 export interface Afazer {
@@ -29,6 +30,9 @@ export interface Afazer {
   feito_em: string | null;
   project?: ProjetoDoCartao | null;
   feito?: { name: string | null } | null;
+  /** só no `cobrar_troca`: a cobrança da troca do relógio (o embed de SELECT_AFAZER) */
+  cobranca_id?: string | null;
+  cobranca?: CobrancaDoAfazer | null;
 }
 
 export type SituacaoDoFiltro = 'pendente' | 'aplicada' | 'ignorada' | 'todas';
@@ -117,6 +121,7 @@ const ROTULO_AFAZER: Record<Exclude<TipoAfazer, 'aviso'>, string> = {
   vistoria_aprovada: 'A fazer: pedir a troca do relógio',
   troca_falhou: 'A fazer: troca do relógio não executada',
   devolucao: 'A fazer: conferir o e-mail que voltou',
+  cobrar_troca: 'A fazer: cobrar a ENEL',
 };
 
 /** O selo do A fazer. Tipo genérico: o título sem o emoji do sino. */
@@ -189,7 +194,12 @@ export function itensDaCaixa(e: EntradaDaCaixa): ItemDaCaixa[] {
     };
   };
 
-  const doAfazer = (f: Afazer): ItemDaCaixa => {
+  const doAfazer = (f0: Afazer): ItemDaCaixa => {
+    // O banco grava o título e o texto da cobrança com a nota de 12 dígitos (zero à esquerda);
+    // a tela mostra como a ENEL escreve, sem o zero. Os outros A fazer seguem como vieram.
+    const f: Afazer = f0.tipo === 'cobrar_troca'
+      ? { ...f0, titulo: textoComNotaNaTela(f0.titulo), mensagem: textoComNotaNaTela(f0.mensagem) }
+      : f0;
     const { titular, empresa } = identidadeDoCartao({ titular_portal: null, project: f.project ?? null });
     const concessionaria = e.nomeDaConta(f.account_id);
     const codigo = f.project?.code ?? null;
@@ -200,7 +210,9 @@ export function itensDaCaixa(e: EntradaDaCaixa): ItemDaCaixa[] {
       titular, noPortal: null, empresa, protocolo: null,
       situacao: f.feito_em ? 'feito' : 'pendente', tipos: ['afazer'],
       selos: [{ texto: rotuloDoAfazer(f), tom: 'afazer' }],
-      textoDeBusca: textoDeBusca([codigo, titular, empresa, concessionaria]),
+      // a cobrança também se acha pelo número da nota de serviço: a forma guardada (com o zero)
+      // contém a da tela (sem ele), então as duas formas casam
+      textoDeBusca: textoDeBusca([codigo, titular, empresa, concessionaria, f.cobranca?.nota_servico]),
       protocoloNumerico: '',
       update: null, afazer: f,
     };

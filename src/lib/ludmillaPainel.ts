@@ -7,6 +7,7 @@
 import type { MensagemEmail, PortalAccount, PortalUpdate, RegistroLudmilla } from '@/hooks/useLudmilla';
 import { anexosDoCartao, cartaoBloqueado, meioDaConta, type ItemDaCaixa, type MeioDoItem } from '@/lib/ludmillaCaixa';
 import { detalheDoCartaoDeEmail, rotuloCasamento } from '@/lib/ludmillaCartao';
+import { notaNaTela, textoPronto } from '@/lib/ludmillaCobranca';
 
 // ── tipos das consultas novas (os hooks devolvem estes formatos) ─────────────
 
@@ -77,10 +78,10 @@ export interface EstadoDaEstacao { online: boolean; texto: string }
 
 /**
  * Duas varreduras de portal por dia (cron `ludmilla-08h`/`ludmilla-17h`, 11h e 20h UTC):
- * mais de 18 h sem ler é rodada perdida. Vale SÓ para o portal. O e-mail (EDP, ENEL) não
- * tem agendamento: `ludmilla_agendar_varreduras` só enfileira conta com login e `secret_id`,
- * e o run de e-mail só nasce do "Verificar agora" (docs/modules/integrations/ludmilla.md,
- * "A proteção acidental do agendador"). Horas sem ler uma caixa de e-mail não são falha.
+ * mais de 18 h sem ler é rodada perdida. Vale SÓ para o portal. A ENEL por e-mail é lida de
+ * hora em hora no expediente (cron `ludmilla-enel-email`, seg–sex 8h–18h, desde a cobrança da
+ * troca, 24/10/2026) e a EDP só pelo "Verificar agora": fora do expediente, horas sem ler uma
+ * caixa de e-mail não são falha.
  */
 export const HORAS_SEM_LER_ATRASADA = 18;
 
@@ -258,11 +259,11 @@ export function ressalvaDoCartao(u: PortalUpdate, mensagem: MensagemEmail | null
   return limpo(mensagemDoCartao(u, mensagem)?.motivo) ?? limpo((u.raw as Record<string, unknown> | null)?.motivo);
 }
 
-export type AcaoDaDecisao = 'aplicar' | 'ignorar' | 'feito';
+export type AcaoDaDecisao = 'aplicar' | 'ignorar' | 'feito' | 'enviar_cobranca' | 'dispensar_cobranca';
 
 export interface AcoesDoItem {
-  principal: { acao: 'aplicar' | 'feito'; rotulo: string; habilitada: boolean; porque: string | null } | null;
-  secundaria: { acao: 'ignorar'; rotulo: 'Ignorar' | 'Dispensar' } | null;
+  principal: { acao: 'aplicar' | 'feito' | 'enviar_cobranca'; rotulo: string; habilitada: boolean; porque: string | null } | null;
+  secundaria: { acao: 'ignorar' | 'dispensar_cobranca'; rotulo: 'Ignorar' | 'Dispensar' } | null;
 }
 
 /**
@@ -279,8 +280,19 @@ export function etapaEfetiva(item: ItemDaCaixa, etapa: string | null): string | 
  * protocolo). Cartão bloqueado (o documento é de outra pessoa) NÃO oferece Aplicar: com uma etapa
  * escolhida ele moveria o projeto a partir do cartão errado. Só "Dispensar".
  */
-export function acoesDoItem(item: ItemDaCaixa, etapa: string | null): AcoesDoItem {
+export function acoesDoItem(item: ItemDaCaixa, etapa: string | null, texto = ''): AcoesDoItem {
   if (item.situacao !== 'pendente') return { principal: null, secundaria: null };
+  // A cobrança da ENEL: só Enviar (o texto revisado) ou Dispensar — nunca "Marcar como feito".
+  if (item.afazer?.tipo === 'cobrar_troca') {
+    const c = item.afazer.cobranca ?? null;
+    const porque = !c ? 'Não consegui carregar a cobrança.'
+      : c.situacao !== 'aguardando_envio' ? 'Esta cobrança não está mais esperando envio.'
+      : textoPronto(texto).porque;
+    return {
+      principal: { acao: 'enviar_cobranca', rotulo: 'Enviar', habilitada: porque === null, porque },
+      secundaria: { acao: 'dispensar_cobranca', rotulo: 'Dispensar' },
+    };
+  }
   if (item.afazer) {
     return { principal: { acao: 'feito', rotulo: 'Marcar como feito', habilitada: true, porque: null }, secundaria: null };
   }
@@ -307,6 +319,14 @@ export function textoDaDecisao(
   rotuloEtapa: (status: string | null | undefined) => string,
 ): string {
   const quem = item.codigo || item.concessionaria || 'Item';
+  if (acao === 'enviar_cobranca' || acao === 'dispensar_cobranca') {
+    // Esta página é só da equipe do GD Manager (useLudmillaDisponivel): o endereço da ENEL
+    // aparece aqui, para quem aprova ver para onde vai, e NUNCA para a empresa integradora.
+    const c = item.afazer?.cobranca;
+    const n = notaNaTela(c?.nota_servico);
+    const nota = n ? `da nota ${n}` : 'sem número de nota';
+    return acao === 'enviar_cobranca' ? `${quem}: cobrança ${nota} vai para ${c?.para ?? 'a ENEL'}` : `${quem}: cobrança ${nota} dispensada`;
+  }
   if (acao === 'feito') return `${quem}: marcado como feito`;
   if (acao === 'ignorar') {
     return item.update && cartaoBloqueado(item.update) ? `${quem}: documento bloqueado dispensado` : `${quem}: recomendação ignorada`;
@@ -323,10 +343,20 @@ export function textoDaDecisao(
     : `${quem}: recomendação aplicada`;
 }
 
-export interface SituacaoDecidida { rotulo: 'Aplicada' | 'Ignorada' | 'Feito'; em: string | null; por: string | null }
+export interface SituacaoDecidida {
+  rotulo: 'Aplicada' | 'Ignorada' | 'Feito' | 'Aprovada' | 'Dispensada' | 'Encerrada';
+  em: string | null;
+  por: string | null;
+}
 
 export function situacaoDecidida(item: ItemDaCaixa): SituacaoDecidida | null {
   if (item.situacao === 'pendente') return null;
+  if (item.afazer?.tipo === 'cobrar_troca') {
+    const f = item.afazer;
+    // sem quem fez = a Ludmilla fechou (a ENEL respondeu, nota nova, projeto concluído)
+    const rotulo = f.cobranca?.situacao === 'dispensada' ? 'Dispensada' : f.feito_por ? 'Aprovada' : 'Encerrada';
+    return { rotulo, em: f.feito_em, por: limpo(f.feito?.name) };
+  }
   if (item.afazer) return { rotulo: 'Feito', em: item.afazer.feito_em, por: limpo(item.afazer.feito?.name) };
   const u = item.update;
   if (!u) return null;
@@ -376,6 +406,8 @@ export interface VisibilidadeDoDetalhe {
   rotuloDoProtocolo: string | null;
   /** "Este projeto na Ludmilla" */
   linhaDoTempo: boolean;
+  /** "O e-mail que vai para a ENEL": só no A fazer da cobrança */
+  cobranca: boolean;
 }
 
 export function visibilidadeDoDetalhe(item: ItemDaCaixa): VisibilidadeDoDetalhe {
@@ -390,5 +422,6 @@ export function visibilidadeDoDetalhe(item: ItemDaCaixa): VisibilidadeDoDetalhe 
     ressalvaNaSugestao: !!u && !bloqueado,
     rotuloDoProtocolo: u ? (item.meio === 'email' ? 'Protocolo no e-mail' : 'Protocolo no portal') : null,
     linhaDoTempo: !!item.projectId,
+    cobranca: item.afazer?.tipo === 'cobrar_troca',
   };
 }
