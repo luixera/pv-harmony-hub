@@ -479,9 +479,16 @@ export function usePortalUpdates(situacao: 'pendente' | 'aplicada' | 'ignorada' 
   });
 }
 
-/** Aplica a recomendação: move o card (etapa recomendada ou a escolhida) e registra no histórico. */
-export function useAplicarUpdate() {
+/**
+ * Aplica a recomendação: move o card (etapa recomendada ou a escolhida) e registra no histórico.
+ *
+ * `silencioso`: sem o aviso de sucesso. A caixa de decisões (`useAcoesDaCaixa`) já disse o que
+ * vai acontecer no aviso com "Desfazer"; este chegaria 8 s depois, embaixo da tela, e no celular
+ * cobriria o rodapé fixo do detalhe. O aviso de ERRO continua: a fila de decisões conta com ele.
+ */
+export function useAplicarUpdate(opcoes: { silencioso?: boolean } = {}) {
   const qc = useQueryClient();
+  const { silencioso = false } = opcoes;
   return useMutation({
     mutationFn: async ({ id, status }: { id: string; status?: string }) => {
       const { error } = await supabase.rpc('ludmilla_aplicar_update' as never, { p_update_id: id, p_status: status ?? null } as never);
@@ -491,7 +498,7 @@ export function useAplicarUpdate() {
       qc.invalidateQueries({ queryKey: ['portal-updates'], exact: false });
       qc.invalidateQueries({ queryKey: ['projects'], exact: false });
       // sem etapa só o protocolo do cadastro mudou: dizer "card movido" seria falso
-      toast.success(textoAplicado(status));
+      if (!silencioso) toast.success(textoAplicado(status));
     },
     onError: (e: Error) => toast.error(e.message),
   });

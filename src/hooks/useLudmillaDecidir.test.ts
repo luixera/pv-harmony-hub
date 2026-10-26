@@ -14,6 +14,7 @@ const m = vi.hoisted(() => ({
   ignorar: vi.fn(),
   feito: vi.fn(),
   invalidar: vi.fn(),
+  opcoesDoAplicar: [] as unknown[],
 }));
 
 vi.mock('react', () => ({ useMemo: (fn: () => unknown) => fn() }));
@@ -25,7 +26,7 @@ vi.mock('@tanstack/react-query', () => ({
   useQuery: vi.fn(),
 }));
 vi.mock('@/hooks/useLudmilla', () => ({
-  useAplicarUpdate: () => ({ mutateAsync: m.aplicar }),
+  useAplicarUpdate: (opcoes?: unknown) => { m.opcoesDoAplicar.push(opcoes); return { mutateAsync: m.aplicar }; },
   useIgnorarUpdate: () => ({ mutateAsync: m.ignorar }),
   useLudmillaDisponivel: () => true,
 }));
@@ -87,6 +88,12 @@ describe('useAcoesDaCaixa (a cola das decisões)', () => {
     m.feito.mockRejectedValue(new Error('A fazer não encontrado'));
     await expect(useAcoesDaCaixa().feito('f-9')).rejects.toThrow('A fazer não encontrado');
     expect(m.invalidar).not.toHaveBeenCalled();
+  });
+
+  it('pede o Aplicar SILENCIOSO: o aviso com "Desfazer" já disse o que vai acontecer (sem 2º aviso 8 s depois)', () => {
+    m.opcoesDoAplicar.length = 0;
+    useAcoesDaCaixa();
+    expect(m.opcoesDoAplicar).toEqual([{ silencioso: true }]);
   });
 
   it('não espera o refetch: a decisão já está gravada quando a promessa resolve', async () => {

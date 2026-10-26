@@ -117,7 +117,9 @@ as últimas visitas e mostra o print por URL assinada do bucket.
   agora", relatório com filtros, **Aplicar** (etapa recomendada ou outra;
   `ludmilla_aplicar_update` move o card e grava comentário + histórico com a
   pessoa como autora e a Ludmilla como origem) e **Ignorar**. Item "Ludmilla"
-  na sidebar com contador de pendentes.
+  na sidebar com contador de pendentes. *(Assim foi até 22/10/2026; hoje a
+  página é a caixa de decisões — ver
+  [A página como caixa de decisões](#a-página-como-caixa-de-decisões-22102026), no fim.)*
 
 ## CPFL pela API interna, ciclo de vistoria, anexos e casamento (15/09/2026)
 
@@ -1473,3 +1475,92 @@ de propósito:
 nome da empresa — a mesma família de "pedir vistoria", que a regra da casa manda
 nunca fazer sem conversar. Esboço na spec §13 (modelo do pedido, aprovação por um
 clique, ou rascunho no Gmail).
+
+## A página como caixa de decisões (22/10/2026)
+
+Spec: `docs/superpowers/specs/2026-10-22-ludmilla-pagina-decidir-design.md` · plano:
+`docs/superpowers/plans/2026-10-22-ludmilla-pagina-decidir.md`.
+
+**O que mudou na tela.** A `/ludmilla` deixou de ser uma pilha (cartões das contas →
+criações → recomendações → registro), em que as decisões ficavam embaixo de
+configuração e histórico. `src/pages/Ludmilla.tsx` virou uma casca: topo + abas. No
+topo, valendo para todas as abas: o **código da imagem** da Elektro (acima de tudo:
+expira em 5 min), os **alertas das contas** (erro, sessão expirada — com a estação
+offline o texto manda ligar o computador —, caixa de e-mail não configurada), só
+quando existem, e a **faixa de saúde** — um chip por concessionária (ponto de saúde,
+meio, "lida há", pendentes; clicar filtra a aba Decidir, o botão ao lado faz
+"Verificar agora"). Abas: **Decidir** (a de abertura, com o número de pendentes),
+**Concessionárias** (os cartões de antes, movidos sem mudar o que fazem: "Verificar
+agora", contadores da última leitura, "O que ela leu na caixa"; as regras de e-mail
+agora **recolhidas** num `<details>` e o botão "Acesso ao portal" nos cartões de
+portal), **Criações na CPFL** (agora com o código do projeto e o número da CPFL —
+`resultado.node`, senão `projects.cpfl_node_id`) e **Registro** (igual). "Acessos aos
+portais" continua no cabeçalho. A página continua só para `useLudmillaDisponivel()`.
+Componentes em `src/components/ludmilla/{decidir,topo,abas}/`.
+
+**No celular** (< 640 px) as abas viram uma barra **no topo**, logo abaixo da barra
+do app, e grudam ali ao rolar (`sticky top-14`; decisão do usuário: embaixo já está a
+barra de atalhos). A ordem é: abas → código da imagem → alertas → faixa → conteúdo.
+A barra é filha direta do `<Tabs>` (o contêiner da página): sticky só gruda dentro
+do pai. O detalhe abre por cima (folha não modal) com os botões fixos embaixo; lado
+a lado só a partir de 1024 px.
+
+**Decidir.** Uma lista só com recomendações (`portal_updates`) e **A fazer**
+(`portal_afazeres`), mais antigas primeiro, com busca (projeto, titular, empresa,
+protocolo — sem acento; protocolo sem zeros à esquerda), situação e tipo (Mudar
+etapa · Gravar protocolo · Bloqueados · A fazer). "Bloqueado" segue
+`detalheDoCartaoDeEmail().bloqueio` (`raw.motivo` abrindo com "não anexei ·"): sem
+Aplicar nem seletor, só "Dispensar" (= Ignorar). O detalhe mostra Quem (com "achado
+pelo protocolo/pela UC/pelo nome do titular" — no e-mail sempre, no portal só quando
+não foi pelo protocolo), O que chegou (a faixa "Documento não anexado", a data do
+e-mail), Documentos do projeto, A sugestão (com a ressalva) e "Este projeto na
+Ludmilla" (`ludmilla_linha_do_tempo`). O filtro mora na página: trocar de aba não
+apaga a busca.
+
+**Desfazer.** Depois de decidir, o painel vai para a próxima pendente e o aviso (no
+alto da tela) oferece **Desfazer**: a decisão ESPERA 8 s antes de chamar a RPC de
+sempre (`ludmilla_aplicar_update` / `ludmilla_ignorar_update` /
+`ludmilla_afazer_feito`) — desfazer é não mandar. Sair da página grava na hora;
+fechar a aba com decisão esperando faz o navegador perguntar. O "Aplicar" da caixa é
+**silencioso** (`useAplicarUpdate({ silencioso: true })`): o aviso com Desfazer já
+disse o que vai acontecer, e o "Card movido…" chegaria 8 s depois cobrindo o rodapé
+no celular. Quem chama `useAplicarUpdate()` sem a opção continua com o aviso de
+sempre; o aviso de erro vale nos dois casos.
+
+**Altura da caixa (computador).** Lista e detalhe rolam por dentro; a caixa vai de
+onde ela começa até o fim da janela (`decidir/altura.ts`, medida pela soma dos
+`offsetTop`, refeita quando a janela ou o conteúdo de cima muda), com mínimo de
+280 px. Em 1280 × 800, com um alerta e a faixa em duas linhas, os botões do detalhe
+ficam à vista sem rolar; com o código da imagem na tela, a página rola até eles.
+
+**A caixa de e-mail ainda carregando** (ou com a consulta falhando) é `null`, não
+`false`: nem alerta "caixa não configurada", nem chip parado, e o cartão diz
+"Conferindo a caixa…". O alerta da sessão expirada recebe o estado da estação
+(`alertasDasContas(..., c => estadoDaEstacao(c, agora))`).
+
+**Contador da barra lateral** (decisão do usuário, 22/10/2026): recomendações
+pendentes + A fazer abertos — o mesmo número da aba Decidir —, por
+`useContadorDaLudmilla()` (`contagemDaLudmilla`). Enquanto carrega mostra 0; se uma
+das consultas falha, o item ganha um `title` de aviso ("Não foi possível atualizar o
+número de pendências da Ludmilla") em vez de engolir o erro. O selo só aparece no
+menu em gaveta (celular), como antes.
+
+**Banco (migração `20261022200000_ludmilla_afazeres`).** `portal_afazeres (id,
+tenant_id, account_id, project_id, mensagem_id → portal_email_mensagens, tipo,
+titulo, mensagem, criado_em, feito_por, feito_em)`: RESTRICTIVE por tenant, leitura
+só da equipe (`ludmilla_equipe_ok`), sem política de escrita. `ludmilla_email_avisar`
+(corpo do prosrc vivo) grava o A fazer junto com o sino, uma vez por mensagem
+(UNIQUE `mensagem_id`); `tipo` sai do título (`vistoria_aprovada`, `troca_falhou`,
+`devolucao`; o resto é `aviso`). `ludmilla_afazer_feito(id)` → `true` marcou,
+`false` já estava feito — vale para a equipe toda. `ludmilla_linha_do_tempo(projeto,
+limite)` = os ramos de `ludmilla_registro` com projeto + e-mails lidos + A fazer.
+`ludmilla_aplicar_update` (md5 `6183edef6c3f93810282039bdd565a26`, conferido em
+25/10/2026), `ludmilla_registro`, a varredura e o worker não mudaram. O sino continua
+igual.
+
+**Prova.** Lógica pura com vitest (`ludmillaCaixa.ts`, `ludmillaPainel.ts`,
+`ludmillaFilaDeDecisoes.ts`, `ludmillaContador.ts`, `decidir/altura.ts`). A página
+inteira foi provada em harness com dublês e dados inventados, em 1280 × 800 e
+390 × 812, cobrindo CPFL, EDP e ENEL (48 checagens; prints em
+`.superpowers/sdd/2026-10-22-ludmilla-pagina-decidir/task-8-prints/`, fora do git).
+Com linhas de verdade só se prova abrindo `/ludmilla` depois do deploy.

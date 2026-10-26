@@ -5,10 +5,10 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { rotuloCasamento, textoDaTrocaDeProtocolo } from '@/lib/ludmillaCartao';
+import { textoDaTrocaDeProtocolo } from '@/lib/ludmillaCartao';
 import type { ItemDaCaixa } from '@/lib/ludmillaCaixa';
 import {
-  acoesDoItem, situacaoDecidida, textoDaDecisao, visibilidadeDoDetalhe, type AcaoDaDecisao, type AcaoDoProjeto,
+  acoesDoItem, comoFoiAchado, situacaoDecidida, textoDaDecisao, visibilidadeDoDetalhe, type AcaoDaDecisao, type AcaoDoProjeto,
   type AnexoDoPortal, type EventoDoProjeto, type OQueChegou, type ParecerDoPortal, type VisibilidadeDoDetalhe,
 } from '@/lib/ludmillaPainel';
 import { cn } from '@/lib/utils';
@@ -94,7 +94,8 @@ function doCadastro(projeto: ProjetoDoQuem, campo: 'uc' | 'protocoloNoCadastro')
 }
 
 function Quem({ item, projeto, v }: { item: ItemDaCaixa; projeto: ProjetoDoQuem; v: VisibilidadeDoDetalhe }) {
-  const casado = item.update && item.update.casamento !== 'protocolo' ? rotuloCasamento(item.update.casamento) : null;
+  // e-mail: sempre ("achado pelo nome do titular" pede mais cuidado); portal: só quando não foi pelo protocolo
+  const achado = comoFoiAchado(item);
   const linhas: [string, ReactNode][] = [
     ['Titular', (
       <>
@@ -102,7 +103,7 @@ function Quem({ item, projeto, v }: { item: ItemDaCaixa; projeto: ProjetoDoQuem;
         {item.noPortal && (
           <span className="block text-xs text-muted-foreground">no portal: <span className="font-mono">{item.noPortal}</span></span>
         )}
-        {casado && <span className="block text-xs text-muted-foreground">casado por {casado}</span>}
+        {achado && <span className="block text-xs text-muted-foreground">{achado}</span>}
       </>
     )],
     ['Empresa', item.empresa ?? '—'],

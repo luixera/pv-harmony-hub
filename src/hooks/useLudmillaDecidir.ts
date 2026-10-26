@@ -82,10 +82,12 @@ export function useMarcarAfazerFeito() {
  * Aplicar e Ignorar (useLudmilla.ts) só invalidam `portal-updates` e `projects`; sem
  * isto a "linha do tempo" e o "Quem" (UC/protocolo) do projeto ficavam com o que
  * havia antes da decisão. A atualização não é esperada: a decisão já está gravada.
+ * O Aplicar é SILENCIOSO: o aviso com "Desfazer" já disse o que vai acontecer, e o
+ * "Card movido" de `useAplicarUpdate` chegaria 8 s depois cobrindo o rodapé no celular.
  */
 export function useAcoesDaCaixa() {
   const qc = useQueryClient();
-  const { mutateAsync: aplicarAsync } = useAplicarUpdate();
+  const { mutateAsync: aplicarAsync } = useAplicarUpdate({ silencioso: true });
   const { mutateAsync: ignorarAsync } = useIgnorarUpdate();
   const { mutateAsync: feitoAsync } = useMarcarAfazerFeito();
 

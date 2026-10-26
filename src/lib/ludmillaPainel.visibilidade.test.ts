@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { itensDaCaixa, type ItemDaCaixa } from '@/lib/ludmillaCaixa';
-import { visibilidadeDoDetalhe } from '@/lib/ludmillaPainel';
+import { comoFoiAchado, visibilidadeDoDetalhe } from '@/lib/ludmillaPainel';
 import {
   AFAZERES_DE_EXEMPLO, CONTAS_DE_EXEMPLO, UPDATES_DE_EXEMPLO, nomeDaContaDeExemplo, rotuloDeExemplo,
 } from '@/lib/ludmillaCaixa.fixtures';
@@ -86,5 +86,30 @@ describe('visibilidadeDoDetalhe — o que o painel de detalhe mostra', () => {
     expect(visibilidadeDoDetalhe(item('u:u-cpfl')).rotuloDoProtocolo).toBe('Protocolo no portal');
     expect(visibilidadeDoDetalhe(item('u:u-cpfl-sem')).rotuloDoProtocolo).toBe('Protocolo no portal');
     expect(visibilidadeDoDetalhe({ ...item('u:u-cpfl'), meio: 'estacao' }).rotuloDoProtocolo).toBe('Protocolo no portal');
+  });
+});
+
+/**
+ * Da rodada da ENEL (5d78b6e): o cartão de E-MAIL diz SEMPRE como o projeto foi achado —
+ * "achado pelo nome do titular" pede mais cuidado de quem confere que "achado pelo protocolo".
+ * O cartão do portal (CPFL) fica como era no detalhe: só diz quando NÃO foi pelo protocolo.
+ */
+describe('comoFoiAchado — o "Quem" do detalhe', () => {
+  it('e-mail (EDP, ENEL): sempre, inclusive pelo protocolo', () => {
+    expect(comoFoiAchado(item('u:u-edp'))).toBe('achado pelo protocolo');
+    expect(comoFoiAchado(item('u:u-enel-troca'))).toBe('achado pela UC');
+    expect(comoFoiAchado(item('u:u-enel-bloq'))).toBe('achado pelo nome do titular');
+  });
+
+  it('portal (CPFL): só quando não foi pelo protocolo', () => {
+    expect(comoFoiAchado(item('u:u-cpfl'))).toBeNull();
+    const base = item('u:u-cpfl');
+    expect(comoFoiAchado({ ...base, update: { ...base.update!, casamento: 'cpf' } })).toBe('casado por CPF/CNPJ');
+  });
+
+  it('sem como dizer: casamento vazio ou A fazer', () => {
+    const edp = item('u:u-edp');
+    expect(comoFoiAchado({ ...edp, update: { ...edp.update!, casamento: null } })).toBeNull();
+    expect(comoFoiAchado(item('f:f-vistoria'))).toBeNull();
   });
 });

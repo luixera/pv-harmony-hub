@@ -6,6 +6,7 @@
  */
 import type { MensagemEmail, PortalAccount, PortalUpdate, RegistroLudmilla } from '@/hooks/useLudmilla';
 import { anexosDoCartao, cartaoBloqueado, meioDaConta, type ItemDaCaixa, type MeioDoItem } from '@/lib/ludmillaCaixa';
+import { detalheDoCartaoDeEmail, rotuloCasamento } from '@/lib/ludmillaCartao';
 
 // ── tipos das consultas novas (os hooks devolvem estes formatos) ─────────────
 
@@ -236,6 +237,20 @@ export function oQueChegou(u: PortalUpdate, mensagem: MensagemEmail | null, meio
     };
   }
   return { meio: 'portal', de: limpo(u.status_anterior), para: u.status_portal, atualizadoNoPortal: limpo(r['Última atualização']) };
+}
+
+/**
+ * Como o projeto foi achado, para o "Quem". O cartão de E-MAIL diz SEMPRE (regra da rodada da
+ * ENEL, `detalheDoCartaoDeEmail().achado`): "achado pelo nome do titular" pede mais cuidado de
+ * quem confere que "achado pelo protocolo". O do portal (CPFL) só diz quando NÃO foi pelo protocolo.
+ */
+export function comoFoiAchado(item: ItemDaCaixa): string | null {
+  const u = item.update;
+  if (!u) return null;
+  const email = detalheDoCartaoDeEmail(u);
+  if (email) return email.achado;
+  const por = u.casamento !== 'protocolo' ? rotuloCasamento(u.casamento) : null;
+  return por ? `casado por ${por}` : null;
 }
 
 /** A ressalva da robô (o porquê): a da mensagem, senão a do `raw` do cartão. */

@@ -26,7 +26,8 @@ import {
   LayoutTemplate,
 } from 'lucide-react';
 import { Cpu, Radar, MessageCircle, FileSignature } from 'lucide-react';
-import { useLudmillaDisponivel, usePortalUpdates } from '@/hooks/useLudmilla';
+import { useLudmillaDisponivel } from '@/hooks/useLudmilla';
+import { useContadorDaLudmilla } from '@/hooks/useCaixaDaLudmilla';
 import { useAssinaturaDisponivel } from '@/hooks/useAssinaturas';
 import { useZeDisponivel } from '@/hooks/useZe';
 import { openWelcomeTour } from '@/components/onboarding/OnboardingController';
@@ -102,8 +103,10 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   const ludmillaDisponivel = useLudmillaDisponivel();
   const assinaturaDisponivel = useAssinaturaDisponivel();
   const zeDisponivel = useZeDisponivel();
-  const { data: recomendacoes = [] } = usePortalUpdates('pendente');
-  const ludmillaBadge = recomendacoes.length;
+  // decisão do usuário (22/10/2026): recomendações pendentes + A fazer abertos — o mesmo número
+  // da aba Decidir. Só a equipe do GD Manager consulta; os outros recebem 0.
+  const { total, carregando, erro: erroDaLudmilla } = useContadorDaLudmilla();
+  const ludmillaBadge = carregando ? 0 : total;
 
   // Rotas ocultadas conforme os recursos do plano do tenant
   const featureGate: Record<string, boolean> = {
@@ -176,9 +179,13 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                 {filteredItems.map((item) => {
                   const isActive = location.pathname === item.path;
                   const badge = item.path === '/tasks' && pendingCount > 0 ? pendingCount : item.path === '/email-updates' && emailBadge > 0 ? emailBadge : item.path === '/ludmilla' && ludmillaBadge > 0 ? ludmillaBadge : 0;
+                  // consulta que falhou: o número pode estar faltando (com selo ou sem) — o item avisa
+                  const aviso = item.path === '/ludmilla' && erroDaLudmilla
+                    ? 'Não foi possível atualizar o número de pendências da Ludmilla' : undefined;
                   return (
                     <button
                       key={item.path}
+                      title={aviso}
                       onClick={() => handleNavClick(item.path)}
                       className={cn(
                         "sidebar-item w-full min-h-[56px]",

@@ -3,6 +3,7 @@ import { AlertTriangle, Loader2, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import type { FiltroDaCaixa, ItemDaCaixa } from '@/lib/ludmillaCaixa';
+import { useAlturaDaCaixa } from './altura';
 import { FiltrosDaCaixa } from './FiltrosDaCaixa';
 import { LinhaDaCaixa } from './LinhaDaCaixa';
 import { NOME_DO_MEIO, dataCurta } from './visual';
@@ -29,6 +30,7 @@ export function CaixaDeDecisoes(p: PropsDaCaixa) {
   const aberto = p.lista.find(i => i.chave === p.selecionada) ?? null;
   const semFiltro = p.filtro.situacao === 'pendente' && !p.filtro.busca && p.filtro.tipos.length === 0 && !p.filtro.contaId;
   const raiz = useRef<HTMLDivElement>(null);
+  const { ref: grade, altura } = useAlturaDaCaixa(p.modo === 'lado_a_lado');
 
   // A folha fecha com animação: decidido o ÚLTIMO item, `aberto` vira null na hora e ela
   // deslizaria vazia. Durante a saída ela continua mostrando o que estava aberto.
@@ -74,10 +76,13 @@ export function CaixaDeDecisoes(p: PropsDaCaixa) {
           </div>
         )
       ) : p.modo === 'lado_a_lado' ? (
-        <div className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] items-start gap-4">
-          <div className="max-h-[calc(100vh-16rem)] overflow-y-auto rounded-xl">{lista}</div>
+        // a altura vai de onde a caixa começa até o fim da janela (altura.ts): com o topo da página
+        // por cima (código da imagem, alertas, faixa), um calc fixo jogava os botões para fora da tela.
+        // O calc da classe só vale até a primeira medida.
+        <div ref={grade} data-teste="caixa-lado-a-lado" className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] items-start gap-4">
+          <div className="max-h-[calc(100vh-16rem)] overflow-y-auto rounded-xl" style={{ maxHeight: altura }}>{lista}</div>
           {/* coluna flex: quem rola é o corpo do detalhe; os botões dele ficam à vista embaixo */}
-          <div className="flex max-h-[calc(100vh-16rem)] flex-col overflow-hidden rounded-xl border bg-card">
+          <div className="flex max-h-[calc(100vh-16rem)] flex-col overflow-hidden rounded-xl border bg-card" style={{ maxHeight: altura }}>
             {aberto ? p.renderDetalhe(aberto, 'painel') : <p className="p-6 text-sm text-muted-foreground">Escolha uma linha.</p>}
           </div>
         </div>
