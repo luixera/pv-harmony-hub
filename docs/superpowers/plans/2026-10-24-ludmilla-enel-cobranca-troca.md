@@ -123,6 +123,22 @@ Migrações `20261025120000_ludmilla_cobranca_ajustes.sql` (rodada 1) e `2026102
 7. **O comentário e o histórico não levam o endereço da ENEL.** O texto é "📡 Ludmilla: cobrança da nota N enviada à ENEL, aprovada por <nome>.". A tela da Task 8 não mostra o `para` para a empresa. Ela só aparece para a equipe.
 8. **Run preso** (rodada 2). Um run `rodando` há mais de 2 h é fechado por `ludmilla_agendar_email`. Se for um `enviar_cobranca` que não chegou a `enviando`, a cobrança volta para `aguardando_envio` com o aviso "o robô parou antes de enviar; nada saiu". O worker não precisa fazer nada a mais.
 
+## Decisões do usuário na Task 5 (27/10/2026): VALEM MAIS que o código das Tasks 5, 6 e 10
+
+9. **`nodemailer` 10.1.4 exata, em vez da 10.0.16.**
+   - A 10.0.16 tem 3 avisos moderados no `addressparser` (GHSA-8c8m-p3m8-cjg8, GHSA-m943-m63m-w62w e GHSA-85x2-q946-cp5h), corrigidos a partir da 10.1.4, de 18/10.
+   - O usuário abriu exceção à regra dos 14 dias só para esta versão.
+   - O `nodemailer` 10.0.13 que o `mailparser` pina na leitura continua com os avisos. Atualizar o `mailparser` é outra decisão.
+10. **Se a conexão cair no meio do envio, a Ludmilla confere a pasta Enviados.** Isso vale só quando não dá para saber se o e-mail saiu: queda depois do `verify`, sem resposta de recusa do servidor. Recusa (4xx/5xx, EAUTH, EENVELOPE, EMESSAGE) continua sendo "nada foi enviado", sem nova tentativa.
+   - **Como conferir:** IMAP só leitura na caixa especial `\Sent` da mesma conta, com a credencial que o worker já usa.
+     - Primeiro espera 30 s. Depois tenta até 4 vezes, com 30 s entre elas.
+     - "Saiu" é achar o `Message-ID` do envio OU uma mensagem para o mesmo destinatário, com o mesmo assunto, de no máximo 1 min antes do início do envio para cá.
+     - Na dúvida, conta como saiu: o erro tem de ser deixar de cobrar, nunca cobrar em dobro.
+   - **Achou:** chama `ludmilla_cobranca_enviada(run_id, message_id)`, como num envio normal.
+   - **Conferiu e não achou:** reenvia UMA vez sozinha, com o mesmo `Message-ID`. A aprovação da pessoa vale para esse envio, porque ele é o mesmo e-mail. Se o reenvio também cair no meio, confere de novo. Se de novo não achar, chama `falhou` com "não saiu: conferido na pasta Enviados, 2 tentativas". Nunca há uma 3ª.
+   - **Não deu para conferir** (o IMAP falhou): NÃO reenvia. Chama `falhou` dizendo que não deu para conferir se o e-mail saiu e que é preciso conferir a pasta Enviados antes de enviar de novo.
+   - **Task 6:** prova que o Gmail mantém o `Message-ID` que o worker põe e que a busca em `\Sent` acha o e-mail de teste. Se o Gmail trocar o `Message-ID`, só a busca por destinatário, assunto e hora vale.
+
 ## Mapa de arquivos
 
 | Arquivo | Tarefa | Responsabilidade |
