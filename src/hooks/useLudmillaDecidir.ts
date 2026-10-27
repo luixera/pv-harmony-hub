@@ -6,6 +6,7 @@ import {
   useAplicarUpdate, useIgnorarUpdate, useLudmillaDisponivel, type MensagemEmail,
 } from '@/hooks/useLudmilla';
 import type { Afazer, SituacaoDoFiltro } from '@/lib/ludmillaCaixa';
+import { mensagemDeErro } from '@/lib/ludmillaCartao';
 import type {
   AnexoDoPortal, EventoDoProjeto, ParecerDoPortal, ProjetoDaCriacao, ProjetoDoDetalhe,
 } from '@/lib/ludmillaPainel';
@@ -17,8 +18,9 @@ import type {
  * RLS de quem lê. Os selects são constantes para a verificação contra o PostgREST.
  */
 
-export const SELECT_AFAZER =
-  '*, project:projects(id, code, status, title, companies:company_id(name), project_general_data(holder_name)), feito:feito_por(name)';
+// UMA linha só: a verificação contra o PostgREST lê a constante por expressão regular. O embed
+// `cobranca` só vem preenchido no A fazer `cobrar_troca` (nos outros, `cobranca_id` é nulo).
+export const SELECT_AFAZER = '*, project:projects(id, code, status, title, companies:company_id(name), project_general_data(holder_name)), feito:feito_por(name), cobranca:cobranca_id(id, nota_servico, data_nota, prazo_dias, para, assunto, situacao, enviadas, ultima_enviada_em, ultimo_texto_enviado, texto_aprovado, erro, motivo_encerramento, vence_em, projeto:project_id(protocol_number, project_general_data(holder_name, uc_number)))';
 export const SELECT_MENSAGEM = '*';
 export const SELECT_PROJETO_DO_DETALHE = 'id, code, status, protocol_number, project_general_data(uc_number)';
 export const SELECT_ANEXOS_DO_PROJETO =
@@ -75,8 +77,22 @@ export function useMarcarAfazerFeito() {
   });
 }
 
+/** "Enviar" da cobrança: grava quem aprovou e o texto, e põe o envio na fila do robô. Devolve o id do run. */
+export async function aprovarCobrancaNoBanco(cobrancaId: string, texto: string): Promise<string> {
+  const { data, error } = await supabase.rpc('ludmilla_cobranca_aprovar' as never, { p_cobranca_id: cobrancaId, p_texto: texto } as never);
+  if (error) throw error;
+  return String(data ?? '');
+}
+
+/** "Dispensar": encerra a cobrança daquela nota, sem novas. `false` = alguém já tinha decidido. */
+export async function dispensarCobrancaNoBanco(cobrancaId: string): Promise<boolean> {
+  const { data, error } = await supabase.rpc('ludmilla_cobranca_dispensar' as never, { p_cobranca_id: cobrancaId } as never);
+  if (error) throw error;
+  return data === true;
+}
+
 /**
- * As três decisões da caixa (Aplicar, Ignorar, Feito) como a página as chama. Cada uma
+ * As decisões da caixa (Aplicar, Ignorar, Feito e, na cobrança, Enviar e Dispensar) como a página as chama. Cada uma
  * ESPERA a mutação (`mutateAsync` REJEITA na falha: é assim que a fila de decisões
  * sabe que o banco recusou) e só então atualiza o que o painel de detalhe mostra.
  * Aplicar e Ignorar (useLudmilla.ts) só invalidam `portal-updates` e `projects`; sem
@@ -114,6 +130,35 @@ export function useAcoesDaCaixa() {
         const marcou = await feitoAsync(id);
         atualizarDetalhe();
         return marcou;
+      },
+      /**
+       * "Enviar" da cobrança (pela fila do Desfazer). REJEITA na recusa do banco — trava dos
+       * 7 dias, lacuna no texto, alguém aprovou antes, não é pessoa da equipe — e o motivo DELE
+       * vai para a tela. O id é o da COBRANÇA (`afazer.cobranca_id`), não o do A fazer.
+       */
+      enviarCobranca: async (cobrancaId: string, texto: string): Promise<void> => {
+        try {
+          await aprovarCobrancaNoBanco(cobrancaId, texto);
+        } catch (e) {
+          toast.error(mensagemDeErro(e) ?? 'Não consegui enviar a cobrança.');
+          throw e;
+        }
+        void qc.invalidateQueries({ queryKey: ['portal-afazeres'], exact: false });
+        atualizarDetalhe();
+      },
+      /** "Dispensar" da cobrança. `false` = alguém da equipe já tinha decidido. */
+      dispensarCobranca: async (cobrancaId: string): Promise<boolean> => {
+        let mudou: boolean;
+        try {
+          mudou = await dispensarCobrancaNoBanco(cobrancaId);
+        } catch (e) {
+          toast.error(mensagemDeErro(e) ?? 'Não consegui dispensar a cobrança.');
+          throw e;
+        }
+        void qc.invalidateQueries({ queryKey: ['portal-afazeres'], exact: false });
+        atualizarDetalhe();
+        if (!mudou) toast.info('Alguém da equipe já tinha decidido esta cobrança.');
+        return mudou;
       },
     };
   }, [qc, aplicarAsync, ignorarAsync, feitoAsync]);

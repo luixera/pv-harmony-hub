@@ -7,13 +7,16 @@ import { CaixaDeDecisoes } from './CaixaDeDecisoes';
 const INTERVALO_ENTRE_DECISOES_MS = 700;
 
 /**
- * As três gravações possíveis — no app, `useAcoesDaCaixa()` (espera a mutação, REJEITA na
+ * As gravações possíveis — no app, `useAcoesDaCaixa()` (espera a mutação, REJEITA na
  * falha e atualiza o detalhe); no harness, dublês. A rejeição é o que faz a linha voltar.
  */
 export interface AcoesDaCaixa {
   aplicar: (updateId: string, etapa: string | null) => Promise<unknown>;
   ignorar: (updateId: string) => Promise<unknown>;
   feito: (afazerId: string) => Promise<unknown>;
+  /** a cobrança da troca na ENEL: o id é o da COBRANÇA (`afazer.cobranca_id`), não o do A fazer */
+  enviarCobranca: (cobrancaId: string, texto: string) => Promise<unknown>;
+  dispensarCobranca: (cobrancaId: string) => Promise<unknown>;
 }
 
 export interface PropsDaAbaDecidir {
@@ -32,7 +35,7 @@ export interface PropsDaAbaDecidir {
   onTentarDeNovo: () => void;
   agora: number;
   modo: 'lado_a_lado' | 'folha';
-  detalhe: (item: ItemDaCaixa, layout: 'painel' | 'folha', onDecidir: (acao: AcaoDaDecisao, etapa: string | null) => void) => ReactNode;
+  detalhe: (item: ItemDaCaixa, layout: 'painel' | 'folha', onDecidir: (acao: AcaoDaDecisao, etapa: string | null, texto?: string) => void) => ReactNode;
 }
 
 /**
@@ -66,15 +69,19 @@ export function AbaDecidir(p: PropsDaAbaDecidir) {
     setSelecionada(chave);
   };
 
-  const decidirItem = (item: ItemDaCaixa, acao: AcaoDaDecisao, etapa: string | null) => {
+  const decidirItem = (item: ItemDaCaixa, acao: AcaoDaDecisao, etapa: string | null, texto?: string) => {
     // Decidido, o painel troca NA HORA para o próximo item com os botões no mesmo lugar: o
     // segundo clique de um clique duplo (ou um toque repetido) cairia no item seguinte.
     const agora = Date.now();
     if (agora - ultimaDecisaoEm.current < INTERVALO_ENTRE_DECISOES_MS) return;
     ultimaDecisaoEm.current = agora;
     const proxima = proximaDepoisDe(lista, item.chave);
+    // a cobrança é decidida pelo id da COBRANÇA, não pelo do A fazer (`item.id`)
+    const cobrancaId = item.afazer?.cobranca_id ?? '';
     const executar = acao === 'feito' ? () => p.acoes.feito(item.id)
       : acao === 'ignorar' ? () => p.acoes.ignorar(item.id)
+      : acao === 'enviar_cobranca' ? () => p.acoes.enviarCobranca(cobrancaId, texto ?? '')
+      : acao === 'dispensar_cobranca' ? () => p.acoes.dispensarCobranca(cobrancaId)
       : () => p.acoes.aplicar(item.id, etapa);
     // sem etapa escolhida vale a recomendada (o coalesce do banco): textoDaDecisao já sabe
     p.decidir(item.chave, textoDaDecisao(item, acao, etapa, p.rotuloEtapa), executar);
@@ -87,7 +94,7 @@ export function AbaDecidir(p: PropsDaAbaDecidir) {
       lista={lista} filtro={{ ...p.filtro, contaId: p.contaId }} onFiltro={f => p.onFiltro({ ...f, contaId: null })}
       selecionada={efetiva} onSelecionar={escolher} modo={p.modo}
       carregando={p.carregando} buscando={p.buscando} erro={p.erro} onTentarDeNovo={p.onTentarDeNovo} agora={p.agora}
-      renderDetalhe={(item, layout) => p.detalhe(item, layout, (acao, etapa) => decidirItem(item, acao, etapa))}
+      renderDetalhe={(item, layout) => p.detalhe(item, layout, (acao, etapa, texto) => decidirItem(item, acao, etapa, texto))}
     />
   );
 }
