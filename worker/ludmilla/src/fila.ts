@@ -16,7 +16,7 @@ export interface Run {
   id: string;
   tenant_id: string;
   account_id: string;
-  tipo: 'reconhecimento' | 'teste_login' | 'descoberta' | 'varredura' | 'criar_projeto' | 'varredura_email';
+  tipo: 'reconhecimento' | 'teste_login' | 'descoberta' | 'varredura' | 'criar_projeto' | 'varredura_email' | 'enviar_cobranca';
   situacao: string;
   dados?: Record<string, unknown>;
 }
@@ -640,4 +640,63 @@ export async function encerrarCobrancasPorTroca(accountId: string, projectId: st
   } as never);
   if (error) throw new Error(`Não consegui encerrar as cobranças da troca (${error.code ? `código ${error.code}` : 'sem código'})`);
   return Number(data ?? 0);
+}
+
+// ── O envio da cobrança aprovada (run `enviar_cobranca`) ─────────────────────
+// Assinaturas conferidas em pg_proc (banco vivo, 26/10/2026):
+//   ludmilla_cobranca_iniciar_envio(p_run_id uuid) → TABLE(recusa, cobranca_id, situacao_anterior,
+//     aprovada_por, ultima_enviada_em, para, assunto, texto, in_reply_to, referencias, nota_servico)
+//   ludmilla_cobranca_enviada(p_run_id uuid, p_message_id text) → void
+//   ludmilla_cobranca_falhou(p_run_id uuid, p_erro text) → void
+
+/** O que `ludmilla_cobranca_iniciar_envio` devolve. `recusa` nula = pode enviar (a cobrança já está `enviando`). */
+export interface CobrancaParaEnviar {
+  recusa: string | null;
+  cobrancaId: string | null;
+  situacaoAnterior: string | null;
+  aprovadaPor: string | null;
+  ultimaEnviadaEm: string | null;
+  para: string | null;
+  assunto: string | null;
+  texto: string | null;
+  inReplyTo: string | null;
+  referencias: string[];
+  nota: string | null;
+}
+
+const codigoDoErro = (e: { code?: string | null }) => (e.code ? `código ${e.code}` : 'sem código');
+
+export async function iniciarEnvioDeCobranca(runId: string): Promise<CobrancaParaEnviar> {
+  const { data, error } = await supabase().rpc('ludmilla_cobranca_iniciar_envio' as never, { p_run_id: runId } as never);
+  if (error) throw new Error(`Não consegui iniciar o envio da cobrança (${codigoDoErro(error)})`);
+  const l = ((data ?? []) as Record<string, unknown>[])[0];
+  // a RPC responde SEMPRE uma linha: vazio é função velha no banco — melhor estourar
+  if (!l) throw new Error('o banco não respondeu ao pedido de envio (ludmilla_cobranca_iniciar_envio está desatualizada?)');
+  const s = (k: string): string | null => (l[k] == null ? null : String(l[k]));
+  return {
+    recusa: s('recusa'), cobrancaId: s('cobranca_id'), situacaoAnterior: s('situacao_anterior'),
+    aprovadaPor: s('aprovada_por'), ultimaEnviadaEm: s('ultima_enviada_em'), para: s('para'),
+    assunto: s('assunto'), texto: s('texto'), inReplyTo: s('in_reply_to'),
+    // o banco guarda os ids juntos por espaço; quem monta a resposta passa de novo pela trava
+    referencias: (s('referencias') ?? '').split(/\s+/).filter(x => x.length > 0), nota: s('nota_servico'),
+  };
+}
+
+/**
+ * O e-mail SAIU: o banco registra (histórico, comentário, próxima em 7 dias). Idempotente e
+ * aceito atrasado pelo `run_id` (depois do reset de 30 min): pode ser repetido com o MESMO
+ * run e o MESMO Message-ID.
+ */
+export async function cobrancaEnviada(runId: string, messageId: string): Promise<void> {
+  const { error } = await supabase().rpc('ludmilla_cobranca_enviada' as never, { p_run_id: runId, p_message_id: messageId } as never);
+  if (error) throw new Error(`Não consegui registrar o envio da cobrança (${codigoDoErro(error)})`);
+}
+
+/**
+ * NADA saiu: a cobrança volta para a equipe. Nunca chamar depois de o SMTP aceitar. O motivo
+ * vai para o banco e para a tela: só razão curta, nunca mensagem crua de terceiro.
+ */
+export async function cobrancaFalhou(runId: string, erro: string): Promise<void> {
+  const { error } = await supabase().rpc('ludmilla_cobranca_falhou' as never, { p_run_id: runId, p_erro: erro.slice(0, 500) } as never);
+  if (error) throw new Error(`Não consegui registrar a falha do envio (${codigoDoErro(error)})`);
 }

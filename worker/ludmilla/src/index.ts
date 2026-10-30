@@ -7,6 +7,7 @@ import {
 } from './fila.js';
 import { executarCriacao } from './criacao/index.js';
 import { executarAcompanhamentoEmail } from './email/rotear.js';
+import { executarEnvioDeCobranca } from './email/enel/enviar.js';
 import { avisar, carregarEnvDaEstacao, dirPerfilChrome, modoAtual, pedirLoginNoTerminal } from './local.js';
 
 /**
@@ -305,6 +306,14 @@ async function principal() {
       // acompanhamento por e-mail: lê a caixa por IMAP, não abre navegador —
       // fica fora do laço do Playwright. O caminho do portal segue intocado.
       await executarAcompanhamentoEmail(run);
+      await dormir(5_000);
+      continue;
+    }
+    if (run.tipo === 'enviar_cobranca') {
+      // a cobrança que uma pessoa aprovou sai por SMTP (email/enel/enviar.ts): não abre
+      // navegador. Só a VPS pega este run: a conta da ENEL é 'vps', a fila da estação
+      // (ludmilla_claim_run_local) só pega conta 'local', e as RPCs do envio exigem service_role.
+      await executarEnvioDeCobranca(run).catch(e => log('o envio da cobrança caiu', { run: run.id, classe: (e as Error).name }));
       await dormir(5_000);
       continue;
     }
