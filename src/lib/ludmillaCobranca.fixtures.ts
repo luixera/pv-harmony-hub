@@ -15,7 +15,7 @@ export const COBRANCA_BASE: CobrancaDoAfazer = {
   id: 'c-1', nota_servico: '070700000123', data_nota: '2026-10-01T15:00:00Z', prazo_dias: 7,
   para: 'canalgd.sp@br.enel.com', assunto: 'RE: TROCA DE RELÓGIO - MARTA EXEMPLO PRADO - NT 391000099',
   situacao: 'aguardando_envio', enviadas: 0, ultima_enviada_em: null, ultimo_texto_enviado: null,
-  texto_aprovado: null, erro: null, motivo_encerramento: null, vence_em: '2026-10-08T15:00:00Z',
+  texto_aprovado: null, erro: null, motivo_encerramento: null, vence_em: '2026-10-08T15:00:00Z', atualizado_em: '2026-10-22T11:00:00Z',
   projeto: { protocol_number: '391000099', project_general_data: { holder_name: 'MARTA EXEMPLO PRADO', uc_number: '0055009001' } },
 };
 
@@ -47,14 +47,30 @@ export const F_COBRANCA_SEGUNDA = cobrancaAfazer('f-cob-2a', {
 export const F_COBRANCA_APROVADA = cobrancaAfazer('f-cob-ok', {
   id: 'c-5', situacao: 'agendada', enviadas: 1, ultima_enviada_em: '2026-10-22T14:00:00Z', vence_em: '2026-10-29T14:00:00Z',
 }, { feito_por: 'pessoa-2', feito_em: '2026-10-22T13:59:00Z', feito: { name: 'Bia Exemplo' } });
-export const F_COBRANCA_DISPENSADA = cobrancaAfazer('f-cob-disp', { id: 'c-6', situacao: 'dispensada' }, {
+// dispensada: `ludmilla_cobranca_dispensar` grava `atualizado_em` e `feito_em` com o MESMO now() (mesma transação)
+export const F_COBRANCA_DISPENSADA = cobrancaAfazer('f-cob-disp', { id: 'c-6', situacao: 'dispensada', atualizado_em: '2026-10-21T10:00:00Z' }, {
   feito_por: 'pessoa-2', feito_em: '2026-10-21T10:00:00Z', feito: { name: 'Bia Exemplo' },
 });
 export const F_COBRANCA_ENCERRADA = cobrancaAfazer('f-cob-enc', {
   id: 'c-7', situacao: 'encerrada', motivo_encerramento: 'a ENEL avisou que a troca do relógio foi feita',
 }, { feito_em: '2026-10-20T09:00:00Z' });
 
+// Duas decisões na MESMA cobrança (c-8): a Bia aprovou o 1º ciclo (o envio saiu ou falhou) e,
+// no 2º, o Carlos dispensou. A situação ATUAL da cobrança é "dispensada" nos dois A fazer; só o do
+// 2º ciclo foi fechado no mesmo instante da dispensa. Formatos de data como o PostgREST devolve.
+export const F_COBRANCA_CICLO_1 = cobrancaAfazer('f-cob-ciclo1', {
+  id: 'c-8', situacao: 'dispensada', atualizado_em: '2026-10-25T10:30:00.123456+00:00',
+}, { criado_em: '2026-10-23T11:05:00Z', feito_por: 'pessoa-2', feito_em: '2026-10-23T13:59:00.5+00:00', feito: { name: 'Bia Exemplo' } });
+export const F_COBRANCA_CICLO_2 = cobrancaAfazer('f-cob-ciclo2', {
+  id: 'c-8', situacao: 'dispensada', atualizado_em: '2026-10-25T10:30:00.123456+00:00',
+}, { criado_em: '2026-10-25T09:05:00Z', feito_por: 'pessoa-3', feito_em: '2026-10-25T10:30:00.123456+00:00', feito: { name: 'Carlos Exemplo' } });
+// a Ludmilla fechou este A fazer (a ENEL respondeu) e, depois, a equipe dispensou a cobrança
+export const F_COBRANCA_ENCERRADA_E_DEPOIS_DISPENSADA = cobrancaAfazer('f-cob-enc-disp', {
+  id: 'c-9', situacao: 'dispensada', atualizado_em: '2026-10-25T12:00:00Z',
+}, { criado_em: '2026-10-23T11:10:00Z', feito_por: null, feito_em: '2026-10-24T09:00:00Z', feito: null });
+
 export const AFAZERES_DE_COBRANCA = [
   F_COBRANCA, F_COBRANCA_SEM_NOTA, F_COBRANCA_FALHOU, F_COBRANCA_SEGUNDA,
   F_COBRANCA_APROVADA, F_COBRANCA_DISPENSADA, F_COBRANCA_ENCERRADA,
+  F_COBRANCA_CICLO_1, F_COBRANCA_CICLO_2, F_COBRANCA_ENCERRADA_E_DEPOIS_DISPENSADA,
 ];

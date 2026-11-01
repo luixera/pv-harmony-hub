@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { filtrarItens, proximaDepoisDe, selecaoValida, type FiltroDaCaixa, type ItemDaCaixa } from '@/lib/ludmillaCaixa';
-import { textoDaDecisao, type AcaoDaDecisao } from '@/lib/ludmillaPainel';
+import { argumentosDaDecisao, executarDecisao, textoDaDecisao, type AcaoDaDecisao, type AcoesDaDecisao } from '@/lib/ludmillaPainel';
 import { CaixaDeDecisoes } from './CaixaDeDecisoes';
 
 /** Depois de uma decisão, as que chegarem antes disto são o mesmo gesto repetido, não uma decisão nova. */
@@ -9,15 +9,9 @@ const INTERVALO_ENTRE_DECISOES_MS = 700;
 /**
  * As gravações possíveis — no app, `useAcoesDaCaixa()` (espera a mutação, REJEITA na
  * falha e atualiza o detalhe); no harness, dublês. A rejeição é o que faz a linha voltar.
+ * Quem escolhe o id e o texto de cada uma é `argumentosDaDecisao` (ludmillaPainel.ts), com teste.
  */
-export interface AcoesDaCaixa {
-  aplicar: (updateId: string, etapa: string | null) => Promise<unknown>;
-  ignorar: (updateId: string) => Promise<unknown>;
-  feito: (afazerId: string) => Promise<unknown>;
-  /** a cobrança da troca na ENEL: o id é o da COBRANÇA (`afazer.cobranca_id`), não o do A fazer */
-  enviarCobranca: (cobrancaId: string, texto: string) => Promise<unknown>;
-  dispensarCobranca: (cobrancaId: string) => Promise<unknown>;
-}
+export type AcoesDaCaixa = AcoesDaDecisao;
 
 export interface PropsDaAbaDecidir {
   itens: ItemDaCaixa[];
@@ -76,13 +70,9 @@ export function AbaDecidir(p: PropsDaAbaDecidir) {
     if (agora - ultimaDecisaoEm.current < INTERVALO_ENTRE_DECISOES_MS) return;
     ultimaDecisaoEm.current = agora;
     const proxima = proximaDepoisDe(lista, item.chave);
-    // a cobrança é decidida pelo id da COBRANÇA, não pelo do A fazer (`item.id`)
-    const cobrancaId = item.afazer?.cobranca_id ?? '';
-    const executar = acao === 'feito' ? () => p.acoes.feito(item.id)
-      : acao === 'ignorar' ? () => p.acoes.ignorar(item.id)
-      : acao === 'enviar_cobranca' ? () => p.acoes.enviarCobranca(cobrancaId, texto ?? '')
-      : acao === 'dispensar_cobranca' ? () => p.acoes.dispensarCobranca(cobrancaId)
-      : () => p.acoes.aplicar(item.id, etapa);
+    // o id (da COBRANÇA, no Enviar e no Dispensar) e o texto exato da tela: ver argumentosDaDecisao
+    const chamada = argumentosDaDecisao(item, acao, etapa, texto);
+    const executar = () => executarDecisao(p.acoes, chamada);
     // sem etapa escolhida vale a recomendada (o coalesce do banco): textoDaDecisao já sabe
     p.decidir(item.chave, textoDaDecisao(item, acao, etapa, p.rotuloEtapa), executar);
     focarDetalhe.current = true;

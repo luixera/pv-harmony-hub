@@ -343,6 +343,65 @@ export function textoDaDecisao(
     : `${quem}: recomendação aplicada`;
 }
 
+/**
+ * O que cada decisão manda para o banco. Cada gravação tem o seu id: Aplicar, Ignorar e "Marcar como
+ * feito" levam o id do item da caixa; Enviar e Dispensar da cobrança levam o id da COBRANÇA
+ * (`afazer.cobranca_id`), nunca o do A fazer. O texto do Enviar vai exatamente como a pessoa o deixou
+ * na tela (sem `trim`: o banco conta e confere o mesmo texto).
+ */
+export type ChamadaDaDecisao =
+  | { acao: 'aplicar'; id: string; etapa: string | null }
+  | { acao: 'ignorar'; id: string }
+  | { acao: 'feito'; id: string }
+  | { acao: 'enviar_cobranca'; cobrancaId: string; texto: string }
+  | { acao: 'dispensar_cobranca'; cobrancaId: string };
+
+export function argumentosDaDecisao(item: ItemDaCaixa, acao: AcaoDaDecisao, etapa: string | null, texto?: string): ChamadaDaDecisao {
+  const cobrancaId = item.afazer?.cobranca_id ?? '';
+  switch (acao) {
+    case 'enviar_cobranca': return { acao, cobrancaId, texto: texto ?? '' };
+    case 'dispensar_cobranca': return { acao, cobrancaId };
+    case 'feito': return { acao, id: item.id };
+    case 'ignorar': return { acao, id: item.id };
+    case 'aplicar': return { acao, id: item.id, etapa };
+  }
+}
+
+/** As gravações que a caixa sabe fazer (no app, `useAcoesDaCaixa()`; nos testes, dublês). */
+export interface AcoesDaDecisao {
+  aplicar: (updateId: string, etapa: string | null) => Promise<unknown>;
+  ignorar: (updateId: string) => Promise<unknown>;
+  feito: (afazerId: string) => Promise<unknown>;
+  /** a cobrança da troca na ENEL: o id é o da COBRANÇA (`afazer.cobranca_id`), não o do A fazer */
+  enviarCobranca: (cobrancaId: string, texto: string) => Promise<unknown>;
+  dispensarCobranca: (cobrancaId: string) => Promise<unknown>;
+}
+
+/** Chama a gravação da decisão. A promessa REJEITA quando o banco recusa: é isso que faz a linha voltar. */
+export function executarDecisao(acoes: AcoesDaDecisao, c: ChamadaDaDecisao): Promise<unknown> {
+  switch (c.acao) {
+    case 'aplicar': return acoes.aplicar(c.id, c.etapa);
+    case 'ignorar': return acoes.ignorar(c.id);
+    case 'feito': return acoes.feito(c.id);
+    case 'enviar_cobranca': return acoes.enviarCobranca(c.cobrancaId, c.texto);
+    case 'dispensar_cobranca': return acoes.dispensarCobranca(c.cobrancaId);
+  }
+}
+
+/**
+ * O id do parágrafo que diz por que o botão principal está desligado (ou o que falta): o botão
+ * aponta para ele com `aria-describedby`. Um por linha da caixa; só letras, números, `_` e `-`
+ * (a chave tem `:`, que dá trabalho em seletor de CSS).
+ */
+export function idDoPorqueDoBotao(chave: string): string {
+  return `porque-${chave.replace(/[^A-Za-z0-9_-]/g, '-')}`;
+}
+
+/** Duas datas do banco no mesmo instante? Data ilegível ou ausente vira NaN, e NaN nunca é igual a nada. */
+function mesmoInstante(a: string | null | undefined, b: string | null | undefined): boolean {
+  return Date.parse(a ?? '') === Date.parse(b ?? '');
+}
+
 export interface SituacaoDecidida {
   rotulo: 'Aplicada' | 'Ignorada' | 'Feito' | 'Aprovada' | 'Dispensada' | 'Encerrada';
   em: string | null;
@@ -353,8 +412,14 @@ export function situacaoDecidida(item: ItemDaCaixa): SituacaoDecidida | null {
   if (item.situacao === 'pendente') return null;
   if (item.afazer?.tipo === 'cobrar_troca') {
     const f = item.afazer;
-    // sem quem fez = a Ludmilla fechou (a ENEL respondeu, nota nova, projeto concluído)
-    const rotulo = f.cobranca?.situacao === 'dispensada' ? 'Dispensada' : f.feito_por ? 'Aprovada' : 'Encerrada';
+    // O rótulo é DESTE A fazer, não da situação de hoje da cobrança: a mesma nota tem um A fazer por
+    // ciclo (aprova, vence de novo, dispensa), e todos apontam para a mesma cobrança. "Dispensada" só
+    // vale para o A fazer que a dispensa fechou: `ludmilla_cobranca_dispensar` grava `atualizado_em` da
+    // cobrança e `feito_em` do A fazer no mesmo now(). Os instantes se comparam como instantes, não como
+    // texto (o banco manda microssegundos). Sem quem fez = a Ludmilla fechou (a ENEL respondeu,
+    // nota nova, projeto concluído).
+    const dispensou = f.cobranca?.situacao === 'dispensada' && mesmoInstante(f.feito_em, f.cobranca.atualizado_em);
+    const rotulo = dispensou ? 'Dispensada' : f.feito_por ? 'Aprovada' : 'Encerrada';
     return { rotulo, em: f.feito_em, por: limpo(f.feito?.name) };
   }
   if (item.afazer) return { rotulo: 'Feito', em: item.afazer.feito_em, por: limpo(item.afazer.feito?.name) };

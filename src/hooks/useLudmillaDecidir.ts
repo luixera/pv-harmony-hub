@@ -20,7 +20,7 @@ import type {
 
 // UMA linha só: a verificação contra o PostgREST lê a constante por expressão regular. O embed
 // `cobranca` só vem preenchido no A fazer `cobrar_troca` (nos outros, `cobranca_id` é nulo).
-export const SELECT_AFAZER = '*, project:projects(id, code, status, title, companies:company_id(name), project_general_data(holder_name)), feito:feito_por(name), cobranca:cobranca_id(id, nota_servico, data_nota, prazo_dias, para, assunto, situacao, enviadas, ultima_enviada_em, ultimo_texto_enviado, texto_aprovado, erro, motivo_encerramento, vence_em, projeto:project_id(protocol_number, project_general_data(holder_name, uc_number)))';
+export const SELECT_AFAZER = '*, project:projects(id, code, status, title, companies:company_id(name), project_general_data(holder_name)), feito:feito_por(name), cobranca:cobranca_id(id, nota_servico, data_nota, prazo_dias, para, assunto, situacao, enviadas, ultima_enviada_em, ultimo_texto_enviado, texto_aprovado, erro, motivo_encerramento, vence_em, atualizado_em, projeto:project_id(protocol_number, project_general_data(holder_name, uc_number)))';
 export const SELECT_MENSAGEM = '*';
 export const SELECT_PROJETO_DO_DETALHE = 'id, code, status, protocol_number, project_general_data(uc_number)';
 export const SELECT_ANEXOS_DO_PROJETO =

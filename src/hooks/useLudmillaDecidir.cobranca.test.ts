@@ -105,7 +105,7 @@ describe('SELECT_AFAZER — o embed da cobrança', () => {
   it('traz a cobrança com tudo que a tela lê: nota, datas, para, assunto, situação, envios, texto, erro e o projeto', () => {
     const colunas = [
       ', cobranca:cobranca_id(', 'nota_servico', 'data_nota', 'prazo_dias', 'para', 'assunto', 'situacao', 'enviadas',
-      'ultima_enviada_em', 'ultimo_texto_enviado', 'texto_aprovado', 'erro', 'motivo_encerramento', 'vence_em',
+      'ultima_enviada_em', 'ultimo_texto_enviado', 'texto_aprovado', 'erro', 'motivo_encerramento', 'vence_em', 'atualizado_em',
       'projeto:project_id(protocol_number, project_general_data(holder_name, uc_number))',
     ];
     for (const c of colunas) expect(SELECT_AFAZER, c).toContain(c);

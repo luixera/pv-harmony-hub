@@ -38,6 +38,12 @@ export interface CobrancaDoAfazer {
   erro: string | null;
   motivo_encerramento: string | null;
   vence_em: string;
+  /**
+   * Quando a cobrança mudou pela última vez. `ludmilla_cobranca_dispensar` grava este instante e o
+   * `feito_em` do A fazer no mesmo `now()` (mesma transação): é o que separa "este A fazer foi
+   * fechado pela dispensa" de "a cobrança foi dispensada depois, em outro ciclo" (`situacaoDecidida`).
+   */
+  atualizado_em: string;
   projeto?: { protocol_number: string | null; project_general_data?: DadosGerais | DadosGerais[] } | null;
 }
 
@@ -139,11 +145,29 @@ export function textoPronto(texto: string): { ok: true; porque: null } | { ok: f
   return { ok: true, porque: null };
 }
 
+/** minúsculas e sem acento: "Nada saiú" e "nada saiu" são a mesma frase */
+const semAcento = (t: string): string => t.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+
+/**
+ * A faixa do envio que não deu certo. O erro é o que o robô ou o banco gravou (curto, sem endereço
+ * nem texto de cliente). "Confira a pasta Enviados" só vai quando o e-mail PODE ter saído E o erro
+ * ainda não mandou conferir: se ele já diz que nada saiu ("nada saiu", "nada foi enviado"), mandar
+ * conferir seria mandar procurar o que não existe; se ele já fala da pasta ("pasta Enviados",
+ * "caixa de enviados": é o que o worker grava), a frase se repetiria. O ponto final do erro é tirado
+ * para a frase não terminar em "..".
+ */
+export function avisoDoUltimoEnvio(erro: string | null | undefined): string {
+  const corpo = (erro ?? '').trim().replace(/[.\s]+$/, '');
+  const frase = corpo ? `O último envio deu errado: ${corpo}.` : 'O último envio deu errado.';
+  const dispensa = /nada saiu|nada foi enviado|pasta enviados|caixa de enviados/.test(semAcento(corpo));
+  return dispensa ? frase : `${frase} Confira a pasta Enviados do Gmail antes de enviar de novo.`;
+}
+
 /** Uma frase sobre onde a cobrança está — para a linha já decidida. */
 export function resumoDaCobranca(c: CobrancaDoAfazer): string {
   switch (c.situacao) {
     case 'aguardando_envio':
-      return c.erro ? `O último envio não saiu: ${c.erro}` : 'Esperando alguém da equipe revisar e enviar.';
+      return c.erro ? avisoDoUltimoEnvio(c.erro) : 'Esperando alguém da equipe revisar e enviar.';
     case 'enviando':
       return 'Saindo agora pela caixa da Ludmilla.';
     case 'agendada':

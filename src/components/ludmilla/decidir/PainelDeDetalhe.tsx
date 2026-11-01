@@ -8,9 +8,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { textoDaTrocaDeProtocolo } from '@/lib/ludmillaCartao';
 import type { ItemDaCaixa } from '@/lib/ludmillaCaixa';
-import { TAMANHO_MAXIMO_DO_TEXTO, dataBr, resumoDaCobranca } from '@/lib/ludmillaCobranca';
+import { TAMANHO_MAXIMO_DO_TEXTO, avisoDoUltimoEnvio, dataBr, resumoDaCobranca } from '@/lib/ludmillaCobranca';
 import {
-  acoesDoItem, comoFoiAchado, situacaoDecidida, textoDaDecisao, visibilidadeDoDetalhe, type AcaoDaDecisao, type AcaoDoProjeto,
+  acoesDoItem, comoFoiAchado, idDoPorqueDoBotao, situacaoDecidida, textoDaDecisao, visibilidadeDoDetalhe, type AcaoDaDecisao, type AcaoDoProjeto,
   type AnexoDoPortal, type EventoDoProjeto, type OQueChegou, type ParecerDoPortal, type VisibilidadeDoDetalhe,
 } from '@/lib/ludmillaPainel';
 import { cn } from '@/lib/utils';
@@ -218,7 +218,7 @@ function CobrancaSecao({ item, texto, onTexto }: { item: ItemDaCaixa; texto: str
         {pendente && c.erro && (
           <p className="flex items-start gap-1.5 break-words rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-900">
             <ShieldAlert size={12} className="mt-0.5 shrink-0" aria-hidden />
-            O último envio não saiu: {c.erro}. Confira a pasta Enviados do Gmail antes de enviar de novo.
+            {avisoDoUltimoEnvio(c.erro)}
           </p>
         )}
         {pendente && !c.nota_servico && (
@@ -355,6 +355,7 @@ function BotoesDaDecisao({ item, etapa, texto, onDecidir, rotuloEtapa }: {
   const previa = principal?.habilitada && (principal.acao === 'aplicar' || principal.acao === 'enviar_cobranca')
     ? textoDaDecisao(item, principal.acao, etapa || null, rotuloEtapa) : null;
   const Icone = principal?.acao === 'enviar_cobranca' ? Send : CheckCircle2;
+  const idDoPorque = idDoPorqueDoBotao(item.chave);
   return (
     <div data-teste="botoes-da-decisao" className="space-y-1.5">
       {previa && (
@@ -370,6 +371,7 @@ function BotoesDaDecisao({ item, etapa, texto, onDecidir, rotuloEtapa }: {
         )}
         {principal && (
           <Button className="flex-1 gap-1.5 sm:flex-none" disabled={!principal.habilitada}
+            aria-describedby={principal.porque ? idDoPorque : undefined}
             onClick={() => onDecidir(
               principal.acao,
               principal.acao === 'aplicar' ? (etapa || null) : null,
@@ -379,7 +381,11 @@ function BotoesDaDecisao({ item, etapa, texto, onDecidir, rotuloEtapa }: {
           </Button>
         )}
       </div>
-      {principal?.porque && <p className="text-xs text-muted-foreground">{principal.porque}</p>}
+      {/* Região viva SEMPRE no DOM: o leitor de tela só anuncia o que muda dentro de uma região que já
+          existia. Sem motivo ela fica vazia e sem margem (o espaço entre irmãos viria do space-y). */}
+      <p id={idDoPorque} aria-live="polite" className="text-xs text-muted-foreground" style={principal?.porque ? undefined : { margin: 0 }}>
+        {principal?.porque}
+      </p>
     </div>
   );
 }

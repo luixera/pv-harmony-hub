@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
-  ASSINATURA_DA_COBRANCA, LACUNAS, TAMANHO_MAXIMO_DO_TEXTO, dadosDoEmail, dataBr, montarEmailDeCobranca,
+  ASSINATURA_DA_COBRANCA, LACUNAS, TAMANHO_MAXIMO_DO_TEXTO, avisoDoUltimoEnvio, dadosDoEmail, dataBr, montarEmailDeCobranca,
   notaNaTela, rascunhoDaCobranca, resumoDaCobranca, saudacao, textoComNotaNaTela, textoPronto,
 } from '@/lib/ludmillaCobranca';
 import { COBRANCA_BASE } from '@/lib/ludmillaCobranca.fixtures';
@@ -128,7 +128,7 @@ describe('saudacao e dataBr — horário de Brasília', () => {
 describe('resumoDaCobranca — o que a linha decidida diz', () => {
   it('cada situação', () => {
     expect(resumoDaCobranca({ ...COBRANCA_BASE, erro: 'o Gmail recusou a senha de app da caixa (EAUTH 535)' }))
-      .toBe('O último envio não saiu: o Gmail recusou a senha de app da caixa (EAUTH 535)');
+      .toBe('O último envio deu errado: o Gmail recusou a senha de app da caixa (EAUTH 535). Confira a pasta Enviados do Gmail antes de enviar de novo.');
     expect(resumoDaCobranca(COBRANCA_BASE)).toBe('Esperando alguém da equipe revisar e enviar.');
     expect(resumoDaCobranca({ ...COBRANCA_BASE, situacao: 'enviando' })).toBe('Saindo agora pela caixa da Ludmilla.');
     expect(resumoDaCobranca({ ...COBRANCA_BASE, situacao: 'agendada', enviadas: 0 })).toBe('Agendada para 08/10/2026.');
@@ -141,5 +141,58 @@ describe('resumoDaCobranca — o que a linha decidida diz', () => {
   it('o motivo que o banco grava com a nota de 12 dígitos chega sem o zero', () => {
     expect(resumoDaCobranca({ ...COBRANCA_BASE, situacao: 'encerrada', motivo_encerramento: 'substituída pela nota 070700000456' }))
       .toBe('Encerrada: substituída pela nota 70700000456');
+  });
+});
+
+const CONFIRA = ' Confira a pasta Enviados do Gmail antes de enviar de novo.';
+
+describe('avisoDoUltimoEnvio — a faixa do envio que não deu certo', () => {
+  it('erro com ponto no fim: um ponto só, nunca ".."', () => {
+    const r = avisoDoUltimoEnvio('o Gmail recusou a senha de app da caixa (EAUTH 535).');
+    expect(r).toBe('O último envio deu errado: o Gmail recusou a senha de app da caixa (EAUTH 535).' + CONFIRA);
+    expect(r).not.toContain('..');
+  });
+  it('erro sem ponto no fim: ganha um', () => {
+    expect(avisoDoUltimoEnvio('o Gmail recusou a senha de app da caixa (EAUTH 535)'))
+      .toBe('O último envio deu errado: o Gmail recusou a senha de app da caixa (EAUTH 535).' + CONFIRA);
+  });
+  it('vários pontos e espaços no fim viram um ponto só', () => {
+    expect(avisoDoUltimoEnvio('a conexão caiu...  ')).toBe('O último envio deu errado: a conexão caiu.' + CONFIRA);
+  });
+  it('run preso ("nada saiu"): NÃO manda conferir a pasta Enviados, porque nada saiu', () => {
+    expect(avisoDoUltimoEnvio('o robô parou antes de enviar; nada saiu')).toBe('O último envio deu errado: o robô parou antes de enviar; nada saiu.');
+  });
+  it('"nada foi enviado" também dispensa a conferência, em qualquer caixa e com ou sem acento', () => {
+    expect(avisoDoUltimoEnvio('O destinatário não é um endereço da ENEL: nada foi enviado.')).toBe('O último envio deu errado: O destinatário não é um endereço da ENEL: nada foi enviado.');
+    expect(avisoDoUltimoEnvio('NADA SAIU')).toBe('O último envio deu errado: NADA SAIU.');
+    expect(avisoDoUltimoEnvio('Nada saiú da caixa')).toBe('O último envio deu errado: Nada saiú da caixa.');
+    expect(avisoDoUltimoEnvio('Nada foi enviado')).toBe('O último envio deu errado: Nada foi enviado.');
+  });
+  it('o erro que o worker grava JÁ manda conferir a pasta: a frase não se repete', () => {
+    const r = avisoDoUltimoEnvio('não deu para conferir se o e-mail saiu; confira a pasta Enviados do Gmail antes de enviar de novo');
+    expect(r).toBe('O último envio deu errado: não deu para conferir se o e-mail saiu; confira a pasta Enviados do Gmail antes de enviar de novo.');
+    expect(r.match(/pasta Enviados/gi)).toHaveLength(1);
+  });
+  it('"pasta enviados" e "caixa de enviados" no erro dispensam a frase, em qualquer caixa e com ou sem acento', () => {
+    expect(avisoDoUltimoEnvio('pode ter saído sem confirmação — confira na caixa de enviados'))
+      .toBe('O último envio deu errado: pode ter saído sem confirmação — confira na caixa de enviados.');
+    expect(avisoDoUltimoEnvio('Confira a PASTA ENVIADOS antes')).toBe('O último envio deu errado: Confira a PASTA ENVIADOS antes.');
+    expect(avisoDoUltimoEnvio('veja a Caixa de Enviadós')).toBe('O último envio deu errado: veja a Caixa de Enviadós.');
+  });
+  it('"enviados" solto (sem pasta nem caixa) não conta: continua mandando conferir', () => {
+    expect(avisoDoUltimoEnvio('3 e-mails enviados hoje, este falhou'))
+      .toBe('O último envio deu errado: 3 e-mails enviados hoje, este falhou.' + CONFIRA);
+  });
+  it('"pode ter saído": manda conferir (o e-mail pode ter ido)', () => {
+    expect(avisoDoUltimoEnvio('pode ter saído sem confirmação'))
+      .toBe('O último envio deu errado: pode ter saído sem confirmação.' + CONFIRA);
+  });
+  it('"não deu para conferir se o e-mail saiu": manda conferir', () => {
+    expect(avisoDoUltimoEnvio('não deu para conferir se o e-mail saiu'))
+      .toBe('O último envio deu errado: não deu para conferir se o e-mail saiu.' + CONFIRA);
+  });
+  it('erro vazio ou só pontuação: frase inteira, sem dois-pontos soltos', () => {
+    expect(avisoDoUltimoEnvio('')).toBe('O último envio deu errado.' + CONFIRA);
+    expect(avisoDoUltimoEnvio(' . ')).toBe('O último envio deu errado.' + CONFIRA);
   });
 });
