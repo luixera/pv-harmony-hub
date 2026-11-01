@@ -136,7 +136,10 @@ Migrações `20261025120000_ludmilla_cobranca_ajustes.sql` (rodada 1) e `2026102
      - Na dúvida, conta como saiu: o erro tem de ser deixar de cobrar, nunca cobrar em dobro.
    - **Achou:** chama `ludmilla_cobranca_enviada(run_id, message_id)`, como num envio normal.
    - **Conferiu e não achou:** reenvia UMA vez sozinha, com o mesmo `Message-ID`. A aprovação da pessoa vale para esse envio, porque ele é o mesmo e-mail. Se o reenvio também cair no meio, confere de novo. Se de novo não achar, chama `falhou` com "não saiu: conferido na pasta Enviados, 2 tentativas". Nunca há uma 3ª.
-   - **Não deu para conferir** (o IMAP falhou): NÃO reenvia. Chama `falhou` dizendo que não deu para conferir se o e-mail saiu e que é preciso conferir a pasta Enviados antes de enviar de novo.
+   - **Não deu para conferir** (o IMAP falhou): NÃO reenvia e NÃO chama `falhou`. Isso mudou depois da revisão da Task 5: `falhou` volta a cobrança para "aguardando envio", com o botão Enviar e sem a trava de 7 dias, e um clique mandaria em dobro.
+     - O robô chama `ludmilla_cobranca_sem_confirmacao(run_id, erro)`, da migração `20261101120000`. Ela faz na hora o reset conservador: o e-mail conta como possivelmente enviado, a próxima cobrança vence em 7 dias, abre o A fazer `aviso` "Confira se a cobrança da nota N saiu", e o run fica marcado `sem_confirmacao`. Se o e-mail saiu de fato, uma `enviada` atrasada continua aceita.
+     - Se essa RPC falhar duas vezes, a cobrança fica para o reset de 30 min.
+   - **Recusa "situação: enviando"** de `iniciar_envio`: o robô só registra no log e termina. Não chama `falhou`, porque a cobrança está saindo por outro caminho.
    - **Task 6:** prova que o Gmail mantém o `Message-ID` que o worker põe e que a busca em `\Sent` acha o e-mail de teste. Se o Gmail trocar o `Message-ID`, só a busca por destinatário, assunto e hora vale.
 
 ## Mapa de arquivos
