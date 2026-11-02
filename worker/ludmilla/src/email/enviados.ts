@@ -42,8 +42,13 @@ export const ESPERA_DOS_ENVIADOS_MS = 30_000;
 export const BUSCAS_NOS_ENVIADOS = 4;
 /** "de no máximo 1 min antes do início do envio para cá" */
 export const JANELA_ANTES_DO_INICIO_MS = 60_000;
-/** teto de cada busca (conectar, abrir, buscar, ler): IMAP pendurado não segura o envio */
-const PRAZO_DE_CADA_BUSCA_MS = 60_000;
+/**
+ * Teto de cada busca (conectar, entrar, LIST, EXAMINE, 2 buscas, envelopes): o Gmail leva
+ * poucos segundos; IMAP pendurado não segura o envio. Estourou = erro = `nao_conferiu`.
+ */
+export const PRAZO_DE_CADA_BUSCA_MS = 20_000;
+/** teto do LOGOUT depois de cada busca; depois dele, a conexão é fechada à força */
+export const PRAZO_DO_LOGOUT_MS = 5_000;
 /** as últimas da pasta, lidas sem depender do índice de busca do Gmail */
 const ULTIMAS_DA_PASTA = 20;
 /** e no máximo tantas das achadas pela busca por destinatário (as mais novas) */
@@ -122,11 +127,23 @@ export interface DepsDaConferencia {
   abrir: (c: { email: string; senha: string }) => ImapDosEnviados;
   /** as esperas de 30 s (o teste não espera) */
   esperar: (ms: number) => Promise<void>;
+  /** o teto de cada busca e o do logout (o teste usa milissegundos) */
+  prazoDaBuscaMs: number;
+  prazoDoLogoutMs: number;
 }
 export const DEPS_DA_CONFERENCIA: DepsDaConferencia = {
   abrir: imapGmail,
   esperar: ms => new Promise(r => setTimeout(r, ms)),
+  prazoDaBuscaMs: PRAZO_DE_CADA_BUSCA_MS,
+  prazoDoLogoutMs: PRAZO_DO_LOGOUT_MS,
 };
+
+/** O pior caso de UMA conferência: 30 s antes, 4 buscas com o teto de cada uma e do logout, 30 s entre elas. */
+export function piorCasoDaConferenciaMs(): number {
+  return ESPERA_DOS_ENVIADOS_MS
+    + BUSCAS_NOS_ENVIADOS * (PRAZO_DE_CADA_BUSCA_MS + PRAZO_DO_LOGOUT_MS)
+    + (BUSCAS_NOS_ENVIADOS - 1) * ESPERA_DOS_ENVIADOS_MS;
+}
 
 /** Erro que a própria conferência levanta, com um código nosso. */
 class ErroDaConferencia extends Error {
@@ -179,8 +196,8 @@ async function procurarUmaVez(imap: ImapDosEnviados, p: ProcuraNosEnviados): Pro
   }
 }
 
-async function fechar(imap: ImapDosEnviados): Promise<void> {
-  await comPrazo(Promise.resolve().then(() => imap.logout()), 10_000).catch(() => undefined);
+async function fechar(imap: ImapDosEnviados, prazoMs: number): Promise<void> {
+  await comPrazo(Promise.resolve().then(() => imap.logout()), prazoMs).catch(() => undefined);
   try { imap.close(); } catch { /* já fechado */ }
 }
 
@@ -198,13 +215,13 @@ export async function conferirNosEnviados(
       let imap: ImapDosEnviados | null = null;
       try {
         imap = deps.abrir(c);
-        if (await comPrazo(procurarUmaVez(imap, p), PRAZO_DE_CADA_BUSCA_MS)) return { resultado: 'achou', buscas, codigo: null };
+        if (await comPrazo(procurarUmaVez(imap, p), deps.prazoDaBuscaMs)) return { resultado: 'achou', buscas, codigo: null };
       } catch (e) {
         codigo = codigoDoImap(e);
         // conta sem \Sent não muda esperando: não conferiu, e não se abre outra pasta
         if (codigo === 'SEM_PASTA_SENT') return { resultado: 'nao_conferiu', buscas, codigo };
       } finally {
-        if (imap) await fechar(imap);
+        if (imap) await fechar(imap, deps.prazoDoLogoutMs);
       }
       if (i < BUSCAS_NOS_ENVIADOS) await deps.esperar(ESPERA_DOS_ENVIADOS_MS);
     }

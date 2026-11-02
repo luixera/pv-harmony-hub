@@ -7,18 +7,20 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import nodemailer from 'nodemailer';
 import {
-  FalhaDoSmtp, PORTAS_DO_SMTP, deveTentarOutraPorta, enviarPorSmtp, falhaDoEnvio, novoMessageId, opcoesDoEnvio,
+  FalhaDoSmtp, PORTAS_DO_SMTP, PRAZOS_DO_SMTP, deveTentarOutraPorta, enviarPorSmtp, falhaDoEnvio, novoMessageId, opcoesDoEnvio,
   opcoesDoTransporte, podeTerSaido, verificarSmtp,
   type EmailDeSaida, type PortaDoSmtp, type TransporteDeEnvio,
 } from '../src/email/smtp.js';
 import {
-  BUSCAS_NOS_ENVIADOS, ESPERA_DOS_ENVIADOS_MS, conferirNosEnviados, contaComoSaiu,
+  BUSCAS_NOS_ENVIADOS, DEPS_DA_CONFERENCIA, ESPERA_DOS_ENVIADOS_MS, PRAZO_DE_CADA_BUSCA_MS, PRAZO_DO_LOGOUT_MS,
+  conferirNosEnviados, contaComoSaiu, piorCasoDaConferenciaMs,
   type DepsDaConferencia, type ImapDosEnviados, type ProcuraNosEnviados,
 } from '../src/email/enviados.js';
 import type { PastaDaLista } from '../src/email/caixa.js';
-import { DEPS_ENVIO, executarEnvioDeCobranca, type DepsEnvio } from '../src/email/enel/enviar.js';
+import { DEPS_ENVIO, executarEnvioDeCobranca, piorCasoDoEnvioMs, type DepsEnvio } from '../src/email/enel/enviar.js';
 import {
-  cobrancaEnviada, cobrancaFalhou, credencialDaCaixa, iniciarEnvioDeCobranca, type CobrancaParaEnviar, type Run,
+  cobrancaEnviada, cobrancaFalhou, cobrancaSemConfirmacao, credencialDaCaixa, iniciarEnvioDeCobranca,
+  type CobrancaParaEnviar, type Run,
 } from '../src/fila.js';
 
 // A REDE é falsa (o cliente do Supabase é o de verdade). Tem de vir antes do 1º uso do cliente.
@@ -113,6 +115,23 @@ test('opcoesDoTransporte: 465 com TLS, 587 com STARTTLS obrigatório, certificad
   assert.equal(b.secure, false);
   assert.equal(b.requireTLS, true);
   assert.deepEqual([...PORTAS_DO_SMTP], [465, 587]);
+});
+
+test('opcoesDoTransporte: os TETOS de tempo vão para o nodemailer (sem eles valem 2 min de conexão e 10 min de silêncio)', () => {
+  for (const porta of PORTAS_DO_SMTP) {
+    // lido como registro: a falta de um teto tem de cair AQUI, não só no tsc
+    const o = opcoesDoTransporte(CAIXA, porta) as Record<string, unknown>;
+    // no nodemailer 10.1.x o connectionTimeout cobre o preparo inteiro (DNS, conexão, saudação, STARTTLS)
+    assert.equal(o.connectionTimeout, PRAZOS_DO_SMTP.conexaoMs);
+    assert.equal(o.greetingTimeout, PRAZOS_DO_SMTP.saudacaoMs);
+    assert.equal(o.dnsTimeout, PRAZOS_DO_SMTP.dnsMs);
+    // e o socketTimeout é o silêncio que derruba a sessão depois disso
+    assert.equal(o.socketTimeout, PRAZOS_DO_SMTP.silencioMs);
+  }
+  // cabem numa conexão normal com o Gmail (segundos) e ficam longe dos padrões da biblioteca
+  assert.ok(PRAZOS_DO_SMTP.conexaoMs >= 10_000 && PRAZOS_DO_SMTP.conexaoMs <= 30_000);
+  assert.ok(PRAZOS_DO_SMTP.saudacaoMs <= PRAZOS_DO_SMTP.conexaoMs && PRAZOS_DO_SMTP.dnsMs <= PRAZOS_DO_SMTP.conexaoMs);
+  assert.ok(PRAZOS_DO_SMTP.silencioMs >= 20_000 && PRAZOS_DO_SMTP.silencioMs <= 60_000);
 });
 
 test('deveTentarOutraPorta: só falha de CONEXÃO (marcada CONN pelo nodemailer)', () => {
@@ -258,7 +277,16 @@ interface OpcoesImap {
   buscaFalsa?: boolean;
   /** mensagens que só aparecem a partir da conexão N (o Gmail demora a mostrar o enviado) */
   aparecemNa?: Record<number, Guardado[]>;
+  /** a busca nunca responde (servidor pendurado) */
+  buscaPendurada?: boolean;
+  /** o logout nunca responde */
+  logoutPendurado?: boolean;
+  /** prazos curtos de teste (os de verdade são PRAZO_DE_CADA_BUSCA_MS e PRAZO_DO_LOGOUT_MS) */
+  prazoDaBuscaMs?: number;
+  prazoDoLogoutMs?: number;
 }
+/** uma promessa que nunca se resolve (e não segura o processo: não há relógio nela) */
+const nunca = <T>(): Promise<T> => new Promise<T>(() => undefined);
 function imapFalso(o: OpcoesImap = {}) {
   const r = {
     conexoes: 0, eventos: [] as string[], esperas: [] as number[], credenciais: [] as string[],
@@ -285,6 +313,7 @@ function imapFalso(o: OpcoesImap = {}) {
       total() { return r.guardados.length; },
       async search(q) {
         r.eventos.push(`search ${n}`);
+        if (o.buscaPendurada) return nunca<number[]>();
         if (o.buscaFalsa) return false;
         if (typeof q.seq === 'string') {
           const desde = Number(q.seq.split(':')[0]);
@@ -297,11 +326,16 @@ function imapFalso(o: OpcoesImap = {}) {
           if (uids.includes(g.uid)) yield { uid: g.uid, envelope: { messageId: g.messageId, to: g.to, subject: g.subject, date: g.date }, internalDate: g.internalDate };
         }
       },
-      async logout() { r.eventos.push(`logout ${n}`); },
+      async logout() { r.eventos.push(`logout ${n}`); if (o.logoutPendurado) await nunca(); },
       close() { r.eventos.push(`close ${n}`); },
     };
   };
-  const deps: DepsDaConferencia = { abrir, esperar: async ms => { r.eventos.push(`esperar ${ms}`); r.esperas.push(ms); } };
+  const deps: DepsDaConferencia = {
+    abrir,
+    esperar: async ms => { r.eventos.push(`esperar ${ms}`); r.esperas.push(ms); },
+    prazoDaBuscaMs: o.prazoDaBuscaMs ?? 2_000,
+    prazoDoLogoutMs: o.prazoDoLogoutMs ?? 2_000,
+  };
   return { deps, r };
 }
 
@@ -417,6 +451,60 @@ test('conferência: conta sem a pasta \\Sent → nao_conferiu na hora (nada de a
   assert.deepEqual(r.locks, []);
 });
 
+/**
+ * Corre a promessa contra um limite: se ela pendurar, o teste FALHA (e não só "cancela" pelo
+ * timeout do node:test). O relógio é limpo no fim, para não segurar o processo.
+ */
+async function semPendurar<T>(p: Promise<T>, limiteMs: number, oQue: string): Promise<T> {
+  let relogio: ReturnType<typeof setTimeout> | undefined;
+  const pendurou = Symbol('pendurou');
+  try {
+    const r = await Promise.race([p, new Promise<typeof pendurou>(ok => { relogio = setTimeout(() => ok(pendurou), limiteMs); })]);
+    assert.notEqual(r, pendurou, `${oQue} pendurou: nenhum teto cortou em ${limiteMs} ms`);
+    return r as T;
+  } finally {
+    if (relogio !== undefined) clearTimeout(relogio);
+  }
+}
+
+test('conferência: busca PENDURADA é cortada pelo prazo de cada busca → nao_conferiu "PRAZO_ESGOTADO", e fecha a conexão', async () => {
+  const { deps, r } = imapFalso({ buscaPendurada: true, prazoDaBuscaMs: 30 });
+  const c = await semPendurar(conferirNosEnviados(CAIXA, PROCURA, deps), 2_000, 'a conferência');
+  assert.deepEqual(c, { resultado: 'nao_conferiu', buscas: 4, codigo: 'PRAZO_ESGOTADO' });
+  assert.equal(r.eventos.filter(e => e.startsWith('close')).length, 4);
+});
+
+test('conferência: logout PENDURADO não segura a conferência (teto do logout) e a conexão é fechada', async () => {
+  const { deps, r } = imapFalso({
+    logoutPendurado: true, prazoDoLogoutMs: 30,
+    guardados: [{ uid: 7, messageId: '<saida-1@exemplo.test>', to: PARA, subject: PROCURA.assunto, date: TARDE }],
+  });
+  const c = await semPendurar(conferirNosEnviados(CAIXA, PROCURA, deps), 2_000, 'a conferência');
+  assert.equal(c.resultado, 'achou');
+  assert.deepEqual(r.eventos.slice(-2), ['logout 1', 'close 1']);
+});
+
+test('conferência: os prazos de verdade são os que entram na conta do pior caso', () => {
+  assert.equal(DEPS_DA_CONFERENCIA.prazoDaBuscaMs, PRAZO_DE_CADA_BUSCA_MS);
+  assert.equal(DEPS_DA_CONFERENCIA.prazoDoLogoutMs, PRAZO_DO_LOGOUT_MS);
+  // a busca normal no Gmail (conectar, LIST, EXAMINE, 2 buscas, envelopes) leva segundos
+  assert.ok(PRAZO_DE_CADA_BUSCA_MS >= 15_000 && PRAZO_DE_CADA_BUSCA_MS <= 30_000);
+  assert.ok(PRAZO_DO_LOGOUT_MS <= 10_000);
+  // 30 s antes, 4 buscas com o teto de cada uma e do logout, 30 s entre elas
+  assert.equal(piorCasoDaConferenciaMs(),
+    ESPERA_DOS_ENVIADOS_MS + BUSCAS_NOS_ENVIADOS * (PRAZO_DE_CADA_BUSCA_MS + PRAZO_DO_LOGOUT_MS) + (BUSCAS_NOS_ENVIADOS - 1) * ESPERA_DOS_ENVIADOS_MS);
+});
+
+test('o pior caso do run inteiro (2 envios + 2 conferências + a pausa) fica em no máximo 12 min', () => {
+  const umaOperacaoSmtp = PRAZOS_DO_SMTP.conexaoMs + PRAZOS_DO_SMTP.silencioMs;
+  // cada envio: verify na 465, verify na 587 e o sendMail numa conexão nova
+  const umEnvio = (PORTAS_DO_SMTP.length + 1) * umaOperacaoSmtp;
+  assert.equal(piorCasoDoEnvioMs(), 2 * (umEnvio + piorCasoDaConferenciaMs()) + 3_000);
+  assert.ok(piorCasoDoEnvioMs() <= 12 * 60_000, `${piorCasoDoEnvioMs() / 1000} s`);
+  // 2 × (3 × (15 + 25) + 30 + 4 × (20 + 5) + 3 × 30) + 3 = 683 s (11 min 23 s)
+  assert.equal(piorCasoDoEnvioMs(), 683_000);
+});
+
 test('conferência: nunca lança, nem se a espera quebrar', async () => {
   const { deps } = imapFalso();
   deps.esperar = async () => { throw new Error('relógio quebrado'); };
@@ -525,11 +613,32 @@ test('cobrancaFalhou: ludmilla_cobranca_falhou(p_run_id, p_erro) com até 500 ca
   });
 });
 
+test('cobrancaSemConfirmacao: ludmilla_cobranca_sem_confirmacao(p_run_id uuid, p_erro text) com até 500 caracteres; o erro leva só o código', async () => {
+  chamadas.length = 0;
+  responder = () => ({ status: 204, corpo: null });
+  await cobrancaSemConfirmacao('run-envio-1', 'y'.repeat(600));
+  assert.equal(chamadas.length, 1);
+  assert.equal(chamadas[0].rpc, 'ludmilla_cobranca_sem_confirmacao');
+  assert.deepEqual(Object.keys(chamadas[0].corpo).sort(), ['p_erro', 'p_run_id']);
+  assert.equal(chamadas[0].corpo.p_run_id, 'run-envio-1');
+  assert.equal(String(chamadas[0].corpo.p_erro).length, 500);
+  responder = () => ({ status: 400, corpo: ERRO_COM_DADOS });
+  await assert.rejects(cobrancaSemConfirmacao('run-envio-1', 'motivo'), (e: Error) => {
+    assert.match(e.message, /sem confirmação/);
+    assert.match(e.message, /P0001/);
+    assert.ok(!e.message.includes('TEODORICO') && !e.message.includes('RELÓGIO'), e.message);
+    return true;
+  });
+});
+
 test('as RPCs do envio: falha de rede (sem código) não sai com "código " vazio', async () => {
   const original = globalThis.fetch;
   globalThis.fetch = (async () => { throw new TypeError('fetch failed: ECONNREFUSED 10.0.0.1'); }) as typeof fetch;
   try {
-    for (const f of [() => iniciarEnvioDeCobranca('r'), () => cobrancaEnviada('r', '<m@exemplo.test>'), () => cobrancaFalhou('r', 'm')]) {
+    for (const f of [
+      () => iniciarEnvioDeCobranca('r'), () => cobrancaEnviada('r', '<m@exemplo.test>'), () => cobrancaFalhou('r', 'm'),
+      () => cobrancaSemConfirmacao('r', 'm'),
+    ]) {
       await assert.rejects(f(), (e: Error) => { assert.match(e.message, /sem código/); assert.doesNotMatch(e.message, /código \)/); return true; });
     }
   } finally { globalThis.fetch = original; }
@@ -540,6 +649,7 @@ test('DEPS_ENVIO usa as RPCs de verdade (e a credencial da caixa de hoje)', () =
   assert.equal(DEPS_ENVIO.credencialDaCaixa, credencialDaCaixa);
   assert.equal(DEPS_ENVIO.enviada, cobrancaEnviada);
   assert.equal(DEPS_ENVIO.falhou, cobrancaFalhou);
+  assert.equal(DEPS_ENVIO.semConfirmacao, cobrancaSemConfirmacao);
 });
 
 // ── o run enviar_cobranca ──────────────────────────────────────────────────
@@ -560,15 +670,16 @@ type PassoSmtp = 'ok' | 'queda_chegou' | 'queda_sumiu' | Error;
 
 function envio(o: {
   cobranca?: Partial<CobrancaParaEnviar>; iniciarFalha?: boolean; credFalha?: boolean; smtp?: PassoSmtp[];
-  enviadaFalhas?: number; falhouFalha?: boolean; imap?: OpcoesImap;
+  enviadaFalhas?: number; falhouFalha?: boolean; imap?: OpcoesImap; semConfirmacaoFalhas?: number;
 } = {}) {
   const im = imapFalso(o.imap);
   const d = {
     ordem: [] as string[], envios: [] as EmailDeSaida[], tentativasDoRegistro: [] as [string, string][],
     enviadas: [] as [string, string][], falhas: [] as [string, string][], pausas: [] as number[],
-    procuras: [] as ProcuraNosEnviados[], imap: im.r,
+    procuras: [] as ProcuraNosEnviados[], imap: im.r, semConfirmacao: [] as [string, string][],
   };
   let falhasDaEnviada = o.enviadaFalhas ?? 0;
+  let falhasDaSemConfirmacao = o.semConfirmacaoFalhas ?? 0;
   const deps: DepsEnvio = {
     async iniciarEnvio(runId) {
       d.ordem.push('iniciar');
@@ -606,6 +717,11 @@ function envio(o: {
       d.ordem.push('falhou');
       d.falhas.push([runId, motivo]);
       if (o.falhouFalha) throw new Error('banco fora');
+    },
+    async semConfirmacao(runId, motivo) {
+      d.ordem.push('semConfirmacao');
+      d.semConfirmacao.push([runId, motivo]);
+      if (falhasDaSemConfirmacao-- > 0) throw new Error('banco fora');
     },
     async esperar(ms) { d.ordem.push('pausa'); d.pausas.push(ms); },
     async conferirEnviados(c, p) {
@@ -654,6 +770,18 @@ test('a recusa nova do banco (aprovação que não é de pessoa ativa da equipe)
   assert.equal(d.envios.length, 0);
   assert.deepEqual(d.falhas, [[RUN.id, motivo]]);
   assert.match(logs, /pessoa ativa da equipe/);
+});
+
+test('recusa com a cobrança "enviando" (está saindo por outro caminho): só o log, sem falhou nem sem-confirmação', async () => {
+  const motivo = 'a cobrança não está esperando envio (situação: enviando)';
+  const { deps, d } = envio({ cobranca: { recusa: motivo, situacaoAnterior: 'enviando', aprovadaPor: null, para: null, texto: null } });
+  const { r, logs } = await rodar(deps);
+  assert.equal(r, 'recusada');
+  assert.deepEqual(d.ordem, ['iniciar']);
+  assert.deepEqual(d.falhas, []);
+  assert.deepEqual(d.semConfirmacao, []);
+  assert.match(logs, new RegExp(RUN.id));
+  assert.match(logs, /situação: enviando/);
 });
 
 for (const [caso, cobranca, motivo] of [
@@ -784,26 +912,49 @@ test('queda → não achou → o reenvio é RECUSADO pelo servidor → falhou "n
   assert.match(d.falhas[0][1], /reenvio/);
 });
 
-test('queda → o IMAP falha → falhou "não deu para conferir", UM envio, sem reenvio, só o código do IMAP', async () => {
+test('queda → o IMAP falha → SEM CONFIRMAÇÃO (nunca falhou), UM envio, sem reenvio, só o código do IMAP', async () => {
   const { deps, d } = envio({ smtp: ['queda_sumiu', 'ok'], imap: { falhaNaConexao: [1, 2, 3, 4] } });
   const { r, logs } = await rodar(deps);
-  assert.equal(r, 'falhou');
+  assert.equal(r, 'sem_confirmacao');
   assert.equal(d.envios.length, 1);
-  assert.deepEqual(d.ordem, ['iniciar', 'credencial', 'enviar', 'conferir', 'falhou']);
-  assert.match(d.falhas[0][1], /não deu para conferir se o e-mail saiu/);
-  assert.match(d.falhas[0][1], /confira a pasta Enviados do Gmail antes de enviar de novo/);
-  assert.match(d.falhas[0][1], /AUTHENTICATIONFAILED/);
+  assert.deepEqual(d.ordem, ['iniciar', 'credencial', 'enviar', 'conferir', 'semConfirmacao']);
+  assert.deepEqual(d.falhas, []);
+  assert.equal(d.semConfirmacao.length, 1);
+  const [runId, motivo] = d.semConfirmacao[0];
+  assert.equal(runId, RUN.id);
+  assert.match(motivo, /não deu para conferir se o e-mail saiu/);
+  assert.match(motivo, /confira a pasta Enviados do Gmail antes de enviar de novo/);
+  assert.match(motivo, /AUTHENTICATIONFAILED/);
   for (const proibido of [SENHA_FALSA, CAIXA.email, 'Command failed']) {
-    assert.ok(!d.falhas[0][1].includes(proibido), `o banco recebeu "${proibido}"`);
+    assert.ok(!motivo.includes(proibido), `o banco recebeu "${proibido}"`);
     assert.ok(!logs.includes(proibido), `o log tem "${proibido}"`);
   }
 });
 
-test('queda no REENVIO → o IMAP falha → falhou "não deu para conferir" (nunca uma 3ª)', async () => {
+test('queda no REENVIO → o IMAP falha → sem confirmação, DOIS envios (nunca uma 3ª) e nunca falhou', async () => {
   const { deps, d } = envio({ smtp: ['queda_sumiu', 'queda_sumiu', 'ok'], imap: { falhaNaConexao: [5, 6, 7, 8] } });
-  assert.equal((await rodar(deps)).r, 'falhou');
+  assert.equal((await rodar(deps)).r, 'sem_confirmacao');
   assert.equal(d.envios.length, 2);
-  assert.match(d.falhas[0][1], /não deu para conferir se o e-mail saiu/);
+  assert.deepEqual(d.falhas, []);
+  assert.match(d.semConfirmacao[0][1], /não deu para conferir se o e-mail saiu/);
+});
+
+test('sem confirmação: a RPC falha UMA vez → repete depois da pausa e registra; nunca falhou', async () => {
+  const { deps, d } = envio({ smtp: ['queda_sumiu'], imap: { falhaNaConexao: [1, 2, 3, 4] }, semConfirmacaoFalhas: 1 });
+  assert.equal((await rodar(deps)).r, 'sem_confirmacao');
+  assert.deepEqual(d.ordem, ['iniciar', 'credencial', 'enviar', 'conferir', 'semConfirmacao', 'pausa', 'semConfirmacao']);
+  assert.equal(d.semConfirmacao[0][1], d.semConfirmacao[1][1], 'a repetição leva o mesmo motivo');
+  assert.deepEqual(d.falhas, []);
+});
+
+test('sem confirmação: a RPC falha DUAS vezes → fica com o reset de 30 min: nem falhou, nem 2º envio', async () => {
+  const { deps, d } = envio({ smtp: ['queda_sumiu', 'ok'], imap: { falhaNaConexao: [1, 2, 3, 4] }, semConfirmacaoFalhas: 2 });
+  const { r, logs } = await rodar(deps);
+  assert.equal(r, 'sem_confirmacao');
+  assert.deepEqual(d.ordem, ['iniciar', 'credencial', 'enviar', 'conferir', 'semConfirmacao', 'pausa', 'semConfirmacao']);
+  assert.equal(d.envios.length, 1);
+  assert.deepEqual(d.falhas, []);
+  assert.match(logs, /30 min/);
 });
 
 test('queda: o log diz o run, a fase, o código e o resultado da conferência — nada do texto, do assunto nem da senha', async () => {
@@ -853,12 +1004,24 @@ test('depois que saiu, nem um erro inesperado chama falhou', async () => {
   assert.deepEqual(d.falhas, []);
 });
 
-test('erro inesperado no meio da conferência (pode ter saído): falhou "não deu para conferir", nunca reenvia', async () => {
+test('a conferência lança (pode ter saído): sem confirmação, nunca falhou, nunca reenvia', async () => {
   const { deps, d } = envio({ smtp: ['queda_sumiu', 'ok'] });
   deps.conferirEnviados = () => { throw new Error('quebrou'); };
-  assert.equal((await rodar(deps)).r, 'falhou');
+  assert.equal((await rodar(deps)).r, 'sem_confirmacao');
   assert.equal(d.envios.length, 1);
-  assert.match(d.falhas[0][1], /não deu para conferir se o e-mail saiu/);
+  assert.deepEqual(d.falhas, []);
+  assert.match(d.semConfirmacao[0][1], /não deu para conferir se o e-mail saiu/);
+});
+
+test('erro inesperado com o e-mail TALVEZ fora (guarda externa): sem confirmação, nunca falhou, nunca reenvia', async () => {
+  const { deps, d } = envio({ smtp: ['queda_sumiu', 'ok'] });
+  // a resposta da conferência quebra quando é lida, fora de qualquer try do fluxo
+  deps.conferirEnviados = async () => Object.defineProperty({ buscas: 1, codigo: null }, 'resultado', { get() { throw new Error('quebrado'); } }) as never;
+  assert.equal((await rodar(deps)).r, 'sem_confirmacao');
+  assert.equal(d.envios.length, 1);
+  assert.deepEqual(d.falhas, []);
+  assert.equal(d.semConfirmacao.length, 1);
+  assert.match(d.semConfirmacao[0][1], /não deu para conferir se o e-mail saiu/);
 });
 
 test('erro inesperado ANTES do envio: nada sai e o banco fecha', async () => {

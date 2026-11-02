@@ -1,9 +1,13 @@
 // worker/ludmilla/src/email/enel/enviar.ts
 import {
-  cobrancaEnviada, cobrancaFalhou, credencialDaCaixa, iniciarEnvioDeCobranca, type CobrancaParaEnviar, type Run,
+  cobrancaEnviada, cobrancaFalhou, cobrancaSemConfirmacao, credencialDaCaixa, iniciarEnvioDeCobranca,
+  type CobrancaParaEnviar, type Run,
 } from '../../fila.js';
-import { conferirNosEnviados, type Conferencia, type ProcuraNosEnviados } from '../enviados.js';
-import { codigoDaFalha, enviarPorSmtp, falhaDoEnvio, novoMessageId, podeTerSaido, type EmailDeSaida } from '../smtp.js';
+import { conferirNosEnviados, piorCasoDaConferenciaMs, type Conferencia, type ProcuraNosEnviados } from '../enviados.js';
+import {
+  PORTAS_DO_SMTP, codigoDaFalha, enviarPorSmtp, falhaDoEnvio, novoMessageId, piorCasoDeUmaOperacaoSmtpMs, podeTerSaido,
+  type EmailDeSaida,
+} from '../smtp.js';
 import { ajustarSaudacao, assuntoDaResposta, cabecalhosDaResposta, podeEnviar } from './cobranca.js';
 
 /**
@@ -23,15 +27,20 @@ import { ajustarSaudacao, assuntoDaResposta, cabecalhosDaResposta, podeEnviar } 
  *  · conferiu e não achou → reenvia UMA vez, o MESMO e-mail (o mesmo Message-ID): a aprovação
  *    da pessoa vale, porque é o mesmo e-mail. Caiu de novo → confere de novo; não achou de novo
  *    → `falhou` "não saiu: conferido na pasta Enviados, 2 tentativas". NUNCA uma 3ª;
- *  · não deu para conferir → NÃO reenvia: `falhou` pedindo para conferir a pasta Enviados.
+ *  · não deu para conferir → NÃO reenvia e NÃO devolve: `semConfirmacao` (o banco faz na hora o
+ *    reset conservador — possivelmente enviada, próxima em 7 dias, A fazer "Confira se a
+ *    cobrança da nota N saiu"). Revisão da Task 5 (I-1): `falhou` aqui devolvia a cobrança com
+ *    o botão Enviar, e o e-mail podia sair em dobro.
  * Recusa do servidor (4xx/5xx, EAUTH, EENVELOPE, EMESSAGE) é "nada foi enviado", sem conferir.
+ * Recusa do banco com a cobrança `enviando`: ela está saindo por outro caminho — só o log.
  *
- * Depois que saiu (ou que a conferência achou), NADA chama `falhou`: devolver a cobrança faria
- * alguém reenviar. O registro que falha é REPETIDO (mesmo run, mesmo Message-ID); se ainda
- * falhar, o reset de 30 min do banco trata o envio como possivelmente feito. Run preso é do
- * banco também. Nunca lança (o laço principal não tem try). Log: o run, a cobrança, a fase, o
- * código, o resultado da conferência e o endereço da ENEL — nunca o texto, o assunto, o
- * titular, a nota, a caixa ou a senha.
+ * Depois que saiu (ou que pode ter saído), NADA chama `falhou`: devolver a cobrança faria
+ * alguém reenviar. O registro que falha é REPETIDO (mesmo run, mesmo Message-ID), e o
+ * sem-confirmação também; se ainda falhar, o reset de 30 min do banco trata o envio como
+ * possivelmente feito. Run preso é do banco também. Nunca lança (o laço principal não tem
+ * try). Log: o run, a cobrança, a fase, o código, o resultado da conferência e o endereço da
+ * ENEL — nunca o texto, o assunto, o titular, a nota, a caixa ou a senha.
+ * Pior caso de um run: `piorCasoDoEnvioMs()` (≤ 12 min, abaixo do reset de 30 min do `enviando`).
  */
 
 const log = (msg: string, extra: Record<string, unknown> = {}) =>
@@ -45,7 +54,9 @@ export interface DepsEnvio {
   enviar: (c: CaixaDeEmail, m: EmailDeSaida) => Promise<string>;
   enviada: (runId: string, messageId: string) => Promise<void>;
   falhou: (runId: string, erro: string) => Promise<void>;
-  /** a pausa antes de repetir o registro de um e-mail que já saiu */
+  /** não deu para saber se saiu: o reset conservador do banco, na hora (nunca `falhou`) */
+  semConfirmacao: (runId: string, erro: string) => Promise<void>;
+  /** a pausa antes de repetir o registro (ou o sem-confirmação) */
   esperar: (ms: number) => Promise<void>;
   /** depois de uma queda no meio do envio: o e-mail está na pasta Enviados? (com as esperas dela) */
   conferirEnviados: (c: CaixaDeEmail, p: ProcuraNosEnviados) => Promise<Conferencia>;
@@ -56,17 +67,31 @@ export const DEPS_ENVIO: DepsEnvio = {
   enviar: (c, m) => enviarPorSmtp(c, m),
   enviada: cobrancaEnviada,
   falhou: cobrancaFalhou,
+  semConfirmacao: cobrancaSemConfirmacao,
   esperar: ms => new Promise(r => setTimeout(r, ms)),
   conferirEnviados: (c, p) => conferirNosEnviados(c, p),
 };
 
-/** O registro de um e-mail que saiu: duas tentativas, com uma pausa curta entre elas. */
+/** O registro de um e-mail que saiu (e o sem-confirmação): duas tentativas, com uma pausa curta entre elas. */
 const TENTATIVAS_DO_REGISTRO = 2;
 const PAUSA_DO_REGISTRO_MS = 3_000;
 /** O envio e, só depois de conferir que não saiu, UM reenvio do mesmo e-mail. Nunca uma 3ª. */
 const TENTATIVAS_DE_ENVIO = 2;
 
-export type ResultadoDoEnvio = 'enviada' | 'enviada_sem_registro' | 'recusada' | 'falhou';
+/**
+ * O pior caso de um run, somando os tetos que o código usa de verdade:
+ *  · cada envio = `verify` na 465 + `verify` na 587 + o `sendMail` numa conexão nova, cada um
+ *    com `piorCasoDeUmaOperacaoSmtpMs` (conexão + um silêncio);
+ *  · cada conferência = `piorCasoDaConferenciaMs` (30 s antes, 4 × (busca + logout), 3 × 30 s);
+ *  · 2 envios e 2 conferências, e uma pausa do registro (ou do sem-confirmação).
+ * As chamadas ao banco (alguns décimos de segundo cada) ficam fora da conta.
+ */
+export function piorCasoDoEnvioMs(): number {
+  const umEnvio = (PORTAS_DO_SMTP.length + 1) * piorCasoDeUmaOperacaoSmtpMs();
+  return TENTATIVAS_DE_ENVIO * (umEnvio + piorCasoDaConferenciaMs()) + PAUSA_DO_REGISTRO_MS;
+}
+
+export type ResultadoDoEnvio = 'enviada' | 'enviada_sem_registro' | 'sem_confirmacao' | 'recusada' | 'falhou';
 
 /** O que se sabe do e-mail neste ponto: nada saiu, pode ter saído, ou saiu. */
 type Saida = { situacao: 'nao' | 'talvez' | 'sim' };
@@ -75,6 +100,27 @@ const naoDeuParaConferir = (codigoSmtp: string, codigoImap: string | null) =>
   `a conexão caiu no meio do envio${codigoSmtp ? ` (${codigoSmtp})` : ''} e não deu para conferir se o e-mail saiu`
   + ` (IMAP ${codigoImap ?? 'sem código'}); confira a pasta Enviados do Gmail antes de enviar de novo`;
 
+/**
+ * Pode ter saído e não deu para conferir: o banco faz o reset conservador na hora. A RPC que
+ * falha é repetida UMA vez depois da pausa; se falhar de novo, fica com o reset de 30 min do
+ * banco (que também trata como possivelmente enviada). NUNCA `falhou`, NUNCA outro envio.
+ */
+async function deixarSemConfirmacao(run: Run, deps: DepsEnvio, motivo: string, cobranca: string | null): Promise<ResultadoDoEnvio> {
+  for (let tentativa = 1; ; tentativa++) {
+    try {
+      await deps.semConfirmacao(run.id, motivo);
+      log('cobrança sem confirmação: o banco a trata como possivelmente enviada (NÃO reenviar)', { nivel: 'falha', run: run.id, cobranca, tentativa });
+      return 'sem_confirmacao';
+    } catch {
+      log('não consegui registrar o envio sem confirmação', { nivel: 'falha', run: run.id, cobranca, tentativa });
+    }
+    if (tentativa >= TENTATIVAS_DO_REGISTRO) break;
+    await Promise.resolve().then(() => deps.esperar(PAUSA_DO_REGISTRO_MS)).catch(() => undefined);
+  }
+  log('sem confirmação e sem registro: fica com o reset de 30 min do banco (NÃO reenviar)', { nivel: 'falha', run: run.id, cobranca });
+  return 'sem_confirmacao';
+}
+
 export async function executarEnvioDeCobranca(
   run: Run, deps: DepsEnvio = DEPS_ENVIO, agora: () => Date = () => new Date(),
 ): Promise<ResultadoDoEnvio> {
@@ -82,13 +128,12 @@ export async function executarEnvioDeCobranca(
   try {
     return await enviarCobranca(run, deps, agora, estado);
   } catch (e) {
-    // nada acima deveria lançar; se lançou, a regra continua: depois que saiu, nunca `falhou`
+    // nada acima deveria lançar; se lançou, a regra continua: depois que saiu (ou que pode ter
+    // saído), nunca `falhou`
     log('o envio da cobrança caiu', { nivel: 'falha', run: run.id, classe: e instanceof Error ? e.name : typeof e, saida: estado.situacao });
     if (estado.situacao === 'sim') return 'enviada_sem_registro';
-    const motivo = estado.situacao === 'talvez'
-      ? naoDeuParaConferir('', 'FALHA_INTERNA')
-      : 'falha inesperada no robô: nada foi enviado';
-    await deps.falhou(run.id, motivo).catch(() => undefined);
+    if (estado.situacao === 'talvez') return deixarSemConfirmacao(run, deps, naoDeuParaConferir('', 'FALHA_INTERNA'), null);
+    await deps.falhou(run.id, 'falha inesperada no robô: nada foi enviado').catch(() => undefined);
     return 'falhou';
   }
 }
@@ -108,9 +153,18 @@ async function enviarCobranca(run: Run, deps: DepsEnvio, agora: () => Date, esta
   } catch {
     return fechar('falhou', 'não consegui ler a cobrança no banco: nada foi enviado');
   }
-  // a recusa do banco (inclusive "a aprovação não é de uma pessoa ativa da equipe deste
-  // tenant") é tratada igual a todas: nada sai, a frase dele volta para a equipe
-  if (c.recusa) return fechar('recusada', c.recusa, c.cobrancaId);
+  if (c.recusa) {
+    // a cobrança está `enviando`: está saindo por OUTRO caminho. `falhou` aqui a devolveria
+    // para a equipe no meio desse envio. Só o log; o run fica com o banco (run preso, 2 h).
+    if (c.situacaoAnterior === 'enviando') {
+      log('cobrança não enviada: ela já está saindo por outro caminho (não mexo nela)',
+        { nivel: 'aviso', run: run.id, cobranca: c.cobrancaId, recusa: c.recusa });
+      return 'recusada';
+    }
+    // as outras recusas do banco (inclusive "a aprovação não é de uma pessoa ativa da equipe
+    // deste tenant") são tratadas igual: nada sai, a frase dele volta para a equipe
+    return fechar('recusada', c.recusa, c.cobrancaId);
+  }
 
   // a trava do WORKER, independente do banco (spec §3.4)
   const instante = agora();
@@ -186,7 +240,8 @@ async function enviarCobranca(run: Run, deps: DepsEnvio, agora: () => Date, esta
         resultado: conferencia.resultado, buscas: conferencia.buscas, codigoImap: conferencia.codigo,
       });
       if (conferencia.resultado === 'achou') return registrar(saida.messageId);
-      if (conferencia.resultado !== 'nao_achou') return fechar('falhou', naoDeuParaConferir(codigo, conferencia.codigo), c.cobrancaId);
+      // não deu para conferir: pode ter saído — nem reenvio, nem `falhou`
+      if (conferencia.resultado !== 'nao_achou') return deixarSemConfirmacao(run, deps, naoDeuParaConferir(codigo, conferencia.codigo), c.cobrancaId);
       // conferido: NÃO está na pasta Enviados
       estado.situacao = 'nao';
       if (envio >= TENTATIVAS_DE_ENVIO) {

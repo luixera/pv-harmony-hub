@@ -700,3 +700,16 @@ export async function cobrancaFalhou(runId: string, erro: string): Promise<void>
   const { error } = await supabase().rpc('ludmilla_cobranca_falhou' as never, { p_run_id: runId, p_erro: erro.slice(0, 500) } as never);
   if (error) throw new Error(`Não consegui registrar a falha do envio (${codigoDoErro(error)})`);
 }
+
+/**
+ * NÃO DÁ PARA SABER se saiu (a conexão caiu no meio do envio e a pasta Enviados não pôde ser
+ * conferida): o banco faz NA HORA o reset conservador — conta como possivelmente enviado, a
+ * próxima só daqui a 7 dias, A fazer "Confira se a cobrança da nota N saiu", run em `erro`
+ * com `sem_confirmacao` (uma `enviada` atrasada continua aceita). Nunca `falhou` aqui: ela
+ * devolveria a cobrança com o botão Enviar, e o e-mail poderia sair em dobro.
+ * `ludmilla_cobranca_sem_confirmacao(p_run_id uuid, p_erro text) → void`, só `service_role`.
+ */
+export async function cobrancaSemConfirmacao(runId: string, erro: string): Promise<void> {
+  const { error } = await supabase().rpc('ludmilla_cobranca_sem_confirmacao' as never, { p_run_id: runId, p_erro: erro.slice(0, 500) } as never);
+  if (error) throw new Error(`Não consegui registrar o envio sem confirmação (${codigoDoErro(error)})`);
+}

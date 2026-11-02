@@ -66,6 +66,29 @@ export function opcoesDoEnvio(m: EmailDeSaida): SendMailOptions {
   };
 }
 
+/**
+ * Os TETOS de tempo de cada conexão SMTP (os padrões do nodemailer são 2 min de conexão e
+ * 10 min de silêncio). No nodemailer 10.1.x o `connectionTimeout` cobre o preparo INTEIRO da
+ * sessão — DNS, conexão, saudação e STARTTLS (`_connectionDeadline`, `_remainingSetupTime`);
+ * depois dele vale o `socketTimeout`, que é por SILÊNCIO: o primeiro travamento derruba a sessão.
+ * Uma operação (o `verify` ou o `sendMail`) dura então no máximo `conexaoMs + silencioMs` com um
+ * servidor que trava (um servidor que responde devagar, mas sempre abaixo do silêncio, passaria
+ * disso — não é o caso do Gmail, que responde em segundos). Entram na conta de `piorCasoDoEnvioMs`.
+ */
+export const PRAZOS_DO_SMTP = {
+  /** DNS + TCP + TLS + saudação (+ STARTTLS na 587): o Gmail leva 1–2 s */
+  conexaoMs: 15_000,
+  /** a saudação, dentro do prazo da conexão */
+  saudacaoMs: 10_000,
+  /** o DNS, dentro do prazo da conexão */
+  dnsMs: 10_000,
+  /** silêncio que derruba a sessão (AUTH, MAIL, RCPT, DATA): o Gmail responde em segundos */
+  silencioMs: 25_000,
+} as const;
+
+/** O pior caso de UMA operação SMTP (um `verify` ou um `sendMail`, cada um com a sua conexão). */
+export const piorCasoDeUmaOperacaoSmtpMs = (): number => PRAZOS_DO_SMTP.conexaoMs + PRAZOS_DO_SMTP.silencioMs;
+
 export function opcoesDoTransporte(c: Caixa, porta: PortaDoSmtp) {
   return {
     host: 'smtp.gmail.com',
@@ -78,9 +101,10 @@ export function opcoesDoTransporte(c: Caixa, porta: PortaDoSmtp) {
     tls: { rejectUnauthorized: true, minVersion: 'TLSv1.2' as const },
     logger: false,
     debug: false,
-    connectionTimeout: 30_000,
-    greetingTimeout: 30_000,
-    socketTimeout: 60_000,
+    connectionTimeout: PRAZOS_DO_SMTP.conexaoMs,
+    greetingTimeout: PRAZOS_DO_SMTP.saudacaoMs,
+    dnsTimeout: PRAZOS_DO_SMTP.dnsMs,
+    socketTimeout: PRAZOS_DO_SMTP.silencioMs,
   };
 }
 
