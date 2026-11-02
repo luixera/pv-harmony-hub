@@ -95,3 +95,37 @@ flowchart TD
 - Aplicação automática de etapa (hoje é manual). Ver
   [../../project/roadmap.md](../../project/roadmap.md).
 - Setup do Gmail: `docs/GMAIL_SETUP.md`.
+
+## Incidente: três meses sem vincular (28/07 → 02/11/2026)
+
+A varredura (crons `scan-emails-morning`/`-afternoon`, 11h e 20h UTC, criados
+direto no banco — não estão em migração) "concluía" todo dia, mas os logs
+diziam `Erro no matching SQL: canceling statement due to statement timeout`
+e `Matching: 0 vinculados, 0 com IA`. **Nenhum e-mail foi vinculado nem
+analisado entre 28/07 e 02/11** — 1.070 soltos, 201 citando protocolo de
+projeto existente — e a aba do modal prometia "o vínculo acontece na próxima
+varredura".
+
+Causa: `match_emails_to_protocols` cruzava todos os e-mails soltos com todos
+os projetos (1.070 × 277) recalculando `txt_norm(assunto || corpo)` e três
+regex **por par**. Correção (`20261102100000_match_emails_rapido.sql`, mesmo
+contrato): texto normalizado uma vez por e-mail e por projeto; regex só onde o
+número/nome já aparece por `position()`; par só entre a **mesma
+concessionária** (quando as duas têm); porta do **titular só em e-mails dos
+últimos 120 dias**. Medido: 8,6 s → **3,6 s** com o backlog inteiro (475
+casados: 201 protocolo, 115 UC, 159 titular), idempotente, sem cruzar tenant.
+
+Consequência tratada no `scan-emails`: a etapa 1 só analisa com IA o que
+casou **naquela** rodada e o orçamento é 85 s — centenas casando de uma vez
+ficariam "sem análise" para sempre. **Etapa 1b** (02/11): cada rodada analisa
+um lote de 25 vinculados sem `ai_summary`, até o backlog secar.
+
+Regras que o incidente ensinou: (1) `Matching: 0 vinculados` em dias seguidos
+é alarme, não normalidade; (2) o custo do casamento cresce com e-mails ×
+projetos — qualquer regex nova no par precisa de um prefiltro barato; (3) as
+funções do casamento vivem **só no banco** — ao reescrever, copiar do prosrc
+vivo (`pg_get_functiondef`), nunca de um arquivo antigo.
+
+A aba Notificações também passou a listar, em bloco próprio, os e-mails que a
+**Ludmilla** coletou (`portal_email_mensagens` ligadas ao projeto) — outra
+caixa, outro robô, outro veredito.

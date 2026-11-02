@@ -55,6 +55,30 @@ const ORIGEM: Record<string, string> = {
 const fmtData = (iso: string | null) =>
   iso ? new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—';
 
+/**
+ * O que a Ludmilla coletou por e-mail (ENEL, EDP) e já ligou a este projeto —
+ * é outra caixa, outro robô e outro veredito, por isso aparece em bloco
+ * próprio (pedido do usuário, 02/11/2026: a aba mostrar também os e-mails
+ * que a Ludmilla coleta).
+ */
+interface LudmillaMensagem {
+  id: string;
+  assunto: string | null;
+  remetente: string | null;
+  recebido_em: string | null;
+  protocolo: string | null;
+  tipo_documento: string | null;
+  veredito: 'favoravel' | 'pendencia' | 'inconclusivo' | null;
+  resumo: string | null;
+  concluida: boolean | null;
+}
+
+const VEREDITO: Record<string, { label: string; bg: string; color: string }> = {
+  favoravel:    { label: 'Favorável',    bg: '#E1F5EE', color: '#0F6E56' },
+  pendencia:    { label: 'Pendência',    bg: '#FEF3D0', color: '#854F0B' },
+  inconclusivo: { label: 'Inconclusivo', bg: '#F0F0F0', color: '#666' },
+};
+
 export function ProjectEmailsTab({ projectId }: { projectId: string }) {
   const navigate = useNavigate();
   const { data: emails = [], isLoading, error } = useQuery({
@@ -63,6 +87,18 @@ export function ProjectEmailsTab({ projectId }: { projectId: string }) {
       const { data, error } = await supabase.rpc('project_emails' as never, { _project_id: projectId } as never);
       if (error) throw error;
       return (data ?? []) as unknown as ProjectEmailRow[];
+    },
+  });
+  const { data: daLudmilla = [] } = useQuery({
+    queryKey: ['project-emails-ludmilla', projectId],
+    queryFn: async (): Promise<LudmillaMensagem[]> => {
+      const { data, error } = await supabase
+        .from('portal_email_mensagens' as never)
+        .select('id, assunto, remetente, recebido_em, protocolo, tipo_documento, veredito, resumo, concluida')
+        .eq('project_id', projectId)
+        .order('recebido_em', { ascending: false });
+      if (error) throw error;
+      return (data ?? []) as unknown as LudmillaMensagem[];
     },
   });
 
@@ -107,7 +143,7 @@ export function ProjectEmailsTab({ projectId }: { projectId: string }) {
         </button>
       </div>
 
-      {emails.length === 0 && (
+      {emails.length === 0 && daLudmilla.length === 0 && (
         <div style={{ textAlign: 'center', padding: '40px 0', color: '#aaa' }}>
           <Mail size={26} style={{ opacity: 0.4 }} />
           <p style={{ fontSize: 13, margin: '8px 0 0' }}>Nenhum e-mail relacionado a este projeto ainda.</p>
@@ -133,13 +169,54 @@ export function ProjectEmailsTab({ projectId }: { projectId: string }) {
           {sugeridos.map(e => <EmailCard key={e.id} email={e} sugerido />)}
         </>
       )}
+
+      {daLudmilla.length > 0 && (
+        <>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginTop: 10 }}>
+            <Mail size={13} style={{ color: '#185FA5' }} />
+            <p style={{ fontSize: 12, fontWeight: 700, color: '#185FA5', margin: 0 }}>
+              Coletados pela Ludmilla ({daLudmilla.length})
+            </p>
+          </div>
+          <p style={{ fontSize: 11, color: '#999', margin: '-6px 0 0' }}>
+            E-mails da concessionária lidos pela Ludmilla (ENEL, EDP) e ligados a este projeto; a decisão sobre eles fica na página da Ludmilla.
+          </p>
+          {daLudmilla.map(m => {
+            const v = m.veredito ? VEREDITO[m.veredito] : null;
+            return (
+              <div key={m.id} style={{ border: '1px solid #D6E6F7', borderRadius: 10, padding: '11px 13px', background: '#F7FAFE' }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 9 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ fontSize: 13, fontWeight: 700, color: '#1A1A1A', margin: 0 }}>{m.assunto || '(sem assunto)'}</p>
+                    <p style={{ fontSize: 11, color: '#999', margin: '2px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {m.remetente || '—'} · {fmtData(m.recebido_em)}
+                      {m.protocolo ? ` · protocolo ${m.protocolo}` : ''}
+                      {m.tipo_documento ? ` · ${m.tipo_documento}` : ''}
+                    </p>
+                  </div>
+                  {v && (
+                    <span style={{ fontSize: 9.5, fontWeight: 700, padding: '3px 8px', borderRadius: 20, background: v.bg, color: v.color, whiteSpace: 'nowrap' }}>
+                      {v.label}
+                    </span>
+                  )}
+                </div>
+                {m.resumo && <p style={{ fontSize: 12, color: '#555', margin: '8px 0 0', lineHeight: 1.55 }}>{m.resumo}</p>}
+                {m.concluida && <p style={{ fontSize: 10.5, fontWeight: 700, color: '#0F6E56', margin: '6px 0 0' }}>Tratado pela Ludmilla</p>}
+              </div>
+            );
+          })}
+        </>
+      )}
     </div>
   );
 }
 
 function EmailCard({ email, sugerido }: { email: ProjectEmailRow; sugerido?: boolean }) {
   const cl = CLASSIF[email.ai_classification ?? 'unknown'] ?? CLASSIF.unknown;
-  const origem = ORIGEM[email.match_type ?? ''] ?? null;
+  // e-mail só sugerido ainda não foi relacionado por nada: o match_type dele
+  // ('concessionaire') só diz de quem veio — mostrar "relacionado pelo…" ali
+  // era mentira
+  const origem = sugerido ? null : (ORIGEM[email.match_type ?? ''] ?? null);
   return (
     <div style={{
       border: `1px solid ${sugerido ? '#FDE4A8' : '#EFEFEF'}`, borderRadius: 10, padding: '11px 13px',

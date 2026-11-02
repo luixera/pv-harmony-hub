@@ -120,6 +120,50 @@ async function scanTenant(
     console.log(`Matching: ${matchedRows?.length ?? 0} vinculados, ${matched} com IA`)
 
     // ════════════════════════════════════════════════════════════════════
+    // ETAPA 1b — Vinculados que ficaram SEM análise (02/11/2026)
+    // O casamento vinha estourando o statement timeout desde 28/07 e, ao ser
+    // corrigido, casou centenas de e-mails de uma vez — mais do que cabe em
+    // 85 s de IA. Como a etapa 1 só analisa o que casou NESTA rodada, quem
+    // ficou de fora nunca mais seria analisado. Aqui cada rodada pega um lote
+    // dos vinculados sem resumo, até o backlog secar. O contexto vem do
+    // próprio e-mail + projeto (a RPC não guarda o matched_value).
+    // ════════════════════════════════════════════════════════════════════
+
+    if (!isOverBudget()) {
+      const { data: semAnalise, error: errSem } = await supabase
+        .from('email_updates')
+        .select('id, subject, email_body, match_type, protocol_number, projects(protocol_number, project_general_data(uc_number, holder_name))')
+        .eq('tenant_id', tenantId)
+        .not('project_id', 'is', null)
+        .is('ai_summary', null)
+        .order('received_at', { ascending: false })
+        .limit(25)
+      if (errSem) console.error('Erro ao buscar vinculados sem análise:', errSem.message)
+
+      let atrasados = 0
+      for (const eu of (semAnalise || []) as any[]) {
+        if (isOverBudget()) { console.log('Budget atingido na IA dos atrasados'); break }
+        const proj = Array.isArray(eu.projects) ? eu.projects[0] : eu.projects
+        const gd = proj?.project_general_data
+        const g = Array.isArray(gd) ? gd[0] : gd
+        const ctx = matchContext({
+          match_by: eu.match_type,
+          protocol_number: eu.protocol_number ?? proj?.protocol_number ?? '',
+          matched_value: eu.match_type === 'uc' ? g?.uc_number : eu.match_type === 'holder' ? g?.holder_name : null,
+        })
+        const ai = await analyzeEmailBody(eu.email_body || '', ctx, eu.subject || '')
+        await supabase.from('email_updates').update({
+          ai_summary: ai.summary, ai_classification: ai.classification,
+          ai_suggested_status: ai.suggestedStatus, ai_confidence: ai.confidence, ai_reasoning: ai.reasoning,
+        }).eq('id', eu.id)
+        atrasados++
+        const cl = ai.classification as keyof typeof counts
+        if (cl in counts) counts[cl]++
+      }
+      if (atrasados > 0) console.log(`Atrasados: ${atrasados} vinculados analisados nesta rodada`)
+    }
+
+    // ════════════════════════════════════════════════════════════════════
     // ETAPA 2 — Coleta IMAP: salva emails novos (metadados + corpo)
     // Após a coleta, ETAPA 3 faz matching imediato dos recém-salvos
     // ════════════════════════════════════════════════════════════════════
