@@ -450,6 +450,50 @@ titular com e-mail/telefone, módulos e inversores de `project_equipment`,
 padrão de entrada de `concessionaire_entry_rules` (regra escolhida à mão >
 menor disjuntor da classe que comporta o do projeto > maior da classe).
 
+### Novo envio e a lista de envios (03/11/2026)
+
+Quando a CPFL **reprova**, a equipe refaz o envio — e "o reenvio nada mais é do
+que criar o projeto novamente" (usuário, 03/11/2026). **Um clique só**: o botão
+**Novo envio** já manda a Ludmilla criar de novo, sem etapa intermediária.
+
+- **Painel no modal** (`CriarNaCpflPanel`, só equipe GD Manager):
+  - sem número: como antes — **Criar na CPFL** / **Tentar novamente** (quando o
+    último envio deu erro), modalidade e o bloqueio das beneficiárias;
+  - com número e nada rodando: faixa verde "Projeto registrado na CPFL — nº X" +
+    **Novo envio** (desabilitado, com o motivo em vermelho, quando há bloqueio
+    das beneficiárias). Confirmação: "A Ludmilla vai criar outro projeto na CPFL
+    com os dados de hoje. Use quando a CPFL reprovou. O nº X fica guardado no
+    histórico.";
+  - **Envios**: um item por run `criar_projeto` do projeto ("Envio 2 ·
+    03/11/2026 14:02 · criado, nº 613100"), clicável, que abre os passos com os
+    prints **daquele** envio. Os passos só são consultados quando o envio está
+    aberto ou ativo. Abre sozinho o envio ativo, ou o último se terminou há até
+    1 h (o comportamento do antigo "run recente", que saiu). O número de cada
+    envio é só o `resultado.node` do próprio run, nunca o do cadastro.
+  - Lista e rótulos: `src/lib/criacaoCpfl.ts` (`listarEnvios`, puro, testado);
+    hooks `useEnviosCpfl` (5 s enquanto há envio ativo; quando ele termina, relê
+    o projeto para o número novo aparecer) e `useNovoEnvioCpfl`.
+- **RPC** `ludmilla_cpfl_novo_envio(p_account_id, p_project_id, p_node_atual)`
+  (`20261103120000`, `SECURITY DEFINER`, `authenticated`/`service_role`, sem
+  `anon`): só a equipe da Ludmilla; projeto e conta CPFL do tenant de quem pede;
+  trava a linha do projeto; recusa envio em andamento (é o que o segundo clique
+  recebe — conferido antes do número), projeto sem número ("use Criar na CPFL")
+  e número diferente do que a tela mostrava (tela velha). Grava `project_history` "Novo envio à CPFL" com o número
+  anterior e o autor, **limpa `projects.cpfl_node_id`** e enfileira por
+  `ludmilla_pedir_run` um `criar_projeto` com `dados.reenvio_de` = número
+  anterior. O robô **não mudou**: ele continua recusando criar quando há número,
+  e é a RPC que o limpa; ao salvar, `ludmilla_salvar_node_cpfl` grava o número
+  novo. Gatilhos de `projects` conferidos: só `updated_at` muda (tarefas
+  automáticas são `UPDATE OF status`).
+- **Prints**: cada envio é um run, e os prints já ficam por run
+  (`portal_criacao_passos` + `ludmilla/{tenant}/criacao/{run_id}/`) — nada apaga.
+- O acompanhamento já casava "reprovado reenviado sob protocolo novo" por
+  CPF/UC/título (ver "CPFL pela API interna…"): nada mudou lá.
+- **Ponto aberto:** as beneficiárias travam para a equipe enquanto há número, e
+  o Novo envio limpa o número e já enfileira — então uma beneficiária errada
+  não tem como ser corrigida **antes** do novo envio. Os demais dados do projeto
+  (UC, titular, equipamento) se corrigem antes de clicar.
+
 ## Próximos
 
 0. **Primeiro run da EDP por e-mail** — manual e acompanhado, antes de

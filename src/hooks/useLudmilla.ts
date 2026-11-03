@@ -1,10 +1,11 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTenant } from '@/hooks/useTenant';
 import { toast } from 'sonner';
 import { textoAplicado, type ProjetoParaIdentidade } from '@/lib/ludmillaCartao';
+import { ehSimulacao } from '@/lib/criacaoCpfl';
 
 /**
  * LUDMILLA — a funcionária que acompanha os portais das concessionárias.
@@ -327,10 +328,86 @@ export function useCriarProjetoCpfl() {
       if (error) throw error;
       return data as string;
     },
-    onSuccess: (_runId, { accountId }) => {
+    onSuccess: (_runId, { accountId, projectId }) => {
       qc.invalidateQueries({ queryKey: ['portal-runs', accountId] });
+      qc.invalidateQueries({ queryKey: ['envios-cpfl', projectId] });
+      qc.invalidateQueries({ queryKey: ['runs-criacao-cpfl'] });
     },
     onError: (e: Error) => toast.error(`Não foi possível iniciar a criação: ${e.message}`),
+  });
+}
+
+/**
+ * Os envios deste projeto à CPFL: todos os runs `criar_projeto` dele, sem simulação (a lista e o
+ * rótulo de cada um saem de `listarEnvios`, em lib/criacaoCpfl). Consulta a cada 5 s enquanto há
+ * envio na fila ou rodando.
+ *
+ * Quando o envio ativo termina, o robô acabou de gravar (ou não) o número em
+ * `projects.cpfl_node_id`: o projeto é relido para a faixa verde e a trava das beneficiárias
+ * acompanharem sem fechar o modal.
+ */
+export function useEnviosCpfl(projectId: string | null | undefined) {
+  const disponivel = useLudmillaDisponivel();
+  const qc = useQueryClient();
+  const consulta = useQuery({
+    queryKey: ['envios-cpfl', projectId],
+    queryFn: async (): Promise<PortalRun[]> => {
+      const { data, error } = await supabase
+        .from('portal_sync_runs' as never)
+        .select('*')
+        .eq('tipo', 'criar_projeto')
+        .filter('dados->>project_id', 'eq', projectId as string)
+        .order('pedido_em', { ascending: true });
+      if (error) throw error;
+      return ((data ?? []) as PortalRun[]).filter(r => !ehSimulacao(r));
+    },
+    enabled: disponivel && !!projectId,
+    refetchInterval: (q) => (q.state.data?.some(r => r.situacao === 'na_fila' || r.situacao === 'rodando') ? 5_000 : false),
+  });
+
+  const temAtivo = !!consulta.data?.some(r => r.situacao === 'na_fila' || r.situacao === 'rodando');
+  const tinhaAtivo = useRef(false);
+  useEffect(() => {
+    if (tinhaAtivo.current && !temAtivo && projectId) {
+      void qc.invalidateQueries({ queryKey: ['project', projectId] });
+      void qc.invalidateQueries({ queryKey: ['projects'] });
+      void qc.invalidateQueries({ queryKey: ['runs-criacao-cpfl'] });
+    }
+    tinhaAtivo.current = temAtivo;
+  }, [temAtivo, projectId, qc]);
+
+  return consulta;
+}
+
+/**
+ * "Novo envio" — a CPFL reprovou e a equipe cria o projeto de novo, num clique (decisão do
+ * usuário, 03/11/2026). A RPC guarda o número anterior no histórico, limpa
+ * `projects.cpfl_node_id` e enfileira o run; ela recusa se o número mudou desde que a tela abriu
+ * (`nodeAtual`) ou se já há envio em andamento. Devolve o id do run novo.
+ */
+export function useNovoEnvioCpfl() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ accountId, projectId, nodeAtual }: { accountId: string; projectId: string; nodeAtual: string }): Promise<string> => {
+      const { data, error } = await supabase.rpc('ludmilla_cpfl_novo_envio' as never, {
+        p_account_id: accountId,
+        p_project_id: projectId,
+        p_node_atual: nodeAtual,
+      } as never);
+      if (error) throw error;
+      return data as string;
+    },
+    onSuccess: (_runId, { accountId, projectId }) => {
+      qc.invalidateQueries({ queryKey: ['envios-cpfl', projectId] });
+      // o número some do cadastro: faixa verde, trava das beneficiárias e histórico releem
+      qc.invalidateQueries({ queryKey: ['project', projectId] });
+      qc.invalidateQueries({ queryKey: ['projects'] });
+      qc.invalidateQueries({ queryKey: ['project-history', projectId] });
+      qc.invalidateQueries({ queryKey: ['portal-runs', accountId] });
+      qc.invalidateQueries({ queryKey: ['runs-criacao-cpfl'] });
+      toast.success('Novo envio pedido. A Ludmilla começa em instantes — os passos aparecem no envio novo.');
+    },
+    onError: (e: Error) => toast.error(`Não foi possível pedir o novo envio: ${e.message}`),
   });
 }
 

@@ -35,6 +35,10 @@ concessionária); só a criação automática no portal é da CPFL.
   (`status = pending`); a **equipe** até a criação na CPFL
   (`projects.cpfl_node_id`); depois, **ninguém**. É política RLS, não regra de
   tela. O formulário público (anon) só insere, em projeto `public_form` pendente.
+  O **Novo envio** à CPFL (03/11/2026, `ludmilla_cpfl_novo_envio`) limpa o
+  número e já enfileira a criação: a trava some só durante esse envio. Corrigir
+  uma beneficiária **antes** do novo envio não é possível hoje (ponto aberto, ver
+  [ludmilla.md](../integrations/ludmilla.md) — "Novo envio e a lista de envios").
 - **RN-SG-05** — Quando a foto da conta vem, o Claudinho (`claudinho-verifica`)
   lê UC e titular; titular diferente do da geradora marca `holder_mismatch`,
   que **bloqueia a Ludmilla** (a RPC recusa com a UC na mensagem). Sem foto,
@@ -49,8 +53,8 @@ concessionária); só a criação automática no portal é da CPFL.
 - Modal (aba de dados, abaixo da UC da geradora): `BeneficiariasBloco` —
   tabela editável, origem por linha, aviso do que a Ludmilla recusaria,
   travado após a CPFL.
-- Painel "Criar na CPFL": mostra a modalidade e **desabilita** o botão com o
-  motivo quando há titular diferente ou soma > 100.
+- Painel "Criar na CPFL": mostra a modalidade e **desabilita** o botão (e o
+  **Novo envio**) com o motivo quando há titular diferente ou soma > 100.
 
 ## Ludmilla (CPFL)
 Ver [ludmilla.md](../integrations/ludmilla.md) — seção "Autoconsumo remoto".
