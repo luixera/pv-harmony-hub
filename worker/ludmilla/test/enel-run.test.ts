@@ -28,7 +28,7 @@ const REGRAS: RegraEmail[] = [
 
 const projeto = (o: Partial<ProjetoEnel> & { codigo: string }): ProjetoEnel => ({
   project_id: `id-${o.codigo}`, company_id: 'empresa-t6', protocolo: null, uc: null, titular: null,
-  status: 'analysis', ativo: true, ...o,
+  status: 'analysis', ativo: true, nts: [], ...o,
 });
 const PA = projeto({ codigo: 'GD-T6-001', protocolo: '391000010', uc: '0055001001', titular: 'ODALIRIO PRATES VENTURIM' });
 const PB = projeto({ codigo: 'GD-T6-002', protocolo: '391000020', uc: '0055002002', titular: 'GILVANETE SOARES QUINTILHO' });
@@ -742,11 +742,16 @@ test('I-3c. Carta antiga (NT velha) de projeto com a NT nova e à frente: não s
   assert.match(String(reg.motivo), /a Carta traz a NT 391000111, diferente da do cadastro \(391000222\); como o projeto já está à frente, não sugeri trocar — confira/);
 });
 
-test('M-1. vistoria aprovada no corpo, mas projeto NÃO identificado: sem sino (sem projeto, só a devolução avisa)', async () => {
+// Mudou em 02/11/2026 (decisão do usuário, parte B): sem projeto, a vistoria aprovada também
+// toca o sino — o aviso "num e-mail que não reconheci", sem projeto. Antes este teste fixava
+// "sem sino (sem projeto, só a devolução avisa)", e a vistoria aprovada do PRJ-67567 ficou em silêncio.
+test('M-1. vistoria aprovada no corpo, mas projeto NÃO identificado: o aviso sem projeto (antes: silêncio)', async () => {
   const { deps, d } = dubles();
   const r = await tratar(VISTORIA_OK({ assunto: 'RE: VISTORIA GD' }), deps);
   assert.equal(r.situacao, 'nao_identificado');
-  assert.equal(d.avisos.length, 0);
+  assert.equal(d.avisos.length, 1);
+  assert.equal(d.avisos[0].projectId, null);
+  assert.equal(d.avisos[0].titulo, '📡 Vistoria aprovada num e-mail que não reconheci');
 });
 
 test('M-1. R1: o ASSUNTO vale antes do corpo (corpo diz aprovada, assunto diz reprovada)', async () => {
@@ -1029,4 +1034,184 @@ test('avisos_mensagens: do tratamento ao resultado, uma vistoria aprovada com 6 
   const r = resultadoEnel(n, 1, 1, 0);
   assert.equal(r.avisos, 6);
   assert.equal(r.avisos_mensagens, 1);
+});
+
+// ── A. A NT que a Ludmilla já aprendeu (02/11/2026) ──────────────────────────
+// O projeto está sem protocolo e a NT dele já foi vista (Carta pendente, e-mail ligado). O e-mail
+// de vistoria traz só a NT e o endereço: é achado "por protocolo", e o motivo diz de onde veio.
+
+const SEM_PROTOCOLO_COM_NT = projeto({
+  codigo: 'GD-T6-020', protocolo: null, uc: '0055020020', titular: 'ODETE PRATES VENTURIM',
+  status: 'vistoria_solicitada', nts: ['391000200'],
+});
+const VISTORIA_SO_COM_A_NT = (o: Partial<MensagemLida> = {}) => VISTORIA_OK({
+  assunto: 'VISTORIA GD 391000200 - R INVENTADA DE TESTE 301 - CEP 01234-560 - JARDIM EXEMPLO - SAO PAU', ...o,
+});
+
+test('NT aprendida: a vistoria do projeto sem protocolo é achada pela NT já vista, com a ressalva no motivo', async () => {
+  const { deps, d } = dubles();
+  const r = await tratar(VISTORIA_SO_COM_A_NT(), deps, [PA, SEM_PROTOCOLO_COM_NT, PB]);
+  assert.equal(r.situacao, 'tratado');
+  assert.equal(r.por, 'protocolo');
+  const reg = unico(d);
+  assert.equal(reg.projectId, SEM_PROTOCOLO_COM_NT.project_id);
+  assert.equal(reg.casamento, 'protocolo', 'o selo continua "protocolo": o banco tem CHECK no casamento');
+  assert.match(String(reg.motivo), /reconheci pela NT 391000200, que já tinha visto neste projeto/);
+  // é a vistoria aprovada de um projeto achado: o sino de sempre, com o projeto
+  assert.equal(d.avisos.length, 1);
+  assert.equal(d.avisos[0].projectId, SEM_PROTOCOLO_COM_NT.project_id);
+  assert.match(d.avisos[0].titulo, /Vistoria virtual aprovada/);
+});
+
+test('NT aprendida: achado pelo protocolo do cadastro não ganha a ressalva da NT aprendida', async () => {
+  const { deps, d } = dubles();
+  await tratar(VISTORIA_OK(), deps);
+  assert.equal(unico(d).projectId, PA.project_id);
+  assert.doesNotMatch(String(unico(d).motivo), /reconheci pela NT/);
+});
+
+// ── B. Resultado de vistoria ou troca SEM projeto vira aviso (02/11/2026) ─────
+// Sem projeto (nenhum ou conflito), além da devolução, avisam: vistoria aprovada, vistoria
+// reprovada, troca não executada e troca/reprogramação feita. Só e-mail de até 30 dias
+// (`deveAvisar`), e o sino ANTES do registro, como no caminho com projeto.
+
+/** O e-mail de vistoria do tecnico.abc com uma NT que não é de ninguém (o caso de 31/10). */
+const VISTORIA_SEM_DONO = (o: Partial<MensagemLida> = {}) => VISTORIA_OK({
+  assunto: 'VISTORIA GD 391000999 - R INVENTADA DE TESTE 301\r\n - CEP 01234-560 - JARDIM EXEMPLO - SAO PAU', ...o,
+});
+
+test('B. vistoria aprovada sem projeto, de até 30 dias: 1 aviso sem projeto, com o título e o assunto limpo', async () => {
+  const { deps, d } = dubles();
+  const r = await tratar(VISTORIA_SEM_DONO({ recebidoEm: haDias(5) }), deps);
+  assert.equal(r.situacao, 'nao_identificado');
+  assert.equal(r.avisos, 1);
+  assert.equal(d.avisos.length, 1);
+  const a = d.avisos[0];
+  assert.equal(a.projectId, null);
+  assert.equal(a.protocolo, '', 'a chave da mensagem da ENEL: o banco acha a linha que a tentativa abriu');
+  assert.equal(a.titulo, '📡 Vistoria aprovada num e-mail que não reconheci');
+  assert.match(a.mensagem, /VISTORIA GD 391000999 - R INVENTADA DE TESTE 301 - CEP 01234-560/);
+  assert.doesNotMatch(a.mensagem, /[\r\n]/, 'o assunto vai sem quebra de linha');
+  assert.match(a.mensagem, /nenhum projeto nosso tem os números deste e-mail/);
+  assert.match(a.mensagem, /grave a NT nele \(ou aplique o cartão da Carta\) e use "Ler de novo"/);
+  // o resto é o de sempre: registrado sem projeto, concluído, sem cartão; o sino antes do registro
+  const reg = unico(d);
+  assert.equal(reg.projectId, null);
+  assert.equal(reg.concluida, true);
+  assert.equal(reg.abrirCartao, false);
+  assert.doesNotMatch(String(reg.motivo), /aviso não tocado/);
+  assert.ok(d.ordem.indexOf('avisar') < d.ordem.indexOf('registrarEmailLido'), 'o sino ANTES do registro');
+});
+
+test('B. vistoria aprovada sem projeto, de MAIS de 30 dias: não toca, e o motivo diz por quê', async () => {
+  const { deps, d } = dubles();
+  const r = await tratar(VISTORIA_SEM_DONO({ recebidoEm: haDias(40) }), deps);
+  assert.equal(r.avisos, 0);
+  assert.equal(d.ordem.includes('avisar'), false);
+  assert.match(String(unico(d).motivo), RESSALVA_ANTIGO);
+});
+
+test('B. vistoria reprovada, troca não executada e troca feita sem projeto: 1 aviso cada', async () => {
+  const casos: [Partial<MensagemLida>, string][] = [
+    [{ remetente: 'atendimento.edsp@enel.com', assunto: 'Comunicado técnico sobre a nota: 391000999 - Vistoria reprovada', texto: 'Segue.' },
+      '📡 Vistoria reprovada num e-mail que não reconheci'],
+    [{ remetente: 'Canal GD <canalgd.sp@br.enel.com>', assunto: 'RE: TROCA DE RELÓGIO - NT 391000999',
+      texto: 'Prezado(a), bom dia! Identificamos que a tentativa de troca do medidor no dia 15/09 , não foi executada pelo seguinte motivo: Cliente Não Permitiu Execução. Atenciosamente' },
+      '📡 Troca do relógio não executada num e-mail que não reconheci'],
+    [{ remetente: 'Canal GD <canalgd.sp@br.enel.com>', assunto: 'RE: TROCA DE RELÓGIO - NT 391000999',
+      texto: TROCA_REALIZADA.replace('391000010', '391000999') },
+      '📡 Troca ou reprogramação do medidor feita num e-mail que não reconheci'],
+  ];
+  for (const [o, titulo] of casos) {
+    const { deps, d } = dubles();
+    const r = await tratar(mensagem({ anexos: [], recebidoEm: haDias(3), ...o }), deps);
+    assert.equal(r.situacao, 'nao_identificado', titulo);
+    assert.equal(d.avisos.length, 1, titulo);
+    assert.equal(d.avisos[0].titulo, titulo);
+    assert.equal(d.avisos[0].projectId, null);
+  }
+});
+
+test('B. sem sinal (resposta automática) e troca só agendada, sem projeto: não toca', async () => {
+  const automatica = dubles();
+  await tratar(mensagem({
+    remetente: 'ENEL <no-reply@enel.com>', assunto: 'Recebemos sua mensagem - VISTORIA APROVADA - NT 391000999',
+    texto: 'Olá, Informamos que seu e-mail foi recebido com sucesso. A vistoria do sistema está APROVADA.', anexos: [],
+    recebidoEm: haDias(2),
+  }), automatica.deps);
+  assert.equal(automatica.d.avisos.length, 0, 'a resposta automática repete o NOSSO texto: não classifica, não toca');
+  const agendada = dubles();
+  await tratar(mensagem({
+    remetente: 'Canal GD <canalgd.sp@br.enel.com>', assunto: 'RE: TROCA DE RELÓGIO - NT 391000999', anexos: [], recebidoEm: haDias(2),
+    texto: 'Prezado, boa tarde! Nota de serviço criada 400012345678 , na data de 01/10/2026 , referente a instalação 9999999999 , para a troca do medidor bidirecional, com o prazo de execução de até 7 dias úteis. Atenciosamente',
+  }), agendada.deps);
+  assert.equal(agendada.d.avisos.length, 0);
+});
+
+test('B. devolução sem projeto continua igual: 1 aviso, o de sempre', async () => {
+  const { deps, d } = dubles();
+  await tratar(DEVOLUCAO({ recebidoEm: haDias(2) }), deps);
+  assert.equal(d.avisos.length, 1);
+  assert.equal(d.avisos[0].titulo, '📡 Um e-mail nosso voltou');
+  assert.equal(d.avisos[0].projectId, null);
+});
+
+test('B. conflito com vistoria aprovada: o aviso leva o motivo do conflito', async () => {
+  const { deps, d } = dubles();
+  const r = await tratar(VISTORIA_OK({ assunto: 'RE: VISTORIA GD - NT 391000010 / NT 391000020', recebidoEm: haDias(1) }), deps);
+  assert.equal(r.situacao, 'conflito');
+  assert.equal(d.avisos.length, 1);
+  assert.equal(d.avisos[0].projectId, null);
+  assert.match(d.avisos[0].mensagem, /o e-mail traz números de mais de um projeto \(GD-T6-001, GD-T6-002\)/);
+});
+
+test('B. a IA caiu enquanto procurava o projeto: NÃO avisa (a retentativa ainda pode achar o projeto)', async () => {
+  // O sino é uma vez por mensagem (`aviso_em`): tocar "não reconheci" agora calaria o sino certo
+  // ("vistoria aprovada do projeto X") quando a próxima tentativa achar o projeto.
+  const { deps, d } = dubles({ parecer: { ...carta(), ok: false, veredito: null, titular: null, nt: null, tipo: null, erro: 'a leitura respondeu 503' } });
+  const r = await tratar(VISTORIA_SEM_DONO({ anexos: [pdf('RELATORIO.pdf')], texto: CORPO_VISTORIA_OK, recebidoEm: haDias(1) }), deps);
+  assert.equal(r.situacao, 'nao_identificado');
+  assert.equal(r.concluida, false);
+  assert.equal(d.avisos.length, 0);
+});
+
+test('B. vistoria aprovada de projeto CONCLUÍDO (inativo): não avisa', async () => {
+  const { deps, d } = dubles();
+  const r = await tratar(VISTORIA_OK({ assunto: 'RE: VISTORIA GD - NT 391000050', recebidoEm: haDias(1) }), deps);
+  assert.equal(r.situacao, 'inativo');
+  assert.equal(d.avisos.length, 0);
+});
+
+// ── C. O PDF com o número do projeto no nome é o que a IA lê (02/11/2026) ─────
+// Na ENEL a Carta vem com um PDF só e nada muda; com dois, o que traz o protocolo (ou a NT
+// aprendida) no NOME ganha do maior.
+
+test('C. Carta com um anexo maior e o PDF com a NT no nome: a IA lê o da NT', async () => {
+  const { deps, d } = dubles();
+  await tratar(mensagem({
+    assunto: 'Geração Distribuída – Carta – NT 391000010',
+    anexos: [pdf('ANEXO TECNICO.pdf', 900), pdf('CARTA_391000010.pdf', 100)],
+  }), deps);
+  assert.equal(unico(d).arquivoLido, 'CARTA_391000010.pdf');
+});
+
+test('C. projeto achado pela NT aprendida: o PDF com essa NT no nome ganha do maior', async () => {
+  const { deps, d } = dubles({ parecer: carta({ titular: SEM_PROTOCOLO_COM_NT.titular, nt: '391000200' }) });
+  await tratar(mensagem({
+    assunto: 'Geração Distribuída – Carta – NT 391000200',
+    anexos: [pdf('ANEXO TECNICO.pdf', 900), pdf('CARTA_391000200.pdf', 100)],
+  }), deps, [PA, SEM_PROTOCOLO_COM_NT]);
+  assert.equal(unico(d).arquivoLido, 'CARTA_391000200.pdf');
+});
+
+test('C. Carta com um PDF só: o resultado não muda', async () => {
+  const { deps, d } = dubles();
+  await tratar(mensagem({ assunto: 'Geração Distribuída – Carta – NT 391000010' }), deps);
+  assert.equal(unico(d).arquivoLido, 'CARTA.pdf');
+});
+
+test('B. o aviso sem projeto que falha: a exceção sobe e nada fica concluído (a retentativa toca)', async () => {
+  const { deps, d } = dubles({ avisoFalha: true });
+  await assert.rejects(tratar(VISTORIA_SEM_DONO({ recebidoEm: haDias(1) }), deps), /avisar a equipe/);
+  assert.equal(d.registros.some(x => x.concluida), false);
 });

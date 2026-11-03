@@ -2,7 +2,7 @@
 import { classificarErroEmail, razaoDeFalhaDeArquivo } from '../../erros.js';
 import {
   abrirTentativaEmail, agendarCobranca, anexoDeEmail, anexoEnviado, anexoErro, avisarEquipe, credencialDaCaixa,
-  encerrarCobrancasPorTroca, finalizarRun, mensagemPendente, projetosDoEmail, registrarEmailLido, regrasDoEmail,
+  encerrarCobrancasPorTroca, finalizarRun, mensagemPendente, projetosDaEnel, registrarEmailLido, regrasDoEmail,
   subirDocumento, type Run,
 } from '../../fila.js';
 import { abrirCaixa, type Caixa, type EnvelopeLido, type MensagemLida, type OpcoesDaCaixa } from '../caixa.js';
@@ -13,12 +13,12 @@ import {
 import { classificarAssunto, classificarCorpo, type Classificacao } from './classificar.js';
 import { cobrancaDaMensagem, dataBr, trocaFoiRealizada, vencimento } from './cobranca.js';
 import {
-  avisosEnel, deveAvisar, janelaDeBusca, precisaLerPdf, RESSALVA_AVISO_ANTIGO, recomendacaoCabe, recomendacaoEnel,
-  remetentesDoRun, titularDeOutraPessoa, trocaDeProtocolo,
+  avisoSemProjeto, avisosEnel, deveAvisar, janelaDeBusca, precisaLerPdf, RESSALVA_AVISO_ANTIGO, recomendacaoCabe,
+  recomendacaoEnel, remetentesDoRun, titularDeOutraPessoa, trocaDeProtocolo,
 } from './decidir.js';
 import {
-  combinar, identificarPorDocumento, identificarPorTexto, nomeTrazOutroProjeto, referenciaDoProjeto,
-  type Identificacao, type ProjetoEnel, type Sinal,
+  combinar, identificarPorDocumento, identificarPorTexto, nomeTrazOutroProjeto, ntsAprendidas, numerosDoTexto,
+  referenciaDoProjeto, type Identificacao, type ProjetoEnel, type Sinal,
 } from './identificar.js';
 
 /**
@@ -149,6 +149,16 @@ function razaoDaCobranca(e: unknown): string {
   return codigo ? `código ${codigo}` : 'erro sem código';
 }
 
+/**
+ * O número que o NOME do PDF certo traz, do projeto que o texto achou: a NT aprendida pela qual
+ * ele foi achado; senão o protocolo numérico do cadastro; senão a primeira NT aprendida. Sem
+ * projeto achado, nenhum (vale o maior PDF, como antes).
+ */
+function numeroDoProjeto(id: Identificacao): string | null {
+  if (id.tipo !== 'achado') return null;
+  return id.ntAprendida ?? [...numerosDoTexto(id.projeto.protocolo)][0] ?? [...ntsAprendidas(id.projeto)][0] ?? null;
+}
+
 /** Por que a etapa lida não virou sugestão. */
 function naoCabe(sugerida: string, status: string): string {
   if (sugerida === status) return `não sugeri "${sugerida}": o projeto já está nessa etapa`;
@@ -199,7 +209,9 @@ export async function tratarMensagemEnel(
   const todos = m.anexos.map((a, i) => ({ ...a, ocorrencia: ocorrencias[i] }));
   const semImagem = todos.filter(a => !ehImagem(a));
   const imagensIgnoradas = todos.length - semImagem.length;
-  const pdf = pdfDoParecer(semImagem);
+  // O PDF com o número do projeto no NOME ganha do maior (02/11/2026). Na ENEL a Carta vem com um
+  // PDF só e nada muda; o número é o do projeto que o TEXTO já achou (o PDF ainda não foi lido).
+  const pdf = pdfDoParecer(semImagem, numeroDoProjeto(idTexto));
 
   const ler = precisaLerPdf(regra, idTexto, classificacao, pdf !== null);
   const parecer = ler && pdf ? await deps.lerParecer(pdf.bytes, run.tenant_id) : SEM_LEITURA;
@@ -220,10 +232,17 @@ export async function tratarMensagemEnel(
       : 'não reconheci de qual projeto é este e-mail (nenhum protocolo, UC ou nome de titular nosso) — confira à mão';
     // O sino ANTES do registro: se o aviso falhar, a exceção sobe com a linha ainda
     // `concluida = false` (aberta em abrirTentativa) e a retentativa toca. O banco é
-    // idempotente por `aviso_em`: não toca duas vezes. Sem projeto, só a devolução avisa.
+    // idempotente por `aviso_em`: não toca duas vezes. Sem projeto avisam a devolução e,
+    // desde 02/11/2026, o resultado de vistoria ou de troca (`avisoSemProjeto`) — só quando a
+    // identificação é definitiva (nenhum/conflito sem falha da IA): o sino é UM por mensagem, e
+    // tocar "não reconheci" antes da retentativa calaria o sino com projeto que ela tocaria.
     // E-mail de mais de 30 dias só anota: o aviso que existiria não toca (`deveAvisar`).
     let avisos = 0;
-    const aAvisar = avisosEnel(regra.tipo_documento, null, null, null);
+    const semProjeto = (id.tipo === 'nenhum' || id.tipo === 'conflito') && !passageira
+      ? avisoSemProjeto(classificacao, m.assunto,
+        id.tipo === 'conflito' ? id.motivo : 'nenhum projeto nosso tem os números deste e-mail')
+      : null;
+    const aAvisar = [...avisosEnel(regra.tipo_documento, null, null, null), ...(semProjeto ? [semProjeto] : [])];
     const tocarSino = deveAvisar(m.recebidoEm, agora);
     if (tocarSino) {
       for (const a of aAvisar) {
@@ -270,6 +289,9 @@ export async function tratarMensagemEnel(
   }
 
   const ressalvas: string[] = [];
+  // Achado "por protocolo" SÓ por uma NT que ela já tinha visto (Carta pendente, e-mail ligado): o
+  // selo continua 'protocolo' (CHECK do banco), e o motivo diz de onde veio — o cadastro não tem a NT.
+  if (id.ntAprendida) ressalvas.push(`reconheci pela NT ${id.ntAprendida}, que já tinha visto neste projeto`);
   const nota = anotacao(classificacao);
   if (nota) ressalvas.push(nota);
 
@@ -516,7 +538,8 @@ export async function executarVarreduraEnel(run: Run, abrir: AbridorDaCaixa = ab
   let caixa: Caixa | null = null;
   try {
     const creds = await credencialDaCaixa(run.account_id);
-    const projetos = await projetosDoEmail(run.account_id);
+    // com as NTs que ela já aprendeu (Carta pendente, e-mail ligado): contam como protocolo
+    const projetos = await projetosDaEnel(run.account_id);
     const regras = await regrasDoEmail(run.account_id);
     if (regras.length === 0) throw new Error('Esta concessionária não tem regras de e-mail cadastradas na tela da Ludmilla.');
     // sem remetente nenhum é o mesmo erro de "sem regras": nunca um run "ok" com 0 lidos

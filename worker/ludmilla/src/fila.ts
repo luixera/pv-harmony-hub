@@ -404,11 +404,42 @@ export async function contaDoEmail(accountId: string): Promise<{
   };
 }
 
+/** Um projeto como `ludmilla_email_projetos` o devolve: sem as NTs aprendidas (ver `projetosDaEnel`). */
+export type ProjetoDoBanco = Omit<ProjetoEnel, 'nts'>;
+
 /** TODOS os projetos da concessionária da conta (inclusive os concluídos, que só servem para reconhecer o número). */
-export async function projetosDoEmail(accountId: string): Promise<ProjetoEnel[]> {
+export async function projetosDoEmail(accountId: string): Promise<ProjetoDoBanco[]> {
   const { data, error } = await supabase().rpc('ludmilla_email_projetos' as never, { p_account_id: accountId } as never);
   if (error) throw new Error(`Não consegui listar os projetos da concessionária: ${error.message}`);
-  return (data ?? []) as ProjetoEnel[];
+  return (data ?? []) as ProjetoDoBanco[];
+}
+
+/** Uma NT que a Ludmilla já viu num projeto: na Carta pendente (`carta`) ou no assunto de um e-mail ligado (`email`). */
+export interface NtConhecida { project_id: string; nt: string; fonte: string }
+
+/** As NTs já vistas nos projetos da conta (`ludmilla_email_nts_conhecidas`, só service role). */
+export async function ntsConhecidas(accountId: string): Promise<NtConhecida[]> {
+  const { data, error } = await supabase().rpc('ludmilla_email_nts_conhecidas' as never, { p_account_id: accountId } as never);
+  if (error) throw new Error(`Não consegui listar as NTs já conhecidas: ${error.message}`);
+  return (data ?? []) as NtConhecida[];
+}
+
+/**
+ * Os projetos da ENEL com as NTs que a Ludmilla já aprendeu (`ProjetoEnel.nts`). Só a varredura
+ * da ENEL pede as NTs; a EDP segue com `protocolosDoEmail`, e `ludmilla_email_projetos` não muda.
+ * Falha de qualquer das duas RPCs LANÇA: rodar achando que não conhece NT nenhuma marcaria como
+ * "não reconheci" (e concluído) o e-mail que ela reconheceria.
+ */
+export async function projetosDaEnel(accountId: string): Promise<ProjetoEnel[]> {
+  const projetos = await projetosDoEmail(accountId);
+  const nts = await ntsConhecidas(accountId);
+  const porProjeto = new Map<string, Set<string>>();
+  for (const n of nts) {
+    const s = porProjeto.get(n.project_id) ?? new Set<string>();
+    s.add(String(n.nt));
+    porProjeto.set(n.project_id, s);
+  }
+  return projetos.map(p => ({ ...p, nts: [...(porProjeto.get(p.project_id) ?? [])].sort() }));
 }
 
 export interface AvisoEmail {

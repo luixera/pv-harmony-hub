@@ -353,12 +353,23 @@ export const ehPdf = (a: AnexoBruto): boolean =>
  * "O maior" vale para o e-mail que serve UM projeto. Se o assunto cita vários
  * protocolos, quem chama passa só os arquivos DO protocolo (`separarPorProtocolo`):
  * o maior do e-mail inteiro seria o PDF de outro cliente.
+ *
+ * O NÚMERO no nome vence o tamanho (02/11/2026). O e-mail "NOTA - 40008312722" da EDP traz o
+ * "Termo Operativo…" e a carta "040008312722….pdf"; a carta é a que tem o número, e o maior
+ * pode ser o Termo. Com `protocolo`, os PDFs cujo NOME traz esse número (dígitos sem zero à
+ * esquerda, como número inteiro contíguo: `nomeCitaProtocolo`) são os candidatos, e entre eles
+ * vale o maior. Sem nenhum assim (ou sem `protocolo`), o maior de todos, como antes. Número de
+ * OUTRO protocolo no nome não ganha nada.
  */
-export function pdfDoParecer<T extends AnexoBruto & { bytes: { length: number } }>(anexos: T[]): T | null {
+export function pdfDoParecer<T extends AnexoBruto & { bytes: { length: number } }>(
+  anexos: T[], protocolo?: string | null,
+): T | null {
+  const pdfs = anexos.filter(ehPdf);
+  const comNumero = protocolo ? pdfs.filter(a => nomeCitaProtocolo(a.nome, protocolo)) : [];
   let escolhido: T | null = null;
-  for (const a of anexos) {
+  for (const a of comNumero.length > 0 ? comNumero : pdfs) {
     // empate fica com o primeiro: a escolha tem de ser a mesma em todo run
-    if (ehPdf(a) && (!escolhido || a.bytes.length > escolhido.bytes.length)) escolhido = a;
+    if (!escolhido || a.bytes.length > escolhido.bytes.length) escolhido = a;
   }
   return escolhido;
 }

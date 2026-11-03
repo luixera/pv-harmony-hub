@@ -27,15 +27,15 @@ const REGRAS: RegraEmail[] = [
 ];
 const PA: ProjetoEnel = {
   project_id: 'id-cob-1', company_id: 'empresa-cob', codigo: 'GD-COB-001', protocolo: '391000010',
-  uc: '0055001001', titular: 'TEODORICO VALADARES QUINTINO', status: 'approved', ativo: true,
+  uc: '0055001001', titular: 'TEODORICO VALADARES QUINTINO', status: 'approved', ativo: true, nts: [],
 };
 const PB: ProjetoEnel = {
   project_id: 'id-cob-2', company_id: 'empresa-cob', codigo: 'GD-COB-002', protocolo: '391000020',
-  uc: '0055002002', titular: 'GILVANETE SOARES QUINTILHO', status: 'approved', ativo: true,
+  uc: '0055002002', titular: 'GILVANETE SOARES QUINTILHO', status: 'approved', ativo: true, nts: [],
 };
 const PINATIVO: ProjetoEnel = {
   project_id: 'id-cob-3', company_id: 'empresa-cob', codigo: 'GD-COB-003', protocolo: '391000030',
-  uc: '0055003003', titular: 'ARLINDA CORDEIRO VIEGAS', status: 'completed', ativo: false,
+  uc: '0055003003', titular: 'ARLINDA CORDEIRO VIEGAS', status: 'completed', ativo: false, nts: [],
 };
 
 const AGORA = new Date('2026-10-24T12:00:00Z');

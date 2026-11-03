@@ -24,18 +24,49 @@ export interface ProjetoEnel {
   status: string;
   /** false = concluído/arquivado: o número RECONHECE o e-mail, mas nada vai para o card */
   ativo: boolean;
+  /**
+   * As NTs que a Ludmilla JÁ VIU neste projeto, além do protocolo do cadastro
+   * (`ludmilla_email_nts_conhecidas`: a NT do cartão da Carta que espera o "Aplicar" e a que
+   * vem depois do token "NT" no assunto de um e-mail já ligado a ele). Contam como protocolo:
+   * o projeto sem protocolo (o cartão da Carta pendente) é achado pela NT no e-mail seguinte.
+   * Só vale a de EXATAMENTE 9 dígitos (`DIGITOS_DA_NT`, ver `ntsAprendidas`).
+   */
+  nts: string[];
 }
 
 export type Sinal = 'protocolo' | 'uc' | 'titular';
 
 export type Identificacao =
-  | { tipo: 'achado'; projeto: ProjetoEnel; por: Sinal }
+  /**
+   * `ntAprendida`: o "por protocolo" veio SÓ de uma NT aprendida (não do protocolo do cadastro).
+   * O selo continua 'protocolo' (o banco tem CHECK no casamento); o run escreve no motivo de onde veio.
+   */
+  | { tipo: 'achado'; projeto: ProjetoEnel; por: Sinal; ntAprendida?: string }
   | { tipo: 'inativo'; projeto: ProjetoEnel; por: Sinal }
   | { tipo: 'conflito'; motivo: string; codigos: string[] }
   | { tipo: 'nenhum' };
 
 /** NT e protocolo: 9 dígitos; nada menor é aceito como protocolo (data tem 8, CEP tem 8). */
 export const MIN_DIGITOS = 9;
+
+/** Todas as NTs reais vistas têm 9 dígitos. Mais que isso é número colado ("NT … (SF …)"). */
+export const DIGITOS_DA_NT = 9;
+
+/**
+ * As NTs aprendidas do projeto que VALEM: só dígitos, sem zero à esquerda, exatamente 9
+ * (`DIGITOS_DA_NT`). O banco já entrega assim; a trava aqui é a proteção do lado do robô —
+ * uma NT de 8 ou 10 dígitos casaria com data, CEP colado ou número de outra natureza.
+ */
+export function ntsAprendidas(p: Pick<ProjetoEnel, 'nts'>): Set<string> {
+  const s = new Set<string>();
+  for (const bruto of p.nts ?? []) {
+    const t = String(bruto ?? '').trim();
+    if (!/^\d+$/.test(t)) continue;
+    const n = t.replace(/^0+/, '');
+    if (n.length === DIGITOS_DA_NT) s.add(n);
+  }
+  return s;
+}
 
 /**
  * UC: 7 dígitos, sem os zeros à esquerda. Metade das UCs da ENEL tem 7 ou 8 dígitos
@@ -227,7 +258,27 @@ export function mesmaEmpresaAbreviada(a: string, b: string): boolean {
   return curto.length >= MIN_PALAVRAS_DA_EMPRESA && curto.every((p, i) => p === longo[i]);
 }
 
-function decidir(porProtocolo: ProjetoEnel[], porUc: ProjetoEnel[], porTitular: ProjetoEnel[]): Identificacao {
+/**
+ * Os projetos cujo protocolo casa com os números do e-mail — o do cadastro OU uma NT
+ * aprendida. `soPelaNt` guarda, de quem casou SÓ pela NT aprendida, qual NT foi.
+ */
+function casadosPorProtocolo(projetos: ProjetoEnel[], nums: Set<string>): {
+  porProtocolo: ProjetoEnel[]; soPelaNt: Map<string, string>;
+} {
+  const porProtocolo: ProjetoEnel[] = [];
+  const soPelaNt = new Map<string, string>();
+  for (const p of projetos) {
+    if (algumEm(numerosDoTexto(p.protocolo), nums)) { porProtocolo.push(p); continue; }
+    const nt = [...ntsAprendidas(p)].find(n => nums.has(n));
+    if (nt !== undefined) { porProtocolo.push(p); soPelaNt.set(p.project_id, nt); }
+  }
+  return { porProtocolo, soPelaNt };
+}
+
+function decidir(
+  porProtocolo: ProjetoEnel[], porUc: ProjetoEnel[], porTitular: ProjetoEnel[],
+  soPelaNt: ReadonlyMap<string, string> = new Map(),
+): Identificacao {
   const fortes = new Map<string, ProjetoEnel>();
   for (const p of [...porProtocolo, ...porUc]) fortes.set(p.project_id, p);
 
@@ -246,7 +297,9 @@ function decidir(porProtocolo: ProjetoEnel[], porUc: ProjetoEnel[], porTitular: 
       };
     }
     const por: Sinal = porProtocolo.some(p => p.project_id === f.project_id) ? 'protocolo' : 'uc';
-    return f.ativo ? { tipo: 'achado', projeto: f, por } : { tipo: 'inativo', projeto: f, por };
+    if (!f.ativo) return { tipo: 'inativo', projeto: f, por };
+    const ntAprendida = por === 'protocolo' ? soPelaNt.get(f.project_id) : undefined;
+    return ntAprendida !== undefined ? { tipo: 'achado', projeto: f, por, ntAprendida } : { tipo: 'achado', projeto: f, por };
   }
 
   // Só o nome: decisão do usuário — identifica só se for ÚNICO entre os ATIVOS.
@@ -262,33 +315,35 @@ function decidir(porProtocolo: ProjetoEnel[], porUc: ProjetoEnel[], porTitular: 
 /**
  * Pelo texto, sem IA. Números: assunto + corpo. Nome: SÓ o assunto — o corpo traz
  * a assinatura de funcionário da ENEL, e um cliente homônimo casaria com ela.
+ * O "por protocolo" casa com o protocolo do cadastro OU uma NT aprendida (`ProjetoEnel.nts`):
+ * a mesma NT em dois projetos cai no conflito de sempre.
  */
 export function identificarPorTexto(m: { assunto: string; corpo: string }, projetos: ProjetoEnel[]): Identificacao {
   const texto = `${m.assunto ?? ''}\n${m.corpo ?? ''}`;
   const nums = numerosDoTexto(texto);
   const numsUc = numerosDeUc(texto);
-  const porProtocolo = projetos.filter(p => algumEm(numerosDoTexto(p.protocolo), nums));
+  const { porProtocolo, soPelaNt } = casadosPorProtocolo(projetos, nums);
   const porUc = projetos.filter(p => algumEm(numerosDeUc(p.uc), numsUc));
   const porTitular = projetos.filter(p => p.titular !== null && titularNoAssunto(m.assunto ?? '', p.titular));
-  return decidir(porProtocolo, porUc, porTitular);
+  return decidir(porProtocolo, porUc, porTitular, soPelaNt);
 }
 
 /**
  * Pelo que a IA extraiu do PDF. A IA às vezes troca NT e UC de campo: os dois
- * números do documento valem contra os dois identificadores do projeto.
+ * números do documento valem contra os dois identificadores do projeto (e contra as NTs aprendidas).
  */
 export function identificarPorDocumento(
   doc: { nt: string | null; uc: string | null; titular: string | null }, projetos: ProjetoEnel[],
 ): Identificacao {
   const nums = new Set([...numerosDoTexto(doc.nt), ...numerosDoTexto(doc.uc)]);
   const numsUc = new Set([...numerosDeUc(doc.nt), ...numerosDeUc(doc.uc)]);
-  const porProtocolo = projetos.filter(p => algumEm(numerosDoTexto(p.protocolo), nums));
+  const { porProtocolo, soPelaNt } = casadosPorProtocolo(projetos, nums);
   const porUc = projetos.filter(p => algumEm(numerosDeUc(p.uc), numsUc));
   const titular = doc.titular;
   const porTitular = titular && comparavelTitular(titular)
     ? projetos.filter(p => p.titular !== null && comparavelTitular(p.titular) && mesmoTitular(p.titular, titular))
     : [];
-  return decidir(porProtocolo, porUc, porTitular);
+  return decidir(porProtocolo, porUc, porTitular, soPelaNt);
 }
 
 const FORCA: Record<Sinal, number> = { protocolo: 3, uc: 2, titular: 1 };
@@ -315,13 +370,15 @@ export function combinar(texto: Identificacao, documento: Identificacao): Identi
  * não? Então não vai para este card. É o "procurar os nossos números" aplicado ao
  * nome do arquivo: número que não é de projeto nenhum (nota de serviço, protocolo
  * de contato) não barra. Protocolo com 9+ dígitos; UC com 7+ (a UC curta de outro projeto também barra).
+ * A NT aprendida de outro projeto (`ntsAprendidas`, 9 dígitos) também barra.
  */
 export function nomeTrazOutroProjeto(nome: string, projeto: ProjetoEnel, projetos: ProjetoEnel[]): boolean {
   const nums = numerosDoTexto(nome);
   const numsUc = numerosDeUc(nome); // contém `nums`: 7 < 9
   if (numsUc.size === 0) return false;
   return projetos.some(p => p.project_id !== projeto.project_id
-    && (algumEm(numerosDoTexto(p.protocolo), nums) || algumEm(numerosDeUc(p.uc), numsUc)));
+    && (algumEm(numerosDoTexto(p.protocolo), nums) || algumEm(ntsAprendidas(p), nums)
+      || algumEm(numerosDeUc(p.uc), numsUc)));
 }
 
 /**

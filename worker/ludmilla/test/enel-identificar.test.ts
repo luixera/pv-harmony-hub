@@ -8,7 +8,7 @@ import {
 
 const P = (o: Partial<ProjetoEnel>): ProjetoEnel => ({
   project_id: 'x', company_id: 'c', codigo: 'PRJ-X', protocolo: null, uc: null, titular: null,
-  status: 'analysis', ativo: true, ...o,
+  status: 'analysis', ativo: true, nts: [], ...o,
 });
 const A = P({ project_id: 'a', codigo: 'PRJ-A', protocolo: '123456789', uc: '1111111111', titular: 'MARIA APARECIDA SILVA' });
 const B = P({ project_id: 'b', codigo: 'PRJ-B', protocolo: '987654321', uc: '2222222222', titular: 'JOSE CARLOS SANTOS' });
@@ -690,4 +690,83 @@ test('"88101266" junto com "188101266": cada número casa o seu projeto, por int
   assert.equal(nomeTrazOutroProjeto('CARTA_188101266.pdf', UC8, lista), true);   // o protocolo do PRJ-P9
   assert.equal(nomeTrazOutroProjeto('CARTA_188101266.pdf', PROT, lista), false); // o próprio
   assert.equal(nomeTrazOutroProjeto('CARTA_88101266.pdf', PROT, lista), true);   // a UC do PRJ-U8
+});
+
+// ── A NT que a Ludmilla já aprendeu (02/11/2026) ─────────────────────────────
+// O caso do PRJ-67567: o projeto está SEM protocolo (o cartão da Carta que manda gravar a NT espera o
+// "Aplicar") e o tecnico.abc manda a vistoria com a NT e o endereço no assunto. A Ludmilla já tinha
+// visto a NT (`ludmilla_email_nts_conhecidas`: a Carta pendente, e-mails ligados com "NT …" no
+// assunto): ela conta como protocolo. O endereço é inventado, com a forma do assunto real.
+const ASSUNTO_DA_VISTORIA = 'VISTORIA GD 392812955 - R INVENTADA DE TESTE 301 - CEP 01234-560 - JARDIM EXEMPLO - SAO PAU';
+const SEM_PROTOCOLO = P({
+  project_id: 'r', codigo: 'PRJ-67567', protocolo: null, uc: '0099001122', titular: 'TITULAR INVENTADA DE SOUZA',
+  status: 'vistoria_solicitada', nts: ['392812955'],
+});
+
+test('NT aprendida: o assunto da vistoria acha o projeto sem protocolo, "por protocolo", e diz que foi pela NT aprendida', () => {
+  const id = identificarPorTexto(txt(ASSUNTO_DA_VISTORIA), [A, SEM_PROTOCOLO, B]);
+  assert.equal(id.tipo, 'achado');
+  assert.equal(id.tipo === 'achado' && id.projeto.codigo, 'PRJ-67567');
+  assert.equal(id.tipo === 'achado' && id.por, 'protocolo');
+  assert.equal(id.tipo === 'achado' && id.ntAprendida, '392812955');
+  // controle: sem a NT aprendida o mesmo e-mail não é de ninguém (era o defeito de 31/10)
+  assert.equal(identificarPorTexto(txt(ASSUNTO_DA_VISTORIA), [A, { ...SEM_PROTOCOLO, nts: [] }, B]).tipo, 'nenhum');
+});
+
+test('NT aprendida: "Comunicado técnico sobre a nota: 391747683 - Vistoria aprovada" acha o PRJ-52440', () => {
+  const cleber = P({
+    project_id: 'cl', codigo: 'PRJ-52440', protocolo: 'Sem protocolo', uc: '0088002211', titular: 'TITULAR INVENTADO SILVA',
+    nts: ['391747683'],
+  });
+  const id = identificarPorTexto(txt('Comunicado técnico sobre a nota: 391747683 - Vistoria aprovada'), [A, cleber, B]);
+  assert.equal(id.tipo === 'achado' && id.projeto.codigo, 'PRJ-52440');
+  assert.equal(id.tipo === 'achado' && id.por, 'protocolo');
+  assert.equal(id.tipo === 'achado' && id.ntAprendida, '391747683');
+});
+
+test('NT aprendida: achado pelo protocolo do CADASTRO não ganha a marca, nem se a NT também foi aprendida', () => {
+  const id = identificarPorTexto(txt('VISTORIA GD 123456789'), [{ ...A, nts: ['123456789'] }, B]);
+  assert.equal(id.tipo === 'achado' && id.por, 'protocolo');
+  assert.equal(id.tipo === 'achado' && id.ntAprendida, undefined);
+  const so = identificarPorTexto(txt('VISTORIA GD 123456789'), TODOS);
+  assert.equal(so.tipo === 'achado' && so.ntAprendida, undefined);
+});
+
+test('NT aprendida: a mesma NT aprendida em dois projetos é conflito (levanta a mão)', () => {
+  const x = P({ project_id: 'x1', codigo: 'PRJ-X1', nts: ['392812955'] });
+  const y = P({ project_id: 'y1', codigo: 'PRJ-Y1', nts: ['392812955'] });
+  const id = identificarPorTexto(txt(ASSUNTO_DA_VISTORIA), [x, y]);
+  assert.equal(id.tipo, 'conflito');
+  assert.deepEqual(id.tipo === 'conflito' && [...id.codigos].sort(), ['PRJ-X1', 'PRJ-Y1']);
+  // a NT aprendida de um × o protocolo do cadastro de outro também
+  const z = P({ project_id: 'z1', codigo: 'PRJ-Z1', protocolo: '392812955' });
+  assert.equal(identificarPorTexto(txt(ASSUNTO_DA_VISTORIA), [x, z]).tipo, 'conflito');
+});
+
+test('NT aprendida: só conta com EXATAMENTE 9 dígitos — 8 ou 10, texto ou zero à esquerda não contam', () => {
+  const oito = P({ project_id: 'o', codigo: 'PRJ-8', nts: ['39281295'] });
+  const dez = P({ project_id: 'd', codigo: 'PRJ-10', nts: ['3928129550'] });
+  assert.equal(identificarPorTexto(txt('VISTORIA GD 39281295 - X'), [oito]).tipo, 'nenhum');
+  assert.equal(identificarPorTexto(txt('VISTORIA GD 3928129550 - X'), [dez]).tipo, 'nenhum');
+  assert.equal(identificarPorDocumento({ nt: '3928129550', uc: null, titular: null }, [dez]).tipo, 'nenhum');
+  const lixo = P({ project_id: 'l', codigo: 'PRJ-L', nts: ['NT 392812955', '039281295'] });
+  assert.equal(identificarPorTexto(txt('VISTORIA GD 392812955 / 39281295'), [lixo]).tipo, 'nenhum');
+});
+
+test('NT aprendida: a NT que a IA leu no documento também casa com a NT aprendida', () => {
+  const id = identificarPorDocumento({ nt: '392812955', uc: null, titular: null }, [A, SEM_PROTOCOLO]);
+  assert.equal(id.tipo === 'achado' && id.projeto.codigo, 'PRJ-67567');
+  assert.equal(id.tipo === 'achado' && id.por, 'protocolo');
+  assert.equal(id.tipo === 'achado' && id.ntAprendida, '392812955');
+  // texto e documento concordando pela NT aprendida: segue achado, com a marca
+  const juntos = combinar(identificarPorTexto(txt(ASSUNTO_DA_VISTORIA), [A, SEM_PROTOCOLO]), id);
+  assert.equal(juntos.tipo === 'achado' && juntos.ntAprendida, '392812955');
+});
+
+test('NT aprendida: arquivo com a NT aprendida de OUTRO projeto não vai para este card', () => {
+  assert.equal(nomeTrazOutroProjeto('VISTORIA_392812955.pdf', A, [A, SEM_PROTOCOLO]), true);
+  assert.equal(nomeTrazOutroProjeto('VISTORIA_392812955.pdf', SEM_PROTOCOLO, [A, SEM_PROTOCOLO]), false); // a própria
+  // NT aprendida fora da trava (8 dígitos) não barra nada
+  const oito = P({ project_id: 'o', codigo: 'PRJ-8', nts: ['39281295'] });
+  assert.equal(nomeTrazOutroProjeto('VISTORIA_39281295.pdf', A, [A, oito]), false);
 });

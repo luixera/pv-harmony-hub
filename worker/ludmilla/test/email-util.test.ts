@@ -145,6 +145,45 @@ test('pdfDoParecer devolve null quando não há PDF, e desempata pelo primeiro',
   assert.equal(pdfDoParecer(empate)?.nome, 'primeiro.pdf', 'a escolha tem de ser a mesma em todo run');
 });
 
+// ── C (02/11/2026): o PDF com o NÚMERO do protocolo no nome ganha do maior ───────
+// O e-mail "NOTA - 40008312722" da EDP traz o "Termo Operativo…" (maior) e a carta
+// "040008312722….pdf". A carta é a que tem o número no nome. Nomes inventados nessa forma.
+const PDF = (nome: string, tamanho: number) => ({ nome, mime: 'application/pdf', bytes: Buffer.alloc(tamanho) });
+
+test('C: Termo Operativo maior e a carta com o número no nome → ganha a carta', () => {
+  const anexos = [PDF('Termo Operativo de Teste.pdf', 900_000), PDF('040008312722 - carta de teste.pdf', 20_000)];
+  assert.equal(pdfDoParecer(anexos, '040008312722')?.nome, '040008312722 - carta de teste.pdf');
+  // o número sem o zero à esquerda (como a EDP escreve a nota) também vale, dos dois lados
+  assert.equal(pdfDoParecer(anexos, '40008312722')?.nome, '040008312722 - carta de teste.pdf');
+  assert.equal(pdfDoParecer([PDF('Termo.pdf', 900_000), PDF('NOTA_40008312722.pdf', 10)], '040008312722')?.nome, 'NOTA_40008312722.pdf');
+  // a ordem não muda a escolha
+  assert.equal(pdfDoParecer([...anexos].reverse(), '040008312722')?.nome, '040008312722 - carta de teste.pdf');
+});
+
+test('C: sem o número em nenhum nome, continua o maior; sem protocolo, também', () => {
+  const anexos = [PDF('Termo Operativo de Teste.pdf', 900_000), PDF('carta.pdf', 20_000)];
+  assert.equal(pdfDoParecer(anexos, '040008312722')?.nome, 'Termo Operativo de Teste.pdf');
+  assert.equal(pdfDoParecer(anexos, null)?.nome, 'Termo Operativo de Teste.pdf');
+  assert.equal(pdfDoParecer(anexos)?.nome, 'Termo Operativo de Teste.pdf');
+});
+
+test('C: o número de OUTRO protocolo no nome não ganha; nem o número dentro de uma sequência maior', () => {
+  const outro = [PDF('Termo Operativo de Teste.pdf', 900_000), PDF('040008399999 - carta.pdf', 20_000)];
+  assert.equal(pdfDoParecer(outro, '040008312722')?.nome, 'Termo Operativo de Teste.pdf');
+  // "4000831272299" contém os dígitos, mas não é o número inteiro
+  const colado = [PDF('Termo.pdf', 900_000), PDF('4000831272299.pdf', 20_000)];
+  assert.equal(pdfDoParecer(colado, '040008312722')?.nome, 'Termo.pdf');
+});
+
+test('C: entre os que trazem o número, o maior; empate fica com o primeiro; imagem não entra', () => {
+  const dois = [PDF('040008312722-a.pdf', 1000), PDF('040008312722-b.pdf', 5000), PDF('Termo.pdf', 900_000)];
+  assert.equal(pdfDoParecer(dois, '040008312722')?.nome, '040008312722-b.pdf');
+  const empate = [PDF('040008312722-a.pdf', 1000), PDF('040008312722-b.pdf', 1000)];
+  assert.equal(pdfDoParecer(empate, '040008312722')?.nome, '040008312722-a.pdf');
+  const comImagem = [{ nome: '040008312722.png', mime: 'image/png', bytes: Buffer.alloc(10) }, PDF('Termo.pdf', 900_000)];
+  assert.equal(pdfDoParecer(comImagem, '040008312722')?.nome, 'Termo.pdf');
+});
+
 // ── A chave do anexo (D1): o protocolo é parte dela ─────────────────────────
 // O formato é contrato com o banco (`ludmilla_email_id_arquivo`). Se uma ponta
 // mudar sozinha, a robô re-anexa o que já anexou — por isso o formato está

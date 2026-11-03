@@ -374,6 +374,23 @@ test('o PDF lido é o MAIOR, e fica registrado qual foi', async () => {
   assert.equal(r.anexados, 2, 'os dois PDFs vão para o card; só a LEITURA é de um');
 });
 
+// C (02/11/2026): o e-mail "NOTA - …" traz o Termo Operativo (maior) e a carta com o número
+// do protocolo no nome. A IA lê a CARTA — os dois vão para o card, só a leitura é de um.
+test('C: a IA lê o PDF que traz o NÚMERO do protocolo no nome, não o Termo maior', async () => {
+  const { deps, d } = dubles();
+  const nota = mensagem({
+    assunto: 'ENVIO DE PARECER - NOTA 45006443920',
+    anexos: [
+      anexo('Termo Operativo de Teste.pdf', 'application/pdf', 900_000),
+      anexo('045006443920 - carta de teste.pdf', 'application/pdf', 20_000),
+    ],
+  });
+  const { r } = await comLogs(() => tratarMensagem(RUN, PROJETO, nota, REGRAS, deps));
+  assert.deepEqual(d.pdfsLidos, [20_000], 'lê a carta, não o Termo (o maior)');
+  assert.equal(d.registros[0].arquivoLido, '045006443920 - carta de teste.pdf');
+  assert.equal(r.anexados, 2, 'os dois vão para o card; só a LEITURA é de um');
+});
+
 test('regra que pede PDF num e-mail sem PDF: conclui, com a ressalva', async () => {
   const { deps, d } = dubles();
   const semAnexo = mensagem({ anexos: [] });

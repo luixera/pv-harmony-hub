@@ -347,10 +347,12 @@ export async function tratarMensagem(
   }
 
   // O parecer é lido ANTES de anexar: o titular que ele traz entra na
-  // conferência. O PDF escolhido é o MAIOR, não o primeiro da lista — entre os
-  // arquivos DESTE protocolo quando o e-mail serve vários. Ler o que o bucket
-  // recusa (um PDF acima de 10 MB) continua valendo: a recusa é de anexar.
-  const pdf = pdfDoParecer(doProtocolo);
+  // conferência. O PDF escolhido é o que traz o NÚMERO deste protocolo no nome
+  // (a carta da "NOTA -", ao lado do Termo Operativo); sem nenhum assim, o MAIOR,
+  // não o primeiro da lista — entre os arquivos DESTE protocolo quando o e-mail
+  // serve vários. Ler o que o bucket recusa (um PDF acima de 10 MB) continua
+  // valendo: a recusa é de anexar.
+  const pdf = pdfDoParecer(doProtocolo, p.protocolo);
   const parecer = regra.ler_pdf && pdf
     ? await deps.lerParecer(pdf.bytes, p.protocolo, run.tenant_id)
     : SEM_LEITURA;

@@ -6,8 +6,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import {
-  avisosEnel, deveAvisar, janelaDeBusca, precisaLerPdf, recomendacaoCabe, recomendacaoEnel, remetentesDoRun,
-  remetentesParaBuscar, titularDeOutraPessoa, trocaDeProtocolo,
+  assuntoSeguro, avisoSemProjeto, avisosEnel, deveAvisar, janelaDeBusca, precisaLerPdf, recomendacaoCabe, recomendacaoEnel,
+  remetentesDoRun, remetentesParaBuscar, titularDeOutraPessoa, trocaDeProtocolo,
 } from '../src/email/enel/decidir.js';
 import { classificarErroEmail } from '../src/erros.js';
 import type { RegraEmail } from '../src/email/util.js';
@@ -354,4 +354,60 @@ test('A fazer: os 3 títulos REAIS de avisosEnel viram o tipo certo no banco (e 
 
 test('A fazer: título que ninguém previu vira "aviso" (a tela mostra o próprio título)', () => {
   assert.equal(tipoNoBanco('📡 Algo que a ENEL mandou e ninguém previu', regrasDoTipoDoAfazer()), 'aviso');
+});
+
+// ── B. Resultado de vistoria ou troca num e-mail SEM projeto vira aviso (02/11/2026) ──
+// Antes, sem projeto, só a devolução tocava o sino: a vistoria aprovada do PRJ-67567 ficou em
+// silêncio. O aviso sem projeto diz o que aconteceu, o assunto (limpo) e a saída.
+
+const NAO_RECONHECI = 'nenhum projeto nosso tem os números deste e-mail';
+
+test('B: vistoria aprovada sem projeto — título, assunto, o motivo e a saída', () => {
+  const a = avisoSemProjeto({ tipo: 'resultado_vistoria', aprovada: true }, 'VISTORIA GD 391000777 - R INVENTADA 1', NAO_RECONHECI);
+  assert.ok(a);
+  assert.equal(a.titulo, '📡 Vistoria aprovada num e-mail que não reconheci');
+  assert.match(a.mensagem, /VISTORIA GD 391000777 - R INVENTADA 1/);
+  assert.match(a.mensagem, /nenhum projeto nosso tem os números deste e-mail/);
+  assert.match(a.mensagem, /Se for de um projeto nosso, grave a NT nele \(ou aplique o cartão da Carta\) e use "Ler de novo"\./);
+});
+
+test('B: os quatro sinais viram aviso; troca agendada e sem classificação, não', () => {
+  const t = (c: Parameters<typeof avisoSemProjeto>[0]) => avisoSemProjeto(c, 'X', NAO_RECONHECI)?.titulo ?? null;
+  assert.equal(t({ tipo: 'resultado_vistoria', aprovada: false }), '📡 Vistoria reprovada num e-mail que não reconheci');
+  assert.equal(t({ tipo: 'troca_relogio', estado: 'nao_executada', motivo: 'Cliente Não Permitiu Execução' }),
+    '📡 Troca do relógio não executada num e-mail que não reconheci');
+  assert.equal(t({ tipo: 'troca_relogio', estado: 'realizada' }),
+    '📡 Troca ou reprogramação do medidor feita num e-mail que não reconheci');
+  assert.equal(t({ tipo: 'troca_relogio', estado: 'agendada', prazoDias: 7 }), null);
+  assert.equal(t(null), null);
+});
+
+test('B: o motivo do conflito vai na mensagem no lugar do "não reconheci"', () => {
+  const a = avisoSemProjeto({ tipo: 'resultado_vistoria', aprovada: true }, 'X',
+    'o e-mail traz números de mais de um projeto (PRJ-A, PRJ-B)');
+  assert.match(String(a?.mensagem), /o e-mail traz números de mais de um projeto \(PRJ-A, PRJ-B\)/);
+  assert.doesNotMatch(String(a?.mensagem), /nenhum projeto nosso/);
+});
+
+test('B: o assunto vai limpo — sem CR/LF nem controle, espaços colapsados, até 200 caracteres', () => {
+  assert.equal(assuntoSeguro('VISTORIA\r\n GD\t391000777\u0000 - X  '), 'VISTORIA GD 391000777 - X');
+  const longo = assuntoSeguro(`VISTORIA ${'A'.repeat(400)}`);
+  assert.ok([...longo].length <= 200, `tem ${[...longo].length}`);
+  assert.ok(longo.endsWith('…'));
+  assert.equal(assuntoSeguro(null), '');
+  // corta por caractere, não no meio de um emoji
+  const emoji = assuntoSeguro('😀'.repeat(300));
+  assert.ok(!/[\uD800-\uDBFF]$/.test(emoji.replace(/…$/, '')), 'não deixa meia surrogate no fim');
+  // e o que vai na mensagem não carrega quebra de linha do assunto
+  const a = avisoSemProjeto({ tipo: 'resultado_vistoria', aprovada: true }, 'LINHA 1\r\nLINHA 2', NAO_RECONHECI);
+  assert.doesNotMatch(String(a?.mensagem), /[\r\n]/);
+});
+
+test('B: os títulos sem projeto viram o tipo certo no banco — a troca FEITA nunca vira "troca_falhou"', () => {
+  const r = regrasDoTipoDoAfazer();
+  const t = (c: Parameters<typeof avisoSemProjeto>[0]) => String(avisoSemProjeto(c, 'X', NAO_RECONHECI)?.titulo);
+  assert.equal(tipoNoBanco(t({ tipo: 'resultado_vistoria', aprovada: true }), r), 'vistoria_aprovada');
+  assert.equal(tipoNoBanco(t({ tipo: 'resultado_vistoria', aprovada: false }), r), 'aviso');
+  assert.equal(tipoNoBanco(t({ tipo: 'troca_relogio', estado: 'nao_executada', motivo: null }), r), 'troca_falhou');
+  assert.equal(tipoNoBanco(t({ tipo: 'troca_relogio', estado: 'realizada' }), r), 'aviso');
 });

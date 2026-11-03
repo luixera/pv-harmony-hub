@@ -700,6 +700,21 @@ Agora:
 `documento.pdf`, `image001.png`) nada muda: anexa todos os não-imagem e lê o
 maior PDF. Regra que não anexa nem lê PDF não depende de arquivo e não é afetada.
 
+### O PDF que a IA lê: o que traz o NÚMERO no nome (02/11/2026)
+
+`pdfDoParecer` escolhia sempre o **maior** PDF. O e-mail `NOTA - 40008312722`
+(PRJ-92427, protocolo `040008312722`) traz dois: o `Termo Operativo…` e a carta
+`040008312722….pdf`. A carta é a que tem o número no nome, e o maior pode ser o Termo.
+
+Regra nova (`pdfDoParecer(anexos, protocolo)`, `util.ts`), para as duas
+concessionárias: entre os PDFs, os que trazem no **nome** o número do protocolo do
+projeto — dígitos sem zero à esquerda, como número inteiro contíguo
+(`nomeCitaProtocolo`: `4000831272299` não é `40008312722`) — são os candidatos, e
+entre eles vale o maior. Sem nenhum assim, continua o maior de todos. Empate fica com o
+primeiro. Número de **outro** protocolo no nome não ganha nada. Os dois arquivos
+continuam indo para o card: só a **leitura** é de um. A EDP passa `p.protocolo`; a ENEL
+passa o número do projeto que o **texto** já achou (ver a seção da ENEL).
+
 ### Nome de arquivo com o número de OUTRO protocolo (E1b, 12/10/2026)
 
 A rodada 3 só olhava o nome do arquivo quando o assunto citava **vários**
@@ -837,6 +852,26 @@ Edge function Deno que recebe o PDF em base64 e devolve
   cair para o protocolo). No **resumo** segue igualdade exata: "Não consta
   restrição; conexão aprovada." é um resumo legítimo. O teste
   `parecer-marcadores.test.ts` carrega o arquivo real da função, sem Deno.
+
+### As regras da conta EDP (dado, não código — 02/11/2026)
+
+Decisão do usuário (02/11/2026, "NOTA e CARTA DE OBRAS"). Gravado pela seção 2 da
+migração `20261102120000`, só nas regras que ainda estavam como antes (edição feita
+pela tela vence):
+
+| Regra | Antes | Agora |
+|---|---|---|
+| `NOTA -` (qualquer remetente) | `tipo_documento='nota'`, `ler_pdf=false` | `tipo_documento='parecer'`, `ler_pdf=true` |
+| `CARTA DE OBRAS` (`edpdocumentoporemail`) | `carta_obras`, `ler_pdf=false` | `carta_obras`, `ler_pdf=true` |
+| `ENVIO DE PARECER` (`relacionamento.edp`) | `parecer`, `ler_pdf=true` | sem mudança |
+
+- **A NOTA vira `parecer`** porque é a única forma de `recomendacaoDoVeredito` sugerir
+  etapa (`favoravel → approved`, `pendencia → pendencia`): a carta da NOTA vem às vezes
+  aprovada, às vezes reprovada. Com `ler_pdf`, ela passa também pela trava do titular
+  (`conferir`) e paga a leitura (~US$ 0,10 por PDF).
+- **A CARTA DE OBRAS é lida** (veredito e resumo no cartão), mas **sem sugestão de
+  etapa**: `recomendacaoDoVeredito` só sugere para `parecer`, e o usuário não definiu o
+  que ela significa.
 
 ### Banco
 
@@ -1006,7 +1041,9 @@ resto.
 concluído **reconhece** o e-mail ("é de um projeto já concluído") e barra arquivo de
 outro projeto, mas nada vai para o card dele.
 
-1. **Texto, sem IA** (`identificarPorTexto`): protocolo/NT e UC no assunto + corpo.
+1. **Texto, sem IA** (`identificarPorTexto`): protocolo/NT e UC no assunto + corpo. O
+   "protocolo" é o do cadastro **ou** uma NT que ela já aprendeu (`ProjetoEnel.nts`, ver
+   "A NT que ela já aprendeu").
 2. **Documento, com IA** (`identificarPorDocumento`): a `ludmilla-parecer` devolve
    NT, UC e titular do PDF, e a robô casa com os projetos do mesmo jeito. A IA às
    vezes troca NT e UC de campo, então os dois números valem contra os dois
@@ -1190,8 +1227,12 @@ identificou o projeto **ou** a regra espera veredito — `carta_projeto` e
 `resultado_vistoria` — e o texto não classificou). As Cartas chegam com o corpo
 vazio: tudo está no PDF. A tentativa é contada **antes** da chamada
 (`ludmilla_email_tentativa`); a IA fora do ar deixa a mensagem para o próximo run,
-até 5 vezes. Lê o maior PDF do e-mail; se o nome dele traz o número de **outro**
-projeto, o que ele diz não vale para este (nem etapa, nem troca, nem sino).
+até 5 vezes. Lê **um** PDF: desde 02/11/2026, o que traz no nome o número do projeto que o
+**texto** já achou (a NT aprendida pela qual foi achado; senão o protocolo numérico do
+cadastro; senão a primeira NT aprendida — `numeroDoProjeto`, `run.ts`); sem nenhum assim, ou
+sem projeto achado pelo texto, o maior (`pdfDoParecer`, ver a seção da EDP "O PDF que a IA
+lê"). Na Carta, que vem com um PDF só, nada muda. Se o nome do PDF lido traz o número de
+**outro** projeto, o que ele diz não vale para este (nem etapa, nem troca, nem sino).
 
 ### `recomendacaoCabe` — 120 dias de e-mail não sugerem etapa para trás
 
@@ -1238,6 +1279,54 @@ sem a NT e a 2 com ela liga; repetição sem pedido nunca desliga) e **sobrevive
 decisão** da equipe (linha nova só de troca, mesmo sem recomendação), exceto se a
 linha decidida já era de troca. O "Aplicar" grava `portal_updates.protocolo` em
 `projects.protocol_number` (ver "A lição do Aplicar").
+
+### A NT que ela já aprendeu (02/11/2026)
+
+**O caso** (dados de produção de 02/11): a vistoria aprovada do PRJ-67567 chegou do
+`tecnico.abc` em 31/10 com o assunto `VISTORIA GD 392812955 - <endereço>` e foi registrada
+como "não reconheci de qual projeto…". O projeto estava com `protocol_number` NULL: o cartão
+da Carta que manda gravar a NT estava pendente desde 24/10. Mas a Ludmilla **já conhecia** a
+NT — a IA a leu na Carta, e dois e-mails já ligados ao projeto traziam `NT 392812955` no
+assunto. O mesmo com 3 resultados de vistoria do `atendimento.edsp` ("Comunicado técnico
+sobre a nota: <NT> - Vistoria aprovada|reprovada"): PRJ-52440, PRJ-61098 e PRJ-75158.
+
+**O banco** — `ludmilla_email_nts_conhecidas(p_account_id)` → `(project_id, nt, fonte)`
+(migração `20261102120000`; `SECURITY DEFINER`, `search_path=''`, guarda
+`auth.role() = 'service_role'` no `WHERE` como a irmã, `EXECUTE` só para `service_role`).
+Escopo: o de `ludmilla_email_projetos` (mesmo tenant e mesma concessionária da conta, sem os
+apagados). `ludmilla_email_projetos` **não mudou** (a EDP também a usa). Duas fontes:
+
+| `fonte` | De onde |
+|---|---|
+| `carta` | `portal_updates` da conta com `atualizar_protocolo = true` e `situacao = 'pendente'` (o cartão que espera o "Aplicar"), com exatamente 9 dígitos |
+| `email` | o número logo depois do **token** `NT` no **assunto** de um e-mail da conta já ligado a um projeto (`project_id` não nulo): `(?<![0-9A-Z])NT[^0-9A-Z]{0,3}([0-9]{9})(?![0-9])`, sem diferenciar maiúsculas — exatamente 9 dígitos, sem dígito antes nem depois, e "NT" sem letra colada antes ("DOCUMENT 391…" não conta). É o padrão dos assuntos que a NOSSA equipe escreve (`… - NOME - NT 391747683`). Número solto não conta |
+
+Uma linha por par projeto/NT (a mesma NT nas duas fontes sai uma vez, como `carta`). Em
+02/11, contra a conta ENEL: 13 pares, 13 NTs distintas, **nenhuma NT em dois projetos**;
+entre eles PRJ-67567 → 392812955 (`carta`), PRJ-52440 → 391747683, PRJ-61098 → 391826601 e
+PRJ-75158 → 391704128 (`email`).
+
+**O robô** — `ProjetoEnel` ganhou `nts: string[]`. `projetosDaEnel` (`fila.ts`) junta as duas
+RPCs; **só a varredura da ENEL** pede as NTs (a EDP segue com `protocolosDoEmail`). Falha de
+qualquer das duas **lança** (o run vira erro e tenta de novo): rodar achando que não conhece NT
+nenhuma marcaria como "não reconheci" — e concluído — o e-mail que ela reconheceria.
+
+- Em `identificarPorTexto` e `identificarPorDocumento`, o "por protocolo" casa com
+  **protocolo ∪ NTs aprendidas**. A mesma NT aprendida em dois projetos (ou a NT aprendida de um
+  e o protocolo do cadastro de outro) cai no `conflito` de sempre: levanta a mão.
+- `nomeTrazOutroProjeto` também considera as NTs aprendidas dos **outros** projetos.
+- O selo continua `protocolo` (o banco tem CHECK em `casamento`). Quando o casamento veio **só**
+  pela NT aprendida (não pelo protocolo do cadastro), o `motivo` ganha a ressalva
+  `reconheci pela NT <n>, que já tinha visto neste projeto` (`Identificacao.ntAprendida`).
+- **Proteção**: NT aprendida só conta com **exatamente 9 dígitos** (`DIGITOS_DA_NT`, agora em
+  `identificar.ts`; `ntsAprendidas`): texto, 8 ou 10 dígitos, ou zero à esquerda que a deixa com
+  8, não contam.
+
+**Limites conhecidos.** A NT do assunto de e-mail é aprendida de um e-mail que já foi ligado
+(por número, UC ou nome) — se esse ligamento estivesse errado, a NT errada passaria a contar;
+a trava contra isso é a mesma de sempre (NT em dois projetos = conflito; titular do documento).
+A NT da Carta pendente conta **antes** de a equipe aplicar o cartão; se a equipe **ignora** o
+cartão, a NT deixa de contar (só `pendente`), mas pode continuar valendo pela fonte `email`.
 
 ### Chaves: `''`, `referencia` e a chave do anexo
 
@@ -1287,8 +1376,9 @@ linha decidida já era de troca. O "Aplicar" grava `portal_updates.protocolo` em
 - **O sino só toca para e-mail de até 30 dias** (`deveAvisar`, `DIAS_PARA_AVISAR`).
   Decisão do usuário em 24/10/2026: ler mais histórico (anexar os documentos, abrir
   cartão de etapa ou de troca de protocolo) **sem inundar o sino** com coisas que a
-  equipe já resolveu. Vale para os três avisos (vistoria virtual aprovada, troca do
-  relógio não executada, e-mail nosso devolvido), nos **dois** caminhos do run (com e
+  equipe já resolveu. Vale para todos os avisos (vistoria virtual aprovada, troca do
+  relógio não executada, e-mail nosso devolvido e, desde 02/11/2026, o aviso sem projeto —
+  ver "Resultado sem projeto vira aviso"), nos **dois** caminhos do run (com e
   sem projeto). Mais de 30 dias (30 dias e 1 minuto já é mais; exatamente 30 ainda
   avisa) não chama `avisar`; sem data no e-mail, na dúvida, avisa. Todo o resto é
   igual: a mensagem é tratada, anexada e registrada, e o cartão abre se houver etapa
@@ -1312,6 +1402,46 @@ linha decidida já era de troca. O "Aplicar" grava `portal_updates.protocolo` em
   evita (sem cartão, sem sino), e é por isso que, na primeira leitura, o número de
   sinos é a soma dos dois tipos.
 
+### Resultado sem projeto vira aviso (02/11/2026)
+
+Até aqui, sem projeto (`nenhum` ou `conflito`), `tratarMensagemEnel` chamava
+`avisosEnel(tipo, null, null, null)`: só a **devolução** tocava o sino, e a vistoria aprovada
+do PRJ-67567 ficou em silêncio. Agora (`avisoSemProjeto`, `decidir.ts`) também avisam, quando a
+**classificação do texto** tem sinal de:
+
+| Sinal | Título | Tipo do A fazer (o banco deduz do título) |
+|---|---|---|
+| vistoria aprovada | `📡 Vistoria aprovada num e-mail que não reconheci` | `vistoria_aprovada` |
+| vistoria reprovada | `📡 Vistoria reprovada num e-mail que não reconheci` | `aviso` |
+| troca não executada | `📡 Troca do relógio não executada num e-mail que não reconheci` | `troca_falhou` |
+| troca ou reprogramação executada | `📡 Troca ou reprogramação do medidor feita num e-mail que não reconheci` | `aviso` |
+
+A troca **feita** fala em "medidor", nunca em "relógio": `ludmilla_email_avisar` deduz o tipo
+por `ILIKE '%rel_gio%'`, e "relógio" a faria `troca_falhou` (um teste lê o `CASE` da migração e
+trava isso). A mensagem leva o **assunto** limpo (`assuntoSeguro`: sem CR/LF nem controle, até
+200 caracteres, cortado por caractere), o **motivo** (`nenhum projeto nosso tem os números deste
+e-mail`, ou o do conflito) e a **saída**: `Se for de um projeto nosso, grave a NT nele (ou aplique
+o cartão da Carta) e use "Ler de novo".`
+
+Regras: só e-mail de até 30 dias (`deveAvisar`; mais velho ganha a ressalva "aviso não tocado"),
+o sino **antes** do registro (a retentativa depende disso), e só quando a identificação é
+**definitiva** — com a IA fora do ar enquanto procurava o projeto (`passageira`) não avisa,
+porque o sino é **um por mensagem** (`aviso_em`) e tocar "não reconheci" calaria o sino com
+projeto que a próxima tentativa tocaria. Projeto concluído (`inativo`), troca só agendada e
+e-mail sem classificação (resposta automática, devolução e comunicado nunca são classificados)
+não avisam. A devolução continua igual.
+
+A RPC aceita `p_project_id` nulo e é idempotente por mensagem (`prosrc` vivo conferido, md5
+`ddf2aa83…`, sem mudança). O A fazer sem projeto entra na aba Decidir pelo caminho que a
+devolução sem projeto já usava (`itensDaCaixa`: código e projeto nulos; só "Marcar como feito";
+coberto pelos testes da tela com `project_id: null`). **A empresa (papel `company`) não vê**:
+`portal_afazeres` e `portal_email_mensagens` exigem `ludmilla_equipe_ok()` (admin/staff do
+tenant de biblioteca), e o sino só vai para admin e staff — provado em `begin … rollback` com uma
+empresa real do tenant (0 linhas) e o admin como controle (4). O assunto traz endereço de cliente.
+
+Limite: se a equipe grava a NT e usa "Ler de novo", a releitura acha o projeto, mas o sino com
+projeto não toca de novo (`aviso_em` já marcado) — o A fazer sem projeto é o registro do aviso.
+
 ### Banco da ENEL
 
 | Objeto | Para que |
@@ -1321,7 +1451,8 @@ linha decidida já era de troca. O "Aplicar" grava `portal_updates.protocolo` em
 | `portal_email_mensagens.aviso_em` | o sino uma vez por mensagem |
 | `ludmilla_email_conta` | `identificacao` e `ultima_varredura_em` da conta |
 | `ludmilla_email_projetos` | os projetos da concessionária, com `ativo`; só service role |
-| `ludmilla_email_avisar` | toca o sino (admin + staff), idempotente por `aviso_em` |
+| `ludmilla_email_nts_conhecidas` | as NTs já vistas em cada projeto (Carta pendente, `NT` no assunto de e-mail ligado); só service role (`20261102120000`) |
+| `ludmilla_email_avisar` | toca o sino (admin + staff), idempotente por `aviso_em`; aceita `p_project_id` nulo (aviso sem projeto) |
 | `ludmilla_email_registrar` | agora com 20 parâmetros (`p_referencia`, `p_casamento`, `p_abrir_cartao`, `p_atualizar_protocolo`); grava `titular_portal` com o titular do **cadastro** (EDP e ENEL) |
 | `ludmilla_email_anexo_novo` | agora com 8 parâmetros (`p_chave`) |
 | `ludmilla_aplicar_update` | recuperou o ramo de troca de protocolo (`20261016120000`) |
@@ -1331,7 +1462,9 @@ Migrações: `20261013120000` (base), `20261014120000` (regra do `atendimento.ed
 protocolo, com a trava), `20261019120000` (chave do anexo), `20261022120000`
 (fechamento da revisão final: o cartão pendente só é corrigido se for do mesmo
 projeto — C-1; a trava compara também a UC pontuada — M2; `recebido_em` no `raw` do
-cartão). O `registrar` e o
+cartão), `20261102120000` (as NTs aprendidas, função nova, e as regras da EDP; aplicada em
+02/11/2026 pelo CLI, sem `db push`, com os md5 das funções da Ludmilla iguais antes e
+depois). O `registrar` e o
 `anexo_novo` mudaram de assinatura: `CREATE OR REPLACE` sozinho criaria uma segunda
 função ao lado, então a antiga sai (`DROP FUNCTION` da assinatura anterior). Os
 parâmetros novos têm DEFAULT, e a chamada da EDP resolve para a nova sem mudança.

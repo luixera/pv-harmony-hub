@@ -1,7 +1,7 @@
 // worker/ludmilla/src/email/enel/decidir.ts
 import { chaveProtocolo, comparavelTitular, type RegraEmail, type Veredito } from '../util.js';
 import type { Classificacao } from './classificar.js';
-import { mesmaEmpresaAbreviada, mesmoTitular, type Identificacao, type Sinal } from './identificar.js';
+import { DIGITOS_DA_NT, mesmaEmpresaAbreviada, mesmoTitular, type Identificacao, type Sinal } from './identificar.js';
 
 /**
  * As decisões do run da ENEL que não precisam de banco nem de rede: ler o PDF
@@ -87,6 +87,45 @@ export function avisosEnel(
   return [];
 }
 
+/** Até quantos caracteres do assunto vão no aviso sem projeto. */
+export const MAX_ASSUNTO_NO_AVISO = 200;
+
+/**
+ * O assunto pronto para ir num aviso: sem CR/LF nem outro caractere de controle, espaços
+ * colapsados e no máximo `MAX_ASSUNTO_NO_AVISO` caracteres (cortado por caractere, nunca no meio
+ * de um emoji, com "…" no fim). O aviso vai para o banco (sino e A fazer), nunca para o log.
+ */
+export function assuntoSeguro(assunto: string | null | undefined, max = MAX_ASSUNTO_NO_AVISO): string {
+  // eslint-disable-next-line no-control-regex
+  const limpo = String(assunto ?? '').replace(/[\u0000-\u001f\u007f-\u009f]+/g, ' ').replace(/\s+/g, ' ').trim();
+  const letras = [...limpo];
+  return letras.length <= max ? limpo : `${letras.slice(0, max - 1).join('').trimEnd()}…`;
+}
+
+/**
+ * O que um e-mail SEM projeto diz que pede uma pessoa (decisão do usuário, 02/11/2026). Antes,
+ * sem projeto, só a devolução tocava o sino, e a vistoria aprovada do PRJ-67567 (o projeto sem
+ * protocolo) ficou em silêncio. Avisam: vistoria aprovada, vistoria reprovada, troca não
+ * executada e troca (ou reprogramação) feita. Troca agendada e e-mail sem classificação, não.
+ *
+ * O título é lido pelo banco (`ludmilla_email_avisar` deduz o tipo do A fazer por ILIKE): a
+ * vistoria aprovada vira `vistoria_aprovada`, a troca não executada `troca_falhou`, e as outras
+ * duas `aviso` — por isso a troca FEITA fala em "medidor", nunca em "relógio" (viraria "troca_falhou").
+ * `porque`: o "nenhum projeto nosso tem os números deste e-mail", ou o motivo do conflito.
+ */
+export function avisoSemProjeto(c: Classificacao, assunto: string | null | undefined, porque: string): Aviso | null {
+  const oQue = c?.tipo === 'resultado_vistoria' ? (c.aprovada ? 'Vistoria aprovada' : 'Vistoria reprovada')
+    : c?.tipo === 'troca_relogio' && c.estado === 'nao_executada' ? 'Troca do relógio não executada'
+    : c?.tipo === 'troca_relogio' && c.estado === 'realizada' ? 'Troca ou reprogramação do medidor feita'
+    : null;
+  if (!oQue) return null;
+  return {
+    titulo: `📡 ${oQue} num e-mail que não reconheci`,
+    mensagem: `Assunto: "${assuntoSeguro(assunto)}". Não reconheci o projeto: ${porque}. `
+      + 'Se for de um projeto nosso, grave a NT nele (ou aplique o cartão da Carta) e use "Ler de novo".',
+  };
+}
+
 export const JANELA_MAXIMA_DIAS = 120;
 /** Até quantos dias de idade o e-mail ainda toca o sino (decisão do usuário, 24/10/2026). */
 export const DIAS_PARA_AVISAR = 30;
@@ -141,8 +180,8 @@ export function remetentesDoRun(regras: RegraEmail[]): string[] {
 /** O que a troca de protocolo precisa da leitura do PDF. */
 export interface LeituraDaCarta { ok: boolean; tipo: string | null; nt: string | null }
 
-/** Todas as NTs reais vistas têm 9 dígitos. Mais que isso é número colado ("NT … (SF …)"). */
-export const DIGITOS_DA_NT = 9;
+/** `DIGITOS_DA_NT` mora em identificar.ts (a NT aprendida também a usa); fica exportada daqui também. */
+export { DIGITOS_DA_NT };
 
 /**
  * Os números de um campo do cadastro: os dígitos todos colados E cada pedaço
