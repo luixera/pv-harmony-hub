@@ -115,6 +115,8 @@ export function CriarNaCpflPanel({ projectId, cpflNodeId, concessionaireName }: 
 
   // Último run deste projeto ao montar (ativo ou o que acabou de terminar):
   // é o que mostra "na fila" e o erro de quem falhou antes do passo 1 (login).
+  // Simulação antiga não conta: o modal deixou de simular (02/11/2026, o
+  // envio de verdade foi validado) e ela só aparece no histórico da Ludmilla.
   const { data: runRecente } = useQuery({
     queryKey: ['run-recente-criacao', projectId],
     queryFn: async (): Promise<string | null> => {
@@ -123,6 +125,7 @@ export function CriarNaCpflPanel({ projectId, cpflNodeId, concessionaireName }: 
         .select('id, situacao, terminado_em')
         .eq('tipo', 'criar_projeto')
         .filter('dados->>project_id', 'eq', projectId)
+        .is('dados->>simular', null)
         .order('pedido_em', { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -143,33 +146,24 @@ export function CriarNaCpflPanel({ projectId, cpflNodeId, concessionaireName }: 
   if (!disponivel || !cpflAccount || !ehCpfl) return null;
 
   const concluido    = passosExibidos.some(p => p.nome === 'concluido' && p.status === 'ok');
-  const simulado     = passosExibidos.some(p => p.nome === 'simulado' && p.status === 'ok');
   const passoComErro = passosExibidos.some(p => p.status === 'erro');
   const comErro      = passoComErro || run?.situacao === 'erro';
   const naFila       = run?.situacao === 'na_fila' && passosExibidos.length === 0;
-  const rodando      = !concluido && !simulado && !comErro && (passosExibidos.length > 0 || naFila || run?.situacao === 'rodando');
+  const rodando      = !concluido && !comErro && (passosExibidos.length > 0 || naFila || run?.situacao === 'rodando');
 
-  function iniciar(simular = false) {
+  function iniciar() {
     if (!cpflAccount) return;
     criarMutation.mutate(
-      { accountId: cpflAccount.id, projectId, simular },
+      { accountId: cpflAccount.id, projectId },
       { onSuccess: (id) => setRunId(id) },
     );
   }
-
-  const botaoSimular = !rodando && (
-    <Button size="sm" variant="outline" onClick={() => iniciar(true)} disabled={criarMutation.isPending}
-      title="A Ludmilla preenche o formulário inteiro, tira os prints de cada etapa e para antes do Salvar — nada é criado no portal.">
-      Simular
-    </Button>
-  );
 
   if (cpflNodeId && passosExibidos.length === 0) {
     return (
       <div className="rounded-md border px-4 py-3 bg-green-50 dark:bg-green-950/20 text-sm text-green-700 dark:text-green-400 flex items-center gap-2">
         <CheckCircle2 className="h-4 w-4 shrink-0" />
         <span className="flex-1">Projeto registrado na CPFL — node <strong>{cpflNodeId}</strong></span>
-        {botaoSimular}
       </div>
     );
   }
@@ -182,17 +176,15 @@ export function CriarNaCpflPanel({ projectId, cpflNodeId, concessionaireName }: 
            : rodando ? 'A Ludmilla está preenchendo o formulário…'
            : comErro ? 'Ocorreu um erro durante a criação.'
            : concluido ? 'Projeto criado com sucesso!'
-           : simulado ? 'Simulação concluída: tudo preenchido até a revisão, sem salvar.'
            : cpflNodeId ? `Projeto registrado na CPFL — node ${cpflNodeId}`
            : 'Ainda não registrado na CPFL.'}
         </div>
         <div className="flex items-center gap-2">
-          {botaoSimular}
           {!rodando && !concluido && !cpflNodeId && (
             <Button
               size="sm"
               variant={comErro ? 'destructive' : 'default'}
-              onClick={() => iniciar(false)}
+              onClick={iniciar}
               disabled={criarMutation.isPending || !!bloqueio}
               title={bloqueio ?? `Cria o projeto na CPFL em ${modalidade}`}
             >

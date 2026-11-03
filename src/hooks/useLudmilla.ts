@@ -311,16 +311,18 @@ export async function urlDoPrint(printPath: string): Promise<string | null> {
 
 /**
  * Solicita criação do projeto na CPFL. Devolve o run_id para subscrição Realtime.
- * `simular` = a Ludmilla preenche tudo, tira os prints, e PARA antes do Salvar.
+ * O modal não simula mais (02/11/2026): o robô ainda aceita `dados.simular`
+ * (para antes do Salvar), guardado para testar uma mudança do portal sem
+ * criar projeto de verdade — pedido à mão, sem botão.
  */
 export function useCriarProjetoCpfl() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ accountId, projectId, simular }: { accountId: string; projectId: string; simular?: boolean }): Promise<string> => {
+    mutationFn: async ({ accountId, projectId }: { accountId: string; projectId: string }): Promise<string> => {
       const { data, error } = await supabase.rpc('ludmilla_pedir_run' as never, {
         p_account_id: accountId,
         p_tipo:       'criar_projeto',
-        p_dados:      { project_id: projectId, ...(simular ? { simular: true } : {}) },
+        p_dados:      { project_id: projectId },
       } as never);
       if (error) throw error;
       return data as string;
