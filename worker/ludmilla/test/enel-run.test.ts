@@ -1094,6 +1094,7 @@ test('B. vistoria aprovada sem projeto, de até 30 dias: 1 aviso sem projeto, co
   assert.doesNotMatch(a.mensagem, /[\r\n]/, 'o assunto vai sem quebra de linha');
   assert.match(a.mensagem, /nenhum projeto nosso tem os números deste e-mail/);
   assert.match(a.mensagem, /grave a NT nele \(ou aplique o cartão da Carta\) e use "Ler de novo"/);
+  assert.match(a.mensagem, /Este A fazer continua valendo depois de gravar a NT e reler: o sino não toca de novo para este e-mail\./);
   // o resto é o de sempre: registrado sem projeto, concluído, sem cartão; o sino antes do registro
   const reg = unico(d);
   assert.equal(reg.projectId, null);
@@ -1202,6 +1203,24 @@ test('C. projeto achado pela NT aprendida: o PDF com essa NT no nome ganha do ma
     anexos: [pdf('ANEXO TECNICO.pdf', 900), pdf('CARTA_391000200.pdf', 100)],
   }), deps, [PA, SEM_PROTOCOLO_COM_NT]);
   assert.equal(unico(d).arquivoLido, 'CARTA_391000200.pdf');
+});
+
+// Revisão de 03/11: a preferência pela NT APRENDIDA (a do casamento) sobre o protocolo do cadastro
+// não estava presa — com o protocolo E uma NT aprendida, o e-mail que cita só a NT aprendida tem de
+// ler o PDF que traz ESSA NT no nome, não o maior (nenhum PDF traz o protocolo do cadastro).
+test('C. projeto com protocolo E NT aprendida, e-mail só com a NT aprendida: lê o PDF da NT aprendida', async () => {
+  const comOsDois = projeto({
+    codigo: 'GD-T6-021', protocolo: '391000111', uc: '0055021021', titular: 'ODETE PRATES VENTURIM', nts: ['391000200'],
+  });
+  const { deps, d } = dubles({ parecer: carta({ titular: comOsDois.titular, nt: '391000200' }) });
+  await tratar(mensagem({
+    assunto: 'Geração Distribuída – Carta – NT 391000200',
+    anexos: [pdf('ANEXO TECNICO.pdf', 900), pdf('CARTA_391000200.pdf', 100)],
+  }), deps, [PA, comOsDois]);
+  const reg = unico(d);
+  assert.equal(reg.projectId, comOsDois.project_id);
+  assert.match(String(reg.motivo), /reconheci pela NT 391000200/);
+  assert.equal(reg.arquivoLido, 'CARTA_391000200.pdf');
 });
 
 test('C. Carta com um PDF só: o resultado não muda', async () => {

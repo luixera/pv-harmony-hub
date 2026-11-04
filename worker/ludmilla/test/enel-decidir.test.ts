@@ -369,6 +369,10 @@ test('B: vistoria aprovada sem projeto — título, assunto, o motivo e a saída
   assert.match(a.mensagem, /VISTORIA GD 391000777 - R INVENTADA 1/);
   assert.match(a.mensagem, /nenhum projeto nosso tem os números deste e-mail/);
   assert.match(a.mensagem, /Se for de um projeto nosso, grave a NT nele \(ou aplique o cartão da Carta\) e use "Ler de novo"\./);
+  // revisão de 03/11: o "Ler de novo" acha o projeto, mas o sino com projeto não toca de novo (aviso_em) —
+  // o aviso diz que ESTE A fazer continua valendo
+  assert.match(a.mensagem, /Este A fazer continua valendo depois de gravar a NT e reler: o sino não toca de novo para este e-mail\.$/);
+  assert.ok(a.mensagem.length <= 1000, 'cabe no left(p_mensagem, 1000) do banco');
 });
 
 test('B: os quatro sinais viram aviso; troca agendada e sem classificação, não', () => {

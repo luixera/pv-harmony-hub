@@ -759,6 +759,15 @@ primeiro. Número de **outro** protocolo no nome não ganha nada. Os dois arquiv
 continuam indo para o card: só a **leitura** é de um. A EDP passa `p.protocolo`; a ENEL
 passa o número do projeto que o **texto** já achou (ver a seção da ENEL).
 
+**Vale também para a regra `ENVIO DE PARECER`** (a mesma chamada em `email/index.ts`). Conferido
+em 03/11 (só leitura) se em algum e-mail dela, com mais de um PDF, o PDF com o número no nome
+**não** seria o parecer: **não deu para conferir com dado** — a EDP nunca rodou (0 mensagens, 0
+anexos em `portal_anexos`), o Claudinho guardou os 3 "ENVIO DE PARECER" (08–09/2026) sem nenhum
+anexo, e nenhum documento de projeto traz número de nota da EDP no nome. O que se sabe é o padrão
+da EDP descrito no E1 (`PARECER_<nota>.pdf`), que a regra favorece. Se um dia vier um segundo PDF
+com o número que não seja o parecer, a escolha é o maior **entre os que têm o número**, e a trava
+do titular continua conferindo o que foi lido. Olhar no primeiro run da EDP (`arquivo_lido`).
+
 ### Nome de arquivo com o número de OUTRO protocolo (E1b, 12/10/2026)
 
 A rodada 3 só olhava o nome do arquivo quando o assunto citava **vários**
@@ -1343,12 +1352,29 @@ apagados). `ludmilla_email_projetos` **não mudou** (a EDP também a usa). Duas 
 | `fonte` | De onde |
 |---|---|
 | `carta` | `portal_updates` da conta com `atualizar_protocolo = true` e `situacao = 'pendente'` (o cartão que espera o "Aplicar"), com exatamente 9 dígitos |
-| `email` | o número logo depois do **token** `NT` no **assunto** de um e-mail da conta já ligado a um projeto (`project_id` não nulo): `(?<![0-9A-Z])NT[^0-9A-Z]{0,3}([0-9]{9})(?![0-9])`, sem diferenciar maiúsculas — exatamente 9 dígitos, sem dígito antes nem depois, e "NT" sem letra colada antes ("DOCUMENT 391…" não conta). É o padrão dos assuntos que a NOSSA equipe escreve (`… - NOME - NT 391747683`). Número solto não conta |
+| `email` | o número logo depois do **token** `NT` no **assunto** de um e-mail da conta já ligado a um projeto (`project_id` não nulo): `(?<![0-9A-Z])NT[^0-9A-Z]{0,3}([0-9]{9})(?![0-9])`, sem diferenciar maiúsculas — exatamente 9 dígitos, sem dígito antes nem depois, e "NT" sem letra colada antes ("DOCUMENT 391…" não conta). É o padrão dos assuntos que a NOSSA equipe escreve (`… - NOME - NT 391747683`). Número solto não conta. Desde 03/11 (`20261103130000`): **só de mensagem com UMA NT distinta** no assunto, e **nunca** a NT que já é o protocolo do cadastro de **outro** projeto do escopo (por pedaço de dígitos ou pelos dígitos colados) ou a NT da Carta pendente de **outro** projeto |
+
+**Por que só uma NT (revisão de 03/11).** A primeira versão aprendia **todas** as NTs do
+assunto. Um e-mail "RE: TROCA DE RELÓGIO - NT 391000010 / NT 391000020" que casasse no projeto
+A (protocolo 391000010) ensinaria a A a NT 391000020 — de B, ainda sem a NT no cadastro —, e a
+vistoria aprovada de B, só com 391000020, cairia em A. Agora uma mensagem com duas NTs não ensina
+nada, e a NT que já é de outro projeto (protocolo ou Carta pendente) nunca vira NT aprendida de
+outro. A NT do **próprio** projeto continua (inofensiva). Provado em `begin … rollback` com o caso
+da revisão (vermelho na função de antes, verde na nova); na conta ENEL em 03/11 **nenhum par
+sumiu** (13 → 13): nenhuma mensagem ligada tinha duas NTs, e nenhuma NT aprendida era de outro.
 
 Uma linha por par projeto/NT (a mesma NT nas duas fontes sai uma vez, como `carta`). Em
-02/11, contra a conta ENEL: 13 pares, 13 NTs distintas, **nenhuma NT em dois projetos**;
-entre eles PRJ-67567 → 392812955 (`carta`), PRJ-52440 → 391747683, PRJ-61098 → 391826601 e
-PRJ-75158 → 391704128 (`email`).
+02/11 e de novo em 03/11, contra a conta ENEL: 13 pares (3 `carta`, 10 `email`), 13 NTs
+distintas, **nenhuma NT em dois projetos**; entre eles PRJ-67567 → 392812955 (`carta`),
+PRJ-52440 → 391747683, PRJ-61098 → 391826601 e PRJ-75158 → 391704128 (`email`).
+
+**As contagens do diagnóstico × as da função.** O diagnóstico de 02/11 contou "4 em cartões
+de Carta e 13 em assuntos"; a função devolve 3 e 10. Os cartões com `atualizar_protocolo` são 4
+pares projeto/NT, mas um (PRJ-51472 → 392755018) já foi **aplicado** — a NT está em
+`protocol_number` — e a função só conta o `pendente`. Os "13 em assuntos" eram pares projeto/número
+de 9 dígitos no assunto **com ou sem** o token `NT`; com o token são 11 pares, um deles igual à
+Carta pendente do mesmo projeto (PRJ-67567, que sai como `carta`) → 10 `email`. Dos 11, 6 são o
+próprio protocolo do cadastro (inofensivos: já casavam).
 
 **O robô** — `ProjetoEnel` ganhou `nts: string[]`. `projetosDaEnel` (`fila.ts`) junta as duas
 RPCs; **só a varredura da ENEL** pede as NTs (a EDP segue com `protocolosDoEmail`). Falha de
@@ -1368,7 +1394,9 @@ nenhuma marcaria como "não reconheci" — e concluído — o e-mail que ela rec
 
 **Limites conhecidos.** A NT do assunto de e-mail é aprendida de um e-mail que já foi ligado
 (por número, UC ou nome) — se esse ligamento estivesse errado, a NT errada passaria a contar;
-a trava contra isso é a mesma de sempre (NT em dois projetos = conflito; titular do documento).
+as travas contra isso: só mensagem de uma NT, nunca a NT que já é de outro projeto (03/11), NT em
+dois projetos = conflito, e o titular do documento. O que sobra: uma mensagem de UMA NT ligada ao
+projeto errado, com a NT de um projeto que ainda não tem nem protocolo nem Carta pendente.
 A NT da Carta pendente conta **antes** de a equipe aplicar o cartão; se a equipe **ignora** o
 cartão, a NT deixa de contar (só `pendente`), mas pode continuar valendo pela fonte `email`.
 
@@ -1465,7 +1493,9 @@ por `ILIKE '%rel_gio%'`, e "relógio" a faria `troca_falhou` (um teste lê o `CA
 trava isso). A mensagem leva o **assunto** limpo (`assuntoSeguro`: sem CR/LF nem controle, até
 200 caracteres, cortado por caractere), o **motivo** (`nenhum projeto nosso tem os números deste
 e-mail`, ou o do conflito) e a **saída**: `Se for de um projeto nosso, grave a NT nele (ou aplique
-o cartão da Carta) e use "Ler de novo".`
+o cartão da Carta) e use "Ler de novo". Este A fazer continua valendo depois de gravar a NT e
+reler: o sino não toca de novo para este e-mail.` (a última frase entrou na revisão de 03/11; ver o
+"Limite" abaixo).
 
 Regras: só e-mail de até 30 dias (`deveAvisar`; mais velho ganha a ressalva "aviso não tocado"),
 o sino **antes** do registro (a retentativa depende disso), e só quando a identificação é
@@ -1484,7 +1514,9 @@ tenant de biblioteca), e o sino só vai para admin e staff — provado em `begin
 empresa real do tenant (0 linhas) e o admin como controle (4). O assunto traz endereço de cliente.
 
 Limite: se a equipe grava a NT e usa "Ler de novo", a releitura acha o projeto, mas o sino com
-projeto não toca de novo (`aviso_em` já marcado) — o A fazer sem projeto é o registro do aviso.
+projeto não toca de novo (`aviso_em` já marcado) e o A fazer continua **sem projeto** — é o
+registro do aviso, e o próprio texto dele diz isso (decisão da revisão de 03/11: não mexer no banco
+por isso).
 
 ### Banco da ENEL
 
@@ -1495,7 +1527,7 @@ projeto não toca de novo (`aviso_em` já marcado) — o A fazer sem projeto é 
 | `portal_email_mensagens.aviso_em` | o sino uma vez por mensagem |
 | `ludmilla_email_conta` | `identificacao` e `ultima_varredura_em` da conta |
 | `ludmilla_email_projetos` | os projetos da concessionária, com `ativo`; só service role |
-| `ludmilla_email_nts_conhecidas` | as NTs já vistas em cada projeto (Carta pendente, `NT` no assunto de e-mail ligado); só service role (`20261102120000`) |
+| `ludmilla_email_nts_conhecidas` | as NTs já vistas em cada projeto (Carta pendente, `NT` no assunto de e-mail ligado com uma NT só, nunca a de outro projeto); só service role (`20261102120000`, `20261103130000`) |
 | `ludmilla_email_avisar` | toca o sino (admin + staff), idempotente por `aviso_em`; aceita `p_project_id` nulo (aviso sem projeto) |
 | `ludmilla_email_registrar` | agora com 20 parâmetros (`p_referencia`, `p_casamento`, `p_abrir_cartao`, `p_atualizar_protocolo`); grava `titular_portal` com o titular do **cadastro** (EDP e ENEL) |
 | `ludmilla_email_anexo_novo` | agora com 8 parâmetros (`p_chave`) |
@@ -1508,7 +1540,9 @@ protocolo, com a trava), `20261019120000` (chave do anexo), `20261022120000`
 projeto — C-1; a trava compara também a UC pontuada — M2; `recebido_em` no `raw` do
 cartão), `20261102120000` (as NTs aprendidas, função nova, e as regras da EDP; aplicada em
 02/11/2026 pelo CLI, sem `db push`, com os md5 das funções da Ludmilla iguais antes e
-depois). O `registrar` e o
+depois), `20261103130000` (revisão: a NT do assunto só de mensagem com uma NT e nunca a de
+outro projeto; aplicada em 03/11/2026 do mesmo jeito, só a função mudou: md5 `d2da533a…` →
+`b5906ed1…`). O `registrar` e o
 `anexo_novo` mudaram de assinatura: `CREATE OR REPLACE` sozinho criaria uma segunda
 função ao lado, então a antiga sai (`DROP FUNCTION` da assinatura anterior). Os
 parâmetros novos têm DEFAULT, e a chamada da EDP resolve para a nova sem mudança.

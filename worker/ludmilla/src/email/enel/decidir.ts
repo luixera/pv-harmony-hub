@@ -122,7 +122,9 @@ export function avisoSemProjeto(c: Classificacao, assunto: string | null | undef
   return {
     titulo: `📡 ${oQue} num e-mail que não reconheci`,
     mensagem: `Assunto: "${assuntoSeguro(assunto)}". Não reconheci o projeto: ${porque}. `
-      + 'Se for de um projeto nosso, grave a NT nele (ou aplique o cartão da Carta) e use "Ler de novo".',
+      + 'Se for de um projeto nosso, grave a NT nele (ou aplique o cartão da Carta) e use "Ler de novo". '
+      // o sino é UM por mensagem (`aviso_em`): a releitura acha o projeto, mas não toca de novo
+      + 'Este A fazer continua valendo depois de gravar a NT e reler: o sino não toca de novo para este e-mail.',
   };
 }
 
