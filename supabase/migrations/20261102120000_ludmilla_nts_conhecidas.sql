@@ -7,7 +7,10 @@
 -- NT está pendente desde 24/10. A Ludmilla JÁ conhecia essa NT — a IA a leu na Carta, e dois e-mails já ligados
 -- ao projeto têm "NT 392812955" no assunto. O mesmo vale para 3 resultados de vistoria do atendimento.edsp
 -- (PRJ-52440, PRJ-61098, PRJ-75158). Em 02/11: 27 NTs em protocol_number, 4 em cartões de Carta e 13 em
--- assuntos de e-mails ligados; nenhuma NT aponta para dois projetos.
+-- assuntos de e-mails ligados; nenhuma NT aponta para dois projetos. (Contagens do diagnóstico, por outro
+-- critério: os 4 cartões incluem o já APLICADO do PRJ-51472, e os 13 são números de 9 dígitos no assunto com ou
+-- sem o token "NT". Pela regra desta função saem 3 'carta' e 10 'email' — ver docs/modules/integrations/
+-- ludmilla.md, "A NT que ela já aprendeu".)
 --
 -- 1. ludmilla_email_nts_conhecidas(p_account_id): as NTs que a Ludmilla já viu em cada projeto, além do
 --    protocolo do cadastro. O robô (worker/ludmilla/src/fila.ts, `projetosDaEnel`) as junta a cada projeto e o
@@ -35,7 +38,8 @@
 --   ludmilla_agendar_varreduras 3d0d2d0f1e7455ec701230bc925e1bde · ludmilla_aplicar_update 6183edef6c3f93810282039bdd565a26
 --   ludmilla_email_registrar 5d5375a0cb842209b6fb5f82327ee579 · ludmilla_email_projetos 038773e9dc1ae5b6e078a099c2affa32
 --   ludmilla_email_avisar ddf2aa830438465f4913b16a190114ba · ludmilla_agendar_email 03dae8f9f1a05c2e93bb5043b5948e9c
---   ludmilla_cobranca_* e ludmilla_cobrancas_abrir_vencidas: os 11 corpos, iguais (lista no relatório da entrega).
+--   ludmilla_cobranca_* (10) e ludmilla_cobrancas_abrir_vencidas (1): os 11 corpos, iguais (os 11 md5 estão
+--   listados no cabeçalho da 20261103130000; o relatório citado antes aqui não chegou a ser gravado).
 -- ============================================================================
 
 -- ── 1. As NTs que a Ludmilla já aprendeu ────────────────────────────────────
