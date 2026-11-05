@@ -1,7 +1,8 @@
 # Módulo: Geração Compartilhada / Autoconsumo Remoto
 
-**Estado: 🟡 Beneficiárias estruturadas (22/10/2026); criação na CPFL em
-autoconsumo remoto escrita, aguardando a 1ª simulação no portal.**
+**Estado: 🟡 Beneficiárias estruturadas (22/10/2026); o 1º envio real à CPFL em
+autoconsumo remoto (PRJ-15238, 04/11/2026) parou no bloco de beneficiárias.
+Correção escrita em 05/11/2026, aguardando publicar o robô e simular no portal.**
 
 Spec: [2026-10-22-beneficiarias-autoconsumo-remoto-design.md](../../superpowers/specs/2026-10-22-beneficiarias-autoconsumo-remoto-design.md).
 
@@ -46,6 +47,13 @@ concessionária); só a criação automática no portal é da CPFL.
 - **RN-SG-06** — Com ≥ 1 beneficiária, o sistema de compensação da CPFL é
   **Autoconsumo Remoto**; sem, **Geração Local**. Derivado no banco
   (`ludmilla_dados_criacao_cpfl.sistema_compensacao`), nunca fixo no worker.
+- **RN-SG-07** — Nos documentos gerados, `{modalidade_compensacao}` vale
+  **Autoconsumo remoto** com beneficiária e **Autoconsumo local** sem
+  (`buildProjectValues`, por `has_beneficiaries`). O valor também marca as caixas
+  do Word cujo rótulo é exatamente um desses dois (item 2.5 do Anexo E da CPFL,
+  cujo modelo vem com "local" marcado): `marcarModalidadeCompensacao`, em
+  `docxGenerator.ts`. As outras caixas não mudam, nem o modelo guardado. Documento
+  já gerado não muda: é preciso gerar de novo.
 
 ## Telas
 - Envio (`NewProject`, `PublicProjectForm`): `BeneficiariasForm` — linhas

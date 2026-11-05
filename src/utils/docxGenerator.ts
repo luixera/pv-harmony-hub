@@ -491,6 +491,28 @@ function imageModule() {
   });
 }
 
+/**
+ * Marca a modalidade de compensação nas caixas do Word (w14:checkbox): a do
+ * rótulo pedido fica marcada e a outra, desmarcada. O Anexo E da CPFL já vem
+ * com "Autoconsumo local" marcado no modelo. Compara o rótulo INTEIRO: a caixa
+ * "modalidade autoconsumo local, com potência…" do mesmo anexo não é esta.
+ */
+export function marcarModalidadeCompensacao(xml: string, modalidade: string): string {
+  const alvo = modalidade.trim().toLowerCase();
+  return xml.replace(/<w:p[ >](?:(?!<\/w:p>)[\s\S])*<\/w:p>/g, (p) => {
+    if ((p.match(/<w14:checkbox>/g) ?? []).length !== 1) return p;
+    const rotulo = p.replace(/<[^>]+>/g, '').replace(/[☒☐☑]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
+    if (rotulo !== 'autoconsumo local' && rotulo !== 'autoconsumo remoto') return p;
+    const marcar = rotulo === alvo;
+    // o símbolo é o que o próprio controle declara para cada estado
+    const estado = p.match(marcar ? /<w14:checkedState w14:val="([0-9A-Fa-f]+)"/ : /<w14:uncheckedState w14:val="([0-9A-Fa-f]+)"/);
+    const simbolo = estado ? String.fromCodePoint(parseInt(estado[1], 16)) : (marcar ? '☒' : '☐');
+    return p
+      .replace(/<w14:checked w14:val="[^"]*"\/>/, `<w14:checked w14:val="${marcar ? 1 : 0}"/>`)
+      .replace(/(<w:sdtContent>[\s\S]*?<w:t(?: [^>]*)?>)[^<]*(<\/w:t>)/, `$1${simbolo}$2`);
+  });
+}
+
 export async function generateDocxFromTemplate(
   templateBuffer: ArrayBuffer,
   values: Record<string, string>,
@@ -503,7 +525,8 @@ export async function generateDocxFromTemplate(
   // limpa antes de preencher para o valor sair na cor normal do documento.
   for (const name of docxPartNames(zip)) {
     const xml = zip.files[name].asText();
-    const cleaned = cleanPlaceholderStyling(xml);
+    let cleaned = cleanPlaceholderStyling(xml);
+    if (values.modalidade_compensacao) cleaned = marcarModalidadeCompensacao(cleaned, values.modalidade_compensacao);
     if (cleaned !== xml) zip.file(name, cleaned);
   }
 

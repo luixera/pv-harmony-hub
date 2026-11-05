@@ -50,6 +50,7 @@ export const TEMPLATE_VARIABLES: TemplateVariable[] = [
   { key: 'utm_hemisferio',    desc: 'UTM — hemisfério (N ou S)',         category: 'Endereço e UC', example: 'S' },
   { key: 'coordenadas_utm',   desc: 'UTM completo numa linha só',        category: 'Endereço e UC', example: '23K 287.456,78 m E, 7.465.123,45 m N' },
   { key: 'rural',             desc: 'Área rural? (Sim/Não)',             category: 'Endereço e UC', example: 'Não' },
+  { key: 'modalidade_compensacao', desc: 'Autoconsumo local ou remoto (também marca a caixa do Anexo E)', category: 'Projeto', example: 'Autoconsumo local' },
   { key: 'uc',                desc: 'Número da UC',                      category: 'Endereço e UC', example: '4001234567' },
   { key: 'numero_uc',         desc: 'Número da UC — alias de {uc}',      category: 'Endereço e UC', example: '4001234567' },
   // Instalação
@@ -418,6 +419,8 @@ export function buildProjectValues(
     tipo_fase:         g.phase_type ?? '',
     tensao_rede:       (g as any).grid_voltage ?? '',
     rural:             g.is_rural ? 'Sim' : 'Não',
+    // Revisão guardada antes do campo existir não o traz: vale o do projeto.
+    modalidade_compensacao: (g.has_beneficiaries ?? project.generalData?.has_beneficiaries) ? 'Autoconsumo remoto' : 'Autoconsumo local',
     coordenadas:       g.coordinates ?? '',
     ...coordinateValues(g.coordinates),
     marca_inversor:    e.inverter_brand ?? '',
