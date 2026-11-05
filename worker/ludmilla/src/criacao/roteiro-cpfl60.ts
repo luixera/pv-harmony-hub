@@ -70,6 +70,23 @@ async function definir(ag: Navegador, seletor: string, valor: string, oQue: stri
   return true;
 }
 
+/**
+ * Define a coordenada e confere o que a máscara do portal deixou no campo: ela
+ * só olha os dígitos, e `23° 6' 59"` virou `23° 65' 90.00" S` sem nenhum erro na
+ * tela (PRJ-15238, 05/11/2026). Coordenada errada não pode chegar à distribuidora.
+ */
+export async function definirCoordenada(ag: Navegador, seletor: string, texto: string, oQue: string): Promise<void> {
+  await definir(ag, seletor, texto, oQue);
+  const lido = await valor(ag, seletor);
+  // parte a parte: o deslocamento da máscara mantém a mesma sequência de dígitos
+  const partes = (t: string) => t.match(/(\d+)\D+(\d+)\D+(\d+(?:[.,]\d+)?)/)?.slice(1).map(p => Number(p.replace(',', '.')));
+  const digitado = partes(texto);
+  const guardado = partes(lido);
+  if (!digitado || !guardado || digitado.some((p, i) => Math.abs(p - guardado[i]) > 0.001)) {
+    throw new ErroLudmilla('pagina_mudou', `${oQue}: digitei ${texto} e o portal guardou ${lido}. Não vou avançar com a coordenada errada.`);
+  }
+}
+
 /** Marca o radio e confere o RÓTULO (Sim/Não trocam de código entre perguntas). */
 async function marcar(ag: Navegador, seletor: string, rotulo: RegExp, oQue: string): Promise<void> {
   const r = await ag.js<{ marcado: boolean; rotulo: string } | null>(jsMarcarRadio(seletor));
@@ -310,8 +327,8 @@ export async function roteiroCpfl60(ctx: ContextoRoteiro): Promise<ResultadoRote
 
     const coords = parsearCoordenadas(dados.coordinates);
     if (!coords) throw new ErroLudmilla('falhou', 'O projeto está sem coordenadas no GD Manager — o portal exige Latitude e Longitude.');
-    await definir(ag, '[id^="edit-field-consumer-unit-0-latitude"]', decimalParaDms(coords.lat, 'lat'), 'Latitude');
-    await definir(ag, '[id^="edit-field-consumer-unit-0-longitude"]', decimalParaDms(coords.lng, 'lng'), 'Longitude');
+    await definirCoordenada(ag, '[id^="edit-field-consumer-unit-0-latitude"]', decimalParaDms(coords.lat, 'lat'), 'Latitude');
+    await definirCoordenada(ag, '[id^="edit-field-consumer-unit-0-longitude"]', decimalParaDms(coords.lng, 'lng'), 'Longitude');
 
     // aqui "-1" é Não (invertido em relação às perguntas de cima) — o rótulo confere
     await marcar(ag, `#edit-field-have-position-change-${a('mudanca_ponto_entrega') === 'sim' ? 0 : 1}`, simNao(a('mudanca_ponto_entrega')), 'mudança no ponto de entrega');

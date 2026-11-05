@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { chromium, type Browser, type BrowserContext } from 'playwright';
 import { AgentePlaywright } from '../src/criacao/navegador.js';
 import { JS_ABRIR_SANFONAS } from '../src/criacao/js.js';
-import { avancar, passo, preencherBeneficiarias } from '../src/criacao/roteiro-cpfl60.js';
+import { avancar, definirCoordenada, passo, preencherBeneficiarias } from '../src/criacao/roteiro-cpfl60.js';
 
 /**
  * O bloco "Unidades consumidoras beneficiárias" como o portal da CPFL se comporta (envio 1 do PRJ-15238,
@@ -169,21 +169,49 @@ test('passo com erro depois da foto: guarda a tela da falha, não a foto', async
   assert.match(String(registros[1].erro), /quebrou/);
 });
 
-test('sanfonas: abre as fechadas e visíveis do formulário; submit e as de fora ficam quietos', async () => {
+test('sanfonas: abre só as que estão de fato fechadas; aberta que se declara fechada não é tocada', async () => {
   const ag = await AgentePlaywright.noContexto(contexto);
-  await ag.page.setContent(`<button type="button" id="fora" aria-expanded="false">Menu do site</button>
+  const alterna = "const c = this.closest('.accordion-item').querySelector('.corpo'); c.style.display = c.style.display === 'none' ? 'block' : 'none'";
+  const item = (id: string, aria: string, aberta: boolean, extra = '') =>
+    `<div class="accordion-item"><h2><button type="button" id="${id}" aria-expanded="${aria}" ${extra} onclick="${alterna}">${id}</button></h2>
+      <div class="corpo" style="display:${aberta ? 'block' : 'none'}"><input type="text"><div style="height:200px"></div></div></div>`;
+  await ag.page.setContent(`<button type="button" id="fora" aria-expanded="false" onclick="window.foraClicado = true">Menu do site</button>
     <form class="node-form" onsubmit="window.enviou = true; return false">
-      <button type="button" id="fechada" aria-expanded="false" onclick="this.setAttribute('aria-expanded','true')">Categorias</button>
-      <button type="button" id="aberta" aria-expanded="true" onclick="window.fechou = true">Dados</button>
-      <button type="button" id="escondida" aria-expanded="false" style="display:none" onclick="window.cliqueOculto = true">Oculta</button>
+      ${item('abertaQueDizFechada', 'false', true)}
+      ${item('fechada', 'false', false)}
+      ${item('aberta', 'true', true)}
+      ${item('oculta', 'false', false, 'style="display:none"')}
+      <button type="button" id="semItem" aria-expanded="false" onclick="window.semItemClicado = true">Sem container</button>
       <button type="submit" id="envia" aria-expanded="false">Não clicar</button>
     </form>`);
+  const aberto = (id: string) => ag.page.$eval(`#${id}`, e => (e.closest('.accordion-item')!.querySelector('.corpo') as HTMLElement).style.display);
   assert.equal(await ag.js(JS_ABRIR_SANFONAS), 1);
-  assert.equal(await ag.page.getAttribute('#fechada', 'aria-expanded'), 'true');
-  assert.equal(await ag.page.getAttribute('#fora', 'aria-expanded'), 'false');
+  assert.equal(await aberto('abertaQueDizFechada'), 'block', 'a primeira sanfona do portal vem aberta com aria-expanded="false"');
+  assert.equal(await aberto('fechada'), 'block');
+  assert.equal(await aberto('aberta'), 'block');
+  assert.equal(await aberto('oculta'), 'none');
   assert.deepEqual(await ag.page.evaluate(() => {
     const w = window as unknown as Record<string, unknown>;
-    return [w.enviou ?? null, w.fechou ?? null, w.cliqueOculto ?? null];
+    return [w.enviou ?? null, w.foraClicado ?? null, w.semItemClicado ?? null];
   }), [null, null, null]);
+  await ag.fechar();
+});
+
+// ── a coordenada que o portal guardou ────────────────────────────────────────
+
+/** A máscara do portal: só olha os dígitos e os encaixa em GG° MM' SS.SS" S. */
+const CAMPO_COM_MASCARA = `<input id="lat" oninput="const d = this.value.replace(/\\D/g, '').padEnd(8, '0'); this.value = d.slice(0,2) + '° ' + d.slice(2,4) + &quot;' &quot; + d.slice(4,6) + '.' + d.slice(6,8) + '&quot; S'">`;
+
+test('coordenada com 2 dígitos em cada parte: a máscara guarda o mesmo valor', async () => {
+  const ag = await abrir(CAMPO_COM_MASCARA);
+  await definirCoordenada(ag, '#lat', "23° 06' 59.0\"", 'Latitude');
+  assert.equal(await ag.page.inputValue('#lat'), "23° 06' 59.00\" S");
+  await ag.fechar();
+});
+
+test('o portal guardou outra coordenada (o caso do 23° 65 90): para e diz o que aconteceu', async () => {
+  const ag = await abrir(CAMPO_COM_MASCARA);
+  await assert.rejects(() => definirCoordenada(ag, '#lat', "23° 6' 59.0\"", 'Latitude'),
+    /Latitude.*23° 6' 59.0".*23° 65' 90.00" S/);
   await ag.fechar();
 });

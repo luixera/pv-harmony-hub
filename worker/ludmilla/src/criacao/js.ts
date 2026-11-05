@@ -258,13 +258,19 @@ export const JS_AJAX_PARADO = `(() => !window.jQuery || !window.jQuery.active)()
 /**
  * Abre as sanfonas fechadas do formulário e diz quantas abriu, para o print
  * mostrar tudo o que foi preenchido. Só botão type="button": um submit aqui
- * enviaria o formulário.
+ * enviaria o formulário. Fechada é a que tem altura só do título: a primeira
+ * sanfona de cada tela vem aberta com aria-expanded="false", e clicar a fecharia.
  */
 export const JS_ABRIR_SANFONAS = `(() => {
   const form = document.querySelector('form.node-form') || document.querySelector('form');
   if (!form) return 0;
-  const fechadas = Array.from(form.querySelectorAll('button[type="button"][aria-expanded="false"]'))
-    .filter(b => b.getClientRects().length > 0 && getComputedStyle(b).visibility !== 'hidden');
-  fechadas.forEach(b => b.click());
-  return fechadas.length;
+  let abertas = 0;
+  for (const b of form.querySelectorAll('button[type="button"][aria-expanded]')) {
+    if (b.getClientRects().length === 0 || getComputedStyle(b).visibility === 'hidden') continue;
+    const item = b.closest('details, .accordion-item, .card, .panel');
+    if (!item || item.getBoundingClientRect().height - b.getBoundingClientRect().height > 40) continue;
+    b.click();
+    abertas++;
+  }
+  return abertas;
 })()`;

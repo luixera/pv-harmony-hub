@@ -430,7 +430,19 @@ Agora `passo()` entrega ao corpo a função `foto`, que abre as sanfonas fechada
 `passo-N-preenchido.png`; `avancar()` a chama antes do clique. Introdução e
 Revisão também fotografam antes de clicar. Se o passo falhar, o print é o da tela
 da falha; `passo-N-inicio.png` continua no bucket. Envios antigos seguem com os
-prints antigos.
+prints antigos. **Não confiar em `aria-expanded`:** a primeira sanfona de cada tela
+vem aberta dizendo `false`, e clicar a fecharia. Fechada é a sanfona com altura só
+do título.
+
+**Latitude e longitude com 2 dígitos (05/11/2026).** A máscara do campo só olha os
+dígitos e os encaixa em `GG° MM' SS.SS"`. O robô digitava `23° 6' 59.0"`, e o portal
+guardava `23° 65' 90.00" S` sem erro nenhum na tela (visto na Revisão do PRJ-15238).
+Qualquer minuto ou segundo abaixo de 10 sofria esse deslocamento. `decimalParaDms`
+agora completa com zero, e `definirCoordenada` relê o campo e **para o envio** se
+grau, minuto ou segundo mudarem. Dos 9 projetos enviados antes da correção, 4 têm
+coordenada nessa condição (PRJ-08969, PRJ-36600, PRJ-56268, PRJ-81683). Os prints
+antigos não mostram a latitude, então o valor deles ainda precisa ser conferido no
+portal.
 
 **Bloco de beneficiárias (`preencherBeneficiarias`, corrigido em 05/11/2026).** O
 primeiro envio real em autoconsumo remoto (PRJ-15238, 04/11) parou em "Busquei a
