@@ -7,7 +7,7 @@ import type { BrowserContext } from 'playwright';
 import type { Navegador } from './navegador.js';
 import { logarNaCpfl } from '../conectores/cpfl.js';
 import { AgentePlaywright } from './navegador.js';
-import { JS_MAPA } from './js.js';
+import { JS_BENEF_HTML, JS_MAPA } from './js.js';
 
 import { roteiroCpfl60, type NomePasso, type StatusPasso } from './roteiro-cpfl60.js';
 import { type DadosCriacaoCpfl } from './tipos.js';
@@ -60,7 +60,8 @@ async function printParaBucket(ag: Navegador, caminho: string, nomeTmp: string):
 /** Grava cada passo em portal_criacao_passos com print; em erro, sobe também o mapa da tela. */
 function registradorDePassos(ag: Navegador, dados: DadosCriacaoCpfl) {
   return async (passo: number, nome: NomePasso, status: StatusPasso, erro?: string, printPronto?: string): Promise<void> => {
-    // "rodando" = a tela ANTES do passo; ok/erro = a tela DEPOIS. Os dois ficam no bucket.
+    // "rodando" = a tela ANTES do passo; ok = a etapa preenchida (printPronto,
+    // tirado antes do Avançar); erro = a tela da falha. Todos ficam no bucket.
     const sufixo = status === 'rodando' ? '-inicio' : '';
     const printPath = printPronto
       ?? await printParaBucket(ag, `${dados.tenant_id}/criacao/${dados.run_id}/passo-${passo}${sufixo}.png`, `ludmilla-${dados.run_id}-${passo}${sufixo}.png`);
@@ -68,6 +69,8 @@ function registradorDePassos(ag: Navegador, dados: DadosCriacaoCpfl) {
       try {
         const mapa = await ag.js(JS_MAPA);
         await subirTexto(dados.tenant_id, dados.run_id, `criacao-passo-${passo}.campos.json`, JSON.stringify(mapa, null, 1));
+        const bloco = await ag.js<string | null>(JS_BENEF_HTML);
+        if (bloco) await subirTexto(dados.tenant_id, dados.run_id, `criacao-passo-${passo}.beneficiarias.html`, bloco);
       } catch { /* diagnóstico é bônus */ }
     }
     const { error } = await supabase().rpc('ludmilla_registrar_passo_criacao' as never, {
@@ -132,7 +135,9 @@ export async function executarCriacao(run: Run, contexto: BrowserContext): Promi
     }
     await registrar(0, 'login', 'ok');
 
-    const resultado = await roteiroCpfl60({ agente: ag, dados, log, registrar, simular });
+    const fotografar = (passo: number) => printParaBucket(ag,
+      `${dados.tenant_id}/criacao/${dados.run_id}/passo-${passo}-preenchido.png`, `ludmilla-${dados.run_id}-${passo}-preenchido.png`);
+    const resultado = await roteiroCpfl60({ agente: ag, dados, log, registrar, fotografar, simular });
 
     // Beneficiárias como o portal as devolveu na busca (titular, documento,
     // endereço): escreve de volta no GD Manager — na simulação também, porque

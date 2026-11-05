@@ -418,9 +418,38 @@ Consequências:
 | 1 | `introducao` | login da varredura na mesma aba → `gestao-projetos/criar-projeto` → link 60 → Introdução → "Conexão de microgeração" e **confere** `flux_type = conexão`. Nunca abre `node/add/project_60` direto (retoma formulário velho) | `a[href$="node/add/project_60"]`, `#edit-next-new-connection`, `#edit-field-flux-type-conexo` |
 | 2 | `dados_uc` | **Orçamento de Conexão** (rótulo conferido), 3 × Não (`-0`), UC + Buscar, espera Nome do Cliente, Empresa = CPFL, Lat/Long DMS, 2 × Não (`-1`!), perguntas condicionais, FormData, Avançar | `#edit-field-quotation-options-60-connection`, `#edit-field-consumer-unit-0-consumer-unit-code`, `…-send-uc-code`, `[id^="edit-field-consumer-unit-0-latitude"]`, `#edit-next` |
 | 3 | `dados_projeto` | título, Não, ENERGIA SOLAR (2721), data +30 (JS), Geração Local (2771), categoria (regra do front), GED 13 (2761), aéreo (2866), fases (2751), **Cabos = nº de fases**, caixa, carga = Demanda, disjuntor da regra, geração (651, módulos kWp, área, inversores); **FormData dos totais conferido**; Avançar | ids `edit-field-*` e `#edit-field-complementary-generation-0-subform-field-*` |
-| 4 | `dados_cliente` | Pessoa Física, Consultar CPF (espera Nome), celular/e-mail só se vazios, endereços = instalação, 2 × Sim (`-1`!) | `[id^="edit-field-physicalperson-0-*"]`, `[id^="edit-field-address-type-mesmo"]`, `…authorize-pay-connec-costs-1`, `…solicitacao-de-vistoria-1` |
-| 5 | `revisao` | print da revisão e **Salvar** → URL `/node/<id>/edit?step=6` → `projects.cpfl_node_id`. `run.dados.simular = true` para antes — **sem botão desde 02/11/2026** (o envio de verdade foi validado em geração local e autoconsumo remoto); fica só para testar uma mudança do portal, pedido à mão | `#edit-next-save-draft` |
+| 4 | `dados_cliente` | Pessoa Física, Consultar CPF (espera Nome), celular/e-mail só se vazios, endereços = instalação, 2 × Sim (`-1`!); em autoconsumo remoto, o bloco de beneficiárias (abaixo) | `[id^="edit-field-physicalperson-0-*"]`, `[id^="edit-field-address-type-mesmo"]`, `…authorize-pay-connec-costs-1`, `…solicitacao-de-vistoria-1`, `[id^="edit-field-uc-list-percent-0-send-uc-code"]` |
+| 5 | `revisao` | print da revisão e **Salvar** → URL `/node/<id>/edit?step=6` → `projects.cpfl_node_id`. `run.dados.simular = true` para antes — **sem botão desde 02/11/2026** (o envio de verdade foi validado em geração local: 11 envios concluídos até 04/11; o autoconsumo remoto ainda não concluiu nenhum, ver abaixo); fica só para testar uma mudança do portal, pedido à mão | `#edit-next-save-draft` |
 | 6 | `concluido` | **para** em "Envio de documentos" (27 inputs `files[field_*]` mapeados para a fase seguinte) | `#edit-next-send-later` / `#edit-next` — não clica |
+
+**O print de cada passo é a etapa preenchida (05/11/2026).** Cada passo termina
+clicando em Avançar, e o print era tirado depois: o painel mostrava a etapa
+SEGUINTE, vazia (o passo "Dados da UC" mostrava "Dados do projeto" em branco).
+Agora `passo()` entrega ao corpo a função `foto`, que abre as sanfonas fechadas
+(`JS_ABRIR_SANFONAS`, só `button[type=button]` visíveis) e grava
+`passo-N-preenchido.png`; `avancar()` a chama antes do clique. Introdução e
+Revisão também fotografam antes de clicar. Se o passo falhar, o print é o da tela
+da falha; `passo-N-inicio.png` continua no bucket. Envios antigos seguem com os
+prints antigos.
+
+**Bloco de beneficiárias (`preencherBeneficiarias`, corrigido em 05/11/2026).** O
+primeiro envio real em autoconsumo remoto (PRJ-15238, 04/11) parou em "Busquei a
+UC… e a linha dela não apareceu". O mapa da falha mostrou "Percentual" marcado, o
+campo da UC vazio e a lista sem linhas. Três regras saíram daí:
+- **Buscar é clique de verdade** (`ag.clicar`), como os outros Buscar/Consultar:
+  o AJAX do Drupal em botão escuta `mousedown` e cancela o `click`, então
+  `el.click()` por JS não faz nada;
+- **esperar o AJAX** (`esperarAjax`, `jQuery.active`) depois de marcar "Percentual"
+  e de preencher cada %: a resposta redesenha o bloco e apaga o que foi digitado
+  antes dela. Sem retorno em 12 s, digita e busca de novo (mais 25 s);
+- **as linhas são uma tabela com um cabeçalho só** (o botão "Hide lower priority
+  columns" é do `tableresponsive` do Drupal): o rótulo não fica ao lado do valor,
+  e `JS_BENEF_LINHAS` lê a `<tr>` pela ordem: UC, endereço, titular, documento.
+
+Em erro de passo com o bloco na tela, o robô sobe também
+`criacao-passo-N.beneficiarias.html`. O HTML das linhas ainda não foi visto no
+portal: o teste (`test/criacao-beneficiarias.test.ts`) reproduz o comportamento
+descrito, com o mesmo erro antes da correção. A prova final é uma simulação real.
 
 **Autonomia** (`DadosCriacaoCpfl.autonomia`, padrões em `AUTONOMIA_PADRAO`):
 respostas que a Ludmilla dá sozinha num projeto de GD comum

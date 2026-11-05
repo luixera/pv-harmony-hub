@@ -190,20 +190,12 @@ export const jsBenefDigitarUc = (uc: string) => `(() => {${JS_SECAO_BENEF}
   return { id: el.id || null, valor: el.value };
 })()`;
 
-/** Clica em "Buscar" dentro do bloco. */
-export const JS_BENEF_BUSCAR = `(() => {${JS_SECAO_BENEF}
-  if (!sec) return false;
-  const b = Array.from(sec.querySelectorAll('button, input[type="submit"], input[type="button"], a')).filter(vis)
-    .find(x => /^buscar/i.test(limpo(x.textContent || x.value)));
-  if (!b) return false;
-  b.click();
-  return true;
-})()`;
-
 /**
  * As linhas que o portal montou: para cada uma, a UC (dígitos), endereço,
  * titular, documento e o campo de percentual — que recebe
  * data-ludmilla-uc="<uc>" para o roteiro preencher com jsSetValor.
+ * É uma tabela com UM cabeçalho (envio de 04/11/2026): o rótulo não fica ao
+ * lado do valor, então a leitura é pela ordem dos textos da linha.
  */
 export const JS_BENEF_LINHAS = `(() => {${JS_SECAO_BENEF}
   if (!sec) return null;
@@ -211,25 +203,36 @@ export const JS_BENEF_LINHAS = `(() => {${JS_SECAO_BENEF}
   const vistos = new Set();
   // o campo de % de cada linha: input de texto editável que NÃO é o de busca
   const rot = el => { const l = el.id && document.querySelector('label[for="' + CSS.escape(el.id) + '"]'); return limpo(l ? l.textContent : (el.closest('label') || {}).textContent); };
-  const campos = Array.from(sec.querySelectorAll('input[type="text"], input:not([type])')).filter(e => vis(e) && !/n[ºo°]?\\s*da uc/i.test(rot(e)));
+  const todos = Array.from(sec.querySelectorAll('input[type="text"], input:not([type])')).filter(vis);
+  const campos = todos.filter(e => !/n[ºo°]?\\s*da uc/i.test(rot(e)));
+  const ROTULO = /^(n[ºo°]?\\s*da uc|endere[cç]o|titular|documento|percentual):?\\s*/i;
+  const numero = t => /^[\\d.\\-\\/\\s]+$/.test(t);
+  const digitos = t => t.replace(/\\D/g, '');
   for (const campo of campos) {
-    // sobe até o menor ancestral cujo texto tem uma UC (8–14 dígitos, com ou sem pontuação)
-    let linha = campo.parentElement; let uc = '';
-    for (let i = 0; i < 8 && linha && linha !== sec; i++) {
-      const m = limpo(linha.textContent).match(/N[ºo°]?\\s*da UC:?\\s*([\\d.\\-\\s]{8,20})/i);
-      if (m) { uc = m[1].replace(/\\D/g, ''); break; }
-      linha = linha.parentElement;
+    // a linha é a <tr>; sem tabela, o maior ancestral que só tem este campo
+    let linha = campo.closest('tr');
+    if (!linha) {
+      linha = campo;
+      while (linha.parentElement && linha.parentElement !== sec && !todos.some(c => c !== campo && linha.parentElement.contains(c))) linha = linha.parentElement;
     }
-    if (!uc || vistos.has(uc)) continue;
+    const textos = [];
+    const w = document.createTreeWalker(linha, NodeFilter.SHOW_TEXT);
+    while (w.nextNode()) { const t = limpo(w.currentNode.textContent).replace(ROTULO, ''); if (t) textos.push(t); }
+    const iUc = textos.findIndex(t => numero(t) && digitos(t).length >= 8);
+    if (iUc < 0) continue;
+    const uc = digitos(textos[iUc]);
+    if (vistos.has(uc)) continue;
     vistos.add(uc);
     campo.setAttribute('data-ludmilla-uc', uc);
-    const t = limpo(linha.textContent);
-    const pega = (re) => { const m = t.match(re); return m ? limpo(m[1]) : null; };
+    // na ordem da tela: UC, endereço, titular, documento
+    const depois = textos.slice(iUc + 1);
+    const iDoc = depois.findIndex(t => numero(t) && digitos(t).length >= 11);
+    const antes = iDoc >= 0 ? depois.slice(0, iDoc) : [];
     saida.push({
       uc,
-      endereco:  pega(/Endere[cç]o:?\\s*(.+?)\\s*Titular:/i),
-      titular:   pega(/Titular:?\\s*(.+?)\\s*Documento:/i),
-      documento: pega(/Documento:?\\s*([\\d.\\-\\/]+)/i),
+      endereco:  antes.slice(0, -1).join(' ') || null,
+      titular:   antes[antes.length - 1] || null,
+      documento: iDoc >= 0 ? depois[iDoc] : null,
       percentual: campo.value,
       id: campo.id || null,
     });
@@ -237,9 +240,31 @@ export const JS_BENEF_LINHAS = `(() => {${JS_SECAO_BENEF}
   return saida;
 })()`;
 
-/** O texto de "Percentual da sua microgeradora: X%" dentro do bloco. */
+/** O texto de "Percentual da sua microgeradora: X%" dentro do bloco (entre os dois pode vir o texto da ajuda "?"). */
 export const JS_BENEF_PERCENTUAL_GERADORA = `(() => {${JS_SECAO_BENEF}
   if (!sec) return null;
-  const m = limpo(sec.textContent).match(/Percentual da sua microgeradora:?\\s*\\S*\\s*([\\d.,]+\\s*%)/i);
+  const m = limpo(sec.textContent).match(/Percentual da sua microgeradora:?[^%]{0,200}?([\\d.,]+\\s*%)/i);
   return m ? m[1] : null;
+})()`;
+
+/** O HTML do bloco, para o diagnóstico quando o passo falha (o mapa só lista os controles, não as linhas). */
+export const JS_BENEF_HTML = `(() => {${JS_SECAO_BENEF}
+  return sec ? sec.outerHTML.slice(0, 200000) : null;
+})()`;
+
+/** Nenhum AJAX em andamento? A resposta do Drupal redesenha o bloco e apaga o que foi digitado antes dela. */
+export const JS_AJAX_PARADO = `(() => !window.jQuery || !window.jQuery.active)()`;
+
+/**
+ * Abre as sanfonas fechadas do formulário e diz quantas abriu, para o print
+ * mostrar tudo o que foi preenchido. Só botão type="button": um submit aqui
+ * enviaria o formulário.
+ */
+export const JS_ABRIR_SANFONAS = `(() => {
+  const form = document.querySelector('form.node-form') || document.querySelector('form');
+  if (!form) return 0;
+  const fechadas = Array.from(form.querySelectorAll('button[type="button"][aria-expanded="false"]'))
+    .filter(b => b.getClientRects().length > 0 && getComputedStyle(b).visibility !== 'hidden');
+  fechadas.forEach(b => b.click());
+  return fechadas.length;
 })()`;

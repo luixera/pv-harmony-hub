@@ -3,7 +3,7 @@ import { decimalParaDms, parsearCoordenadas } from '../dms.js';
 import type { Navegador } from './navegador.js';
 import { AUTONOMIA_PADRAO, PERGUNTAS_CONDICIONAIS, ROTULO_COMPENSACAO, type DadosCriacaoCpfl } from './tipos.js';
 import {
-  JS_BENEF_BUSCAR, JS_BENEF_LINHAS, JS_BENEF_MAPA, JS_BENEF_MARCAR_PERCENTUAL, JS_BENEF_PERCENTUAL_GERADORA,
+  JS_ABRIR_SANFONAS, JS_AJAX_PARADO, JS_BENEF_LINHAS, JS_BENEF_MAPA, JS_BENEF_MARCAR_PERCENTUAL, JS_BENEF_PERCENTUAL_GERADORA,
   JS_ERROS_VISIVEIS, jsAbrirSanfona, jsBenefDigitarUc, jsFormData, jsMarcarRadio, jsPerguntaVisivel, jsSetValor, jsValor, jsVisivel,
 } from './js.js';
 import {
@@ -25,7 +25,9 @@ export interface ContextoRoteiro {
   agente: Navegador;
   dados: DadosCriacaoCpfl;
   /** grava o passo (print, mapa em erro) — implementado pelo worker ou pela validação local */
-  registrar: (passo: number, nome: NomePasso, status: StatusPasso, erro?: string) => Promise<void>;
+  registrar: (passo: number, nome: NomePasso, status: StatusPasso, erro?: string, printPronto?: string) => Promise<void>;
+  /** tira o print da etapa como está e devolve o caminho dele — sem isto, o passo fica com o print que o registrar tirar */
+  fotografar?: (passo: number) => Promise<string | undefined>;
   /** true = para antes do Salvar (validação sem criar projeto) */
   simular: boolean;
   log: (msg: string, extra?: Record<string, unknown>) => void;
@@ -98,8 +100,19 @@ async function esperarValor(ag: Navegador, seletor: string, segundos: number): P
   return '';
 }
 
+/** Espera o AJAX do portal terminar: a resposta redesenha o bloco e apaga o que foi digitado antes dela. */
+async function esperarAjax(ag: Navegador, segundos = 20): Promise<void> {
+  await ag.esperar(500); // o pedido leva um instante para sair
+  const ate = Date.now() + segundos * 1_000;
+  while (Date.now() < ate && !(await ag.js<boolean>(JS_AJAX_PARADO).catch(() => true))) await ag.esperar(300);
+}
+
+/** Tira o print da etapa preenchida. O corpo do passo chama logo antes de sair da tela. */
+type Foto = () => Promise<void>;
+
 /** Clica em Avançar e exige a próxima etapa; se não avançou, diz QUAL campo o servidor recusou. */
-async function avancar(ag: Navegador, proxima: RegExp, ctx: ContextoRoteiro): Promise<void> {
+export async function avancar(ag: Navegador, proxima: RegExp, ctx: ContextoRoteiro, foto: Foto): Promise<void> {
+  await foto();
   await ag.limparRede();
   await ag.clicar('#edit-next');
   await ag.esperarCarga('load');
@@ -121,16 +134,113 @@ async function avancar(ag: Navegador, proxima: RegExp, ctx: ContextoRoteiro): Pr
   await ag.esperar(1_000);
 }
 
-async function passo(ctx: ContextoRoteiro, n: number, nome: NomePasso, corpo: () => Promise<void>): Promise<void> {
+export async function passo(ctx: ContextoRoteiro, n: number, nome: NomePasso, corpo: (foto: Foto) => Promise<void>): Promise<void> {
   await ctx.registrar(n, nome, 'rodando');
+  // O print do passo é a etapa PREENCHIDA. Depois do Avançar a tela já é a
+  // próxima etapa, vazia: foi o que o painel mostrou até 05/11/2026.
+  let printPreenchido: string | undefined;
+  const foto: Foto = async () => {
+    if (!ctx.fotografar) return;
+    const abertas = await ctx.agente.js<number>(JS_ABRIR_SANFONAS).catch(() => 0);
+    if (abertas) await ctx.agente.esperar(500);
+    printPreenchido = await ctx.fotografar(n).catch(() => undefined);
+  };
   try {
-    await corpo();
+    await corpo(foto);
   } catch (e) {
     const msg = e instanceof ErroLudmilla ? e.message : `Passo ${n} (${nome}) falhou: ${(e as Error).message.split('\n')[0].slice(0, 300)}`;
     await ctx.registrar(n, nome, 'erro', msg).catch(() => undefined);
     throw e instanceof ErroLudmilla ? e : new ErroLudmilla('falhou', msg);
   }
-  await ctx.registrar(n, nome, 'ok');
+  await ctx.registrar(n, nome, 'ok', undefined, printPreenchido);
+}
+
+// ── Unidades consumidoras beneficiárias (só em autoconsumo remoto) ───────────
+// Telas de 21/10/2026: marcar "Percentual"; para cada beneficiária digitar
+// a UC → Buscar → esperar a linha com AQUELA UC → preencher o %; no fim
+// conferir o "Percentual da sua microgeradora" contra o resto calculado.
+// Se algo faltar, o passo falha dizendo o quê, e o registrador grava o mapa
+// da tela e o HTML do bloco.
+const BENEF_BUSCAR = '[id^="edit-field-uc-list-percent-0-send-uc-code"]';
+
+export async function preencherBeneficiarias(
+  ag: Navegador,
+  beneficiarias: DadosCriacaoCpfl['beneficiarias'],
+  leituras: Record<string, string>,
+  log: ContextoRoteiro['log'],
+): Promise<ResultadoRoteiro['beneficiarias']> {
+  if (beneficiarias.length === 0) {
+    throw new ErroLudmilla('falhou', 'Autoconsumo remoto sem beneficiária cadastrada no GD Manager.');
+  }
+  const confirmadas: ResultadoRoteiro['beneficiarias'] = [];
+  await abrirSanfona(ag, 'Unidades consumidoras beneficiárias');
+  await ag.esperar(800);
+  const mapa = await ag.js<{ achou: boolean; texto?: string; controles?: unknown[] }>(JS_BENEF_MAPA).catch(() => ({ achou: false }));
+  log('bloco de beneficiárias', mapa as Record<string, unknown>);
+  if (!mapa.achou) {
+    throw new ErroLudmilla('pagina_mudou', 'Não achei o bloco "Unidades consumidoras beneficiárias" na tela de dados do cliente — o sistema de compensação ficou em autoconsumo remoto?');
+  }
+
+  await esperarAjax(ag);
+  const radio = await ag.js<{ marcado: boolean; rotulo: string } | null>(JS_BENEF_MARCAR_PERCENTUAL);
+  if (!radio?.marcado) {
+    throw new ErroLudmilla('pagina_mudou', `Não consegui marcar "Percentual" no bloco de beneficiárias${radio ? ` (rótulo "${radio.rotulo}")` : ''}.`);
+  }
+  await esperarAjax(ag);
+
+  type Linha = { uc: string; endereco: string | null; titular: string | null; documento: string | null; percentual: string; id: string | null };
+  const buscarUc = async (uc: string, segundos: number): Promise<Linha | undefined> => {
+    const digitado = await ag.js<{ id: string | null; valor: string } | null>(jsBenefDigitarUc(uc));
+    if (!digitado) throw new ErroLudmilla('pagina_mudou', `Não achei o campo "Nº da UC" para digitar a beneficiária ${uc}.`);
+    if (!(await ag.js<boolean>(jsVisivel(BENEF_BUSCAR)))) throw new ErroLudmilla('pagina_mudou', `Não achei o botão "Buscar" das beneficiárias (UC ${uc}).`);
+    // Clique de verdade, como nos outros Buscar e Consultar: o AJAX do Drupal
+    // em botão escuta mousedown e cancela o click, então el.click() não faz nada.
+    await ag.clicar(BENEF_BUSCAR);
+
+    // a linha com esta UC aparece por AJAX; erro visível = o portal recusou
+    const ate = Date.now() + segundos * 1_000;
+    while (Date.now() < ate) {
+      await ag.esperar(1_000);
+      const linhas = (await ag.js<Linha[] | null>(JS_BENEF_LINHAS)) ?? [];
+      const linha = linhas.find(l => l.uc === uc);
+      if (linha) return linha;
+      const erros = await ag.js<{ mensagens: string[]; campos: string[] }>(JS_ERROS_VISIVEIS).catch(() => ({ mensagens: [], campos: [] }));
+      if (erros.mensagens.length) {
+        throw new ErroLudmilla('falhou', `A CPFL recusou a UC ${uc} como beneficiária: ${erros.mensagens.join(' | ').slice(0, 300)}. Normalmente é UC de outro titular.`);
+      }
+    }
+    return undefined;
+  };
+
+  for (const b of beneficiarias) {
+    let linha = await buscarUc(b.uc, 12);
+    if (!linha) {
+      log('UC beneficiária sem retorno no 1º Buscar — tentando de novo', { uc: b.uc });
+      linha = await buscarUc(b.uc, 25);
+    }
+    if (!linha) throw new ErroLudmilla('pagina_mudou', `Busquei a UC ${b.uc} duas vezes e a linha dela não apareceu — o portal não a reconheceu ou a tela mudou.`);
+
+    // o fim do AJAX pode redesenhar a linha: marca o campo de novo antes de preencher
+    await esperarAjax(ag);
+    await ag.js(JS_BENEF_LINHAS);
+    await definir(ag, `[data-ludmilla-uc="${b.uc}"]`, percentualPortal(b.percentual), `Percentual da beneficiária ${b.uc}`);
+    await esperarAjax(ag);
+    confirmadas.push({ uc: b.uc, titular: linha.titular, documento: linha.documento, endereco: linha.endereco });
+    leituras[`beneficiaria_${b.uc}`] = `${linha.titular ?? '?'} · ${linha.documento ?? '?'} · ${percentualPortal(b.percentual)}%`;
+    log('beneficiária na linha', { uc: b.uc, titular: linha.titular, percentual: b.percentual });
+  }
+
+  // a prova: o portal calcula a geradora como o resto; tem de bater
+  const esperado = restoGeradora(beneficiarias.map(b => b.percentual));
+  const textoGeradora = await ag.js<string | null>(JS_BENEF_PERCENTUAL_GERADORA);
+  const lido = lerPercentualPortal(textoGeradora);
+  leituras.percentual_geradora = textoGeradora ?? '';
+  if (lido === null || !percentuaisBatem(lido, esperado)) {
+    throw new ErroLudmilla('pagina_mudou',
+      `O portal mostra a geradora com "${textoGeradora ?? '?'}" e o GD Manager esperava ${percentualPortal(esperado)}% — os percentuais não ficaram como digitados. Não vou avançar assim.`);
+  }
+  log('rateio conferido', { geradora: esperado, beneficiarias: beneficiarias.length });
+  return confirmadas;
 }
 
 // ── o roteiro ────────────────────────────────────────────────────────────────
@@ -144,7 +254,7 @@ export async function roteiroCpfl60(ctx: ContextoRoteiro): Promise<ResultadoRote
   const fases = valorFases(dados.padrao?.num_fases, dados.entry_phase);
 
   // ── 1. Introdução: formulário NOVO pelo menu, escolher "Conexão de microgeração"
-  await passo(ctx, 1, 'introducao', async () => {
+  await passo(ctx, 1, 'introducao', async (foto) => {
     // Nunca abrir node/add/project_60 direto: o Drupal retoma o formulário velho da sessão.
     await ag.abrir(URL_CRIAR_PROJETO);
     await ag.esperarCarga('load');
@@ -155,6 +265,7 @@ export async function roteiroCpfl60(ctx: ContextoRoteiro): Promise<ResultadoRote
 
     // #edit-next = "Ligação nova com microgeração"; #edit-next-new-connection = "Conexão de microgeração"
     const botaoConexao = (await ag.js<boolean>(jsVisivel('#edit-next-new-connection'))) ? '#edit-next-new-connection' : '#edit-next';
+    await foto();
     await ag.clicar(botaoConexao);
     await ag.esperarCarga('load');
     await esperarTitulo(ag, /Dados da unidade consumidora/i, 'Depois de Iniciar');
@@ -165,7 +276,7 @@ export async function roteiroCpfl60(ctx: ContextoRoteiro): Promise<ResultadoRote
   });
 
   // ── 2. Dados da unidade consumidora
-  await passo(ctx, 2, 'dados_uc', async () => {
+  await passo(ctx, 2, 'dados_uc', async (foto) => {
     const estimado = a('opcao_orcamento') === 'estimado';
     await marcar(ag, estimado ? '#edit-field-quotation-options-60-estimated' : '#edit-field-quotation-options-60-connection',
       estimado ? /^Orçamento Estimado/i : /^Orçamento de Conexão/i, 'opção de orçamento');
@@ -224,11 +335,11 @@ export async function roteiroCpfl60(ctx: ContextoRoteiro): Promise<ResultadoRote
     ]));
     const faltando = Object.entries(fd).filter(([, v]) => v === null || v === '').map(([k]) => k);
     if (faltando.length) throw new ErroLudmilla('pagina_mudou', `Antes de avançar, o formulário está sem: ${faltando.join(', ')}.`);
-    await avancar(ag, /Dados do projeto/i, ctx);
+    await avancar(ag, /Dados do projeto/i, ctx, foto);
   });
 
   // ── 3. Dados do projeto
-  await passo(ctx, 3, 'dados_projeto', async () => {
+  await passo(ctx, 3, 'dados_projeto', async (foto) => {
     const titulo = dados.project_title || `UFV ${dados.customer_name}`;
     const p = dados.padrao;
     const m = dados.modulo;
@@ -308,11 +419,11 @@ export async function roteiroCpfl60(ctx: ContextoRoteiro): Promise<ResultadoRote
     if (faltando.length) {
       throw new ErroLudmilla('pagina_mudou', `O formulário ficou com campos vazios que o portal exige: ${faltando.map(k => k.replace(/^field_complementary_generation\[0\]\[subform\]/, '…')).join(', ')}.`);
     }
-    await avancar(ag, /Dados do cliente/i, ctx);
+    await avancar(ag, /Dados do cliente/i, ctx, foto);
   });
 
   // ── 4. Dados do cliente
-  await passo(ctx, 4, 'dados_cliente', async () => {
+  await passo(ctx, 4, 'dados_cliente', async (foto) => {
     if (!pessoaFisica(dados.customer_cpf)) {
       throw new ErroLudmilla('falhou', 'Titular Pessoa Jurídica (CNPJ): o bloco de PJ do portal ainda não está no roteiro — precisa de uma pessoa.');
     }
@@ -344,78 +455,17 @@ export async function roteiroCpfl60(ctx: ContextoRoteiro): Promise<ResultadoRote
     await marcar(ag, `[id^="edit-field-authorize-pay-connec-costs-${a('autoriza_documentos') === 'nao' ? 0 : 1}"]`, simNao(a('autoriza_documentos')), 'autoriza entrega dos contratos com o orçamento');
     await marcar(ag, `[id^="edit-field-solicitacao-de-vistoria-${a('contagem_prazo_vistoria') === 'nao' ? 0 : 1}"]`, simNao(a('contagem_prazo_vistoria')), 'contagem do prazo da vistoria');
 
-    // ── Unidades consumidoras beneficiárias (só em autoconsumo remoto) ──
-    // Telas de 21/10/2026: marcar "Percentual"; para cada beneficiária digitar
-    // a UC → Buscar → esperar a linha com AQUELA UC → preencher o %; no fim
-    // conferir o "Percentual da sua microgeradora" contra o resto calculado.
-    // Os controles são achados pelo TEXTO (js.ts): o bloco não está no mapa
-    // de 17/09, e palpite de id não entra. Se algo faltar, o passo falha
-    // dizendo o quê, e o registrador grava o mapa da tela.
     if (dados.sistema_compensacao === 'autoconsumo_remoto') {
-      if (dados.beneficiarias.length === 0) {
-        throw new ErroLudmilla('falhou', 'Autoconsumo remoto sem beneficiária cadastrada no GD Manager.');
-      }
-      await abrirSanfona(ag, 'Unidades consumidoras beneficiárias');
-      await ag.esperar(800);
-      const mapa = await ag.js<{ achou: boolean; texto?: string; controles?: unknown[] }>(JS_BENEF_MAPA).catch(() => ({ achou: false }));
-      ctx.log('bloco de beneficiárias', mapa as Record<string, unknown>);
-      if (!mapa.achou) {
-        throw new ErroLudmilla('pagina_mudou', 'Não achei o bloco "Unidades consumidoras beneficiárias" na tela de dados do cliente — o sistema de compensação ficou em autoconsumo remoto?');
-      }
-
-      const radio = await ag.js<{ marcado: boolean; rotulo: string } | null>(JS_BENEF_MARCAR_PERCENTUAL);
-      if (!radio?.marcado) {
-        throw new ErroLudmilla('pagina_mudou', `Não consegui marcar "Percentual" no bloco de beneficiárias${radio ? ` (rótulo "${radio.rotulo}")` : ''}.`);
-      }
-      await ag.esperar(600);
-
-      for (const b of dados.beneficiarias) {
-        const digitado = await ag.js<{ id: string | null; valor: string } | null>(jsBenefDigitarUc(b.uc));
-        if (!digitado) throw new ErroLudmilla('pagina_mudou', `Não achei o campo "Nº da UC" para digitar a beneficiária ${b.uc}.`);
-        if (!(await ag.js<boolean>(JS_BENEF_BUSCAR))) throw new ErroLudmilla('pagina_mudou', `Não achei o botão "Buscar" das beneficiárias (UC ${b.uc}).`);
-
-        // a linha com esta UC aparece por AJAX; erro visível = o portal recusou
-        type Linha = { uc: string; endereco: string | null; titular: string | null; documento: string | null; percentual: string; id: string | null };
-        let linha: Linha | undefined;
-        const ate = Date.now() + 25_000;
-        while (Date.now() < ate && !linha) {
-          await ag.esperar(1_000);
-          const linhas = (await ag.js<Linha[] | null>(JS_BENEF_LINHAS)) ?? [];
-          linha = linhas.find(l => l.uc === b.uc);
-          if (!linha) {
-            const erros = await ag.js<{ mensagens: string[]; campos: string[] }>(JS_ERROS_VISIVEIS).catch(() => ({ mensagens: [], campos: [] }));
-            if (erros.mensagens.length) {
-              throw new ErroLudmilla('falhou', `A CPFL recusou a UC ${b.uc} como beneficiária: ${erros.mensagens.join(' | ').slice(0, 300)}. Normalmente é UC de outro titular.`);
-            }
-          }
-        }
-        if (!linha) throw new ErroLudmilla('pagina_mudou', `Busquei a UC ${b.uc} e a linha dela não apareceu em 25 s — o portal não a reconheceu ou a tela mudou.`);
-
-        await definir(ag, `[data-ludmilla-uc="${b.uc}"]`, percentualPortal(b.percentual), `Percentual da beneficiária ${b.uc}`);
-        beneficiariasConfirmadas.push({ uc: b.uc, titular: linha.titular, documento: linha.documento, endereco: linha.endereco });
-        leituras[`beneficiaria_${b.uc}`] = `${linha.titular ?? '?'} · ${linha.documento ?? '?'} · ${percentualPortal(b.percentual)}%`;
-        ctx.log('beneficiária na linha', { uc: b.uc, titular: linha.titular, percentual: b.percentual });
-      }
-
-      // a prova: o portal calcula a geradora como o resto; tem de bater
-      await ag.esperar(800);
-      const esperado = restoGeradora(dados.beneficiarias.map(b => b.percentual));
-      const textoGeradora = await ag.js<string | null>(JS_BENEF_PERCENTUAL_GERADORA);
-      const lido = lerPercentualPortal(textoGeradora);
-      leituras.percentual_geradora = textoGeradora ?? '';
-      if (lido === null || !percentuaisBatem(lido, esperado)) {
-        throw new ErroLudmilla('pagina_mudou',
-          `O portal mostra a geradora com "${textoGeradora ?? '?'}" e o GD Manager esperava ${percentualPortal(esperado)}% — os percentuais não ficaram como digitados. Não vou avançar assim.`);
-      }
-      ctx.log('rateio conferido', { geradora: esperado, beneficiarias: dados.beneficiarias.length });
+      beneficiariasConfirmadas.push(...await preencherBeneficiarias(ag, dados.beneficiarias, leituras, ctx.log));
     }
 
-    await avancar(ag, /Revisão do projeto/i, ctx);
+    await avancar(ag, /Revisão do projeto/i, ctx, foto);
   });
 
-  // ── 5. Revisão → Salvar (o print do "rodando" é a revisão inteira)
+  // ── 5. Revisão → Salvar (o print é a revisão inteira, antes do Salvar)
   let nodeId: string | null = null;
-  await passo(ctx, 5, 'revisao', async () => {
+  await passo(ctx, 5, 'revisao', async (foto) => {
+    await foto();
     if (ctx.simular) { ctx.log('simulação: parando antes do Salvar'); return; }
     await ag.limparRede();
     await ag.clicar('#edit-next-save-draft');
