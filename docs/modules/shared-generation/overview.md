@@ -2,7 +2,8 @@
 
 **Estado: 🟡 Beneficiárias estruturadas (22/10/2026); o 1º envio real à CPFL em
 autoconsumo remoto (PRJ-15238, 04/11/2026) parou no bloco de beneficiárias.
-Correção escrita em 05/11/2026, aguardando publicar o robô e simular no portal.**
+Corrigido e publicado em 05/11/2026; a simulação no portal chegou à Revisão com o
+rateio certo. Falta o 1º envio real concluir (o Salvar a simulação não prova).**
 
 Spec: [2026-10-22-beneficiarias-autoconsumo-remoto-design.md](../../superpowers/specs/2026-10-22-beneficiarias-autoconsumo-remoto-design.md).
 

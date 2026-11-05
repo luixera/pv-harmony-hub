@@ -459,9 +459,11 @@ campo da UC vazio e a lista sem linhas. Três regras saíram daí:
   e `JS_BENEF_LINHAS` lê a `<tr>` pela ordem: UC, endereço, titular, documento.
 
 Em erro de passo com o bloco na tela, o robô sobe também
-`criacao-passo-N.beneficiarias.html`. O HTML das linhas ainda não foi visto no
-portal: o teste (`test/criacao-beneficiarias.test.ts`) reproduz o comportamento
-descrito, com o mesmo erro antes da correção. A prova final é uma simulação real.
+`criacao-passo-N.beneficiarias.html`. O teste
+(`test/criacao-beneficiarias.test.ts`) reproduz o comportamento descrito, com o
+mesmo erro antes da correção. Simulação real em `a9405aa` (PRJ-15238, 05/11): 70%,
+30%, geradora 0,0000% e latitude 23° 06' 59.00" S, com as sanfonas abertas nos
+prints. A simulação para antes do Salvar: o 1º envio real ainda precisa concluir.
 
 **Autonomia** (`DadosCriacaoCpfl.autonomia`, padrões em `AUTONOMIA_PADRAO`):
 respostas que a Ludmilla dá sozinha num projeto de GD comum
