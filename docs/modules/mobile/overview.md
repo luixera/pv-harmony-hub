@@ -274,11 +274,6 @@ em desenvolvimento). Para testar PWA, use `npm run build` e `npm run preview`.
 - **O que ninguém viu rodando:** o botão de instalar do Chrome e a abertura
   "sem barra" do app instalado, o aviso "Nova versão disponível" (exige duas
   versões publicadas em sequência) e o carregamento sem rede.
-- **Nginx sem regra para `sw.js` e `manifest.webmanifest`.** O Chrome já ignora
-  o cache HTTP para o script do service worker, então não trava, mas vale
-  `Cache-Control: no-cache` neles (ver
-  [`nginx-cache-headers.yml`](../../../.github/workflows/nginx-cache-headers.yml),
-  que hoje só trata o `index.html`).
 - **A barra inferior nasce com 3 itens e ganha o 4º** (Avisos) quando o tenant
   carrega, porque `useLudmillaDisponivel()` depende de dado assíncrono. É um
   salto de layout por sessão.

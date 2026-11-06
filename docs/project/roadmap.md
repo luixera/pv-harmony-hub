@@ -10,39 +10,32 @@
   para as automações de e-mail realmente enviarem.
 - **Proteção de senha vazada** no Supabase Auth: habilitar no painel.
 - **Listagem pública de buckets** `avatars`/`tenant-logos`: revisar.
-- **Nginx da VPS — falta só RODAR o workflow.** O
+- **Nginx da VPS — falta avaliar HSTS, CSP e os cabeçalhos em `/assets`.**
+  Medido em 06/11/2026: nenhum caminho devolve `Strict-Transport-Security` nem
+  `Content-Security-Policy`, e `/assets/*` vem sem `X-Content-Type-Options`,
+  `X-Frame-Options` e `Referrer-Policy`. Nada disso foi aplicado.
+
+  **Resolvido em 06/11/2026: a brecha de clickjacking no `index.html`.** O
   [`nginx-cache-headers.yml`](../../.github/workflows/nginx-cache-headers.yml)
-  já está pronto e testado contra uma cópia da configuração real (Actions →
-  o workflow → Run workflow; tem `simular` e `desfazer`). Ele faz três coisas,
-  e a terceira é a que importa:
-  1. `no-cache` no `sw.js` — sem isso, um navegador que não seja o Chrome pode
-     servir um service worker velho do cache HTTP, e ele controla **todas** as
-     páginas. Ver [ADR 0011](../adr/0011-pwa-casca-sem-fila-offline.md).
-  2. `application/manifest+json` no manifest, que hoje sai como
-     `application/octet-stream` porque `.webmanifest` não está no mime.types.
-  3. **Devolve `X-Content-Type-Options`, `X-Frame-Options` e `Referrer-Policy`
-     ao `index.html`.** O bloco de cache criado em set/2026 tirou os três sem
-     querer: no Nginx, um `add_header` dentro de um `location` cancela todos
-     os herdados do `server`. Medido em produção em 16/10/2026 — `/sw.js` vem
-     com os três, `/` vem sem nenhum. É o documento HTML sem proteção de
-     clickjacking. **Enquanto o workflow não rodar, essa brecha continua.**
+  aplicou pela primeira vez a versão atual (execução 42245369697). Medido com
+  `curl` depois de aplicar:
+  - `/`, `www` e rota do SPA têm os três cabeçalhos de segurança e seguem com
+    `no-cache`;
+  - `sw.js` e o manifest ganharam `no-cache`, e o manifest saiu de
+    `application/octet-stream` para `application/manifest+json`
+    ([ADR 0011](../adr/0011-pwa-casca-sem-fila-offline.md)).
 
-  **Situação em 06/11/2026: a brecha continua aberta.** Medido com `curl`: `/`,
-  `www` e rota do SPA vêm com `no-cache` e sem nenhum dos três cabeçalhos;
-  `/sw.js` vem sem `no-cache`; o manifest segue `application/octet-stream`.
+  Para não reabrir: no Nginx, um `add_header` dentro de um `location` cancela
+  todos os herdados do `server`. Cabeçalho novo no `server` precisa ser repetido
+  nos blocos entre `GD-MANAGER-CASCA-INICIO` e `GD-MANAGER-CASCA-FIM`.
 
-  O vermelho da última execução (38843189578, 16/10/2026) **não é falha ao
-  aplicar**. Ela foi disparada com `simular=true`, parou antes de gravar e a VPS
-  não mudou. A etapa "Prova" roda com `if: always()`, não sabe do modo e reprovou
-  o estado antigo. Esta versão do workflow só rodou essa vez, simulada, ou seja,
-  **nunca aplicou nada**. Falta rodar com `simular=false`.
+  Limite da medição: o `curl` vê a resposta da rede. Quem já tem o app instalado
+  recebe o `index.html` guardado pelo service worker até o próximo deploy que
+  altere esse arquivo.
 
-  Reconferido em 06/11/2026: o `awk` do workflow, sobre a configuração que saiu
-  no log dessa execução (gawk e mawk), troca só o bloco e a segunda passada dá
-  resultado idêntico. O `nginx -t` só roda na própria VPS.
-
-  Débito do workflow: a "Prova" não deveria reprovar em `simular` nem em
-  `desfazer`, porque nesses modos o estado final não é o alvo.
+  O vermelho de 16/10/2026 (execução 38843189578) não foi falha ao aplicar: ela
+  rodou com `simular=true`, e a "Prova" reprovou o estado antigo. A "Prova" agora
+  só informa em `simular` e `desfazer`; ao aplicar de verdade, continua reprovando.
 
 ## Tarefas de produto em aberto (do backlog de sessão)
 - **Eletropostos — pós-entrega 2**: a estação local (PC do gestor + BlueStacks)
