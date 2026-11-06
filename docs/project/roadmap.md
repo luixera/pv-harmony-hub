@@ -38,6 +38,15 @@
   só informa em `simular` e `desfazer`; ao aplicar de verdade, continua reprovando.
 
 ## Tarefas de produto em aberto (do backlog de sessão)
+- **ENEL — botão para pedir a troca do relógio (pedido do usuário, 06/11/2026;
+  não iniciado).** Projeto com vistoria aprovada ganha, no A fazer da Ludmilla, um
+  botão que envia à ENEL o e-mail pedindo a troca. É a fase 2 da
+  [spec da ENEL por e-mail](../superpowers/specs/2026-10-13-ludmilla-enel-email-design.md):
+  a §13 já traz o modelo tirado dos pedidos reais da equipe, e o envio pode
+  reaproveitar o da cobrança (`enviar_cobranca`). Caso real: PRJ-27803, em que a NT
+  precisa vir do que a Ludmilla aprendeu nos e-mails, porque o campo protocolo diz
+  "Sem protocolo". A decidir com o usuário: o texto final e se o clique envia direto
+  ou abre o e-mail para conferir, como na cobrança.
 - **Eletropostos — pós-entrega 2**: a estação local (PC do gestor + BlueStacks)
   está instalada, calibrada e gravando desde 16/10/2026 (a primeira coleta agendada, às 08:56 de 16/10/2026, gravou 7 leituras da Cury e 25 da ATM;
   [modules/eletropostos](../modules/eletropostos/overview.md)). Em aberto: vincular
