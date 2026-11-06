@@ -231,6 +231,9 @@ jobs:
 
       - name: Prova — cabeçalhos servidos agora
         if: always()
+        env:
+          SIMULAR: ${{ inputs.simular }}
+          DESFAZER: ${{ inputs.desfazer }}
         run: |
           falhou=0
           checar() { # $1 url · $2 regex esperado · $3 descrição
@@ -251,6 +254,13 @@ jobs:
           ASSET=$(curl -s -m 20 https://homologamanager.com.br/ | grep -o 'assets/index-[A-Za-z0-9._-]*\.js' | head -1)
           echo "--- /$ASSET (deve seguir imutável, com cache longo)"
           curl -sI -m 20 "https://homologamanager.com.br/$ASSET" | grep -i 'cache-control' || true
+          # Simular e desfazer não deixam a produção no estado-alvo. Reprovar aqui
+          # pinta de vermelho uma execução sem erro: a simulação de 16/10/2026 foi
+          # lida como "o workflow falhou". Erro real reprova na etapa "Executar".
+          if [ "$SIMULAR" = "true" ] || [ "$DESFAZER" = "true" ]; then
+            echo "::notice::Modo simular/desfazer: a prova só informa, não reprova."
+            exit 0
+          fi
           exit $falhou
 
       - name: Cleanup
