@@ -27,6 +27,23 @@
      com os três, `/` vem sem nenhum. É o documento HTML sem proteção de
      clickjacking. **Enquanto o workflow não rodar, essa brecha continua.**
 
+  **Situação em 06/11/2026: a brecha continua aberta.** Medido com `curl`: `/`,
+  `www` e rota do SPA vêm com `no-cache` e sem nenhum dos três cabeçalhos;
+  `/sw.js` vem sem `no-cache`; o manifest segue `application/octet-stream`.
+
+  O vermelho da última execução (38843189578, 16/10/2026) **não é falha ao
+  aplicar**. Ela foi disparada com `simular=true`, parou antes de gravar e a VPS
+  não mudou. A etapa "Prova" roda com `if: always()`, não sabe do modo e reprovou
+  o estado antigo. Esta versão do workflow só rodou essa vez, simulada, ou seja,
+  **nunca aplicou nada**. Falta rodar com `simular=false`.
+
+  Reconferido em 06/11/2026: o `awk` do workflow, sobre a configuração que saiu
+  no log dessa execução (gawk e mawk), troca só o bloco e a segunda passada dá
+  resultado idêntico. O `nginx -t` só roda na própria VPS.
+
+  Débito do workflow: a "Prova" não deveria reprovar em `simular` nem em
+  `desfazer`, porque nesses modos o estado final não é o alvo.
+
 ## Tarefas de produto em aberto (do backlog de sessão)
 - **Eletropostos — pós-entrega 2**: a estação local (PC do gestor + BlueStacks)
   está instalada, calibrada e gravando desde 16/10/2026 (a primeira coleta agendada, às 08:56 de 16/10/2026, gravou 7 leituras da Cury e 25 da ATM;
