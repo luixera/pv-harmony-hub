@@ -10,11 +10,6 @@
   para as automações de e-mail realmente enviarem.
 - **Proteção de senha vazada** no Supabase Auth: habilitar no painel.
 - **Listagem pública de buckets** `avatars`/`tenant-logos`: revisar.
-- **Gmail da Ludmilla — pôr "Não limitar" na pasta IMAP.** Configurações → Encaminhamento e
-  POP/IMAP → Limites de tamanho das pastas. Medido em 06/11/2026: a busca só alcança de 22/10 em
-  diante, e o limite anda com o tempo. Enquanto isso, PRJ-05469 e PRJ-30495 ficam sem cobrança da
-  troca, porque as notas são de 16/10 e 20/10. Depois de mudar, reler as duas
-  ([doc da Ludmilla](../modules/integrations/ludmilla.md), "O que NÃO está provado" da ENEL).
 - **Nginx da VPS — falta avaliar HSTS, CSP e os cabeçalhos em `/assets`.**
   Medido em 06/11/2026: nenhum caminho devolve `Strict-Transport-Security` nem
   `Content-Security-Policy`, e `/assets/*` vem sem `X-Content-Type-Options`,

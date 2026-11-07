@@ -1775,15 +1775,18 @@ republica o robô. Desligar tudo:
 1ª cobrança de verdade e se ela entra na conversa da nota no Gmail; a 2ª cobrança de uma nota;
 a troca realizada encerrando de verdade; a recaída para a porta 587; a conferência numa queda real.
 
-**Notas lidas antes de a cobrança existir (relidas em 06/11/2026, com o OK do usuário):**
-- **PRJ-21875 e PRJ-52440** viraram cobrança, já vencidas: o A fazer abre na primeira passada de
-  `ludmilla-cobrancas` em dia útil (segunda, 09/11, às 8h05).
-- **PRJ-05469 e PRJ-30495 seguem sem cobrança.** As notas são de 16/10 e 20/10, e a busca do Gmail
-  só alcança de 22/10 em diante. Não foram reabertas, porque mensagem fora do alcance fica presa.
-  Depois de pôr "Não limitar" no Gmail (roadmap), releia as duas.
+**O corte das cobranças (decisão do usuário de 25/10/2026, "só daqui para frente"):**
+`ludmilla_cobranca_agendar` ignora nota de e-mail anterior a 25/10/2026 e devolve
+`anterior_ao_inicio`, inclusive por "Ler de novo". É o único lugar do corte. Efeito em 06/11/2026:
+- **PRJ-21875 e PRJ-52440** (notas de 26/10 e 27/10) foram relidas e viraram cobrança, já vencidas:
+  o A fazer abre na primeira passada de `ludmilla-cobrancas` em dia útil (segunda, 09/11, às 8h05).
+- **PRJ-05469 e PRJ-30495** (notas de 16/10 e 20/10) ficam fora por causa do corte. Reler não adianta.
 
-**Confira o alcance antes de reabrir qualquer mensagem:** é o `email_mais_antigo` no `resultado`
-do último run. O comando do Step 4 do plano não olha isso e prenderia as mensagens antigas.
+**O alcance do Gmail:** com "Não limitar" na pasta IMAP (posto pelo usuário em 06/11/2026), a busca
+alcança os 120 dias: `email_mais_antigo` foi de 22/10 para 10/07. A primeira leitura ampla tratou 227
+e-mails, com 0 falhas, 15 PDFs lidos pela IA, nenhum sino (e-mail de mais de 30 dias só anota) e 8
+cartões novos para gravar a NT como protocolo. Se o limite voltar, mensagem fora do alcance fica
+presa ao ser reaberta: confira o `email_mais_antigo` no `resultado` do último run antes de reabrir.
 
 **Escrito em 21/10, antes do 1º run (24/10):** tudo era teste unitário (580 testes do robô, `fail 0`, medidos
 em 21/10, no commit `13200de`, o da rodada 4 da classificação), SQL em `begin; …

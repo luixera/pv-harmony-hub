@@ -5037,6 +5037,8 @@ Expected: `md5_cpfl = 3d0d2d0f1e7455ec701230bc925e1bde`; quatro jobs — `ludmil
 
 - [ ] **Step 4: As notas já lidas (decisão do usuário)**
 
+> **Superado.** O usuário decidiu em 25/10/2026 "só daqui para frente", e `ludmilla_cobranca_agendar` ignora nota de e-mail anterior a essa data, mesmo relida. Só releia nota de 25/10 em diante, conferindo antes o `email_mais_antigo` do último run. Ver a doc do módulo.
+
 Escreva `$RASCUNHO/notas_antigas.sql` (só código do projeto e data: nada de nome nem assunto no chat):
 
 ```sql
