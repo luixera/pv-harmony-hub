@@ -1772,10 +1772,18 @@ republica o robô. Desligar tudo:
   e uma cobrança nova nasceu sozinha (PRJ-75158).
 
 **Ainda não exercido:** o cron disparando sozinho (o primeiro é segunda, 09/11, às 8h); a
-1ª cobrança de verdade (PRJ-60934 vence em 11/11) e se ela entra na conversa da nota no Gmail;
-a 2ª cobrança de uma nota; a troca realizada encerrando de verdade; a recaída para a porta 587;
-a conferência numa queda real. As notas lidas antes da cobrança existir ficam fora até o usuário
-decidir relê-las (Task 10, Step 4 do plano).
+1ª cobrança de verdade e se ela entra na conversa da nota no Gmail; a 2ª cobrança de uma nota;
+a troca realizada encerrando de verdade; a recaída para a porta 587; a conferência numa queda real.
+
+**Notas lidas antes de a cobrança existir (relidas em 06/11/2026, com o OK do usuário):**
+- **PRJ-21875 e PRJ-52440** viraram cobrança, já vencidas: o A fazer abre na primeira passada de
+  `ludmilla-cobrancas` em dia útil (segunda, 09/11, às 8h05).
+- **PRJ-05469 e PRJ-30495 seguem sem cobrança.** As notas são de 16/10 e 20/10, e a busca do Gmail
+  só alcança de 22/10 em diante. Não foram reabertas, porque mensagem fora do alcance fica presa.
+  Depois de pôr "Não limitar" no Gmail (roadmap), releia as duas.
+
+**Confira o alcance antes de reabrir qualquer mensagem:** é o `email_mais_antigo` no `resultado`
+do último run. O comando do Step 4 do plano não olha isso e prenderia as mensagens antigas.
 
 **Escrito em 21/10, antes do 1º run (24/10):** tudo era teste unitário (580 testes do robô, `fail 0`, medidos
 em 21/10, no commit `13200de`, o da rodada 4 da classificação), SQL em `begin; …
