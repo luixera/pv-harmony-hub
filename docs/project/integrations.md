@@ -26,6 +26,11 @@
   Segredo `VITE_GOOGLE_MAPS_API_KEY`.
 - **Gmail API** — leitura de e-mails das concessionárias (assistente Claudinho).
   Credenciais por tenant em `agent_config`. Setup em `docs/GMAIL_SETUP.md`.
+- **Gmail IMAP/SMTP (Ludmilla)** — a Ludmilla lê a caixa por IMAP (`imapflow`) e, desde
+  06/11/2026, manda a cobrança da troca do relógio à ENEL por SMTP (`smtp.gmail.com`, 465 ou
+  587, `nodemailer` 10.1.4), só depois do clique de uma pessoa e só para @enel.com /
+  @br.enel.com. Mesma conta e senha de app do `agent_config` do Claudinho. Teste:
+  `gh workflow run ludmilla-worker.yml -f smtp=verificar`. ADR 0012.
 - **Resend** — envio de e-mail das automações. Segredos `RESEND_API_KEY`,
   domínio verificado, `NOTIFY_FROM`. **Pendência**: configurar para as
   automações realmente enviarem.

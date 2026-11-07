@@ -1683,9 +1683,9 @@ md5 do corpo conferido antes de copiar.
 `secret_id`, e por isso o cron nunca manda varredura de portal para conta de e-mail.
 É uma proteção **acidental**: ninguém a desenhou para isso. Mudar o agendador (ou
 dar login a uma conta de e-mail) sem cuidado faria o cron mandar varredura de portal
-para conta de e-mail. O run de e-mail (`varredura_email`) hoje só nasce do "Verificar
-agora" ou de `INSERT`; **não há agendamento** e não deve haver antes de olhar os
-números do primeiro run.
+para conta de e-mail. A ENEL ganhou agendamento PRÓPRIO em 06/11/2026
+(`ludmilla_agendar_email`, cron `ludmilla-enel-email`, de hora em hora no expediente), sem
+tocar neste agendador; a EDP segue só pelo "Verificar agora".
 
 ### Incidente de 14/10
 
@@ -1698,9 +1698,86 @@ autorizada pelo usuário, com um bloco `DO` que abortaria se não fossem exatame
 18; os sinos não se apagam (só marcar como lido). **Regra: não clicar em "Verificar
 agora" no cartão da ENEL antes de o robô da VPS ser atualizado.**
 
+### A cobrança da troca do relógio e a leitura de hora em hora (ligadas em 06/11/2026)
+
+Spec [2026-10-24-ludmilla-enel-cobranca-troca-design.md](../../superpowers/specs/2026-10-24-ludmilla-enel-cobranca-troca-design.md) ·
+plano [2026-10-24-ludmilla-enel-cobranca-troca.md](../../superpowers/plans/2026-10-24-ludmilla-enel-cobranca-troca.md) ·
+ADR [0012](../../adr/0012-ludmilla-envia-com-clique.md).
+
+**A primeira escrita da Ludmilla para fora por e-mail, e só com clique.** Quando a ENEL
+abre a nota de serviço de troca do relógio (a troca `agendada` do classificador, ou o
+"Reenviamos a nota de serviço …" de uma troca que falhou), o run grava uma linha em
+`portal_cobrancas` (`ludmilla_cobranca_agendar`): o número da nota (12 dígitos junto de
+"nota de serviço" ou "ordem", só na parte nova do e-mail; sem número, a linha nasce sem ele),
+a data do e-mail, o prazo, o remetente (vira o Para), o assunto com "RE:" e o
+`In-Reply-To`/`References` para responder **na conversa da nota**. Vence 7 dias depois.
+
+No dia, `ludmilla_cobrancas_abrir_vencidas` (cron `ludmilla-cobrancas`, seg–sex às :05 das
+8h às 18h) põe a cobrança em `aguardando_envio` e abre um **A fazer `cobrar_troca`** na aba
+Decidir: Para, Assunto e o texto do modelo aprovado (`src/lib/ludmillaCobranca.ts`; assinatura
+"Equipe GD Manager"), editável. **Enviar** passa pela fila do Desfazer (8 s) e chama
+`ludmilla_cobranca_aprovar`, que confere tudo de novo e cria o run `enviar_cobranca`;
+**Dispensar** (`ludmilla_cobranca_dispensar`) encerra a nota.
+
+O worker (`email/enel/enviar.ts`) pega a cobrança (`ludmilla_cobranca_iniciar_envio`, que a
+deixa `enviando`), confere as travas DE NOVO (`podeEnviar`) e manda por SMTP
+(`email/smtp.ts`, nodemailer 10.1.4, `smtp.gmail.com` 465 com recaída na 587 só se nem
+conectar) pela MESMA conta e senha de app do IMAP. Saiu: `ludmilla_cobranca_enviada` grava o
+histórico do projeto (autora: quem aprovou), o comentário no card (assinado pela Ludmilla) e
+agenda a próxima para 7 dias. O servidor recusou: `ludmilla_cobranca_falhou` devolve à equipe
+com a razão curta e um A fazer novo, sem nova tentativa.
+
+**Queda no meio do envio (decisão do usuário, 27/10/2026).** Quando não dá para saber se o
+e-mail saiu, o robô confere a pasta `\Sent` em só leitura (`email/enviados.ts`): espera 30 s e
+faz até 4 buscas. "Saiu" é achar o Message-ID do envio OU o mesmo destinatário, assunto e hora.
+- **Achou:** registra como enviada.
+- **Conferiu e não achou:** reenvia UMA vez, o mesmo e-mail com o mesmo Message-ID. Nunca há uma 3ª.
+- **Não deu para conferir:** não reenvia. `ludmilla_cobranca_sem_confirmacao` trata como
+  possivelmente enviada e abre um A fazer para conferir no Gmail.
+
+A regra é que e-mail para a ENEL nunca sai em dobro: o erro aceitável é deixar de cobrar.
+
+**Travas, no worker E no banco:** destinatário `^[a-z0-9][a-z0-9._%+-]*@(br\.)?enel\.com$`
+sobre o endereço normalizado (CHECK da tabela, `ludmilla_endereco_da_enel`, e
+`REGEX_DESTINATARIO_ENEL` no worker; um teste confere que são a mesma); no máximo 1 envio por
+nota a cada 7 dias; só cobrança `aguardando_envio` aprovada por uma pessoa e ligada ao run pelo
+`run_id` (run criado por `ludmilla_pedir_run` é recusado); lacuna (`[UC]`, `[NT]`, `[TITULAR]`,
+`[NÚMERO DA NOTA]`) no texto barra. Envelope SMTP explícito, sem Cc/Bcc, só texto.
+
+**Param:** "troca realizada" do mesmo projeto (`ludmilla_cobranca_encerrar_por_troca`), nota
+nova do mesmo projeto ("substituída"), Dispensar, projeto concluído/arquivado (o cron encerra).
+
+**A leitura da ENEL ficou automática:** `ludmilla_agendar_email()` (cron
+`ludmilla-enel-email`, `0 11-21 * * 1-5` UTC, ou seja, seg–sex das 8h às 18h) enfileira
+`varredura_email` para conta de e-mail por remetente, ligada, fora da estação, sem run aberto.
+O agendador da CPFL não mudou (md5 `3d0d2d0f1e7455ec701230bc925e1bde` antes e depois); a EDP
+continua manual.
+
+Teste do SMTP na VPS: `gh workflow run ludmilla-worker.yml -f smtp=verificar` (conecta e
+autentica, não envia) ou `-f smtp=enviar_para_a_propria_caixa` (de = para = a caixa da
+Ludmilla; depois confere a pasta Enviados por dois caminhos separados). Esse workflow sempre
+republica o robô. Desligar tudo:
+`select cron.unschedule('ludmilla-cobrancas'); select cron.unschedule('ludmilla-enel-email');`.
+
 ### O que NÃO está provado
 
-**O run nunca rodou.** Tudo é teste unitário (580 testes do robô, `fail 0`, medidos
+**Medido em 06/11/2026 (cobrança e leitura agendada):**
+- **SMTP da VPS:** conectou e autenticou na porta 465 (execução 42318667768).
+- **E-mail de teste para a própria caixa** (execução 42318930227): as duas buscas na pasta
+  Enviados acharam (`pelo_message_id` e `pelo_destinatario`). O Gmail mantém o nosso
+  Message-ID, e a conferência funciona pelos dois caminhos.
+- **Crons:** os dois aplicados, e os quatro jobs da Ludmilla ativos. A função da CPFL ficou com
+  o md5 esperado.
+- **Leitura:** `ludmilla_agendar_email()` disparada uma vez à mão: run `ok`, 5 lidos, 0 falhas,
+  e uma cobrança nova nasceu sozinha (PRJ-75158).
+
+**Ainda não exercido:** o cron disparando sozinho (o primeiro é segunda, 09/11, às 8h); a
+1ª cobrança de verdade (PRJ-60934 vence em 11/11) e se ela entra na conversa da nota no Gmail;
+a 2ª cobrança de uma nota; a troca realizada encerrando de verdade; a recaída para a porta 587;
+a conferência numa queda real. As notas lidas antes da cobrança existir ficam fora até o usuário
+decidir relê-las (Task 10, Step 4 do plano).
+
+**Escrito em 21/10, antes do 1º run (24/10):** tudo era teste unitário (580 testes do robô, `fail 0`, medidos
 em 21/10, no commit `13200de`, o da rodada 4 da classificação), SQL em `begin; …
 rollback;`, revisão independente de cada tarefa e
 mutações. Nunca foi exercido: o IMAP com os remetentes reais, a `ludmilla-parecer`

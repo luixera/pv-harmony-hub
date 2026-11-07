@@ -16,3 +16,4 @@ um arquivo `NNNN-titulo.md`. Formato: Contexto · Decisão · Consequências.
 | [0009](0009-rede-publica-sem-tenant.md) | Base pública de rede elétrica sem `tenant_id` | Aceito |
 | [0010](0010-webgl-no-mapa-de-rede.md) | WebGL (deck.gl) para as camadas densas do mapa de rede | Aceito |
 | [0011](0011-pwa-casca-sem-fila-offline.md) | PWA: cache da casca, sem fila de escrita offline | Aceito |
+| [0012](0012-ludmilla-envia-com-clique.md) | Ludmilla manda e-mail para a concessionária só com clique de uma pessoa | Aceito |

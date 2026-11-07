@@ -122,6 +122,15 @@ física. Regras (detalhe em [business-rules](../modules/signatures/business-rule
 - A função `assinatura-triagem` e o modo `recado` da `ze-brain` só aceitam o
   robô, conferido por `ASSINADOR_WORKER_KEY` (ou a service role). Falha fechada.
 
+## Envio de e-mail pela Ludmilla (ligado em 06/11/2026)
+
+A única escrita da Ludmilla para fora por e-mail é a cobrança da troca do relógio na ENEL
+(ADR 0012). Travas, no worker e no banco: destinatário só @enel.com/@br.enel.com (CHECK em
+`portal_cobrancas.para` + `podeEnviar`), no máximo 1 envio por nota a cada 7 dias, só cobrança
+aprovada por pessoa da equipe e ligada ao run pelo `run_id`. Escrita na tabela só por RPC; leitura
+só da equipe do GD Manager (RESTRICTIVE por tenant). A senha de app vem de `agent_config`, só por
+`service_role`; o log e o banco recebem só a razão curta da falha do SMTP, nunca a mensagem crua.
+
 ## Monitoramento
 - Tabela `system_events` (kind: `error`, `security`, `audit`, `signup`,
   `deploy`) alimenta a aba **Monitoramento** do console (master-only). Captura
