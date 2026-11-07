@@ -64,6 +64,12 @@
   precisa vir do que a Ludmilla aprendeu nos e-mails, porque o campo protocolo diz
   "Sem protocolo". A decidir com o usuário: o texto final e se o clique envia direto
   ou abre o e-mail para conferir, como na cobrança.
+
+  **Quando o botão aparece (usuário, 06/11/2026):** assim que a vistoria for aprovada, se o
+  pedido ainda não foi feito. Testado nos dados: "já pedido" é haver e-mail de troca da ENEL
+  DEPOIS da aprovação (nota de serviço ou resposta automática). E-mail de troca de antes da
+  aprovação não conta: o PRJ-27803 tem 3 e não tem pedido. Dos 5 projetos ativos com aprovação
+  lida, só ele está sem pedido.
 - **Eletropostos — pós-entrega 2**: a estação local (PC do gestor + BlueStacks)
   está instalada, calibrada e gravando desde 16/10/2026 (a primeira coleta agendada, às 08:56 de 16/10/2026, gravou 7 leituras da Cury e 25 da ATM;
   [modules/eletropostos](../modules/eletropostos/overview.md)). Em aberto: vincular

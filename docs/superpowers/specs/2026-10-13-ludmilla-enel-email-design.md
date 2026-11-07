@@ -313,6 +313,22 @@ ENEL que o Claudinho guardou):
 
 **Gatilho natural:** o vídeo aprovado (seção 8), que já toca o sino na fase 1.
 
+**Regra do usuário (06/11/2026):** assim que a vistoria for aprovada, libera o pedido da troca,
+caso ainda não tenha sido feito. Conferido nos dados de 06/11/2026, com 5 projetos ativos:
+
+| Situação depois da última aprovação | Projetos | Leitura |
+|---|---|---|
+| Nenhum e-mail de troca | PRJ-27803 | **libera o pedido** |
+| Resposta automática ou nota de serviço | PRJ-30495, PRJ-21875, PRJ-60934, PRJ-67567 | já pedido |
+
+- **A data importa:** o PRJ-27803 tem 3 e-mails de troca de ANTES da aprovação, de uma tentativa
+  anterior. Olhar só "tem e-mail de troca" esconderia o botão justamente nesse caso.
+- **A leitura só vê e-mail da ENEL.** Pedido recém-enviado à mão só aparece quando a resposta
+  automática chega. O pedido enviado pelo próprio botão o sistema já sabe que saiu.
+- **Só vale para aprovação ligada ao projeto.** E-mail de aprovação sem projeto não libera nada.
+- **Proposta, a confirmar:** o A fazer "É hora de pedir a troca" fechar sozinho quando surgir esse
+  sinal. Hoje PRJ-60934 e PRJ-67567 têm o A fazer aberto, embora o pedido já tenha sido feito.
+
 **Proposta de segurança, a decidir:** a robô **monta** o e-mail e uma pessoa
 **aprova** com um clique antes de sair — como a criação de projeto na CPFL.
 Alternativa ainda mais conservadora: a robô cria o **rascunho no Gmail** e a
