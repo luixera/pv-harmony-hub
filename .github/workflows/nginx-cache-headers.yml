@@ -24,10 +24,24 @@ name: Nginx — cabeçalhos da casca (index.html, sw.js, manifest)
 #      `X-Content-Type-Options`, `X-Frame-Options` e `Referrer-Policy` do
 #      documento HTML — justo onde o `X-Frame-Options` protege de clickjacking.
 #      Medido em 16/10/2026: `/sw.js` vinha com os três, `/` vinha sem nenhum.
+#   5. Cabeçalhos novos (nov/2026): HSTS, CSP e Permissions-Policy, mais o
+#      `nosniff` que faltava em /assets. Os valores ficam num lugar só (variáveis
+#      no início do script remoto); o awk os repete em cada location.
+#   6. `.mjs` em /assets → MIME de JavaScript. O Nginx 1.18 não conhece a extensão
+#      e servia `application/octet-stream`, o que faz o worker do PDF.js falhar.
 #
-# Idempotente e atualizável: remove o bloco que ele mesmo tenha inserido antes
-# (tanto o formato de set/2026 quanto o atual) e insere a versão de agora.
-# Rodar duas vezes seguidas não duplica nada.
+# CUIDADO COM O SERVICE WORKER (provado em teste local, 06/11/2026): o index.html
+# precacheado guarda os cabeçalhos da hora em que foi baixado, e é essa cópia que
+# abre nas navegações. Logo, mudar a CSP aqui só alcança quem já tem o app depois
+# de um deploy que mude o index.html e de o usuário aceitar "Atualizar". O
+# `desfazer` também NÃO alcança esses usuários. HSTS não sofre disso: o navegador
+# o lê de qualquer resposta de rede, como a do /sw.js.
+#
+# Idempotente e atualizável: monta a configuração candidata, compara com a atual
+# e só aplica se houver diferença. Rodar duas vezes seguidas não muda nada.
+#
+# `simular` mostra o diff e roda `nginx -t` numa CÓPIA de /etc/nginx, sem tocar
+# em produção.
 #
 # Segurança: backup datado, `nginx -t` ANTES de recarregar e restauração
 # automática se a validação falhar — o site nunca fica com config quebrada.
@@ -80,6 +94,19 @@ jobs:
           INICIO="GD-MANAGER-CASCA-INICIO"
           FIM="GD-MANAGER-CASCA-FIM"
 
+          # ── Valores dos cabeçalhos: único lugar onde eles são definidos ─────
+          # Subir o HSTS em degraus: 86400 → 2592000 → 31536000. Só acrescentar
+          # `; includeSubDomains` quando TODO subdomínio com DNS tiver HTTPS.
+          HSTS='max-age=86400'
+          # Report-Only só relata. Para valer de verdade, trocar por
+          # Content-Security-Policy E publicar um deploy que mude o index.html.
+          # Sem report-uri as violações só aparecem no console de quem abrir o
+          # DevTools. Quando existir um receptor, acrescentar ao fim de CSP_VALOR.
+          CSP_NOME='Content-Security-Policy-Report-Only'
+          CSP_VALOR="default-src 'self'; script-src 'self' https://maps.googleapis.com https://maps.gstatic.com https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https://yqsqrdndvsnhbsoaoilf.supabase.co https://*.googleapis.com https://*.gstatic.com https://*.google.com https://*.googleusercontent.com; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https://yqsqrdndvsnhbsoaoilf.supabase.co wss://yqsqrdndvsnhbsoaoilf.supabase.co https://*.googleapis.com https://*.gstatic.com https://*.google.com data: blob:; frame-src 'self' blob: https://yqsqrdndvsnhbsoaoilf.supabase.co https://challenges.cloudflare.com https://*.google.com; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'"
+          # camera fica em (self), não (): DocumentUploadField usa capture="environment".
+          PERMISSOES='camera=(self), microphone=(), geolocation=(), payment=(), usb=()'
+
           # root ou sudo?
           if [ "$(id -u)" = "0" ]; then S=""; else S="sudo"; fi
           echo "usuário: $(whoami) | privilégio: ${S:-root}"
@@ -108,6 +135,10 @@ jobs:
           $S cat "$CONF"
           echo "=== fim ==="
 
+          echo "=== renovação de certificado (com HSTS, certificado vencido não tem clique para passar) ==="
+          $S systemctl is-active certbot.timer 2>&1 || true
+          $S certbot certificates 2>/dev/null | grep -E 'Certificate Name|Domains|Expiry' || true
+
           # ── 2. Desfazer ─────────────────────────────────────────────────────
           if [ "${DESFAZER:-false}" = "true" ]; then
             ULTIMO=$($S ls -1t "$CONF".bak-* 2>/dev/null | head -1)
@@ -117,29 +148,12 @@ jobs:
             exit 0
           fi
 
-          # ── 3. Já está na versão de agora? ──────────────────────────────────
-          # O marcador de fim só existe no formato atual. O de set/2026 não tem,
-          # e por isso cai no caminho de atualização logo abaixo.
-          if $S grep -q "$FIM" "$CONF"; then
-            echo "Bloco já está na versão atual — nada a fazer."
-            exit 0
-          fi
-
           if $S grep -q "$MARCA_VELHA" "$CONF"; then
             echo "Encontrei o bloco de set/2026 (só o cache do index, e sem os"
             echo "cabeçalhos de segurança). Vou substituí-lo pelo atual."
           fi
 
-          if [ "${SIMULAR:-false}" = "true" ]; then
-            echo "SIMULAÇÃO: pararia aqui e reescreveria o bloco em $CONF."
-            exit 0
-          fi
-
-          # ── 4. Aplicar ──────────────────────────────────────────────────────
-          BACKUP="$CONF.bak-$(date +%Y%m%d-%H%M%S)"
-          $S cp "$CONF" "$BACKUP" || { echo "ERRO: sem permissão para o backup"; exit 1; }
-          echo "Backup: $BACKUP"
-
+          # ── 3. Monta a configuração candidata ───────────────────────────────
           # Insere no server block que contém a raiz do site. Duas exigências,
           # e as duas importam: bater a PISTA e ter uma diretiva `root`. Só a
           # pista escolheria o server de redirecionamento (que tem o mesmo
@@ -148,8 +162,20 @@ jobs:
           # Antes de inserir, o awk DESCARTA o bloco anterior, nos dois
           # formatos: o atual (entre os marcadores) e o de set/2026 (do
           # comentário da marca velha até o `}` que fecha o location, contando
-          # chaves).
-          $S awk -v velha="$MARCA_VELHA" -v ini="$INICIO" -v fim="$FIM" -v pista="$PISTA" '
+          # chaves). Descarta também o que morava solto no server (os três
+          # add_header e o location /assets/), que agora vive dentro do bloco.
+          CANDIDATO=$(mktemp)
+          $S awk -v velha="$MARCA_VELHA" -v ini="$INICIO" -v fim="$FIM" -v pista="$PISTA" \
+                 -v hsts="$HSTS" -v csp_nome="$CSP_NOME" -v csp_valor="$CSP_VALOR" -v permissoes="$PERMISSOES" '
+            function seguranca(r) {
+              print r "add_header Strict-Transport-Security \"" hsts "\" always;"
+              print r "add_header X-Content-Type-Options \"nosniff\" always;"
+              print r "add_header X-Frame-Options \"SAMEORIGIN\" always;"
+              print r "add_header Referrer-Policy \"strict-origin-when-cross-origin\" always;"
+              print r "add_header Permissions-Policy \"" permissoes "\" always;"
+            }
+            function csp(r) { print r "add_header " csp_nome " \"" csp_valor "\" always;" }
+
             $0 ~ ini { pulando_novo = 1 }
             pulando_novo { if ($0 ~ fim) pulando_novo = 0; next }
 
@@ -160,6 +186,12 @@ jobs:
               if (viu_chave && chaves == 0) pulando_velho = 0
               next
             }
+
+            /^[[:space:]]*# Security headers[[:space:]]*$/ { next }
+            /^[[:space:]]*add_header[[:space:]]+(X-Content-Type-Options|X-Frame-Options|Referrer-Policy)[[:space:]]/ { next }
+            /^[[:space:]]*# Assets com hash no nome/ { next }
+            /^[[:space:]]*location[[:space:]]+\/assets\/[[:space:]]*{/ { pulando_assets = 1 }
+            pulando_assets { if ($0 ~ /}/) pulando_assets = 0; next }
 
             /server[[:space:]]*{/ && depth == 0 { inserver = 1; tem_root = 0; tem_pista = 0 }
             inserver { depth += gsub(/{/, "{"); depth -= gsub(/}/, "}") }
@@ -174,24 +206,37 @@ jobs:
                 print "    # uma versao antiga do sistema. O mesmo vale para o sw.js, que"
                 print "    # controla TODAS as paginas quando fica preso velho."
                 print "    #"
-                print "    # Os tres add_header de seguranca estao repetidos dentro de"
-                print "    # cada location DE PROPOSITO: no Nginx, um add_header no"
-                print "    # location cancela todos os herdados do server. Sem repetir,"
-                print "    # o index.html fica sem X-Frame-Options — foi o que aconteceu"
-                print "    # entre set/2026 e out/2026. Ao criar CSP ou HSTS no server,"
-                print "    # repita aqui tambem."
+                print "    # Bloco GERADO pelo workflow nginx-cache-headers.yml: mudar la."
+                print "    # Os add_header de seguranca estao repetidos dentro de cada"
+                print "    # location DE PROPOSITO: no Nginx, um add_header no location"
+                print "    # cancela todos os herdados do server. Foi assim que o"
+                print "    # index.html ficou sem X-Frame-Options entre set e nov/2026."
+                print "    server_tokens off;"
+                seguranca("    "); csp("    ")
+                print "    location /assets/ {"
+                print "        expires 1y;"
+                print "        add_header Cache-Control \"public, immutable\";"
+                seguranca("        ")
+                print "    }"
+                print "    location ~ ^/assets/.+\\.mjs$ {"
+                print "        # .mjs nao esta no mime.types do Nginx 1.18. Worker de modulo"
+                print "        # exige MIME de JavaScript: com octet-stream o PDF.js nao sobe."
+                print "        types { }"
+                print "        default_type application/javascript;"
+                print "        expires 1y;"
+                print "        add_header Cache-Control \"public, immutable\";"
+                seguranca("        ")
+                print "    }"
                 print "    location = /index.html {"
                 print "        add_header Cache-Control \"no-cache, must-revalidate\" always;"
-                print "        add_header X-Content-Type-Options \"nosniff\" always;"
-                print "        add_header X-Frame-Options \"SAMEORIGIN\" always;"
-                print "        add_header Referrer-Policy \"strict-origin-when-cross-origin\" always;"
+                seguranca("        "); csp("        ")
                 print "        expires off;"
                 print "    }"
                 print "    location = /sw.js {"
+                print "        # Sem CSP de proposito: ela valeria dentro do proprio service"
+                print "        # worker, e um erro aqui pode travar a atualizacao do app."
                 print "        add_header Cache-Control \"no-cache, must-revalidate\" always;"
-                print "        add_header X-Content-Type-Options \"nosniff\" always;"
-                print "        add_header X-Frame-Options \"SAMEORIGIN\" always;"
-                print "        add_header Referrer-Policy \"strict-origin-when-cross-origin\" always;"
+                seguranca("        ")
                 print "        expires off;"
                 print "    }"
                 print "    location = /manifest.webmanifest {"
@@ -200,9 +245,7 @@ jobs:
                 print "        types { }"
                 print "        default_type application/manifest+json;"
                 print "        add_header Cache-Control \"no-cache, must-revalidate\" always;"
-                print "        add_header X-Content-Type-Options \"nosniff\" always;"
-                print "        add_header X-Frame-Options \"SAMEORIGIN\" always;"
-                print "        add_header Referrer-Policy \"strict-origin-when-cross-origin\" always;"
+                seguranca("        ")
                 print "        expires off;"
                 print "    }"
                 print "    # " fim
@@ -211,13 +254,47 @@ jobs:
               print
             }
             inserver && depth == 0 { inserver = 0 }
-          ' "$BACKUP" | $S tee "$CONF" > /dev/null
+          ' "$CONF" > "$CANDIDATO"
 
-          if ! $S grep -q "$FIM" "$CONF"; then
-            echo "ERRO: não consegui inserir o bloco — restaurando."
-            $S cp "$BACKUP" "$CONF"
+          if ! grep -q "$FIM" "$CANDIDATO"; then
+            echo "ERRO: não consegui montar o bloco — nada foi alterado."
+            rm -f "$CANDIDATO"
             exit 1
           fi
+
+          # ── 4. Mudou alguma coisa? ──────────────────────────────────────────
+          if $S cmp -s "$CONF" "$CANDIDATO"; then
+            echo "A configuração já está igual à candidata — nada a fazer."
+            rm -f "$CANDIDATO"
+            exit 0
+          fi
+
+          echo "=== o que muda em $CONF ==="
+          $S diff -u "$CONF" "$CANDIDATO" || true
+
+          if [ "${SIMULAR:-false}" = "true" ]; then
+            # Testa com o nginx da VPS, numa cópia de /etc/nginx. Nada é recarregado.
+            TESTE=$(mktemp -d)
+            NOME=$(basename "$CONF")
+            $S cp -a /etc/nginx/. "$TESTE/"
+            $S rm -f "$TESTE/sites-enabled/$NOME"
+            $S cp "$CANDIDATO" "$TESTE/sites-enabled/$NOME"
+            $S sed -i "s#/etc/nginx#$TESTE#g" "$TESTE/nginx.conf"
+            echo "=== nginx -t na candidata (cópia, produção intacta) ==="
+            $S nginx -t -c "$TESTE/nginx.conf"
+            RC=$?
+            $S rm -rf "$TESTE"
+            rm -f "$CANDIDATO"
+            echo "SIMULAÇÃO: nada foi alterado em produção."
+            exit $RC
+          fi
+
+          # ── 5. Aplicar ──────────────────────────────────────────────────────
+          BACKUP="$CONF.bak-$(date +%Y%m%d-%H%M%S)"
+          $S cp "$CONF" "$BACKUP" || { echo "ERRO: sem permissão para o backup"; exit 1; }
+          echo "Backup: $BACKUP"
+          $S tee "$CONF" < "$CANDIDATO" > /dev/null
+          rm -f "$CANDIDATO"
 
           if $S nginx -t; then
             $S systemctl reload nginx && echo "Nginx recarregado com sucesso."
@@ -239,7 +316,7 @@ jobs:
           checar() { # $1 url · $2 regex esperado · $3 descrição
             saida=$(curl -sI -m 20 "https://homologamanager.com.br$1")
             echo "--- $1"
-            echo "$saida" | grep -iE 'cache-control|content-type|x-content-type|x-frame|referrer' || echo "(nenhum cabeçalho relevante)"
+            echo "$saida" | grep -iE 'cache-control|content-type|x-content-type|x-frame|referrer|strict-transport|content-security|permissions-policy' || echo "(nenhum cabeçalho relevante)"
             if echo "$saida" | grep -qiE "$2"; then
               echo "    OK: $3"
             else
@@ -249,11 +326,18 @@ jobs:
           }
           checar "/"                      'cache-control:.*no-cache'            'index.html sem cache'
           checar "/"                      'x-frame-options'                     'index.html com X-Frame-Options'
+          checar "/"                      'strict-transport-security'           'index.html com HSTS'
+          checar "/"                      'content-security-policy'             'index.html com CSP'
           checar "/sw.js"                 'cache-control:.*no-cache'            'sw.js sem cache'
+          checar "/sw.js"                 'strict-transport-security'           'sw.js com HSTS'
           checar "/manifest.webmanifest"  'content-type:.*application/manifest' 'manifest com o MIME certo'
           ASSET=$(curl -s -m 20 https://homologamanager.com.br/ | grep -o 'assets/index-[A-Za-z0-9._-]*\.js' | head -1)
-          echo "--- /$ASSET (deve seguir imutável, com cache longo)"
-          curl -sI -m 20 "https://homologamanager.com.br/$ASSET" | grep -i 'cache-control' || true
+          checar "/$ASSET"                'cache-control:.*immutable'           'asset segue imutável'
+          checar "/$ASSET"                'x-content-type-options'              'asset com nosniff'
+          WORKER=$(curl -s -m 60 "https://homologamanager.com.br/$ASSET" | grep -o 'assets/pdf\.worker[A-Za-z0-9._-]*\.mjs' | head -1)
+          if [ -n "$WORKER" ]; then
+            checar "/$WORKER"             'content-type:.*javascript'           'worker do PDF.js com MIME de JavaScript'
+          fi
           # Simular e desfazer não deixam a produção no estado-alvo. Reprovar aqui
           # pinta de vermelho uma execução sem erro: a simulação de 16/10/2026 foi
           # lida como "o workflow falhou". Erro real reprova na etapa "Executar".
