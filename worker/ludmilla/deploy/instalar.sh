@@ -125,6 +125,31 @@ chmod 755 /usr/local/bin/bdgd
 echo "instalado: sudo bdgd <SIGLA>"
 echo "espaço em /var/tmp: $(df -h /var/tmp | awk 'NR==2{print $4}') livre (a Paulista precisa de 10 GB)"
 
+passo "comando ludmilla-teste-smtp (/usr/local/bin/ludmilla-teste-smtp)"
+# Teste do SMTP da caixa da Ludmilla (cobrança da troca na ENEL). As mesmas armadilhas do
+# bdgd: o env é 600 e só o root lê, e o comando roda como o usuário ludmilla. Só aceita
+# os dois modos fixos — nunca um destinatário.
+cat > /usr/local/bin/ludmilla-teste-smtp <<'WRAP'
+#!/usr/bin/env bash
+set -euo pipefail
+[ "$(id -u)" -eq 0 ] || { echo "rode com sudo: sudo ludmilla-teste-smtp --verificar" >&2; exit 1; }
+case "${1:-}" in
+  --verificar|--enviar-para-a-propria-caixa) ;;
+  *) echo "uso: sudo ludmilla-teste-smtp --verificar | --enviar-para-a-propria-caixa" >&2; exit 1 ;;
+esac
+[ -r /etc/ludmilla/env ] || { echo "falta /etc/ludmilla/env — rode o deploy do worker primeiro" >&2; exit 1; }
+set -a; . /etc/ludmilla/env; set +a
+: "${SUPABASE_URL:?SUPABASE_URL ausente em /etc/ludmilla/env}"
+: "${SUPABASE_SERVICE_ROLE_KEY:?SUPABASE_SERVICE_ROLE_KEY ausente em /etc/ludmilla/env}"
+exec sudo -u ludmilla -H env \
+  SUPABASE_URL="$SUPABASE_URL" \
+  SUPABASE_SERVICE_ROLE_KEY="$SUPABASE_SERVICE_ROLE_KEY" \
+  PATH=/usr/local/bin:/usr/bin:/bin \
+  node /opt/ludmilla/dist/email/enel/teste-smtp.js "$1"
+WRAP
+chmod 755 /usr/local/bin/ludmilla-teste-smtp
+echo "instalado: sudo ludmilla-teste-smtp --verificar"
+
 passo "ambiente em $ENV_DIR/env (só root lê)"
 mkdir -p "$ENV_DIR"
 cat > "$ENV_DIR/env" <<EOF

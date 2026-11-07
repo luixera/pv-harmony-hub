@@ -364,6 +364,20 @@ export interface ProtocoloDeProjeto {
   codigo: string; titular: string | null; endereco: string | null;
 }
 
+/** A conta da ENEL por e-mail (a única que cobra). Só a VPS chama (service role). */
+export async function contaDaEnel(): Promise<string> {
+  const { data, error } = await supabase()
+    .from('portal_accounts')
+    .select('id')
+    .eq('connector', 'enel')
+    .eq('acompanhamento', 'email')
+    .limit(1);
+  if (error) throw new Error(`Não consegui achar a conta da ENEL (código ${error.code ?? 'sem código'})`);
+  const id = ((data ?? []) as { id: string }[])[0]?.id;
+  if (!id) throw new Error('Não há conta da ENEL por e-mail.');
+  return id;
+}
+
 export async function credencialDaCaixa(accountId: string): Promise<{ email: string; senha: string }> {
   const { data, error } = await supabase().rpc('ludmilla_email_credencial' as never, { p_account_id: accountId } as never);
   if (error) throw new Error(`Não consegui ler o acesso à caixa: ${error.message}`);

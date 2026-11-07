@@ -41,6 +41,16 @@ on:
         description: 'Recarregar mesmo se a data-base já estiver carregada (ex.: depois de corrigir a ingestão)'
         type: boolean
         default: false
+      # Teste do SMTP da caixa (cobrança da troca na ENEL) depois do deploy. Lista FECHADA:
+      # vira um argumento fixo no comando remoto, nunca texto vindo de fora.
+      smtp:
+        description: 'Depois do deploy, testar o SMTP da caixa: verificar (não envia) ou enviar para a própria caixa'
+        type: choice
+        default: ''
+        options:
+          - ''
+          - verificar
+          - enviar_para_a_propria_caixa
 
 concurrency:
   group: ludmilla-worker
@@ -143,3 +153,22 @@ jobs:
             -o ServerAliveInterval=30 -o ServerAliveCountMax=10 \
             ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} \
             "df -h /var/tmp && /usr/local/bin/bdgd '$SIGLA'$EXTRA"
+
+      # Roda o comando que o instalar.sh acabou de instalar. Nenhum segredo passa por
+      # aqui: o comando lê /etc/ludmilla/env na própria VPS. A saída é uma linha JSON.
+      # O teto cobre o pior caso de duas conferências na pasta Enviados (até 220 s cada).
+      - name: Teste do SMTP
+        if: ${{ inputs.smtp != '' && !inputs.simular }}
+        timeout-minutes: 10
+        env:
+          MODO: ${{ inputs.smtp }}
+        run: |
+          case "$MODO" in
+            verificar) ARG="--verificar" ;;
+            enviar_para_a_propria_caixa) ARG="--enviar-para-a-propria-caixa" ;;
+            *) echo "modo inválido: $MODO" >&2; exit 1 ;;
+          esac
+          ssh -i ~/.ssh/deploy_key -p ${{ secrets.VPS_SSH_PORT }} -o StrictHostKeyChecking=no \
+            -o ServerAliveInterval=30 -o ServerAliveCountMax=10 \
+            ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} \
+            "/usr/local/bin/ludmilla-teste-smtp $ARG"
