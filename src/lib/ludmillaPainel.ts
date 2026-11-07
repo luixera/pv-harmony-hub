@@ -8,6 +8,7 @@ import type { MensagemEmail, PortalAccount, PortalUpdate, RegistroLudmilla } fro
 import { anexosDoCartao, cartaoBloqueado, meioDaConta, type ItemDaCaixa, type MeioDoItem } from '@/lib/ludmillaCaixa';
 import { detalheDoCartaoDeEmail, rotuloCasamento } from '@/lib/ludmillaCartao';
 import { notaNaTela, textoPronto } from '@/lib/ludmillaCobranca';
+import { textoDoPedidoPronto, type PedidoDoDetalhe } from '@/lib/ludmillaPedidoTroca';
 
 // ── tipos das consultas novas (os hooks devolvem estes formatos) ─────────────
 
@@ -259,11 +260,11 @@ export function ressalvaDoCartao(u: PortalUpdate, mensagem: MensagemEmail | null
   return limpo(mensagemDoCartao(u, mensagem)?.motivo) ?? limpo((u.raw as Record<string, unknown> | null)?.motivo);
 }
 
-export type AcaoDaDecisao = 'aplicar' | 'ignorar' | 'feito' | 'enviar_cobranca' | 'dispensar_cobranca';
+export type AcaoDaDecisao = 'aplicar' | 'ignorar' | 'feito' | 'enviar_cobranca' | 'dispensar_cobranca' | 'enviar_pedido';
 
 export interface AcoesDoItem {
-  principal: { acao: 'aplicar' | 'feito' | 'enviar_cobranca'; rotulo: string; habilitada: boolean; porque: string | null } | null;
-  secundaria: { acao: 'ignorar' | 'dispensar_cobranca'; rotulo: 'Ignorar' | 'Dispensar' } | null;
+  principal: { acao: 'aplicar' | 'feito' | 'enviar_cobranca' | 'enviar_pedido'; rotulo: string; habilitada: boolean; porque: string | null } | null;
+  secundaria: { acao: 'ignorar' | 'dispensar_cobranca' | 'feito'; rotulo: 'Ignorar' | 'Dispensar' | 'Marcar como feito' } | null;
 }
 
 /**
@@ -280,8 +281,20 @@ export function etapaEfetiva(item: ItemDaCaixa, etapa: string | null): string | 
  * protocolo). Cartão bloqueado (o documento é de outra pessoa) NÃO oferece Aplicar: com uma etapa
  * escolhida ele moveria o projeto a partir do cartão errado. Só "Dispensar".
  */
-export function acoesDoItem(item: ItemDaCaixa, etapa: string | null, texto = ''): AcoesDoItem {
+export function acoesDoItem(item: ItemDaCaixa, etapa: string | null, texto = '', pedido: PedidoDoDetalhe = null): AcoesDoItem {
   if (item.situacao !== 'pendente') return { principal: null, secundaria: null };
+  // O pedido da troca: Enviar só depois de o banco dizer que está liberado. "Marcar como feito" fica
+  // ao lado, para o pedido feito por fora. Não liberado, ou sem conseguir conferir, cai no A fazer comum.
+  if (item.afazer?.tipo === 'vistoria_aprovada' && pedido && pedido !== 'erro') {
+    const feito = { acao: 'feito', rotulo: 'Marcar como feito' } as const;
+    if (pedido === 'carregando') {
+      return { principal: { acao: 'enviar_pedido', rotulo: 'Enviar', habilitada: false, porque: 'Conferindo se o pedido já foi feito…' }, secundaria: feito };
+    }
+    if (pedido.liberado) {
+      const porque = textoDoPedidoPronto(texto, pedido.nt).porque;
+      return { principal: { acao: 'enviar_pedido', rotulo: 'Enviar', habilitada: porque === null, porque }, secundaria: feito };
+    }
+  }
   // A cobrança da ENEL: só Enviar (o texto revisado) ou Dispensar — nunca "Marcar como feito".
   if (item.afazer?.tipo === 'cobrar_troca') {
     const c = item.afazer.cobranca ?? null;
@@ -319,6 +332,7 @@ export function textoDaDecisao(
   rotuloEtapa: (status: string | null | undefined) => string,
 ): string {
   const quem = item.codigo || item.concessionaria || 'Item';
+  if (acao === 'enviar_pedido') return `${quem}: pedido da troca do relógio vai para a ENEL`;
   if (acao === 'enviar_cobranca' || acao === 'dispensar_cobranca') {
     // Esta página é só da equipe do GD Manager (useLudmillaDisponivel): o endereço da ENEL
     // aparece aqui, para quem aprova ver para onde vai, e NUNCA para a empresa integradora.
@@ -354,11 +368,13 @@ export type ChamadaDaDecisao =
   | { acao: 'ignorar'; id: string }
   | { acao: 'feito'; id: string }
   | { acao: 'enviar_cobranca'; cobrancaId: string; texto: string }
-  | { acao: 'dispensar_cobranca'; cobrancaId: string };
+  | { acao: 'dispensar_cobranca'; cobrancaId: string }
+  | { acao: 'enviar_pedido'; afazerId: string; texto: string };
 
 export function argumentosDaDecisao(item: ItemDaCaixa, acao: AcaoDaDecisao, etapa: string | null, texto?: string): ChamadaDaDecisao {
   const cobrancaId = item.afazer?.cobranca_id ?? '';
   switch (acao) {
+    case 'enviar_pedido': return { acao, afazerId: item.id, texto: texto ?? '' };
     case 'enviar_cobranca': return { acao, cobrancaId, texto: texto ?? '' };
     case 'dispensar_cobranca': return { acao, cobrancaId };
     case 'feito': return { acao, id: item.id };
@@ -375,6 +391,8 @@ export interface AcoesDaDecisao {
   /** a cobrança da troca na ENEL: o id é o da COBRANÇA (`afazer.cobranca_id`), não o do A fazer */
   enviarCobranca: (cobrancaId: string, texto: string) => Promise<unknown>;
   dispensarCobranca: (cobrancaId: string) => Promise<unknown>;
+  /** o pedido da troca do relógio: o id é o do A fazer de vistoria aprovada */
+  enviarPedido: (afazerId: string, texto: string) => Promise<unknown>;
 }
 
 /** Chama a gravação da decisão. A promessa REJEITA quando o banco recusa: é isso que faz a linha voltar. */
@@ -385,6 +403,7 @@ export function executarDecisao(acoes: AcoesDaDecisao, c: ChamadaDaDecisao): Pro
     case 'feito': return acoes.feito(c.id);
     case 'enviar_cobranca': return acoes.enviarCobranca(c.cobrancaId, c.texto);
     case 'dispensar_cobranca': return acoes.dispensarCobranca(c.cobrancaId);
+    case 'enviar_pedido': return acoes.enviarPedido(c.afazerId, c.texto);
   }
 }
 
@@ -473,6 +492,8 @@ export interface VisibilidadeDoDetalhe {
   linhaDoTempo: boolean;
   /** "O e-mail que vai para a ENEL": só no A fazer da cobrança */
   cobranca: boolean;
+  /** o pedido da troca: só no A fazer de vistoria aprovada ainda pendente */
+  pedido: boolean;
 }
 
 export function visibilidadeDoDetalhe(item: ItemDaCaixa): VisibilidadeDoDetalhe {
@@ -488,5 +509,6 @@ export function visibilidadeDoDetalhe(item: ItemDaCaixa): VisibilidadeDoDetalhe 
     rotuloDoProtocolo: u ? (item.meio === 'email' ? 'Protocolo no e-mail' : 'Protocolo no portal') : null,
     linhaDoTempo: !!item.projectId,
     cobranca: item.afazer?.tipo === 'cobrar_troca',
+    pedido: item.afazer?.tipo === 'vistoria_aprovada' && pendente,
   };
 }

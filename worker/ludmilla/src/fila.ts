@@ -16,7 +16,7 @@ export interface Run {
   id: string;
   tenant_id: string;
   account_id: string;
-  tipo: 'reconhecimento' | 'teste_login' | 'descoberta' | 'varredura' | 'criar_projeto' | 'varredura_email' | 'enviar_cobranca';
+  tipo: 'reconhecimento' | 'teste_login' | 'descoberta' | 'varredura' | 'criar_projeto' | 'varredura_email' | 'enviar_cobranca' | 'enviar_pedido_troca';
   situacao: string;
   dados?: Record<string, unknown>;
 }
@@ -757,4 +757,36 @@ export async function cobrancaFalhou(runId: string, erro: string): Promise<void>
 export async function cobrancaSemConfirmacao(runId: string, erro: string): Promise<void> {
   const { error } = await supabase().rpc('ludmilla_cobranca_sem_confirmacao' as never, { p_run_id: runId, p_erro: erro.slice(0, 500) } as never);
   if (error) throw new Error(`Não consegui registrar o envio sem confirmação (${codigoDoErro(error)})`);
+}
+
+// ── o pedido da troca do relógio (email/enel/pedido-troca.ts) ───────────────
+// As mesmas regras da cobrança, com as RPCs ludmilla_pedido_troca_*, só `service_role`.
+
+/** `ludmilla_pedido_troca_iniciar_envio`, na forma que o envio já conhece: sem conversa e sem envio anterior. */
+export async function iniciarEnvioDePedido(runId: string): Promise<CobrancaParaEnviar> {
+  const { data, error } = await supabase().rpc('ludmilla_pedido_troca_iniciar_envio' as never, { p_run_id: runId } as never);
+  if (error) throw new Error(`Não consegui iniciar o envio do pedido (${codigoDoErro(error)})`);
+  const l = ((data ?? []) as Record<string, unknown>[])[0];
+  if (!l) throw new Error('o banco não respondeu ao pedido de envio (ludmilla_pedido_troca_iniciar_envio)');
+  const s = (k: string): string | null => (l[k] == null ? null : String(l[k]));
+  return {
+    recusa: s('recusa'), cobrancaId: s('pedido_id'), situacaoAnterior: s('situacao_anterior'),
+    aprovadaPor: s('aprovada_por'), ultimaEnviadaEm: null, para: s('para'),
+    assunto: s('assunto'), texto: s('texto'), inReplyTo: null, referencias: [], nota: null,
+  };
+}
+
+export async function pedidoEnviado(runId: string, messageId: string): Promise<void> {
+  const { error } = await supabase().rpc('ludmilla_pedido_troca_enviado' as never, { p_run_id: runId, p_message_id: messageId } as never);
+  if (error) throw new Error(`Não consegui registrar o envio do pedido (${codigoDoErro(error)})`);
+}
+
+export async function pedidoFalhou(runId: string, erro: string): Promise<void> {
+  const { error } = await supabase().rpc('ludmilla_pedido_troca_falhou' as never, { p_run_id: runId, p_erro: erro.slice(0, 500) } as never);
+  if (error) throw new Error(`Não consegui registrar a falha do pedido (${codigoDoErro(error)})`);
+}
+
+export async function pedidoSemConfirmacao(runId: string, erro: string): Promise<void> {
+  const { error } = await supabase().rpc('ludmilla_pedido_troca_sem_confirmacao' as never, { p_run_id: runId, p_erro: erro.slice(0, 500) } as never);
+  if (error) throw new Error(`Não consegui registrar o pedido sem confirmação (${codigoDoErro(error)})`);
 }

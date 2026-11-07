@@ -31,5 +31,6 @@ volta.
   regra dos 14 dias porque a anterior tinha avisos de segurança no `addressparser`.
 - O SMTP de saída da VPS precisa estar aberto; há um teste pelo workflow. Medido em 06/11/2026:
   a porta 465 responde, e o Gmail mantém o Message-ID que o robô põe.
-- Pedir a troca do relógio (fase 2) continua fora: é outra escrita, a desenhar. Pedido do
-  usuário em 06/11/2026, anotado no roadmap.
+- O pedido da troca do relógio (06/11/2026) segue as mesmas decisões, com tabela própria para
+  não tocar nas funções da cobrança, e o destinatário fixo no Canal GD. Spec
+  `docs/superpowers/specs/2026-11-06-ludmilla-pedido-troca-design.md`.

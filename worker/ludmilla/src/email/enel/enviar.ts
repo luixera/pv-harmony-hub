@@ -60,6 +60,10 @@ export interface DepsEnvio {
   esperar: (ms: number) => Promise<void>;
   /** depois de uma queda no meio do envio: o e-mail está na pasta Enviados? (com as esperas dela) */
   conferirEnviados: (c: CaixaDeEmail, p: ProcuraNosEnviados) => Promise<Conferencia>;
+  /** o assunto e o texto que saem; sem isto, os da cobrança ("RE:" e a saudação do modelo dela) */
+  montarSaida?: (c: CobrancaParaEnviar, instante: Date) => { assunto: string; texto: string };
+  /** uma trava a mais, deste tipo de e-mail: devolve o motivo da recusa, ou null */
+  travaExtra?: (c: CobrancaParaEnviar) => string | null;
 }
 export const DEPS_ENVIO: DepsEnvio = {
   iniciarEnvio: iniciarEnvioDeCobranca,
@@ -173,6 +177,8 @@ async function enviarCobranca(run: Run, deps: DepsEnvio, agora: () => Date, esta
     instante,
   );
   if (!pode.ok) return fechar('recusada', `${pode.motivo}: nada foi enviado`, c.cobrancaId);
+  const barrada = deps.travaExtra?.(c) ?? null;
+  if (barrada) return fechar('recusada', `${barrada}: nada foi enviado`, c.cobrancaId);
 
   // os cabeçalhos guardados no banco passam de novo pela trava (ids de verdade, ≤ 20, ≤ 2000)
   const cabecalhos = cabecalhosDaResposta(c.inReplyTo ?? '', c.referencias);
@@ -185,11 +191,14 @@ async function enviarCobranca(run: Run, deps: DepsEnvio, agora: () => Date, esta
     return fechar('falhou', 'não consegui ler o acesso à caixa de e-mail: nada foi enviado', c.cobrancaId);
   }
 
+  const doEmail = deps.montarSaida
+    ? deps.montarSaida(c, instante)
+    : { assunto: assuntoDaResposta(c.assunto), texto: ajustarSaudacao(c.texto ?? '', instante) };
   const saida: EmailDeSaida = {
     de: caixa.email,
     para: c.para ?? '',
-    assunto: assuntoDaResposta(c.assunto),
-    texto: ajustarSaudacao(c.texto ?? '', instante),
+    assunto: doEmail.assunto,
+    texto: doEmail.texto,
     inReplyTo: cabecalhos.inReplyTo,
     referencias: cabecalhos.referencias,
     // NOSSO, sabido antes do envio: é por ele que a pasta Enviados é conferida, e o reenvio leva o MESMO

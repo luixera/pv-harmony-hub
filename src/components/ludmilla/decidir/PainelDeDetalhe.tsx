@@ -9,6 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { textoDaTrocaDeProtocolo } from '@/lib/ludmillaCartao';
 import type { ItemDaCaixa } from '@/lib/ludmillaCaixa';
 import { TAMANHO_MAXIMO_DO_TEXTO, avisoDoUltimoEnvio, dataBr, resumoDaCobranca } from '@/lib/ludmillaCobranca';
+import type { PedidoDoDetalhe } from '@/lib/ludmillaPedidoTroca';
 import {
   acoesDoItem, comoFoiAchado, idDoPorqueDoBotao, situacaoDecidida, textoDaDecisao, visibilidadeDoDetalhe, type AcaoDaDecisao, type AcaoDoProjeto,
   type AnexoDoPortal, type EventoDoProjeto, type OQueChegou, type ParecerDoPortal, type VisibilidadeDoDetalhe,
@@ -36,8 +37,10 @@ export interface DadosDoDetalhe {
   linhaDoTempo: EventoDoProjeto[] | 'carregando' | 'erro';
   etapas: { key: string; label: string }[];
   rotuloEtapa: (s: string | null | undefined) => string;
-  /** o texto que o editor da cobrança abre (só no A fazer `cobrar_troca`) */
+  /** o texto que o editor abre: o da cobrança, ou o do pedido da troca */
   rascunhoDaCobranca?: string | null;
+  /** o pedido da troca (só no A fazer de vistoria aprovada) */
+  pedido?: PedidoDoDetalhe;
 }
 
 export interface PropsDoDetalhe {
@@ -246,6 +249,53 @@ function CobrancaSecao({ item, texto, onTexto }: { item: ItemDaCaixa; texto: str
   );
 }
 
+/**
+ * O A fazer de vistoria aprovada: o pedido da troca do relógio, com o texto editável, ou o motivo de
+ * não haver pedido a fazer. Quem decide é o banco; o destinatário e o assunto vêm prontos dele.
+ */
+function PedidoSecao({ pedido, texto, onTexto }: { pedido: PedidoDoDetalhe | undefined; texto: string; onTexto: (t: string) => void }) {
+  const titulo = 'O pedido da troca do relógio';
+  if (!pedido || pedido === 'carregando') {
+    return <Secao titulo={titulo}><p className="text-xs text-muted-foreground">Conferindo se o pedido já foi feito…</p></Secao>;
+  }
+  if (pedido === 'erro') {
+    return (
+      <Secao titulo={titulo}>
+        <p className="flex items-start gap-1.5 text-xs text-amber-800">
+          <AlertTriangle size={12} className="mt-0.5 shrink-0" aria-hidden />
+          Não consegui conferir se o pedido já foi feito. Recarregue a página, ou peça a troca pelo Gmail.
+        </p>
+      </Secao>
+    );
+  }
+  if (!pedido.liberado) {
+    return <Secao titulo={titulo}><p className="break-words text-xs text-muted-foreground" data-teste="pedido-motivo">{pedido.motivo}</p></Secao>;
+  }
+  return (
+    <Secao titulo={titulo}>
+      <div className="space-y-2 text-sm" data-teste="pedido">
+        <dl className="grid grid-cols-[4.5rem_minmax(0,1fr)] gap-x-3 gap-y-1">
+          <dt className="pt-0.5 text-xs text-muted-foreground">Para</dt>
+          <dd className="break-all font-mono text-xs" data-teste="pedido-para">{pedido.para}</dd>
+          <dt className="pt-0.5 text-xs text-muted-foreground">Assunto</dt>
+          <dd className="break-words font-mono text-xs" data-teste="pedido-assunto">{pedido.assunto}</dd>
+        </dl>
+        {pedido.pedido_situacao === 'falhou' && (
+          <p className="flex items-start gap-1.5 break-words rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-900">
+            <ShieldAlert size={12} className="mt-0.5 shrink-0" aria-hidden />
+            {avisoDoUltimoEnvio(pedido.pedido_erro)}
+          </p>
+        )}
+        {/* 16 px no celular: o iOS dá zoom em campo com fonte menor */}
+        <Textarea
+          value={texto} onChange={e => onTexto(e.target.value)} rows={7} maxLength={TAMANHO_MAXIMO_DO_TEXTO}
+          aria-label="Texto do pedido para a ENEL" data-teste="pedido-texto" className="font-mono text-base sm:text-xs"
+        />
+      </div>
+    </Secao>
+  );
+}
+
 /** Anexos e pareceres que a Ludmilla levou ao projeto inteiro — não só os deste cartão. */
 function DocumentosDoProjeto({ documentos, urlDoDocumento }: {
   documentos: DadosDoDetalhe['documentos']; urlDoDocumento: PropsDoDetalhe['urlDoDocumento'];
@@ -337,8 +387,8 @@ function Sugestao({ item, etapa, onEtapa, etapas, rotuloEtapa, ressalva, v }: {
   );
 }
 
-function BotoesDaDecisao({ item, etapa, texto, onDecidir, rotuloEtapa }: {
-  item: ItemDaCaixa; etapa: string; texto: string; onDecidir: PropsDoDetalhe['onDecidir']; rotuloEtapa: DadosDoDetalhe['rotuloEtapa'];
+function BotoesDaDecisao({ item, etapa, texto, pedido, onDecidir, rotuloEtapa }: {
+  item: ItemDaCaixa; etapa: string; texto: string; pedido: PedidoDoDetalhe | undefined; onDecidir: PropsDoDetalhe['onDecidir']; rotuloEtapa: DadosDoDetalhe['rotuloEtapa'];
 }) {
   const decidida = situacaoDecidida(item);
   if (decidida) {
@@ -349,12 +399,15 @@ function BotoesDaDecisao({ item, etapa, texto, onDecidir, rotuloEtapa }: {
     );
   }
   // bloqueado: principal === null (sem Aplicar), só "Dispensar"; A fazer: só "Marcar como feito";
-  // cobrança: "Enviar" (com o texto revisado, a cada tecla: sem ele o Enviar nunca habilita) e "Dispensar"
-  const { principal, secundaria } = acoesDoItem(item, etapa || null, texto);
+  // cobrança: "Enviar" (com o texto revisado, a cada tecla: sem ele o Enviar nunca habilita) e "Dispensar";
+  // pedido da troca liberado: "Enviar" e "Marcar como feito", para o pedido feito por fora
+  const { principal, secundaria } = acoesDoItem(item, etapa || null, texto, pedido);
+  const enviaEmail = principal?.acao === 'enviar_cobranca' || principal?.acao === 'enviar_pedido';
   // o que o botão vai fazer, à vista sem rolar (o mesmo texto do aviso com "Desfazer")
-  const previa = principal?.habilitada && (principal.acao === 'aplicar' || principal.acao === 'enviar_cobranca')
+  const previa = principal?.habilitada && (principal.acao === 'aplicar' || enviaEmail)
     ? textoDaDecisao(item, principal.acao, etapa || null, rotuloEtapa) : null;
-  const Icone = principal?.acao === 'enviar_cobranca' ? Send : CheckCircle2;
+  const Icone = enviaEmail ? Send : CheckCircle2;
+  const IconeSecundario = secundaria?.acao === 'feito' ? CheckCircle2 : XCircle;
   const idDoPorque = idDoPorqueDoBotao(item.chave);
   return (
     <div data-teste="botoes-da-decisao" className="space-y-1.5">
@@ -366,7 +419,7 @@ function BotoesDaDecisao({ item, etapa, texto, onDecidir, rotuloEtapa }: {
       <div className="flex gap-2">
         {secundaria && (
           <Button variant="outline" className="flex-1 gap-1.5 sm:flex-none" onClick={() => onDecidir(secundaria.acao, null)}>
-            <XCircle size={15} aria-hidden /> {secundaria.rotulo}
+            <IconeSecundario size={15} aria-hidden /> {secundaria.rotulo}
           </Button>
         )}
         {principal && (
@@ -375,7 +428,7 @@ function BotoesDaDecisao({ item, etapa, texto, onDecidir, rotuloEtapa }: {
             onClick={() => onDecidir(
               principal.acao,
               principal.acao === 'aplicar' ? (etapa || null) : null,
-              principal.acao === 'enviar_cobranca' ? texto : undefined,
+              enviaEmail ? texto : undefined,
             )}>
             <Icone size={15} aria-hidden /> {principal.rotulo}
           </Button>
@@ -442,9 +495,10 @@ export function DetalheDaDecisao({ dados, layout, onDecidir, onAbrirProjeto, url
   const chegou = <OQueChegouSecao item={item} chegou={dados.chegou} ressalva={dados.ressalva} v={v} />;
   const documentos = <DocumentosDoProjeto documentos={dados.documentos} urlDoDocumento={urlDoDocumento} />;
   const sugestao = <Sugestao item={item} etapa={etapa} onEtapa={setEtapa} etapas={dados.etapas} rotuloEtapa={dados.rotuloEtapa} ressalva={dados.ressalva} v={v} />;
-  const botoes = <BotoesDaDecisao item={item} etapa={etapa} texto={texto} onDecidir={onDecidir} rotuloEtapa={dados.rotuloEtapa} />;
+  const botoes = <BotoesDaDecisao item={item} etapa={etapa} texto={texto} pedido={dados.pedido} onDecidir={onDecidir} rotuloEtapa={dados.rotuloEtapa} />;
   const editarTexto = (t: string) => { setTexto(t); onTextoDaCobranca?.(t); };
   const cobranca = v.cobranca ? <CobrancaSecao item={item} texto={texto} onTexto={editarTexto} /> : null;
+  const pedido = v.pedido ? <PedidoSecao pedido={dados.pedido} texto={texto} onTexto={editarTexto} /> : null;
   const linha = v.linhaDoTempo ? <LinhaDoTempo eventos={dados.linhaDoTempo} /> : null;
 
   const abrirProjeto = item.projectId && item.codigo ? (
@@ -480,7 +534,7 @@ export function DetalheDaDecisao({ dados, layout, onDecidir, onAbrirProjeto, url
     <div tabIndex={-1} data-detalhe={item.chave} className="flex min-h-0 flex-1 flex-col outline-none">
       <div className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain p-4">
         {cabecalho}
-        {quem}{chegou}{cobranca}{documentos}{sugestao}{linha}
+        {quem}{chegou}{cobranca}{pedido}{documentos}{sugestao}{linha}
       </div>
       {layout === 'folha' ? (
         // `safe-area-bottom` zeraria o p-3 de baixo (botão colado na borda): a maior das duas folgas

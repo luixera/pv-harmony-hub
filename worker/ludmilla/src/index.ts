@@ -8,6 +8,7 @@ import {
 import { executarCriacao } from './criacao/index.js';
 import { executarAcompanhamentoEmail } from './email/rotear.js';
 import { executarEnvioDeCobranca } from './email/enel/enviar.js';
+import { executarEnvioDePedido } from './email/enel/pedido-troca.js';
 import { avisar, carregarEnvDaEstacao, dirPerfilChrome, modoAtual, pedirLoginNoTerminal } from './local.js';
 
 /**
@@ -314,6 +315,12 @@ async function principal() {
       // navegador. Só a VPS pega este run: a conta da ENEL é 'vps', a fila da estação
       // (ludmilla_claim_run_local) só pega conta 'local', e as RPCs do envio exigem service_role.
       await executarEnvioDeCobranca(run).catch(e => log('o envio da cobrança caiu', { run: run.id, classe: (e as Error).name }));
+      await dormir(5_000);
+      continue;
+    }
+    if (run.tipo === 'enviar_pedido_troca') {
+      // o pedido da troca que uma pessoa aprovou: o mesmo envio, com as mesmas proteções
+      await executarEnvioDePedido(run).catch(e => log('o envio do pedido caiu', { run: run.id, classe: (e as Error).name }));
       await dormir(5_000);
       continue;
     }

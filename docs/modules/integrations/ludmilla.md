@@ -1759,7 +1759,41 @@ Ludmilla; depois confere a pasta Enviados por dois caminhos separados). Esse wor
 republica o robô. Desligar tudo:
 `select cron.unschedule('ludmilla-cobrancas'); select cron.unschedule('ludmilla-enel-email');`.
 
+### O pedido da troca do relógio (06/11/2026)
+
+Spec [2026-11-06-ludmilla-pedido-troca-design.md](../../superpowers/specs/2026-11-06-ludmilla-pedido-troca-design.md) ·
+plano [2026-11-06-ludmilla-pedido-troca.md](../../superpowers/plans/2026-11-06-ludmilla-pedido-troca.md) ·
+ADR [0012](../../adr/0012-ludmilla-envia-com-clique.md).
+
+Assim que a vistoria é aprovada, o A fazer `vistoria_aprovada` mostra o e-mail pronto, se o pedido ainda não foi feito:
+para `canalgd.sp@br.enel.com`, assunto `TROCA DE RELÓGIO - <TITULAR> - NT <n>` e texto editável. **Enviar** passa pela
+fila do Desfazer (8 s). **Marcar como feito** continua lá, para o pedido feito por fora.
+
+**Quem decide é o banco**, em `ludmilla_pedido_troca_avaliar`, usada pela tela (`ludmilla_pedido_troca_rascunho`) e de
+novo no clique (`ludmilla_pedido_troca_enviar`, sob trava do A fazer):
+- **Já pedido** é haver, DEPOIS da data do e-mail de aprovação, mensagem `troca_relogio` ou `resposta_automatica` com
+  "troca" no assunto, ligada ao projeto ou com a NT no assunto. E-mail de troca de antes da aprovação não conta, nem
+  `devolucao`.
+- **A NT** vem do protocolo do cadastro, da Carta pendente ou do assunto de e-mail ligado ao projeto. Vale só com UMA
+  candidata e nunca a de outro projeto. Não usa `ludmilla_email_nts_conhecidas`, que só responde a `service_role`.
+- Um pedido por A fazer (`UNIQUE`), e o texto tem de citar a NT.
+
+**O envio é o da cobrança:** run `enviar_pedido_troca`, `email/enel/pedido-troca.ts` reaproveita `enviar.ts` trocando as
+RPCs e o e-mail (novo, sem `RE:` e sem conversa), mais uma trava própria do robô sobre o assunto e a NT.
+- **Saiu:** pedido `enviado`, comentário comum no card (a empresa vê, sem o endereço) e histórico com quem aprovou.
+- **Nada saiu:** pedido `falhou`, e o A fazer reabre com o motivo e o texto da tentativa.
+- **Não deu para saber:** pedido `sem_confirmacao`, A fazer `aviso` para conferir no Gmail, sem botão Enviar.
+- **Preso:** o cron `ludmilla-pedidos-troca` (seg–sex, :10, 8h–18h) trata `enviando` há mais de 30 min como sem
+  confirmação, e o que não saiu há mais de 2 h como falha.
+
+A tabela é `portal_pedidos_troca`, separada de propósito de `portal_cobrancas`: nenhuma função da cobrança foi tocada. Se
+a ENEL abrir a nota, a cobrança nasce sozinha pelo caminho de sempre.
+
 ### O que NÃO está provado
+
+**O pedido da troca (06/11/2026):** testado com dublês no robô (15 testes), em transação desfeita no banco, com os
+projetos reais (40 casos), e clicado na tela com dados fictícios. **O primeiro e-mail real à ENEL é o clique do usuário no
+PRJ-27803**, e só aí se prova que ele sai certo pelo Gmail e que a resposta automática fecha o ciclo.
 
 **Medido em 06/11/2026 (cobrança e leitura agendada):**
 - **SMTP da VPS:** conectou e autenticou na porta 465 (execução 42318667768).

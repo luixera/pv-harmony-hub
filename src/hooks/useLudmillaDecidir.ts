@@ -7,6 +7,7 @@ import {
 } from '@/hooks/useLudmilla';
 import type { Afazer, SituacaoDoFiltro } from '@/lib/ludmillaCaixa';
 import { mensagemDeErro } from '@/lib/ludmillaCartao';
+import type { PedidoTroca } from '@/lib/ludmillaPedidoTroca';
 import type {
   AnexoDoPortal, EventoDoProjeto, ParecerDoPortal, ProjetoDaCriacao, ProjetoDoDetalhe,
 } from '@/lib/ludmillaPainel';
@@ -91,6 +92,28 @@ export async function dispensarCobrancaNoBanco(cobrancaId: string): Promise<bool
   return data === true;
 }
 
+/** "Enviar" do pedido da troca: o banco reavalia a regra, grava quem aprovou e põe o envio na fila do robô. */
+export async function enviarPedidoNoBanco(afazerId: string, texto: string): Promise<string> {
+  const { data, error } = await supabase.rpc('ludmilla_pedido_troca_enviar' as never, { p_afazer_id: afazerId, p_texto: texto } as never);
+  if (error) throw error;
+  return String(data ?? '');
+}
+
+/** O pedido da troca deste A fazer: se está liberado e o e-mail pronto. A regra é do banco. */
+export function usePedidoTroca(afazerId: string | null) {
+  const disponivel = useLudmillaDisponivel();
+  return useQuery({
+    queryKey: ['pedido-troca', afazerId],
+    queryFn: async (): Promise<PedidoTroca | null> => {
+      const { data, error } = await supabase.rpc('ludmilla_pedido_troca_rascunho' as never, { p_afazer_id: afazerId } as never);
+      if (error) throw error;
+      return ((data ?? []) as unknown as PedidoTroca[])[0] ?? null;
+    },
+    enabled: disponivel && !!afazerId,
+    staleTime: 30_000,
+  });
+}
+
 /**
  * As decisões da caixa (Aplicar, Ignorar, Feito e, na cobrança, Enviar e Dispensar) como a página as chama. Cada uma
  * ESPERA a mutação (`mutateAsync` REJEITA na falha: é assim que a fila de decisões
@@ -159,6 +182,22 @@ export function useAcoesDaCaixa() {
         atualizarDetalhe();
         if (!mudou) toast.info('Alguém da equipe já tinha decidido esta cobrança.');
         return mudou;
+      },
+      /**
+       * "Enviar" do pedido da troca (pela fila do Desfazer). REJEITA na recusa do banco — a ENEL já
+       * respondeu, alguém enviou antes, texto sem a NT — e o motivo DELE vai para a tela.
+       */
+      enviarPedido: async (afazerId: string, texto: string): Promise<void> => {
+        try {
+          await enviarPedidoNoBanco(afazerId, texto);
+        } catch (e) {
+          toast.error(mensagemDeErro(e) ?? 'Não consegui enviar o pedido.');
+          void qc.invalidateQueries({ queryKey: ['pedido-troca'] });
+          throw e;
+        }
+        void qc.invalidateQueries({ queryKey: ['portal-afazeres'], exact: false });
+        void qc.invalidateQueries({ queryKey: ['pedido-troca'] });
+        atualizarDetalhe();
       },
     };
   }, [qc, aplicarAsync, ignorarAsync, feitoAsync]);

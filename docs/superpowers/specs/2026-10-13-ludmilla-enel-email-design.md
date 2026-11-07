@@ -294,7 +294,9 @@ contadores novos de identificação ("pelo protocolo", "pela UC", "pelo nome",
 - Preencher o protocolo do projeto a partir do e-mail de abertura (ver 13).
 - Acompanhar a ENEL por portal.
 
-## 13. Fase 2 — pedir a troca do relógio (para conversar)
+## 13. Fase 2 — pedir a troca do relógio
+
+> **Implementada em 06/11/2026:** ver [2026-11-06-ludmilla-pedido-troca-design.md](2026-11-06-ludmilla-pedido-troca-design.md). O texto abaixo é o esboço que deu origem a ela.
 
 O usuário quer ensinar a robô a pedir a troca. Pedir é **enviar e-mail para a
 ENEL em nome da empresa** — a mesma família de "pedir vistoria", que a regra da

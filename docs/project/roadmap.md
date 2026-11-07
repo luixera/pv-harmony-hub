@@ -65,21 +65,12 @@
     gastaria IA para gravar a mensagem de falha em até 25 e-mails por rodada. Tirar junto da correção.
   - **Decidir ao corrigir:** o que fazer com as sugestões de e-mails antigos, que o badge da
     barra lateral e o Zé passariam a mostrar, e limpar os 160 que têm só a mensagem de falha.
-- **ENEL — botão para pedir a troca do relógio (pedido do usuário, 06/11/2026;
-  não iniciado).** Projeto com vistoria aprovada ganha, no A fazer da Ludmilla, um
-  botão que envia à ENEL o e-mail pedindo a troca. É a fase 2 da
-  [spec da ENEL por e-mail](../superpowers/specs/2026-10-13-ludmilla-enel-email-design.md):
-  a §13 já traz o modelo tirado dos pedidos reais da equipe, e o envio pode
-  reaproveitar o da cobrança (`enviar_cobranca`). Caso real: PRJ-27803, em que a NT
-  precisa vir do que a Ludmilla aprendeu nos e-mails, porque o campo protocolo diz
-  "Sem protocolo". A decidir com o usuário: o texto final e se o clique envia direto
-  ou abre o e-mail para conferir, como na cobrança.
-
-  **Quando o botão aparece (usuário, 06/11/2026):** assim que a vistoria for aprovada, se o
-  pedido ainda não foi feito. Testado nos dados: "já pedido" é haver e-mail de troca da ENEL
-  DEPOIS da aprovação (nota de serviço ou resposta automática). E-mail de troca de antes da
-  aprovação não conta: o PRJ-27803 tem 3 e não tem pedido. Dos 5 projetos ativos com aprovação
-  lida, só ele está sem pedido.
+- **ENEL — pedido da troca do relógio: falta o primeiro envio real.** Feito em 06/11/2026
+  ([spec](../superpowers/specs/2026-11-06-ludmilla-pedido-troca-design.md)): o A fazer de vistoria
+  aprovada mostra o e-mail pronto, e sai com o clique de uma pessoa. O primeiro será o PRJ-27803.
+  Depois dele, conferir em Enviados do Gmail se saiu uma vez só e se a resposta automática da ENEL
+  chegou. Ficaram para depois: reabrir troca que falhou, anexos, fechar sozinho os A fazer de pedido
+  já feito (PRJ-60934, PRJ-67567) e o botão no modal do projeto.
 - **Eletropostos — pós-entrega 2**: a estação local (PC do gestor + BlueStacks)
   está instalada, calibrada e gravando desde 16/10/2026 (a primeira coleta agendada, às 08:56 de 16/10/2026, gravou 7 leituras da Cury e 25 da ATM;
   [modules/eletropostos](../modules/eletropostos/overview.md)). Em aberto: vincular

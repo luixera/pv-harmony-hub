@@ -131,6 +131,10 @@ aprovada por pessoa da equipe e ligada ao run pelo `run_id`. Escrita na tabela s
 só da equipe do GD Manager (RESTRICTIVE por tenant). A senha de app vem de `agent_config`, só por
 `service_role`; o log e o banco recebem só a razão curta da falha do SMTP, nunca a mensagem crua.
 
+O pedido da troca do relógio segue as mesmas travas, em `portal_pedidos_troca`: destinatário fixo no
+Canal GD, um pedido por A fazer, aprovação de pessoa da equipe, e o assunto conferido de novo no robô.
+As funções internas (`ludmilla_pedido_troca_avaliar`, `_nt`, `_marcar_*`) não têm `EXECUTE` para ninguém.
+
 ## Cabeçalhos HTTP do site
 
 Aplicados em 06/11/2026 pelo workflow manual
