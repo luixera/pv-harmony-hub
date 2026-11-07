@@ -55,6 +55,16 @@
   só informa em `simular` e `desfazer`; ao aplicar de verdade, continua reprovando.
 
 ## Tarefas de produto em aberto (do backlog de sessão)
+- **Claudinho dos e-mails — a análise por IA nunca funcionou em produção.** Medido em
+  06/11/2026: das 1.194 linhas de `email_updates`, nenhuma tem resumo real, classificação ou
+  sugestão de etapa, e 160 têm só a mensagem de falha. O e-mail chega ao projeto, mas sem análise.
+  - **Causa provável, não provada:** `analyzeEmailBody` é o único `JSON.parse` de resposta de IA
+    sem limpeza no repositório, e o modelo deve devolver o JSON dentro de cerca de markdown. O
+    `catch` não registra o erro, e nenhuma chamada real foi feita para confirmar.
+  - **`Deploy scan-emails` está com `if: false` no `deploy.yml`:** publicar ligaria a etapa 1b, que
+    gastaria IA para gravar a mensagem de falha em até 25 e-mails por rodada. Tirar junto da correção.
+  - **Decidir ao corrigir:** o que fazer com as sugestões de e-mails antigos, que o badge da
+    barra lateral e o Zé passariam a mostrar, e limpar os 160 que têm só a mensagem de falha.
 - **ENEL — botão para pedir a troca do relógio (pedido do usuário, 06/11/2026;
   não iniciado).** Projeto com vistoria aprovada ganha, no A fazer da Ludmilla, um
   botão que envia à ENEL o e-mail pedindo a troca. É a fase 2 da

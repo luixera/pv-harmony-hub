@@ -152,7 +152,9 @@ Aplicados em 06/11/2026 pelo workflow manual
   Consequências:
   - o `desfazer` do workflow **não reverte a CSP** para quem já tem o app; precisa de um deploy
     que mude o `index.html` e de o usuário aceitar "Atualizar" ou fechar todas as abas;
-  - deploy sem mudança no front não renova a cópia, porque a revisão do `index.html` não muda;
+  - a cópia só renova quando a revisão do `index.html` muda, ou seja, quando o build gera outro
+    nome de pacote. Isso costuma vir de mudança no front, mas não só: o deploy `4bba217` não
+    tocou em `src`, e o build mudou o nome mesmo assim. Conferir depois de publicar, sem prometer;
   - ao ligar a CSP para valer, ter a correção pensada antes.
 - **HSTS é uma promessa que não se desfaz.** Quem recebeu fica preso a HTTPS até o `max-age`
   vencer, e certificado vencido passa a não ter clique para continuar. Por isso os degraus. O

@@ -13,7 +13,10 @@ jobs:
   deploy-functions:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    continue-on-error: true  # Não bloqueia o deploy do frontend se falhar
+    # Sem continue-on-error, de propósito. O front não depende deste job (não há
+    # `needs`) e publica de qualquer jeito; a linha só escondia a falha. De
+    # 03/11/2026 a 06/11/2026 nenhuma função saiu pelo CI, com o deploy verde:
+    # o CLI (`latest`) passou a recusar escrita fora de terminal sem --yes.
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -23,13 +26,20 @@ jobs:
         with:
           version: latest
 
+      # SEGURADO de propósito (06/11/2026). Publicar agora ligaria a etapa 1b, e a
+      # análise de e-mails nunca funcionou em produção: nenhuma das 1.194 linhas de
+      # email_updates tem resumo real. A 1b gastaria IA para gravar a mensagem de
+      # falha em até 25 e-mails por rodada. Tirar este `if` junto da correção de
+      # analyzeEmailBody. Ver docs/project/roadmap.md.
       - name: Deploy scan-emails
+        if: false
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: |
           supabase functions deploy scan-emails \
             --project-ref yqsqrdndvsnhbsoaoilf \
-            --no-verify-jwt
+            --no-verify-jwt \
+            --yes
 
       # API de status da Ludmilla: a chave gdm_ é a credencial, não o JWT
       - name: Deploy ludmilla-status
@@ -38,7 +48,8 @@ jobs:
         run: |
           supabase functions deploy ludmilla-status \
             --project-ref yqsqrdndvsnhbsoaoilf \
-            --no-verify-jwt
+            --no-verify-jwt \
+            --yes
 
       - name: Deploy test-gmail
         env:
@@ -46,7 +57,8 @@ jobs:
         run: |
           supabase functions deploy test-gmail \
             --project-ref yqsqrdndvsnhbsoaoilf \
-            --no-verify-jwt
+            --no-verify-jwt \
+            --yes
 
       # Estava fora do CI e era publicada à mão, o que já causou uma
       # publicação com conteúdo errado. Sem verify-jwt: a função faz a própria
@@ -57,7 +69,8 @@ jobs:
         run: |
           supabase functions deploy claudinho-verifica \
             --project-ref yqsqrdndvsnhbsoaoilf \
-            --no-verify-jwt
+            --no-verify-jwt \
+            --yes
 
       # Leitor de datasheet do Motor de Engenharia. Faz a própria checagem do
       # header Authorization e consome cota de IA (consume_ai_quota).
@@ -67,7 +80,8 @@ jobs:
         run: |
           supabase functions deploy datasheet-extract \
             --project-ref yqsqrdndvsnhbsoaoilf \
-            --no-verify-jwt
+            --no-verify-jwt \
+            --yes
 
       # Semeia os 4 modelos oficiais da ENEL nas concessionárias (Anexos 1 e 4,
       # memorial com tags e planilha de registro). Idempotente: só grava o que
@@ -78,7 +92,8 @@ jobs:
         run: |
           supabase functions deploy seed-enel-forms \
             --project-ref yqsqrdndvsnhbsoaoilf \
-            --no-verify-jwt
+            --no-verify-jwt \
+            --yes
 
       # Semeia o formulário oficial da CEMIG nas concessionárias. Mesmo molde
       # do seed-enel-forms: idempotente, com {"overwrite":true} para trocar.
@@ -88,7 +103,8 @@ jobs:
         run: |
           supabase functions deploy seed-cemig-forms \
             --project-ref yqsqrdndvsnhbsoaoilf \
-            --no-verify-jwt
+            --no-verify-jwt \
+            --yes
 
       # Conversa com o Engenheiro Bidu (projetista automático, só GD Manager).
       # Faz a própria checagem do header Authorization e consome cota de IA.
@@ -98,7 +114,8 @@ jobs:
         run: |
           supabase functions deploy bidu-chat \
             --project-ref yqsqrdndvsnhbsoaoilf \
-            --no-verify-jwt
+            --no-verify-jwt \
+            --yes
 
       # Sem verify-jwt: o login que falhou ainda não tem sessão. A proteção
       # é a lista fechada de ações + limite por IP dentro da própria função.
@@ -108,7 +125,8 @@ jobs:
         run: |
           supabase functions deploy log-event \
             --project-ref yqsqrdndvsnhbsoaoilf \
-            --no-verify-jwt
+            --no-verify-jwt \
+            --yes
 
       # Zé — webhook da Evolution (autentica pelo header x-ze-token, que a
       # Evolution manda; ela não tem JWT do Supabase) e ações da tela /ze
@@ -119,7 +137,8 @@ jobs:
         run: |
           supabase functions deploy ze-webhook \
             --project-ref yqsqrdndvsnhbsoaoilf \
-            --no-verify-jwt
+            --no-verify-jwt \
+            --yes
 
       - name: Deploy ze-admin
         env:
@@ -127,7 +146,8 @@ jobs:
         run: |
           supabase functions deploy ze-admin \
             --project-ref yqsqrdndvsnhbsoaoilf \
-            --no-verify-jwt
+            --no-verify-jwt \
+            --yes
 
       # O cérebro. Quem chama é o ze-webhook (service role) ou a tela; a
       # checagem é feita dentro da função.
@@ -137,7 +157,8 @@ jobs:
         run: |
           supabase functions deploy ze-brain \
             --project-ref yqsqrdndvsnhbsoaoilf \
-            --no-verify-jwt
+            --no-verify-jwt \
+            --yes
 
       # A chave que a ludmilla-parecer aceita, vinda do MESMO segredo que o
       # worker da Ludmilla usa (ludmilla-worker.yml a passa como
@@ -170,7 +191,8 @@ jobs:
           printf 'LUDMILLA_WORKER_KEY=%s\n' "$CHAVE_DO_WORKER" > "$ARQ"
           printf 'ASSINADOR_WORKER_KEY=%s\n' "$CHAVE_DO_WORKER" >> "$ARQ"
           supabase secrets set --env-file "$ARQ" \
-            --project-ref yqsqrdndvsnhbsoaoilf
+            --project-ref yqsqrdndvsnhbsoaoilf \
+            --yes
 
       # Lê o PDF do parecer de acesso com IA. Só o worker da Ludmilla chama, com
       # service role; a checagem é feita dentro da função (por isso o
@@ -181,7 +203,8 @@ jobs:
         run: |
           supabase functions deploy ludmilla-parecer \
             --project-ref yqsqrdndvsnhbsoaoilf \
-            --no-verify-jwt
+            --no-verify-jwt \
+            --yes
 
       # Triagem das assinaturas (Claudinho). Só o assinador chama, com a chave
       # ASSINADOR_WORKER_KEY gravada no passo "Segredo do robô…" acima; a
@@ -192,7 +215,8 @@ jobs:
         run: |
           supabase functions deploy assinatura-triagem \
             --project-ref yqsqrdndvsnhbsoaoilf \
-            --no-verify-jwt
+            --no-verify-jwt \
+            --yes
 
   build-and-deploy:
     runs-on: ubuntu-latest
