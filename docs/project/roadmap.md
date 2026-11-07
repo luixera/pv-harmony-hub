@@ -15,10 +15,26 @@
   diante, e o limite anda com o tempo. Enquanto isso, PRJ-05469 e PRJ-30495 ficam sem cobrança da
   troca, porque as notas são de 16/10 e 20/10. Depois de mudar, reler as duas
   ([doc da Ludmilla](../modules/integrations/ludmilla.md), "O que NÃO está provado" da ENEL).
-- **Nginx da VPS — falta avaliar HSTS, CSP e os cabeçalhos em `/assets`.**
-  Medido em 06/11/2026: nenhum caminho devolve `Strict-Transport-Security` nem
-  `Content-Security-Policy`, e `/assets/*` vem sem `X-Content-Type-Options`,
-  `X-Frame-Options` e `Referrer-Policy`. Nada disso foi aplicado.
+- **Nginx da VPS — HSTS e CSP em etapas.** Aplicado em 06/11/2026 (execução
+  42322701125): HSTS de 1 dia, CSP **só em modo relatório**, `Permissions-Policy`,
+  `server_tokens off`, os cabeçalhos em `/assets` e MIME de JavaScript para `.mjs`.
+  Motivos e riscos em [security.md](security.md#cabeçalhos-http-do-site). Falta,
+  nesta ordem:
+  1. **Decidir o `staging`:** tem DNS, mas nenhum certificado e nenhum bloco no
+     Nginx, e nada no repositório usa esse nome. Apagar o registro na Hostinger ou
+     emitir certificado. Enquanto isso, nada de `includeSubDomains`.
+  2. **Receptor de relatórios da CSP:** sem ele, as violações só aparecem no
+     DevTools de quem abrir. Não usar o `log-event`: o limite por IP conta todos os
+     eventos, e relatórios calariam o `login_failed`.
+  3. **Observar de 1 a 2 semanas** e percorrer as telas: mapa de rede do painel,
+     seletor de local, planta de localização, prévia de PDF e docx, geração de PDF,
+     importar PDF no diagrama, notificações em tempo real. Já conferidos sem
+     violação: `dashboard-admin` com o mapa e `/cadastro` com o Turnstile.
+  4. **Subir o HSTS:** 30 dias depois de 1 semana sem incidente; 1 ano depois de mais
+     30 dias, com `includeSubDomains` se o `staging` estiver resolvido e a primeira
+     renovação do `zap` (por volta de 22/11/2026) tiver funcionado.
+  5. **Ligar a CSP:** trocar `CSP_NOME` no workflow, rodar e publicar um deploy que
+     mude o front.
 
   **Resolvido em 06/11/2026: a brecha de clickjacking no `index.html`.** O
   [`nginx-cache-headers.yml`](../../.github/workflows/nginx-cache-headers.yml)
@@ -31,8 +47,9 @@
     ([ADR 0011](../adr/0011-pwa-casca-sem-fila-offline.md)).
 
   Para não reabrir: no Nginx, um `add_header` dentro de um `location` cancela
-  todos os herdados do `server`. Cabeçalho novo no `server` precisa ser repetido
-  nos blocos entre `GD-MANAGER-CASCA-INICIO` e `GD-MANAGER-CASCA-FIM`.
+  todos os herdados do `server`. Cabeçalho novo entra nas funções `seguranca` e
+  `csp` do workflow, que o repetem em cada `location` do bloco entre
+  `GD-MANAGER-CASCA-INICIO` e `GD-MANAGER-CASCA-FIM`. Não editar o bloco na VPS.
 
   Limite da medição: o `curl` vê a resposta da rede. Quem já tem o app instalado
   recebe o `index.html` guardado pelo service worker até o próximo deploy que

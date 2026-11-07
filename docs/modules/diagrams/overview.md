@@ -207,6 +207,13 @@ no SVG/PDF exportado**. É a ferramenta de conferência do reconhecimento: o
 usuário vê o original atrás do redesenho e corrige o que a IA errou
 arrastando por cima.
 
+**Em produção, o fundo só carrega desde 06/11/2026.** Até então o Nginx servia o
+worker do PDF.js (`.mjs`) como `application/octet-stream`, o PDF.js falhava com
+`Setting up fake worker failed` e `pdfPreview.ts` devolvia `null`, sem aviso. O
+MIME foi corrigido no servidor. Como o arquivo tem cache de 1 ano, um navegador que
+já tentou importar PDF antes pode ter guardado a resposta antiga (não testado): se
+o fundo não aparecer, limpar o cache do site.
+
 O template é criado **num único insert já com a cena** (`useCreateDiagramTemplate`
 aceita `sceneData`) — sem o segundo passo de update que já deixou um modelo
 órfão vazio pra trás. Abre direto no editor com um aviso roxo: "reconhecido

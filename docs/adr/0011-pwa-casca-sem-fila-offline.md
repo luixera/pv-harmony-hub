@@ -59,7 +59,10 @@ subsistema inteiro, que não foi pedido.
 - O precache (~4,3 MiB) é baixado na primeira visita. É o preço da abertura
   instantânea; reduzi-lo de verdade exige quebrar o chunk de 3,6 MB, que é
   débito técnico separado.
-- Fica pendente, na VPS, uma regra de `no-cache` para `sw.js` e
-  `manifest.webmanifest` no Nginx. O Chrome já ignora o cache HTTP do script do
-  service worker, então nada quebra sem ela — mas é a rede de segurança para os
-  outros navegadores.
+- A regra de `no-cache` para `sw.js` e `manifest.webmanifest` no Nginx foi aplicada
+  em 06/11/2026. O Chrome já ignora o cache HTTP do script do service worker, então
+  nada quebrava sem ela — ela é a rede de segurança para os outros navegadores.
+- **O precache também guarda os cabeçalhos do `index.html`.** Mudar CSP ou
+  `X-Frame-Options` no Nginx só alcança quem já tem o app depois de um deploy que
+  mude o `index.html` e de o usuário aceitar a atualização. Reverter no Nginx também
+  não alcança esses usuários. Ver [security.md](../project/security.md#cabeçalhos-http-do-site).

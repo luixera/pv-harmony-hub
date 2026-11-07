@@ -131,6 +131,47 @@ aprovada por pessoa da equipe e ligada ao run pelo `run_id`. Escrita na tabela s
 só da equipe do GD Manager (RESTRICTIVE por tenant). A senha de app vem de `agent_config`, só por
 `service_role`; o log e o banco recebem só a razão curta da falha do SMTP, nunca a mensagem crua.
 
+## Cabeçalhos HTTP do site
+
+Aplicados em 06/11/2026 pelo workflow manual
+[`nginx-cache-headers.yml`](../../.github/workflows/nginx-cache-headers.yml) (execução
+42322701125). Os valores ficam **só** nas variáveis do início do script remoto; o bloco na VPS
+é gerado. Etapas que faltam em [roadmap.md](roadmap.md).
+
+| Cabeçalho | Valor hoje | Onde |
+|---|---|---|
+| `Strict-Transport-Security` | `max-age=86400`, sem subdomínios | todas as respostas do site |
+| `Content-Security-Policy-Report-Only` | só relata, não bloqueia | `index.html` e arquivos soltos da raiz; **não** em `/sw.js` nem `/assets` |
+| `Permissions-Policy` | `camera=(self), microphone=(), geolocation=(), payment=(), usb=()` | todas |
+| `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy` | `nosniff`, `SAMEORIGIN`, `strict-origin-when-cross-origin` | todas |
+
+- **A CSP fica presa no cache do service worker.** O `index.html` precacheado guarda os
+  cabeçalhos da hora em que foi baixado, e é ele que abre nas navegações. Teste local: tirar a
+  CSP do servidor não a tirou de quem tinha o service worker. Em produção, no Chrome do gestor,
+  logo depois de aplicar: a rede já trazia os cabeçalhos e a cópia guardada não tinha nenhum.
+  Consequências:
+  - o `desfazer` do workflow **não reverte a CSP** para quem já tem o app; precisa de um deploy
+    que mude o `index.html` e de o usuário aceitar "Atualizar" ou fechar todas as abas;
+  - deploy sem mudança no front não renova a cópia, porque a revisão do `index.html` não muda;
+  - ao ligar a CSP para valer, ter a correção pensada antes.
+- **HSTS é uma promessa que não se desfaz.** Quem recebeu fica preso a HTTPS até o `max-age`
+  vencer, e certificado vencido passa a não ter clique para continuar. Por isso os degraus. O
+  HSTS não sofre com o service worker: o navegador o lê de qualquer resposta de rede.
+- **Sem `includeSubDomains`, por enquanto:** o `staging` tem DNS e não tem certificado.
+- **Sem `preload`:** sair da lista dos navegadores leva meses, prende todo subdomínio futuro, e
+  o ganho é só a primeira visita de um navegador que nunca viu o site.
+- **`/sw.js` sem CSP de propósito:** ela valeria dentro do próprio service worker, e um erro ali
+  pode travar a atualização do app.
+- **`camera` em `(self)`, não em `()`:** o `DocumentUploadField` usa `capture="environment"`.
+- **O que a CSP protege:** `script-src` sem `unsafe-inline` barra script injetado nos
+  `dangerouslySetInnerHTML` com HTML de modelo (`GenerateDocumentDialog`, `TemplateEditorDialog`).
+  `style-src` precisa de `unsafe-inline` (Radix, recharts, Maps), e os curingas do Google em
+  `img-src` e `connect-src` seguem a documentação do Maps.
+- **Relatório de CSP tem ruído de extensão.** No Chrome do gestor, 12 violações de `font-src` em
+  `use.typekit.net` aparecem em qualquer tela, inclusive `/cadastro`, e nenhuma em navegador sem
+  extensões. O Typekit não está no código, no pacote nem nas folhas de estilo da página. Não
+  liberar esse host: ele não é do app.
+
 ## Monitoramento
 - Tabela `system_events` (kind: `error`, `security`, `audit`, `signup`,
   `deploy`) alimenta a aba **Monitoramento** do console (master-only). Captura
@@ -144,4 +185,5 @@ só da equipe do GD Manager (RESTRICTIVE por tenant). A senha de app vem de `age
 - **Proteção de senha vazada** do Supabase Auth: habilitar no painel.
 - **Listagem pública de buckets** `avatars`/`tenant-logos`: revisar se a
   listagem (não só leitura por caminho) deve ficar aberta.
+- **CSP ainda só relata**, e o HSTS está em 1 dia: etapas em [roadmap.md](roadmap.md).
 - Ver [roadmap.md](roadmap.md).
