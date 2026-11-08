@@ -101,6 +101,19 @@ Reportar ao usuário o que foi encontrado, mesmo quando nada serve.
     navegador do Claude. Lembrete da casa: **automação não disfarça navegador**
     — portal que bloqueia robô (Elektro/Akamai) continua fora.
 
+- **Repaginação de tela interna (instaladas em 07/11/2026, a pedido do usuário,
+  para a nova página da Ludmilla)** — passam no critério (oficiais):
+  - `frontend-design` (oficial `anthropics/skills`, 1,1M) — processo de desenho:
+    plano curto de cores/tipo/layout, revisão contra o pedido, uma só ousadia,
+    escrita de interface na voz de quem usa. **Na casa:** a identidade do GD
+    Manager vence (Inter, fundo `#F0F0F0`, barra lateral preta, dourado
+    `#F5A800`); a skill guia a escolha *dentro* dela, não traz estilo de fora.
+  - `shadcn` (oficial `shadcn-ui/ui`, 411K) — componentes shadcn/ui pela CLI
+    (`npx shadcn@latest info|search|docs|view`). **Na casa:** os componentes de
+    `src/components/ui/` são do projeto e podem ter ajustes próprios, então NUNCA `init`, `apply`
+    (preset) nem `add --overwrite` sem conversar; para atualizar, `add --dry-run
+    --diff` primeiro.
+
 - `agent-browser` (oficial `vercel-labs`, instalada em 17/09/2026 a pedido
   do usuário) — **toda automação ou exploração de navegador**: portais das
   concessionárias (Ludmilla), preencher formulário, testar tela, QA. Usar
