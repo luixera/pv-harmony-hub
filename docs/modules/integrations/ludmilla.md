@@ -1792,8 +1792,13 @@ a ENEL abrir a nota, a cobrança nasce sozinha pelo caminho de sempre.
 ### O que NÃO está provado
 
 **O pedido da troca (06/11/2026):** testado com dublês no robô (15 testes), em transação desfeita no banco, com os
-projetos reais (40 casos), e clicado na tela com dados fictícios. **O primeiro e-mail real à ENEL é o clique do usuário no
-PRJ-27803**, e só aí se prova que ele sai certo pelo Gmail e que a resposta automática fecha o ciclo.
+projetos reais (40 casos), e clicado na tela com dados fictícios.
+
+**Primeiro envio real (07/11/2026, 21h48, PRJ-27803, NT 391761805):** clique do usuário, run `enviar_pedido_troca`
+`ok` em 5 s numa tentativa, pedido `enviado` com o Message-ID do Gmail, A fazer fechado, comentário no card e linha no
+histórico com quem aprovou. Saiu "Boa tarde" às 21h48 porque o modelo só tem "Bom dia" e "Boa tarde", como a cobrança.
+**Ainda falta ver:** o e-mail uma vez só em Enviados do Gmail, e a resposta automática da ENEL sendo lida e
+reconhecida como sinal de pedido feito. A leitura agendada só roda em dia útil; a primeira é segunda, 09/11, às 8h.
 
 **Medido em 06/11/2026 (cobrança e leitura agendada):**
 - **SMTP da VPS:** conectou e autenticou na porta 465 (execução 42318667768).

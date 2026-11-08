@@ -65,11 +65,11 @@
     gastaria IA para gravar a mensagem de falha em até 25 e-mails por rodada. Tirar junto da correção.
   - **Decidir ao corrigir:** o que fazer com as sugestões de e-mails antigos, que o badge da
     barra lateral e o Zé passariam a mostrar, e limpar os 160 que têm só a mensagem de falha.
-- **ENEL — pedido da troca do relógio: falta o primeiro envio real.** Feito em 06/11/2026
+- **ENEL — pedido da troca do relógio: falta ver a resposta da ENEL.** Feito em 06/11/2026
   ([spec](../superpowers/specs/2026-11-06-ludmilla-pedido-troca-design.md)): o A fazer de vistoria
-  aprovada mostra o e-mail pronto, e sai com o clique de uma pessoa. O primeiro será o PRJ-27803.
-  Depois dele, conferir em Enviados do Gmail se saiu uma vez só e se a resposta automática da ENEL
-  chegou. Ficaram para depois: reabrir troca que falhou, anexos, fechar sozinho os A fazer de pedido
+  aprovada mostra o e-mail pronto, e sai com o clique de uma pessoa. O primeiro saiu em 07/11/2026
+  (PRJ-27803), registrado certo no banco. Falta conferir em Enviados do Gmail se saiu uma vez só e
+  se a resposta automática da ENEL é lida na leitura de segunda, 09/11. Ficaram para depois: reabrir troca que falhou, anexos, fechar sozinho os A fazer de pedido
   já feito (PRJ-60934, PRJ-67567) e o botão no modal do projeto.
 - **Eletropostos — pós-entrega 2**: a estação local (PC do gestor + BlueStacks)
   está instalada, calibrada e gravando desde 16/10/2026 (a primeira coleta agendada, às 08:56 de 16/10/2026, gravou 7 leituras da Cury e 25 da ATM;
