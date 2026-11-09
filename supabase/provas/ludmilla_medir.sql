@@ -87,7 +87,66 @@ BEGIN
     ('B4 passagens fechadas para a equipe', _erro = 'negado', _erro);
 END $$;
 
--- ── (blocos B e C entram aqui) ─────────────────────────────────────────────
+-- ── C. A carteira ──────────────────────────────────────────────────────────
+DO $$
+DECLARE _t uuid; _pessoa uuid; _outro uuid; _n int; _ativos int; _fora int; _desordem int;
+        _txt text; _ini timestamptz; _ms numeric; _erro text; _linhas_outro int; _sem_hist int;
+BEGIN
+  SELECT id INTO _t FROM public.tenants WHERE is_library LIMIT 1;
+  SELECT p.id INTO _pessoa FROM public.profiles p
+   WHERE p.tenant_id = _t AND p.active AND p.role IN ('admin', 'staff')
+     AND EXISTS (SELECT 1 FROM auth.identities i WHERE i.user_id = p.id)
+   ORDER BY (p.role = 'admin') DESC LIMIT 1;
+  SELECT p.id INTO _outro FROM public.profiles p
+    JOIN public.tenants t ON t.id = p.tenant_id AND NOT t.is_library
+   WHERE p.active AND p.role = 'admin' AND EXISTS (SELECT 1 FROM auth.identities i WHERE i.user_id = p.id)
+   LIMIT 1;
+  SELECT count(*) INTO _ativos FROM public.projects p
+   WHERE p.tenant_id = _t AND p.is_deleted IS NOT TRUE AND p.archived_at IS NULL AND p.status <> 'completed';
+
+  PERFORM set_config('request.jwt.claims', json_build_object('role', 'authenticated', 'sub', _pessoa)::text, true);
+  PERFORM set_config('role', 'authenticated', true);
+  _ini := clock_timestamp();
+  SELECT count(*),
+         count(*) FILTER (WHERE c.com_quem NOT IN ('nos', 'concessionaria', 'cliente')),
+         count(*) FILTER (WHERE jsonb_array_length(c.historico) = 0),
+         string_agg(c.code || ' ' || c.atraso_dias || 'd além de ' || c.normal_dias || ' (' || c.status || ', ' || c.com_quem || ')', '; ')
+           FILTER (WHERE c.atraso_dias > 0)
+    INTO _n, _fora, _sem_hist, _txt
+    FROM public.ludmilla_carteira() c;
+  _ms := extract(epoch FROM clock_timestamp() - _ini) * 1000;
+  SELECT count(*) INTO _desordem FROM (
+    SELECT c.atraso_dias, lag(c.atraso_dias) OVER (ORDER BY c.ordinality) AS antes
+      FROM public.ludmilla_carteira() WITH ORDINALITY c) x
+   WHERE x.antes IS NOT NULL AND x.atraso_dias IS NOT NULL AND x.atraso_dias > x.antes;
+  PERFORM set_config('role', 'none', true);
+
+  IF _outro IS NOT NULL THEN
+    PERFORM set_config('request.jwt.claims', json_build_object('role', 'authenticated', 'sub', _outro)::text, true);
+    PERFORM set_config('role', 'authenticated', true);
+    BEGIN
+      PERFORM count(*) FROM public.ludmilla_carteira();
+      _erro := 'entrou';
+    EXCEPTION WHEN OTHERS THEN _erro := SQLERRM;
+    END;
+    SELECT count(*) INTO _linhas_outro FROM public.project_stage_log;
+    PERFORM set_config('role', 'none', true);
+  END IF;
+
+  INSERT INTO r VALUES
+    ('C1 uma linha por projeto ativo', _n = _ativos, _n || ' na carteira, ' || _ativos || ' ativos'),
+    ('C2 com quem está sempre válido', _fora = 0, _fora || ' fora do padrão'),
+    ('C3 mais atrasado primeiro', _desordem = 0, _desordem || ' fora de ordem'),
+    ('C4 todo projeto tem histórico', _sem_hist = 0, _sem_hist || ' sem histórico'),
+    ('C5 a carteira responde em menos de 2 s', _ms < 2000, round(_ms) || ' ms'),
+    ('C6 outro tenant não abre a carteira',
+       CASE WHEN _outro IS NULL THEN NULL ELSE _erro = 'Sem acesso à Ludmilla.' END,
+       coalesce(_erro, 'sem outro tenant para testar')),
+    ('C7 outro tenant não lê o registro',
+       CASE WHEN _outro IS NULL THEN NULL ELSE _linhas_outro = 0 END,
+       coalesce(_linhas_outro::text, '—')),
+    ('C8 atrasados (para conferir a olho)', true, left(coalesce(_txt, 'nenhum'), 900));
+END $$;
 
 SELECT json_agg(json_build_object('caso', caso, 'ok', ok, 'detalhe', detalhe)
                 ORDER BY ok NULLS FIRST, caso) AS x FROM r;
