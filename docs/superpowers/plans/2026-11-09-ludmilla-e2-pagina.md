@@ -62,14 +62,17 @@ Valem para TODA tarefa, além do que ela pede.
 11. **Ordem da carteira (spec §4.3, corrigida na revisão):** primeiro os além do normal (pela regra da tela, decisão 9), do maior atraso para o menor; depois todos os outros pelo tempo na etapa, do maior para o menor; empate pelo código. A RPC ordena diferente entre os sem atraso (pelo atraso); `ordenarCarteira` refaz a ordem no cliente e vale a da spec.
 12. **"O que eu sugiro" sem a certeza.** Não há dado de certeza no banco; inventar uma escala seria dizer o que não se sabe. Fica o "achado pelo protocolo/pela UC/pelo nome do titular" que o detalhe já mostra no "Quem".
 13. **Botão principal do cartão:** decide direto só quando a decisão de hoje não pede revisão — Aplicar habilitado ("Mover para Aprovado", "Gravar o protocolo", "Mover e gravar o protocolo") e "Marcar como feito". Cobrança, pedido da troca ("Revisar e enviar"), documento travado e item sem projeto ("Abrir para decidir") abrem o detalhe.
-14. **Três modos de tela:** ≥ 1280 px três colunas; 640–1279 px coluna da esquerda + lista, com detalhe e ficha numa folha lateral; < 640 px uma coluna por vez (spec §5). A spec só desenha computador e celular.
+14. **Três modos de tela:** ≥ 1280 px três colunas; 960–1279 px coluna da esquerda + lista, com detalhe e ficha numa folha lateral; < 960 px uma coluna por vez (spec §5). A spec só desenha computador e celular. O "duas" começa em 960 (e não em 640) porque o menu do GD (256 px) já aparece a partir de 640: em 640 a lista ficaria com ~76 px (640 − 256 − 48 de respiro − 260 da esquerda); em 960, ~396 px. Entre 640 e 959 a página usa a mesma tela de uma coluna do celular, ao lado do menu do GD.
 15. **Saem da página:** a busca, os filtros por situação/tipo e o chip por concessionária da aba Decidir (a spec não tem; o histórico do que foi decidido está no Diário), o botão "Acessos aos portais" do cabeçalho (cada conta de portal tem "Acesso ao portal") e as abas.
 16. **Ajustes nesta entrega:** no meio, "O que eu faço sozinha" (só leitura: anexar documento conferido = faço sozinha; o resto = passa pela fila), a linha fixa do e-mail à concessionária e "Como eu te aviso" (sino e número no menu; o resumo da manhã ainda não está ligado). À direita, "Onde eu leio": os alertas das contas, os cartões das contas de hoje (`CartaoDaConta`, com "Verificar agora" renomeado "Ler agora"), as criações na CPFL e "Ainda não acompanho …" calculado (concessionárias da carteira sem conta).
 17. **Leituras (coluna da esquerda):** hora da última leitura se foi hoje, senão a data; "espera o código" quando há CAPTCHA aguardando; senão a palavra da saúde de hoje (`palavraDaSaude`), e "nunca lida" quando ela não leu ainda.
 18. **Próxima leitura (lista vazia):** dos crons de hoje — portal 08:00 e 17:00 todo dia (`ludmilla-08h`, `ludmilla-17h`); e-mail pelos remetentes (ENEL) de hora em hora das 08:00 às 18:00, seg–sex (`ludmilla-enel-email`); e-mail pelo protocolo no assunto (EDP) só pelo "Ler agora". Mudou um cron, mude `HORAS_DO_PORTAL`/`HORAS_DO_EMAIL`.
-19. **A faixa petróleo encosta no menu do GD:** a página cancela o respiro do `MainLayout` (`-mx-4 -mt-4 md:-mx-6 md:-mt-6`) e pinta o papel branco até o fim da janela.
+19. **A faixa petróleo encosta no menu do GD:** a página cancela o respiro do `MainLayout` dos quatro lados (`-mx-4 -mt-4 md:-mx-6 md:-mt-6`; embaixo `-mb-4 md:-mb-6`, e no celular `-mb-20` com `pb-20` por dentro, por causa da `BottomNav`) e pinta o papel branco até o fim da janela, sem faixa cinza embaixo.
 20. **"O que eu li por último" da ficha** = `ludmilla_linha_do_tempo` do projeto, só os eventos da Ludmilla, os 5 mais novos, em primeira pessoa.
-21. **O aviso com Desfazer** continua o `toast` global (sonner, no alto da tela, estilo do GD): ele mora fora da página.
+21. **O aviso com Desfazer** continua o `toast` global (sonner, no alto da tela, estilo do GD): ele mora fora da página. O menu aberto do seletor de etapa do detalhe (`SelectContent`, num portal do Radix) também fica no estilo do GD, pelo mesmo motivo.
+22. **Vistoria aprovada (§6.1):** a spec põe em "Esta semana" a vistoria aprovada "com o pedido da troca liberado". O item da fila não traz `liberado`; o plano agrupa toda `vistoria_aprovada` pela idade (decisão 4) e o cartão abre o detalhe, que mostra se o pedido está liberado.
+23. **Carteira carregando ou com falha:** a fila mostra "carregando" ou o aviso de falha (com "Tentar de novo" para as duas consultas), nunca "Nada aqui agora", e o recado não afirma "N sem dono" (spec §4.6).
+24. **Recarregar a página zera o "desde":** a visita é gravada a cada abertura (decisão 6, spec §4.2: "última vez que a pessoa abriu a página"); depois de um F5 o recado diz que não leu nada novo.
 
 ## Mapa de arquivos
 
@@ -773,7 +776,8 @@ feat(ludmilla): relógio de Brasília e carteira na tela (entrega 2, página)
 
 Funções puras para a página nova: dia/hora/saudação em Brasília (UTC-3
 fixo) e a carteira lida de ludmilla_carteira()/ludmilla_normais() da
-entrega 1 — filtros, contagem, ordem da RPC, "além do normal" pelos dias
+entrega 1 — filtros, contagem, ordem da spec (além do normal primeiro,
+depois pelo tempo na etapa), "além do normal" pelos dias
 inteiros, textos do normal, donos, próximo passo e as concessionárias
 ainda não acompanhadas.
 
@@ -1304,6 +1308,8 @@ Expected: FAIL — `Failed to resolve import "./ludmillaFila"`.
  */
 import { cartaoBloqueado, ordenarItens, type ItemDaCaixa } from '@/lib/ludmillaCaixa';
 import type { DonoDoProjeto } from '@/lib/ludmillaCarteira';
+// `dataBr` (dd/mm/aaaa no fuso de Brasília) é a MESMA data que vai no e-mail da cobrança: o porquê
+// do cartão cita a nota igual ao e-mail. Exceção aceita à regra "dia e hora saem de ludmillaTempo".
 import { dataBr, notaNaTela } from '@/lib/ludmillaCobranca';
 import { acoesDoItem, type AcaoDaDecisao } from '@/lib/ludmillaPainel';
 import { diasEntre } from '@/lib/ludmillaTempo';
@@ -1992,7 +1998,7 @@ git show --stat HEAD
 **Interfaces:**
 - Consumes: `PortalAccount` (tipo, `src/hooks/useLudmilla.ts`); `saudeDaConta`, `EstadoDaEstacao` (`src/lib/ludmillaPainel.ts`); `palavraDaSaude` (`src/components/ludmilla/topo/saude.ts`, puro); `LeituraDaConta` (Task 4); `DIA_MS`, `HORA_MS`, `diaDaSemana`, `diaEMes`, `diaEmBrasilia`, `emBrasilia`, `horaEMinuto`, `inicioDoDia` (Task 1); `LARGURA_MOBILE` (`src/mobile/breakpoints.ts`).
 - Produces (`ludmillaLeituras.ts`): `LinhaDeLeitura {id; nome; texto; alerta}`, `linhasDeLeitura(contas, {nomeDaConta; estacaoDe; caixaPronta; captchas; agora}): LinhaDeLeitura[]`, `HORAS_DO_PORTAL`, `HORAS_DO_EMAIL`, `ProximaLeitura {nome; quando}`, `proximaLeitura(contas, nomeDaConta, agora): ProximaLeitura | null`, `fraseDaProximaLeitura(p, agora): string | null`, `textoDaListaVazia(proxima: string | null): string`, `RunDeLeitura {account_id; protocolos_lidos}`, `SomaDeLeituras {protocolos; emails}`, `somarLeituras(runs, emails)`, `leiturasDasContas(contas, nomeDaConta, soma): LeituraDaConta[]`.
-- Produces (`modo.ts`): `LARGURA_TRES_COLUNAS = 1280`, `ModoDaPagina = 'tres' | 'duas' | 'uma'`, `modoDaPagina(largura)`.
+- Produces (`modo.ts`): `LARGURA_DUAS_COLUNAS = 960`, `LARGURA_TRES_COLUNAS = 1280`, `ModoDaPagina = 'tres' | 'duas' | 'uma'`, `modoDaPagina(largura)`.
 
 - [ ] **Step 1: Escrever os testes**
 
@@ -2085,13 +2091,17 @@ Crie `src/components/ludmilla/pagina/modo.test.ts`:
 
 ```ts
 import { describe, expect, it } from 'vitest';
-import { LARGURA_TRES_COLUNAS, modoDaPagina } from './modo';
+import { LARGURA_DUAS_COLUNAS, LARGURA_TRES_COLUNAS, modoDaPagina } from './modo';
 
 describe('modoDaPagina (decisão 14)', () => {
-  it('uma coluna no celular, duas no tablet e no notebook pequeno, três a partir de 1280', () => {
+  it('uma coluna no celular e no tablet estreito, duas a partir de 960, três a partir de 1280', () => {
     expect(modoDaPagina(390)).toBe('uma');
     expect(modoDaPagina(639)).toBe('uma');
-    expect(modoDaPagina(640)).toBe('duas');
+    // de 640 a 959 o menu do GD (256 px) já aparece: a lista não caberia ao lado da coluna da esquerda
+    expect(modoDaPagina(640)).toBe('uma');
+    expect(modoDaPagina(959)).toBe('uma');
+    expect(modoDaPagina(960)).toBe('duas');
+    expect(LARGURA_DUAS_COLUNAS).toBe(960);
     expect(modoDaPagina(LARGURA_TRES_COLUNAS - 1)).toBe('duas');
     expect(modoDaPagina(1280)).toBe('tres');
     expect(modoDaPagina(1440)).toBe('tres');
@@ -2157,7 +2167,8 @@ export const HORAS_DO_EMAIL: readonly number[] = [8, 9, 10, 11, 12, 13, 14, 15, 
 export interface ProximaLeitura { nome: string; quando: number }
 
 function proximaDaConta(c: PortalAccount, agora: number): number | null {
-  const horas = c.acompanhamento === 'portal' ? HORAS_DO_PORTAL
+  // o agendador (`ludmilla_agendar_varreduras`) só enfileira conta de portal com login guardado
+  const horas = c.acompanhamento === 'portal' ? (c.login ? HORAS_DO_PORTAL : null)
     : c.identificacao === 'remetente' ? HORAS_DO_EMAIL
     : null;
   if (!horas) return null;
@@ -2233,8 +2244,6 @@ export function leiturasDasContas(contas: PortalAccount[], nomeDaConta: (id: str
 - [ ] **Step 4: Escrever `src/components/ludmilla/pagina/modo.ts`**
 
 ```ts
-import { LARGURA_MOBILE } from '@/mobile/breakpoints';
-
 /**
  * A partir daqui as três colunas cabem ao lado do menu do GD (256 px): 1280 − 256 = 1024 px para
  * 260 (esquerda) + lista + 360 (detalhe). Abaixo, a coluna da esquerda e a lista, com o detalhe numa
@@ -2242,10 +2251,17 @@ import { LARGURA_MOBILE } from '@/mobile/breakpoints';
  */
 export const LARGURA_TRES_COLUNAS = 1280;
 
+/**
+ * O menu do GD (256 px) aparece a partir de 640 px (`LARGURA_MOBILE`); a esquerda + lista só cabem
+ * com folga daqui para cima: 960 − 256 − 48 (respiro do MainLayout) − 260 (esquerda) ≈ 396 px de lista.
+ * Abaixo, a mesma tela de uma coluna do celular.
+ */
+export const LARGURA_DUAS_COLUNAS = 960;
+
 export type ModoDaPagina = 'tres' | 'duas' | 'uma';
 
 export function modoDaPagina(largura: number): ModoDaPagina {
-  if (largura < LARGURA_MOBILE) return 'uma';
+  if (largura < LARGURA_DUAS_COLUNAS) return 'uma';
   return largura < LARGURA_TRES_COLUNAS ? 'duas' : 'tres';
 }
 ```
@@ -2287,6 +2303,7 @@ git show --stat HEAD
 **Files:**
 - Create: `src/hooks/useLudmillaPagina.ts`
 - Modify: `src/hooks/useLudmillaDecidir.ts` (função `useAcoesDaCaixa`, bloco `atualizarDetalhe`, linhas ~137–141)
+- Modify: `src/hooks/useLudmillaDecidir.test.ts` (linhas 47–48, 67–68, 80–81) e `src/hooks/useLudmillaDecidir.cobranca.test.ts` (linhas 28 e 41): eles CONTAM as invalidações e passam a esperar a nova
 
 **Interfaces:**
 - Consumes: `useLudmillaDisponivel`, `PortalAccount` (`src/hooks/useLudmilla.ts`); `linhaDaRpc`, `normalDaRpc`, `LinhaDaCarteira`, `NormalDaEtapa` (Task 1); `somarLeituras`, `RunDeLeitura`, `SomaDeLeituras` (Task 5); `desdeDoRecado`, `lerVisita`, `gravarVisita` (Task 4).
@@ -2398,9 +2415,52 @@ export function useDesdeDoRecado(userId: string | undefined): number {
 }
 ```
 
-- [ ] **Step 3: Decidir também atualiza a carteira**
+- [ ] **Step 3: Decidir também atualiza a carteira (teste vermelho primeiro)**
 
-Em `src/hooks/useLudmillaDecidir.ts`, dentro de `useAcoesDaCaixa`, troque:
+Os testes de hoje contam as invalidações de `atualizarDetalhe`; acrescente a nova chave neles ANTES do código.
+
+Em `src/hooks/useLudmillaDecidir.test.ts`, nos TRÊS lugares (linhas 47–48, 67–68 e 80–81; use substituir-todas), troque:
+
+```ts
+    expect(m.log).toEqual(['gravou', 'invalidou', 'invalidou', 'invalidou']);
+    expect(chavesInvalidadas()).toEqual(['ludmilla-linha-do-tempo', 'projeto-do-detalhe', 'ludmilla-registro']);
+```
+
+por:
+
+```ts
+    expect(m.log).toEqual(['gravou', 'invalidou', 'invalidou', 'invalidou', 'invalidou']);
+    expect(chavesInvalidadas()).toEqual(['ludmilla-linha-do-tempo', 'projeto-do-detalhe', 'ludmilla-registro', 'ludmilla-carteira']);
+```
+
+Em `src/hooks/useLudmillaDecidir.cobranca.test.ts`, troque:
+
+```ts
+const DEPOIS_DE_DECIDIR = ['portal-afazeres', 'ludmilla-linha-do-tempo', 'projeto-do-detalhe', 'ludmilla-registro'];
+```
+
+por:
+
+```ts
+const DEPOIS_DE_DECIDIR = ['portal-afazeres', 'ludmilla-linha-do-tempo', 'projeto-do-detalhe', 'ludmilla-registro', 'ludmilla-carteira'];
+```
+
+e troque:
+
+```ts
+    expect(m.log).toEqual(['gravou', 'invalidou', 'invalidou', 'invalidou', 'invalidou']);
+```
+
+por:
+
+```ts
+    expect(m.log).toEqual(['gravou', 'invalidou', 'invalidou', 'invalidou', 'invalidou', 'invalidou']);
+```
+
+Run: `npx vitest run src/hooks/useLudmillaDecidir.test.ts src/hooks/useLudmillaDecidir.cobranca.test.ts`
+Expected: FAIL (5 casos: os três do primeiro arquivo e "enviar"/"dispensar" do segundo — falta `'ludmilla-carteira'`).
+
+Agora o código. Em `src/hooks/useLudmillaDecidir.ts`, dentro de `useAcoesDaCaixa`, troque:
 
 ```ts
     const atualizarDetalhe = () => {
@@ -2425,7 +2485,7 @@ por:
 - [ ] **Step 4: Rodar os testes que já protegem `useLudmillaDecidir`**
 
 Run: `npx vitest run src/hooks/useLudmillaDecidir.test.ts src/hooks/useLudmillaDecidir.cobranca.test.ts`
-Expected: PASS (nada do que eles conferem mudou).
+Expected: PASS (agora com a 4ª invalidação, `'ludmilla-carteira'`, no fim).
 
 - [ ] **Step 5: tsc e build**
 
@@ -2446,8 +2506,8 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 ```
 
 ```bash
-git add src/hooks/useLudmillaPagina.ts src/hooks/useLudmillaDecidir.ts
-git commit -F "$RASCUNHO/msg-e2-t6.txt" -- src/hooks/useLudmillaPagina.ts src/hooks/useLudmillaDecidir.ts
+git add src/hooks/useLudmillaPagina.ts src/hooks/useLudmillaDecidir.ts src/hooks/useLudmillaDecidir.test.ts src/hooks/useLudmillaDecidir.cobranca.test.ts
+git commit -F "$RASCUNHO/msg-e2-t6.txt" -- src/hooks/useLudmillaPagina.ts src/hooks/useLudmillaDecidir.ts src/hooks/useLudmillaDecidir.test.ts src/hooks/useLudmillaDecidir.cobranca.test.ts
 git show --stat HEAD
 ```
 
@@ -2976,7 +3036,7 @@ git show --stat HEAD
 ### Task 8: O detalhe da decisão na voz dela, com topo e histórico
 
 **Files:**
-- Modify: `src/components/ludmilla/decidir/PainelDeDetalhe.tsx` (linhas 46–55, 83, 143, 206/213, 257, 355–372, 448, 466, 486, 536–537)
+- Modify: `src/components/ludmilla/decidir/PainelDeDetalhe.tsx` (linhas 46–55, 83, 143, 163, 206/213, 257, 355–372, 448, 453, 466, 486, 533, 536–537)
 - Modify: `src/components/ludmilla/decidir/DetalheConectado.tsx` (linhas 1, 13–20, 64–69)
 - Create: `src/components/ludmilla/pagina/TopoDaDecisao.tsx`
 
@@ -3083,6 +3143,12 @@ Troque `<span className="text-xs text-emerald-700">recomendação da Ludmilla</s
 
 Troque `<Secao titulo="Este projeto na Ludmilla">` por `<Secao titulo="O que eu registrei neste projeto">`.
 
+Troque `` `lido pela Ludmilla em ${dataCurta(chegou.lidoEm)}` `` por `` `lido por mim em ${dataCurta(chegou.lidoEm)}` `` (linha ~163; o `'lido pela Ludmilla em'` de `src/lib/ludmillaCartao.ts` NÃO muda — é outro texto, com teste).
+
+Troque `Não consegui carregar o que a Ludmilla registrou para este projeto.` por `Não consegui carregar o que eu registrei para este projeto.` (linha ~453).
+
+Troque o comentário `// tabIndex -1: a AbaDecidir põe o foco aqui depois de uma decisão ou de escolher a linha` por `// tabIndex -1: a PaginaDaLudmilla (useEscolhaEDecisao) põe o foco aqui depois de uma decisão ou de escolher o cartão` (linha ~533; a Task 14 procura `AbaDecidir` no `src/` e espera zero linhas).
+
 E, na linha do tempo (o ícone da Ludmilla era `primary`, que no mundo é sol sobre sol claro — contraste baixo), troque:
 
 ```tsx
@@ -3188,6 +3254,23 @@ export function TopoDaDecisao({ prazo, donos, titulo, projeto, projectId, onAbri
 - [ ] **Step 6: Rodar os testes de novo, tsc e build**
 
 Run: o mesmo `npx vitest run …` do Step 1 → PASS.
+Run (as edições pegaram — os testes acima não leem este arquivo):
+
+```bash
+F=src/components/ludmilla/decidir/PainelDeDetalhe.tsx
+grep -c 'titulo="O que eu vi"' $F            # 1
+grep -c 'O e-mail que vai sair' $F           # 3 (duas seções e a const do pedido)
+grep -c 'titulo="O que eu sugiro"' $F        # 1
+grep -c 'o que eu sugeri' $F                 # 1
+grep -c 'O que eu registrei neste projeto' $F # 1
+grep -c 'topo ?? cabecalho' $F               # 1
+grep -c 'lido por mim em' $F                 # 1
+grep -cE 'a Ludmilla sugere|recomendação da Ludmilla|o que a Ludmilla registrou|lido pela Ludmilla' $F  # 0
+grep -c 'AbaDecidir' $F                      # 0
+grep -c 'topo={topo} historico={historico}' src/components/ludmilla/decidir/DetalheConectado.tsx  # 1
+```
+
+Se algum número não bater, a troca correspondente não pegou: refaça antes de seguir. (O nome "Ludmilla" continua em comentários e como autor na linha do tempo — `e.ator === 'ludmilla' ? 'Ludmilla' : …` — e isso está certo.)
 Run: `npx tsc --noEmit -p tsconfig.app.json 2>&1 | grep -c "error TS"` → `65`. Run: `npm run build` → sem erro.
 
 - [ ] **Step 7: Commit**
@@ -3599,6 +3682,7 @@ git show --stat HEAD
 - Create: `src/components/ludmilla/pagina/AjustesDaLudmilla.tsx`
 - Create: `src/components/ludmilla/pagina/OndeEuLeio.tsx`
 - Modify: `src/components/ludmilla/abas/CartaoDaConta.tsx` (linhas 33–34 e 137: "Verificar agora" → "Ler agora")
+- Modify: `src/components/ludmilla/MensagensEmail.tsx` (linha 121: "Verificar agora" → "Ler agora", na voz dela), `src/components/ludmilla/abas/CartaoCaptcha.tsx` (linha 31) e `src/components/ludmilla/RegrasEmail.tsx` (linhas 119–120): primeira pessoa (Global "Voz")
 
 **Interfaces:**
 - Consumes: `FeitoSozinha`, `DiaDoDiario`, `RecadoDoDia` (Task 4); `quandoCurto` (Task 1); `primeiroNome` (Task 3); `Chip`, `Esqueleto`, `AvisoDeFalha` (Task 7); `CartaoDaConta` (`abas/CartaoDaConta.tsx`), `AbaCriacoesCpfl` (`abas/CriacoesCpfl.tsx`), `AlertasDasContas` (`topo/AlertasDasContas.tsx`); `AgentConfigSafe` (`@/hooks/useAgentConfig`); `PortalAccount`, `PortalRun`, `TipoRun` (`@/hooks/useLudmilla`); `AlertaUrgente` (`@/lib/ludmillaPainel`); `Button`.
@@ -3874,6 +3958,26 @@ por:
             "Ler agora" fica desligado — recarregue a página daqui a pouco.
 ```
 
+Os textos reaproveitados dentro dos cartões também passam à primeira pessoa (Global "Voz"):
+
+- Em `src/components/ludmilla/MensagensEmail.tsx` (linha ~121), troque `Ela ainda não leu a caixa. O primeiro "Verificar agora" é manual e de propósito:{' '}` por `Ainda não li esta caixa. A primeira leitura ("Ler agora") é manual e de propósito:{' '}`.
+- Em `src/components/ludmilla/abas/CartaoCaptcha.tsx` (linha ~31), troque `A Ludmilla precisa do código da imagem — {portal}` por `Preciso do código da imagem — {portal}`.
+- Em `src/components/ludmilla/RegrasEmail.tsx` (linhas ~119–120), troque:
+
+```tsx
+          Nenhuma regra cadastrada. Sem pelo menos uma regra ativa a Ludmilla se recusa a ler a caixa —
+          ela não saberia o que é documento e o que é ruído.
+```
+
+por:
+
+```tsx
+          Nenhuma regra cadastrada. Sem pelo menos uma regra ativa eu não leio a caixa —
+          eu não saberia o que é documento e o que é ruído.
+```
+
+Confira: `grep -c 'Verificar agora' src/components/ludmilla/abas/CartaoDaConta.tsx src/components/ludmilla/MensagensEmail.tsx` → `0` nos dois; `grep -cE 'A Ludmilla precisa|a Ludmilla se recusa' src/components/ludmilla/abas/CartaoCaptcha.tsx src/components/ludmilla/RegrasEmail.tsx` → `0` nos dois. (Exceção aceita: `ludmillaPainel.ts:191` tem teste e fica como está.)
+
 - [ ] **Step 7: tsc e build**
 
 Run: `npx tsc --noEmit -p tsconfig.app.json 2>&1 | grep -c "error TS"` → `65`. Run: `npm run build` → sem erro.
@@ -3895,8 +3999,8 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 ```
 
 ```bash
-git add src/components/ludmilla/pagina/FizSozinha.tsx src/components/ludmilla/pagina/Diario.tsx src/components/ludmilla/pagina/AjustesDaLudmilla.tsx src/components/ludmilla/pagina/OndeEuLeio.tsx src/components/ludmilla/abas/CartaoDaConta.tsx
-git commit -F "$RASCUNHO/msg-e2-t11.txt" -- src/components/ludmilla/pagina/FizSozinha.tsx src/components/ludmilla/pagina/Diario.tsx src/components/ludmilla/pagina/AjustesDaLudmilla.tsx src/components/ludmilla/pagina/OndeEuLeio.tsx src/components/ludmilla/abas/CartaoDaConta.tsx
+git add src/components/ludmilla/pagina/FizSozinha.tsx src/components/ludmilla/pagina/Diario.tsx src/components/ludmilla/pagina/AjustesDaLudmilla.tsx src/components/ludmilla/pagina/OndeEuLeio.tsx src/components/ludmilla/abas/CartaoDaConta.tsx src/components/ludmilla/MensagensEmail.tsx src/components/ludmilla/abas/CartaoCaptcha.tsx src/components/ludmilla/RegrasEmail.tsx
+git commit -F "$RASCUNHO/msg-e2-t11.txt" -- src/components/ludmilla/pagina/FizSozinha.tsx src/components/ludmilla/pagina/Diario.tsx src/components/ludmilla/pagina/AjustesDaLudmilla.tsx src/components/ludmilla/pagina/OndeEuLeio.tsx src/components/ludmilla/abas/CartaoDaConta.tsx src/components/ludmilla/MensagensEmail.tsx src/components/ludmilla/abas/CartaoCaptcha.tsx src/components/ludmilla/RegrasEmail.tsx
 git show --stat HEAD
 ```
 
@@ -4169,6 +4273,7 @@ git show --stat HEAD
 - Create: `src/components/ludmilla/pagina/useEscolhaEDecisao.ts`
 - Create: `src/components/ludmilla/pagina/PaginaDaLudmilla.tsx`
 - Create: `src/lib/ludmillaPagina.fixtures.ts`
+- Create: `src/lib/ludmillaPagina.fixtures.test.ts` (Step 11b: os números do Step 8 sem navegador — é o consumidor que fica das fixtures)
 - Test (harness, apagar antes do commit): `harness-ludmilla-e2.html`, `src/harness-ludmilla-e2.tsx`
 
 **Interfaces:**
@@ -4219,7 +4324,7 @@ export const CARTEIRA_DE_EXEMPLO: LinhaDaCarteira[] = [
     concessionaireId: 'conc-enel', status: 'analysis', diasNaEtapa: 1, normalDias: 2, atrasoDias: -1, comQuem: 'nos', naFila: true,
     donos: [ANA, BRUNO], historico: [{ etapa: 'analysis', dias: 1, atual: true }] }),
   linha({ projectId: 'p-4', codigo: 'PRJ-10004', titular: 'Rita de Cássia Prado', empresa: 'Energia Boa', concessionaria: 'EDP São Paulo',
-    concessionaireId: 'conc-edp', status: 'analysis', diasNaEtapa: 3, normalDias: 5, normalFonte: 'geral', atrasoDias: -2, comQuem: 'nos',
+    concessionaireId: 'conc-edp', status: 'analysis', diasNaEtapa: 3, normalDias: 8, normalFonte: 'medido', atrasoDias: -5, comQuem: 'nos',
     naFila: true, historico: [{ etapa: 'analysis', dias: 3, atual: true }] }),
   linha({ projectId: 'p-7', codigo: 'PRJ-10007', titular: 'Diego Martins', empresa: 'Energia Boa', concessionaria: 'ENEL SP',
     concessionaireId: 'conc-enel', status: 'approved', diasNaEtapa: 41.2, normalDias: 32, atrasoDias: 9.2, comQuem: 'nos', naFila: true,
@@ -4450,7 +4555,8 @@ const INTERVALO_ENTRE_DECISOES_MS = 700;
 
 /**
  * A COLA DA FILA (spec §4.5): qual item está aberto, decidir e ir ao próximo. É a lógica da antiga
- * `AbaDecidir`, sem mudar: o id e o texto de cada decisão vêm de `argumentosDaDecisao`/`textoDaDecisao`
+ * aba Decidir, com UMA diferença: o detalhe só passa ao próximo (e recebe o foco) quando a decisão é
+ * do item aberto. O id e o texto de cada decisão vêm de `argumentosDaDecisao`/`textoDaDecisao`
  * (com teste), e quem grava é a fila do Desfazer (`decidir` de `useFilaDeDecisoes`, 8 s).
  *
  * O foco vai para o detalhe só a pedido de um gesto (decidir, ou escolher no computador), nunca ao
@@ -4613,8 +4719,8 @@ function CabecalhoDoMeio({ titulo, subtitulo }: { titulo: string; subtitulo: str
 /**
  * A PÁGINA NOVA DA LUDMILLA (spec 2026-11-08, estrutura A no mundo "Conta de luz").
  *
- * Três colunas a partir de 1280 px (navegação, lista, detalhe/ficha/painel); de 640 a 1279, a
- * navegação e a lista, com o detalhe numa folha; no celular, uma coluna por vez (spec §5). Não lê
+ * Três colunas a partir de 1280 px (navegação, lista, detalhe/ficha/painel); de 960 a 1279, a
+ * navegação e a lista, com o detalhe numa folha; abaixo de 960, uma coluna por vez (spec §5). Não lê
  * banco: recebe tudo pronto (no app, `pages/Ludmilla.tsx`; no harness, dados inventados).
  */
 export function PaginaDaLudmilla(p: PropsDaPagina) {
@@ -4818,10 +4924,12 @@ export function PaginaDaLudmilla(p: PropsDaPagina) {
     />
   );
 
+  // a casca cancela o respiro do MainLayout dos 4 lados (no celular o de baixo é o pb-20 da BottomNav:
+  // o papel desce por trás dela e o pb-20 volta aqui dentro, para o conteúdo não ficar coberto)
   return (
     <div
       data-modo={p.modo}
-      className="ludmilla-mundo -mx-4 -mt-4 flex min-h-[calc(100vh-3.5rem)] flex-col md:-mx-6 md:-mt-6 md:min-h-[calc(100vh-4rem)]"
+      className="ludmilla-mundo -mx-4 -mt-4 -mb-20 flex min-h-[calc(100vh-3.5rem)] flex-col pb-20 sm:-mb-4 sm:pb-0 md:-mx-6 md:-mt-6 md:-mb-6 md:min-h-[calc(100vh-4rem)]"
     >
       {p.alertaUrgente && <div className="flex flex-col gap-2 px-4 py-3 sm:px-6">{p.alertaUrgente}</div>}
       {p.modo === 'uma'
@@ -4981,6 +5089,8 @@ Abra `?captcha=1`: o alerta amarelo aparece ACIMA da faixa petróleo. Abra a vis
 
 Em 1100 × 800, recarregue: `[data-modo]` = `"duas"`, `[data-coluna="direita"]` não existe, clicar no corpo de um cartão (`[data-abrir]`) abre a folha (`[role="dialog"]`) com o detalhe e o cabeçalho "‹ Agora"; fechar devolve o foco ao cartão (`document.activeElement.dataset.abrir`).
 
+Em 800 × 800 (tablet estreito, menu do GD visível), recarregue: `[data-modo]` = `"uma"` e `document.documentElement.scrollWidth <= window.innerWidth` (sem rolagem lateral).
+
 Em 390 × 844 (preset mobile), abra `?papel=staff` e confira:
 
 ```js
@@ -5014,6 +5124,21 @@ Pare o Vite. Apague `harness-ludmilla-e2.html` e `src/harness-ludmilla-e2.tsx`.
 Run: `git status --short | grep -i harness` → nenhuma linha.
 Run: `npx tsc --noEmit -p tsconfig.app.json 2>&1 | grep -c "error TS"` → `65`. Run: `npm run build` → sem erro.
 
+- [ ] **Step 11b: Os números do Step 8 num teste (sem navegador)**
+
+FAÇA ESTE PASSO ANTES DO STEP 11 (que apaga o harness). Copie do harness o cálculo (as mesmas funções das Tasks 1, 3 e 4, chamadas com os mesmos argumentos que o harness passa à casca: `AGORA`, `DESDE`, os itens de `ludmillaCaixa.fixtures.ts`/`ludmillaCobranca.fixtures.ts`, `CARTEIRA_DE_EXEMPLO`, `NORMAIS_DE_EXEMPLO`, `REGISTRO_DE_EXEMPLO`) para `src/lib/ludmillaPagina.fixtures.test.ts`, em `describe('os números da página com os dados de exemplo (Task 13, Step 8)')`, conferindo exatamente o que o Step 8 conferiu no navegador:
+
+- grupos da fila de todos: Agora 3, Esta semana 4, Quando puder 2; os cartões de Agora, ordenados: `["f:f-cob","f:f-devolucao","u:u-hoje"]`;
+- carteira: parados 4, com a gente 6, com a concessionária 2, com a empresa 1, todos 9;
+- "Parados além do normal" em ordem: `["p-12","p-9","p-7","p-1"]`;
+- fila "Sem dono": `["f:f-cob","f:f-devolucao"]` e o resumo com 5 sem dono;
+- Fiz sozinha: 2;
+- o recado: `"Bom dia. Desde ontem li 12 e-mails da ENEL SP e 199 protocolos da CPFL Paulista. Fiz 2 coisas sozinha. Separei 9 coisas para vocês; 5 estão sem dono."`;
+- os títulos do Diário: `["Hoje, quinta 22/10","Ontem, quarta 21/10","Terça, 20/10"]`.
+
+Só funções puras e fixtures: nada de React, Supabase nem DOM (o vitest roda em `node`). Se algum número sair diferente do Step 8, o harness e o teste divergem: descubra qual dos dois está errado antes de seguir (o navegador já mostrou o valor certo).
+Run: `npx vitest run src/lib/ludmillaPagina.fixtures.test.ts` → PASS.
+
 - [ ] **Step 12: Commit**
 
 `$RASCUNHO/msg-e2-t13.txt` (Write; acrescente ao corpo uma linha por correção que a auditoria do Step 10 pediu):
@@ -5024,17 +5149,17 @@ feat(ludmilla): a casca da página nova — três colunas, folha e celular (entr
 PaginaDaLudmilla junta tudo: a vista escolhida na coluna da esquerda,
 a fila por grupo e por dono com cartões completos, a carteira com a
 ficha, Fiz sozinha, Diário e Ajustes; o detalhe ao lado a partir de
-1280 px, numa folha abaixo disso, e uma coluna por vez no celular.
+1280 px, numa folha de 960 a 1279, e uma coluna por vez abaixo de 960.
 Decidir continua com o Desfazer de 8 s e vai ao próximo item.
-Provado em harness com dados inventados (1440x900, 1100x800, 390x844)
+Provado em harness com dados inventados (1440x900, 1100x800, 800x800, 390x844)
 e auditado com web-design-guidelines.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 ```
 
 ```bash
-git add src/components/ludmilla/pagina/useEscolhaEDecisao.ts src/components/ludmilla/pagina/PaginaDaLudmilla.tsx src/lib/ludmillaPagina.fixtures.ts
-git commit -F "$RASCUNHO/msg-e2-t13.txt" -- src/components/ludmilla/pagina/useEscolhaEDecisao.ts src/components/ludmilla/pagina/PaginaDaLudmilla.tsx src/lib/ludmillaPagina.fixtures.ts
+git add src/components/ludmilla/pagina/useEscolhaEDecisao.ts src/components/ludmilla/pagina/PaginaDaLudmilla.tsx src/lib/ludmillaPagina.fixtures.ts src/lib/ludmillaPagina.fixtures.test.ts
+git commit -F "$RASCUNHO/msg-e2-t13.txt" -- src/components/ludmilla/pagina/useEscolhaEDecisao.ts src/components/ludmilla/pagina/PaginaDaLudmilla.tsx src/lib/ludmillaPagina.fixtures.ts src/lib/ludmillaPagina.fixtures.test.ts
 git show --stat HEAD
 ```
 
@@ -5154,9 +5279,15 @@ function PaginaConectada() {
     ? null
     : leiturasDasContas(caixa.contas, caixa.nomeDaConta, leiturasDesde.data ?? { protocolos: {}, emails: {} });
   const recadoCarregando = caixa.carregando || carteira.isLoading || leiturasDesde.isLoading || daLudmilla.isLoading;
+  // sem a carteira não sei o dono de nenhum item: não afirmo "N sem dono" (spec §4.6)
   const recado = recadoCarregando ? null : recadoDoDia({
-    agora, desde, leituras, fizSozinha: feitos.length, separei: resumo.total, paraAgora: resumo.agora, semDono: resumo.semDono,
+    agora, desde, leituras, fizSozinha: feitos.length, separei: resumo.total, paraAgora: resumo.agora,
+    semDono: carteira.isError ? 0 : resumo.semDono,
   });
+  // a fila depende da carteira para saber o dono: carregando/falhou é estado da fila, nunca "Nada aqui agora"
+  const erroDaFila = caixa.erro ? (mensagemDeErro(caixa.erro) ?? '')
+    : carteira.isError ? 'Não consegui carregar os responsáveis de cada projeto.'
+    : null;
   const proxima = fraseDaProximaLeitura(proximaLeitura(caixa.contas, caixa.nomeDaConta, agora), agora);
   const nao = fraseDasNaoAcompanhadas(naoAcompanhadas(linhas, caixa.contas.map(c => c.concessionaire_id)));
   const abrirProjeto = (id: string) => navigate(`/project/${id}`);
@@ -5168,8 +5299,8 @@ function PaginaConectada() {
       rotuloEtapa={rotulo} ordemDasEtapas={etapas.map(e => e.key)}
       itens={caixa.itens} ocultos={ocultos} decidir={decidir} acoes={acoes}
       fila={{
-        carregando: caixa.carregando, buscando: caixa.buscando,
-        erro: caixa.erro ? (mensagemDeErro(caixa.erro) ?? '') : null, tentar: caixa.tentarDeNovo,
+        carregando: caixa.carregando || carteira.isLoading, buscando: caixa.buscando,
+        erro: erroDaFila, tentar: () => { caixa.tentarDeNovo(); void carteira.refetch(); },
       }}
       carteira={linhas} normais={normais.data ?? []}
       estadoDaCarteira={{
@@ -5268,7 +5399,7 @@ Ajustes. À direita, o detalhe de decisão de sempre (`DetalheDaDecisao`, títul
 `topo` e `historico`), a ficha do projeto (histórico grande, "O que eu li por último", próximo passo,
 "Ver na fila", "Abrir o projeto"), "O que eu faço sozinha hoje", o recado inteiro ou "Onde eu leio" (os
 cartões das contas, agora com "Ler agora", as criações na CPFL e "Ainda não acompanho …").
-Três colunas a partir de 1280 px; de 640 a 1279, esquerda + lista e o detalhe numa folha; no celular,
+Três colunas a partir de 1280 px; de 960 a 1279, esquerda + lista e o detalhe numa folha; abaixo de 960,
 uma coluna por vez (faixa com menu e engrenagem, recado em uma linha, grupos no topo, detalhe e menu em
 tela cheia). Componentes em `src/components/ludmilla/{pagina,mundo}/`.
 
@@ -5287,7 +5418,8 @@ tela cheia). Componentes em `src/components/ludmilla/{pagina,mundo}/`.
 - **Barras** (`ludmillaBarras.ts`): as colunas do Kanban, passadas, a atual e as que ainda vêm; desvios
   só se visitados; a atual conta só a estada de agora; traço no normal da concessionária; a atual em sol
   ou, além do normal (dias inteiros > normal), sol até o traço e alerta acima.
-- **Carteira** (`ludmillaCarteira.ts`): a ordem da RPC; "parado" = dias inteiros > normal; o normal em
+- **Carteira** (`ludmillaCarteira.ts`): a ordem da spec §4.3 (além do normal primeiro, do maior atraso
+  para o menor; depois todos pelo tempo na etapa); "parado" = dias inteiros > normal; o normal em
   palavras por fonte (`medido`, `geral` = estimado, `coluna` = prazo do Kanban).
 - **Botão do cartão:** decide direto só Aplicar habilitado e "Marcar como feito"; cobrança e pedido da
   troca ("Revisar e enviar"), documento travado e sem projeto abrem o detalhe.
@@ -5369,7 +5501,7 @@ git show --stat HEAD
 
 - [ ] **Step 9: Push e conferência com dados reais**
 
-Push pela regra da casa (memória `session-workflow`): empurrar só se a `main` não levar commits de outra frente; se levar, perguntar ao usuário antes. Depois do deploy, abrir `/ludmilla` como gestor e como projetista e conferir: o recado, as contagens da carteira contra `ludmilla_carteira()` (sem rodar SQL de gravação), uma decisão com Desfazer e uma que vai ao banco, a folha no celular. Registrar o resultado no fim da seção nova de `ludmilla.md` (o "O que NÃO está provado" encolhe).
+Push pela regra da casa (memória `session-workflow`): empurrar só se a `main` não levar commits de outra frente; se levar, perguntar ao usuário antes. Depois do deploy, abrir `/ludmilla` como gestor e como projetista e conferir: o recado, as contagens da carteira contra o Kanban da mesma conta (sem rodar SQL: esta entrega proíbe `supabase db query`; se uma contagem parecer errada, pedir ao usuário que confira), uma decisão com Desfazer e uma que vai ao banco, a folha no celular. Registrar o resultado no fim da seção nova de `ludmilla.md` (o "O que NÃO está provado" encolhe).
 
 ---
 
