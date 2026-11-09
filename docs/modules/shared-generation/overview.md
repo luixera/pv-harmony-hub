@@ -79,6 +79,12 @@ concessionária); só a criação automática no portal é da CPFL.
 Ver [ludmilla.md](../integrations/ludmilla.md) — seção "Autoconsumo remoto".
 
 ## Fora do escopo / futuro
+- **Conferir a titularidade de cada UC no portal da CPFL** antes de criar
+  (pedido do usuário, 09/11/2026). A Ludmilla cola a UC no passo 2 da criação,
+  lê o titular e para antes de salvar. O desenho e as perguntas em aberto estão em
+  [ludmilla.md](../integrations/ludmilla.md), "Próximos", item 5. Isso fecha o
+  buraco do RN-SG-05: sem foto da conta, hoje o titular só é conferido no meio
+  da criação.
 - Sugerir o rateio pelas médias de consumo (pedido futuro do usuário).
 - Titular PJ (o roteiro já recusa PJ).
 - Beneficiária de **outro titular** (consórcio/cooperativa): o portal da CPFL

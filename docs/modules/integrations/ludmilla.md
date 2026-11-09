@@ -586,6 +586,39 @@ que criar o projeto novamente" (usuário, 03/11/2026). **Um clique só**: o bot�
    devolve (199 de 203 — 5 "Incompleto" sem atividade).
 4. Solicitar vistoria automática quando a empresa pede pelo painel — a
    conversar (exige a mesma conferência de titular/UC e é a única escrita).
+5. **Conferir a titularidade na CPFL antes de criar** (pedido do usuário em
+   09/11/2026, para depois). A Ludmilla percorre o começo do caminho da criação,
+   cola a UC e lê o nome do titular que o portal mostra, **sem salvar nada**.
+   Vale para a geradora e para cada beneficiária. Acha antes da criação o que
+   hoje só aparece no meio dela ("Normalmente é UC de outro titular") ou como
+   falso alarme (PRJ-09896, 09/11). O roteiro de criação (`roteiro-cpfl60.ts`)
+   já tem quase tudo pronto:
+   - **o caminho até o campo:** login da varredura → Criar Projeto pelo menu →
+     projeto 60 → "Conexão de microgeração" → passo 2, "Dados da unidade
+     consumidora". São duas telas, antes de qualquer Avançar;
+   - **a leitura:** `Nº da UC` → Buscar (clique de verdade, com 2ª tentativa) →
+     espera `customer_name` ganhar valor. O mesmo Buscar devolve distribuidora,
+     classe, tensão e se a UC já tem GD. Hoje esses dados vão para `leituras`,
+     mas o nome não;
+   - **o write-back:** `ludmilla_beneficiarias_confirmar` casa pela UC e aceita
+     qualquer run cujo `dados.project_id` seja o projeto.
+
+   Falta decidir ou provar antes do plano:
+   - se a UC pode ser trocada no mesmo campo e buscada de novo (depois do 1º
+     Buscar os ids ganham sufixo) ou se cada UC pede um formulário novo;
+   - o passo 2 traz o **nome**, não o CPF. Comparar nome exige tolerância
+     (abreviação, acento) e, na dúvida, mostrar os dois nomes para uma pessoa
+     decidir. O CPF só vem no Buscar das beneficiárias, no passo 4, depois de
+     preencher o projeto inteiro;
+   - a RPC de write-back sempre **desmarca** `holder_mismatch`, e a
+     conferência precisa conseguir marcar "diferente": outra RPC ou um
+     parâmetro;
+   - se roda por clique (no bloco de beneficiárias ou no painel "Criar na
+     CPFL") ou sozinha quando a UC é cadastrada, com tipo de run próprio em
+     `portal_sync_runs`;
+   - **nunca** Avançar nem Salvar. Também é preciso confirmar que o formulário
+     largado no passo 2 não vira rascunho na CPFL. A criação sempre entra pelo
+     menu, então não retoma um formulário largado.
 
 ## A atualização da Ludmilla encerra a tarefa da etapa (22/09/2026)
 

@@ -79,6 +79,10 @@
   [spec](../superpowers/specs/2026-11-08-ludmilla-repaginacao-design.md)). Seis entregas:
   medir o tempo por etapa e o normal, a página nova, os parados, as chaves de autonomia com
   Desfazer, o resumo da manhã (WhatsApp depende do Zé na VPS) e o avatar definitivo.
+- **Ludmilla — conferir a titularidade da UC na CPFL** (pedido em 09/11/2026, para depois):
+  colar a UC no passo 2 da criação, ler o titular que o portal mostra e parar sem salvar, para a
+  geradora e cada beneficiária. O roteiro de criação já faz a busca. O que falta decidir está em
+  [ludmilla.md](../modules/integrations/ludmilla.md), "Próximos", item 5.
 - **Eletropostos — pós-entrega 2**: a estação local (PC do gestor + BlueStacks)
   está instalada, calibrada e gravando desde 16/10/2026 (a primeira coleta agendada, às 08:56 de 16/10/2026, gravou 7 leituras da Cury e 25 da ATM;
   [modules/eletropostos](../modules/eletropostos/overview.md)). Em aberto: vincular
@@ -180,7 +184,9 @@
 - **Catálogo de equipamentos no formulário público**: o combobox não aparece no
   form público (catálogo só é legível por autenticado). Precisa de RPC que
   devolva marca/modelo/potência validando o token — sem expor o catálogo todo.
-- **Validação de dígito verificador** de CPF/CNPJ (hoje só valida tamanho).
+- **Validação de dígito verificador** de CPF/CNPJ nos formulários (hoje só valida tamanho).
+  A função existe desde 09/11/2026 (`documentoValido`, em `src/lib/cpfCnpj.ts`), mas só a
+  conferência das beneficiárias a usa.
 
 ## Assinatura digital
 Módulo [signatures](../modules/signatures/overview.md) — Fase 1, só GD Manager.
