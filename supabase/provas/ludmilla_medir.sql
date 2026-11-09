@@ -52,6 +52,41 @@ BEGIN
   INSERT INTO r VALUES ('A6 o gatilho registra a troca de etapa', _n = 1, _n || ' linha(s) de gatilho');
 END $$;
 
+-- ── B. As passagens e o tempo normal ───────────────────────────────────────
+DO $$
+DECLARE _t uuid; _pessoa uuid; _n int; _txt text; _enel text; _erro text;
+BEGIN
+  SELECT id INTO _t FROM public.tenants WHERE is_library LIMIT 1;
+  SELECT p.id INTO _pessoa FROM public.profiles p
+   WHERE p.tenant_id = _t AND p.active AND p.role IN ('admin', 'staff')
+     AND EXISTS (SELECT 1 FROM auth.identities i WHERE i.user_id = p.id)
+   ORDER BY (p.role = 'admin') DESC LIMIT 1;
+
+  PERFORM set_config('request.jwt.claims', json_build_object('role', 'authenticated', 'sub', _pessoa)::text, true);
+  PERFORM set_config('role', 'authenticated', true);
+
+  SELECT count(*) INTO _n FROM public.ludmilla_normais() WHERE normal_dias < 1;
+  SELECT string_agg(f || '=' || c, ', ') INTO _txt
+    FROM (SELECT coalesce(fonte, 'sem normal') AS f, count(*) AS c FROM public.ludmilla_normais() GROUP BY 1 ORDER BY 1) x;
+  SELECT string_agg(n.etapa || ' ' || coalesce(n.normal_dias::text, '?') || 'd (' || coalesce(n.fonte, 'sem') || ', ' || n.amostra || ')', '; ')
+    INTO _enel
+    FROM public.ludmilla_normais() n
+    JOIN public.energy_concessionaires ec ON ec.id = n.concessionaire_id
+   WHERE ec.name ILIKE '%ENEL%';
+  BEGIN
+    PERFORM count(*) FROM public.ludmilla_passagens(_t);
+    _erro := 'chamou';
+  EXCEPTION WHEN insufficient_privilege THEN _erro := 'negado';
+  END;
+
+  PERFORM set_config('role', 'none', true);
+  INSERT INTO r VALUES
+    ('B1 nenhum normal abaixo de 1 dia', _n = 0, _n || ' abaixo de 1'),
+    ('B2 de onde vem cada normal', true, _txt),
+    ('B3 normais da ENEL (para conferir a olho)', true, left(coalesce(_enel, 'nenhum'), 900)),
+    ('B4 passagens fechadas para a equipe', _erro = 'negado', _erro);
+END $$;
+
 -- ── (blocos B e C entram aqui) ─────────────────────────────────────────────
 
 SELECT json_agg(json_build_object('caso', caso, 'ok', ok, 'detalhe', detalhe)

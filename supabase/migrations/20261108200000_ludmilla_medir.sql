@@ -120,3 +120,95 @@ SELECT p.tenant_id, p.id, ult.para, p.status::text, p.last_status_change, 'atual
  WHERE p.tenant_id IS NOT NULL AND p.status IS NOT NULL AND p.last_status_change IS NOT NULL
    AND (ult.para IS NULL OR (ult.para IS DISTINCT FROM p.status::text AND p.last_status_change > ult.em))
    AND NOT EXISTS (SELECT 1 FROM public.project_stage_log s WHERE s.project_id = p.id AND s.origem = 'atual');
+
+-- ── 4. Passagens e o tempo normal ──────────────────────────────────────────
+-- Uma passagem = uma estada numa etapa: da entrada até a próxima troca (ou até agora).
+-- Linhas seguidas com a mesma etapa (o mesmo movimento escrito duas vezes) contam uma vez.
+CREATE OR REPLACE FUNCTION public.ludmilla_passagens(p_tenant uuid)
+RETURNS TABLE (project_id uuid, concessionaire_id uuid, etapa text, entrou_em timestamptz,
+               saiu_em timestamptz, dias numeric, confiavel boolean)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = ''
+AS $$
+  WITH l AS (
+    SELECT s.project_id, s.para, s.em,
+           lag(s.para) OVER (PARTITION BY s.project_id ORDER BY s.em, s.criado_em) AS para_antes
+      FROM public.project_stage_log s
+     WHERE s.tenant_id = p_tenant
+  ), entradas AS (
+    SELECT l.project_id, l.para, l.em FROM l WHERE l.para_antes IS DISTINCT FROM l.para
+  ), seq AS (
+    SELECT e.project_id, e.para AS etapa, e.em AS entrou_em,
+           lead(e.em) OVER (PARTITION BY e.project_id ORDER BY e.em) AS saiu_em
+      FROM entradas e
+  )
+  SELECT q.project_id, p.concessionaire_id, q.etapa, q.entrou_em, q.saiu_em,
+         round((extract(epoch FROM (coalesce(q.saiu_em, now()) - q.entrou_em)) / 86400.0)::numeric, 1),
+         q.entrou_em >= timestamptz '2026-07-19 00:00:00-03'
+    FROM seq q
+    JOIN public.projects p ON p.id = q.project_id
+   WHERE p.is_deleted IS NOT TRUE
+$$;
+REVOKE ALL ON FUNCTION public.ludmilla_passagens(uuid) FROM PUBLIC, anon, authenticated;
+
+-- O normal de cada concessionária × etapa: mediana de 12 meses com no mínimo 5 passagens fechadas;
+-- senão a mediana da etapa em todas as concessionárias ("geral"); senão o stale_days da coluna do
+-- Kanban ativo ("coluna"); senão NULL. Nunca menos de 1 dia.
+CREATE OR REPLACE FUNCTION public.ludmilla_normais_do_tenant(p_tenant uuid)
+RETURNS TABLE (concessionaire_id uuid, etapa text, normal_dias integer, amostra integer, fonte text)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = ''
+AS $$
+  WITH pass AS (
+    SELECT x.concessionaire_id, x.etapa, x.dias
+      FROM public.ludmilla_passagens(p_tenant) x
+     WHERE x.saiu_em IS NOT NULL AND x.confiavel AND x.etapa <> 'completed'
+       AND x.entrou_em >= now() - interval '12 months'
+  ), por_conc AS (
+    SELECT pass.concessionaire_id, pass.etapa, count(*)::int AS n,
+           percentile_cont(0.5) WITHIN GROUP (ORDER BY pass.dias::float8) AS med
+      FROM pass WHERE pass.concessionaire_id IS NOT NULL
+     GROUP BY 1, 2
+  ), geral AS (
+    SELECT pass.etapa, count(*)::int AS n,
+           percentile_cont(0.5) WITHIN GROUP (ORDER BY pass.dias::float8) AS med
+      FROM pass GROUP BY 1
+  ), coluna AS (
+    SELECT kc.status_key AS etapa, min(kc.stale_days) AS stale
+      FROM public.kanban_columns kc
+      JOIN public.kanban_models m ON m.id = kc.kanban_model_id
+     WHERE m.tenant_id = p_tenant AND m.is_active AND kc.stale_days IS NOT NULL
+     GROUP BY 1
+  ), combos AS (
+    SELECT DISTINCT p.concessionaire_id, e.etapa
+      FROM public.projects p
+     CROSS JOIN (VALUES ('pending'), ('analysis'), ('documentation'), ('approval'), ('approved'),
+                        ('pendencia'), ('vistoria_solicitada'), ('aguardando_instalacao'),
+                        ('vistoria_sem_protocolo'), ('vistoria_reprovada')) e(etapa)
+     WHERE p.tenant_id = p_tenant AND p.is_deleted IS NOT TRUE
+  )
+  SELECT c.concessionaire_id, c.etapa,
+         CASE WHEN pc.n >= 5 THEN greatest(1, ceil(pc.med))::int
+              WHEN g.n  >= 5 THEN greatest(1, ceil(g.med))::int
+              WHEN col.stale IS NOT NULL THEN greatest(1, col.stale)
+              ELSE NULL END,  -- greatest(1, NULL) daria 1: sem medição o normal fica vazio
+         CASE WHEN pc.n >= 5 THEN pc.n WHEN g.n >= 5 THEN g.n ELSE 0 END,
+         CASE WHEN pc.n >= 5 THEN 'medido' WHEN g.n >= 5 THEN 'geral'
+              WHEN col.stale IS NOT NULL THEN 'coluna' ELSE NULL END
+    FROM combos c
+    LEFT JOIN por_conc pc ON pc.concessionaire_id IS NOT DISTINCT FROM c.concessionaire_id AND pc.etapa = c.etapa
+    LEFT JOIN geral g     ON g.etapa = c.etapa
+    LEFT JOIN coluna col  ON col.etapa = c.etapa
+$$;
+REVOKE ALL ON FUNCTION public.ludmilla_normais_do_tenant(uuid) FROM PUBLIC, anon, authenticated;
+
+CREATE OR REPLACE FUNCTION public.ludmilla_normais()
+RETURNS TABLE (concessionaire_id uuid, etapa text, normal_dias integer, amostra integer, fonte text)
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = ''
+AS $$
+BEGIN
+  IF (SELECT auth.uid()) IS NULL OR NOT public.ludmilla_equipe_ok() THEN
+    RAISE EXCEPTION 'Sem acesso à Ludmilla.';
+  END IF;
+  RETURN QUERY SELECT * FROM public.ludmilla_normais_do_tenant(public.get_user_tenant_id((SELECT auth.uid())));
+END $$;
+REVOKE ALL ON FUNCTION public.ludmilla_normais() FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.ludmilla_normais() TO authenticated;
