@@ -113,6 +113,18 @@ Reportar ao usuário o que foi encontrado, mesmo quando nada serve.
     `src/components/ui/` são do projeto e podem ter ajustes próprios, então NUNCA `init`, `apply`
     (preset) nem `add --overwrite` sem conversar; para atualizar, `add --dry-run
     --diff` primeiro.
+  - `impeccable` (`pbakaus/impeccable`, 105K estrelas; instalada em 08/11/2026
+    quando o usuário reprovou a organização do 1º mockup) — método de redesenho
+    e crítica de tela: diagnóstico de hierarquia (teste de olhar desfocado,
+    agrupamento, ritmo, densidade), modo *Operate* para tela de trabalho, e
+    estruturas diferentes comparadas antes de pintar. **Na casa:** o lançador
+    (`scripts/impeccable`) baixa um executável do GitHub na primeira vez — NÃO
+    rodar sem o usuário autorizar no chat; usar o modo sem lançador que a própria
+    skill prevê (ler `reference/shape.md`, `layout.md`, `operate.md`,
+    `new-work.md`, `critique.md` e seguir à mão).
+  - **Processo de tela combinado com o usuário (nov/2026):** primeiro as
+    perguntas, depois o mockup; escolha de estrutura se faz com versões
+    **desenhadas** (não rascunho em texto); só depois spec, plano e código.
 
 - `agent-browser` (oficial `vercel-labs`, instalada em 17/09/2026 a pedido
   do usuário) — **toda automação ou exploração de navegador**: portais das
