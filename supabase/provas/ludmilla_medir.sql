@@ -44,6 +44,12 @@ BEGIN
      GROUP BY s.project_id, s.origem HAVING count(*) > 1) x;
   INSERT INTO r VALUES ('A5 rodar a migração de novo não duplica', _n = 0, _n || ' projetos com linha repetida');
 
+  -- criação vinda da carga só existe onde há histórico de verdade (a do gatilho vale para projeto novo)
+  SELECT count(*) INTO _n FROM public.project_stage_log s
+   WHERE s.origem = 'criacao' AND s.em < timestamptz '2026-11-08 20:00:00-03'
+     AND NOT EXISTS (SELECT 1 FROM public.project_stage_log h WHERE h.project_id = s.project_id AND h.origem = 'historico');
+  INSERT INTO r VALUES ('A7 nenhuma entrada inventada pela carga', _n = 0, _n || ' criações sem histórico');
+
   SELECT p.id INTO _p FROM public.projects p
    WHERE p.tenant_id = _t AND p.is_deleted IS NOT TRUE AND p.status = 'approved' ORDER BY p.created_at DESC LIMIT 1;
   UPDATE public.projects SET status = 'vistoria_solicitada' WHERE id = _p;

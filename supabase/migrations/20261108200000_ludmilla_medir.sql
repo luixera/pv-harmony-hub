@@ -103,11 +103,14 @@ SELECT t.tenant_id, t.project_id, t.de, t.para, t.created_at, 'historico', t.id
 ON CONFLICT (history_id) DO NOTHING;
 
 -- 3b. A entrada na primeira etapa (quando o projeto nasceu antes da primeira troca registrada).
+--     Só olha linhas do histórico: a linha "atual" de uma rodada anterior não é troca de etapa,
+--     e usá-la inventaria uma entrada em "pending" ao rodar a migração de novo.
 INSERT INTO public.project_stage_log (tenant_id, project_id, de, para, em, origem)
 SELECT p.tenant_id, p.id, NULL, coalesce(pri.de, 'pending'), p.created_at, 'criacao'
   FROM public.projects p
   JOIN LATERAL (SELECT s.de, s.em FROM public.project_stage_log s
-                 WHERE s.project_id = p.id ORDER BY s.em, s.criado_em LIMIT 1) pri ON true
+                 WHERE s.project_id = p.id AND s.origem = 'historico'
+                 ORDER BY s.em, s.criado_em LIMIT 1) pri ON true
  WHERE p.tenant_id IS NOT NULL AND p.created_at IS NOT NULL AND p.created_at < pri.em
    AND NOT EXISTS (SELECT 1 FROM public.project_stage_log s WHERE s.project_id = p.id AND s.origem = 'criacao');
 
