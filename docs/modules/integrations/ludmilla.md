@@ -1984,3 +1984,47 @@ inteira foi provada em harness com dublês e dados inventados, em 1280 × 800 e
 390 × 812, cobrindo CPFL, EDP e ENEL (48 checagens; prints em
 `.superpowers/sdd/2026-10-22-ludmilla-pagina-decidir/task-8-prints/`, fora do git).
 Com linhas de verdade só se prova abrindo `/ludmilla` depois do deploy.
+
+## Medir: etapas, tempo normal e carteira (entrega 1 da repaginação, nov/2026)
+
+Spec: `docs/superpowers/specs/2026-11-08-ludmilla-repaginacao-design.md`; plano
+`docs/superpowers/plans/2026-11-08-ludmilla-e1-medir.md`. Migração
+`20261108200000_ludmilla_medir.sql`, **aplicada em 09/11/2026**; prova
+`supabase/provas/ludmilla_medir.sql` (roda dentro de `BEGIN … ROLLBACK`; 19 casos).
+Ainda sem tela: a página nova (entrega 2) é quem vai ler isto.
+
+- **`project_stage_log`**: cada troca de etapa. Origens:
+  - `gatilho` — `trg_registrar_etapa` em `projects.status`, desde a aplicação. Nunca
+    bloqueia a troca: erro vira `WARNING` no log do banco.
+  - `historico` — lido do texto de `project_history`: "Etapa alterada de "X" para "Y""
+    (grava o **rótulo** da coluna, desde 19/07/2026), "Status alterado para "code"" (jan) e
+    "… moveu para code." (Aplicar da Ludmilla). 1.160 linhas na carga, nenhuma sem etapa.
+  - `criacao` — a entrada na primeira etapa, só para projeto com histórico (276).
+  - `atual` — a etapa atual quando o histórico não chega nela, a partir de
+    `last_status_change` (42).
+- **`projects.status` é o enum `project_status`**: comparar e gravar com `::text`.
+- **`ludmilla_passagens(tenant)`** (interna, sem `EXECUTE` para usuário): uma estada por
+  etapa, com dias e se é confiável (entrou a partir de 19/07/2026).
+- **`ludmilla_normais()`**: o normal de cada concessionária × etapa. Mediana de 12 meses
+  com no mínimo 5 passagens fechadas (`medido`); senão a mediana da etapa em todas as
+  concessionárias (`geral`); senão o `stale_days` da coluna do Kanban ativo (`coluna`);
+  senão nenhum. Nunca menos de 1 dia. Na aplicação: 32 medidos, 31 gerais, 9 pela coluna,
+  18 sem normal. ENEL: Aprovado 32 d, Vistoria Solicitada 23 d, Em Análise 2 d.
+- **`ludmilla_carteira()`**: os 95 projetos ativos (60–75 ms) com tempo na etapa, normal,
+  atraso, com quem está (`nos`, `concessionaria`, `cliente`; regra da spec 6.4), os
+  projetistas ligados à empresa (`staff_companies`) e o histórico. Mais atrasado primeiro.
+  Outro tenant recebe "Sem acesso à Ludmilla." e não lê o registro.
+
+**O que os números já mostram.** Quase todos os atrasados estão em **Aprovado** (o maior:
+157 dias além do normal de 7). Dois cuidados antes de virar item da fila (entrega 3):
+- **Viés de quem termina primeiro.** O normal só conta passagens fechadas desde 19/07, e
+  as rápidas fecham primeiro. Por isso normais como "Aprovado em 7 dias" estão baixos
+  agora e devem subir conforme os dados acumulam.
+- **Com quem está em Aprovado.** Pela regra 6.4 é "com a gente" (pedir a vistoria). Muitos
+  desses projetos podem estar esperando a instalação do cliente. Conferir com o usuário
+  antes de a entrega 3 criar cartões de "parado".
+
+**O que NÃO está provado:** o gatilho com uma troca de etapa real (até o fim da rodada de
+09/11 ninguém tinha mudado etapa depois da aplicação). Conferir com
+`SELECT origem, count(*), max(em) FROM public.project_stage_log GROUP BY 1` — deve
+aparecer `gatilho`.

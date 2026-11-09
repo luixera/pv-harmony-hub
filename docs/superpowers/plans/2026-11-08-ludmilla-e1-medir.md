@@ -697,3 +697,19 @@ git commit -F "$S/msg-e1-docs.txt" -- docs/modules/integrations/ludmilla.md docs
 git fetch -q origin && git rebase origin/main && git push -q origin HEAD:main
 ```
 Expected: `origin/main` no commit novo. Nenhum arquivo de front mudou, então `tsc` e `build` não mudam; não precisam rodar.
+
+---
+
+## Execução (08–09/11/2026) — o que mudou em relação a este plano
+
+O código que vale é o da migração e o da prova no repositório; os blocos acima ficaram como
+escritos antes da execução. Desvios:
+
+1. **`projects.status` é o enum `project_status`.** Comparar e gravar com `::text` (gatilho,
+   carga 3c, carteira e prova A3). O banco recusou `text = project_status` na primeira rodada.
+2. **Carga 3b só olha linhas `historico`.** Aplicada uma vez, a migração gravou 276 criações;
+   rodada duas vezes (a prova), dava 308, porque a segunda rodada usava a linha `atual` da
+   primeira como troca e inventava "pending" em 32 projetos sem histórico. Caso novo **A7**
+   ("nenhuma entrada inventada pela carga"). Produção não mudou (rodou uma vez).
+3. **Resultado:** 19 de 19 casos verdes com a migração dobrada e contra o banco aplicado.
+   Aplicada em 09/11/2026. O gatilho com troca real ainda não foi exercido.
