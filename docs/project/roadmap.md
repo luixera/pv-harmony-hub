@@ -71,6 +71,11 @@
   (PRJ-27803), registrado certo no banco. Falta conferir em Enviados do Gmail se saiu uma vez só e
   se a resposta automática da ENEL é lida na leitura de segunda, 09/11. Ficaram para depois: reabrir troca que falhou, anexos, fechar sozinho os A fazer de pedido
   já feito (PRJ-60934, PRJ-67567) e o botão no modal do projeto.
+- **Ludmilla, a melhor funcionária — repaginação da página: spec escrita, falta o plano.**
+  Mockup aprovado em 08/11/2026 (três colunas no mundo "Conta de luz", só na Ludmilla;
+  [spec](../superpowers/specs/2026-11-08-ludmilla-repaginacao-design.md)). Seis entregas:
+  medir o tempo por etapa e o normal, a página nova, os parados, as chaves de autonomia com
+  Desfazer, o resumo da manhã (WhatsApp depende do Zé na VPS) e o avatar definitivo.
 - **Eletropostos — pós-entrega 2**: a estação local (PC do gestor + BlueStacks)
   está instalada, calibrada e gravando desde 16/10/2026 (a primeira coleta agendada, às 08:56 de 16/10/2026, gravou 7 leituras da Cury e 25 da ATM;
   [modules/eletropostos](../modules/eletropostos/overview.md)). Em aberto: vincular
