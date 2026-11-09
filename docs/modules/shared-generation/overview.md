@@ -45,6 +45,14 @@ concessionária); só a criação automática no portal é da CPFL.
   lê UC e titular; titular diferente do da geradora marca `holder_mismatch`,
   que **bloqueia a Ludmilla** (a RPC recusa com a UC na mensagem). Sem foto,
   o titular só é conferido pelo portal.
+  - **Só documento de verdade compara** (09/11/2026). `mesmoTitular` só diz
+    "diferente" quando os DOIS lados são CPF/CNPJ válidos (11 ou 14 dígitos,
+    dígito verificador certo, sem sequência repetida — `documentoValido` em
+    `src/lib/cpfCnpj.ts`); senão é "não dá para saber" e não marca nada. E
+    `lerContaBeneficiaria` descarta o "CPF" lido que não é documento. Motivo:
+    no PRJ-09896 a leitura da conta pôs a **própria UC** (12 dígitos) no campo
+    de CPF, e as duas beneficiárias apareceram como "titular diferente" com o
+    nome idêntico ao da geradora — a CPFL mostrava as UCs no nome certo.
 - **RN-SG-06** — Com ≥ 1 beneficiária, o sistema de compensação da CPFL é
   **Autoconsumo Remoto**; sem, **Geração Local**. Derivado no banco
   (`ludmilla_dados_criacao_cpfl.sistema_compensacao`), nunca fixo no worker.

@@ -50,6 +50,35 @@ export function cpfCnpjCompleto(valor: string): boolean {
   return n === 11 || n === 14;
 }
 
+/** Dígito verificador de CPF/CNPJ: soma ponderada, resto 11 (resto < 2 → 0). */
+function digitoVerificador(numeros: string, pesos: number[]): number {
+  const soma = pesos.reduce((s, peso, i) => s + Number(numeros[i]) * peso, 0);
+  const resto = soma % 11;
+  return resto < 2 ? 0 : 11 - resto;
+}
+
+const PESOS_CNPJ = [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+
+/**
+ * É um CPF ou CNPJ de verdade? Confere a quantidade de dígitos E o dígito
+ * verificador, e recusa sequência repetida (000.000.000-00 passa na conta, mas
+ * não é documento). Serve para não comparar titular com algo que não é
+ * documento — a leitura de uma conta de luz já devolveu a UC no lugar do CPF.
+ */
+export function documentoValido(valor: string | null | undefined): boolean {
+  const n = apenasDigitos(valor ?? '');
+  if (n.length !== 11 && n.length !== 14) return false;
+  if (/^(\d)\1+$/.test(n)) return false;
+  if (n.length === 11) {
+    const d1 = digitoVerificador(n, [10, 9, 8, 7, 6, 5, 4, 3, 2]);
+    const d2 = digitoVerificador(n, [11, 10, 9, 8, 7, 6, 5, 4, 3, 2]);
+    return d1 === Number(n[9]) && d2 === Number(n[10]);
+  }
+  const d1 = digitoVerificador(n, PESOS_CNPJ);
+  const d2 = digitoVerificador(n, [6, ...PESOS_CNPJ]);
+  return d1 === Number(n[12]) && d2 === Number(n[13]);
+}
+
 /** Mensagem de erro pronta para o toast, ou null se estiver válido. */
 export function erroCpfCnpj(valor: string): string | null {
   const n = apenasDigitos(valor);

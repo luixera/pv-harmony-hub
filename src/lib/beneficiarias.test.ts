@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  formatarPercentual, formatarUcCpfl, lerPercentual, mesmoTitular, normalizarUc, resumirRateio, validarUc,
+  documentoLidoDaConta, formatarPercentual, formatarUcCpfl, lerPercentual, mesmoTitular, normalizarUc, resumirRateio, validarUc,
 } from './beneficiarias';
 
 /**
@@ -91,11 +91,35 @@ describe('rateio', () => {
 describe('mesmo titular', () => {
   it('compara pelo documento, só dígitos', () => {
     expect(mesmoTitular('119.390.938-48', '11939093848')).toBe(true);
-    expect(mesmoTitular('119.390.938-48', '000.000.000-00')).toBe(false);
+    expect(mesmoTitular('119.390.938-48', '529.982.247-25')).toBe(false);
   });
 
   it('sem um dos documentos não dá para saber (null, não false)', () => {
     expect(mesmoTitular('119.390.938-48', null)).toBeNull();
     expect(mesmoTitular('', '11939093848')).toBeNull();
+  });
+
+  // PRJ-09896 (09/11/2026): a leitura da conta pôs a UC no campo de CPF e a tela
+  // acusou "titular diferente" com o nome idêntico ao da geradora.
+  it('o que não é CPF/CNPJ válido não vira "titular diferente": não dá para saber', () => {
+    expect(mesmoTitular('119.390.938-48', '219479903653')).toBeNull();        // a UC da CPFL (12 dígitos)
+    expect(mesmoTitular('119.390.938-48', '000.000.000-00')).toBeNull();      // sequência repetida
+    expect(mesmoTitular('119.390.938-48', '119.390.938-49')).toBeNull();      // dígito verificador errado
+    expect(mesmoTitular('119.390.938-48', '***.390.938-**')).toBeNull();      // CPF mascarado na conta
+    expect(mesmoTitular('219479903653', '11939093848')).toBeNull();           // geradora sem documento válido
+  });
+});
+
+describe('documento lido da conta', () => {
+  it('guarda só dígitos de um CPF/CNPJ válido', () => {
+    expect(documentoLidoDaConta('119.390.938-48')).toBe('11939093848');
+    expect(documentoLidoDaConta('11.222.333/0001-81')).toBe('11222333000181');
+  });
+
+  it('descarta o que não é documento — a UC, um mascarado, vazio', () => {
+    expect(documentoLidoDaConta('2.194.799.036-53')).toBeNull();
+    expect(documentoLidoDaConta('***.390.938-**')).toBeNull();
+    expect(documentoLidoDaConta('')).toBeNull();
+    expect(documentoLidoDaConta(null)).toBeNull();
   });
 });

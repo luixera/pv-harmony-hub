@@ -14,6 +14,8 @@
  *   nunca pode passar de 100.
  */
 
+import { documentoValido } from './cpfCnpj';
+
 export const normalizarUc = (texto: string | null | undefined): string =>
   (texto ?? '').replace(/\D/g, '');
 
@@ -93,10 +95,18 @@ export function resumirRateio(percentuais: (number | null | undefined)[]): Ratei
   return { soma, geradora: geradora < 0 ? 0 : geradora, estourou: soma > 100 };
 }
 
-/** O documento lido na conta é o mesmo da geradora? Compara só dígitos. */
+/**
+ * O documento lido na conta é o mesmo da geradora? Compara só dígitos, e só
+ * quando os DOIS lados são CPF/CNPJ válidos. O que não é documento (a UC que a
+ * leitura da conta pôs no campo de CPF no PRJ-09896, um CPF mascarado, dígito
+ * verificador errado) é "não dá para saber" (null), nunca "titular diferente".
+ */
 export function mesmoTitular(docGeradora: string | null | undefined, docLido: string | null | undefined): boolean | null {
-  const a = normalizarUc(docGeradora);
-  const b = normalizarUc(docLido);
-  if (!a || !b) return null; // não dá para saber
-  return a === b;
+  if (!documentoValido(docGeradora) || !documentoValido(docLido)) return null;
+  return normalizarUc(docGeradora) === normalizarUc(docLido);
+}
+
+/** O CPF/CNPJ lido na conta, só dígitos; null quando o que veio não é documento. */
+export function documentoLidoDaConta(valor: string | null | undefined): string | null {
+  return documentoValido(valor) ? normalizarUc(valor) : null;
 }

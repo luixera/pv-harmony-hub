@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { sanitizeFileName, validateFile } from '@/lib/utils';
-import { mesmoTitular, normalizarUc } from '@/lib/beneficiarias';
+import { documentoLidoDaConta, mesmoTitular, normalizarUc } from '@/lib/beneficiarias';
 
 /**
  * UNIDADES BENEFICIÁRIAS — o dado estruturado do autoconsumo remoto.
@@ -185,7 +185,8 @@ export async function lerContaBeneficiaria(file: File): Promise<LeituraDaConta> 
   return {
     uc: campo('uc_number') ? normalizarUc(campo('uc_number')) : null,
     holder_name: campo('holder_name'),
-    holder_doc: campo('cpf_cnpj') ? normalizarUc(campo('cpf_cnpj')) : null,
+    // só CPF/CNPJ válido: a leitura já devolveu a UC neste campo (PRJ-09896)
+    holder_doc: documentoLidoDaConta(campo('cpf_cnpj')),
     address: endereco,
   };
 }
