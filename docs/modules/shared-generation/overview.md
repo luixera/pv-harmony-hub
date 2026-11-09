@@ -53,6 +53,8 @@ concessionária); só a criação automática no portal é da CPFL.
     no PRJ-09896 a leitura da conta pôs a **própria UC** (12 dígitos) no campo
     de CPF, e as duas beneficiárias apareceram como "titular diferente" com o
     nome idêntico ao da geradora — a CPFL mostrava as UCs no nome certo.
+    As duas linhas foram corrigidas no banco em 09/11 com autorização do
+    usuário (`holder_doc` NULL, `holder_mismatch` false); eram as únicas assim.
 - **RN-SG-06** — Com ≥ 1 beneficiária, o sistema de compensação da CPFL é
   **Autoconsumo Remoto**; sem, **Geração Local**. Derivado no banco
   (`ludmilla_dados_criacao_cpfl.sistema_compensacao`), nunca fixo no worker.
