@@ -154,5 +154,47 @@ BEGIN
     ('C8 atrasados (para conferir a olho)', true, left(coalesce(_txt, 'nenhum'), 900));
 END $$;
 
+-- ── D. Aprovado: a empresa instalando ou a gente pedindo a vistoria ────────
+-- (migração 20261109120000_ludmilla_carteira_aprovado.sql)
+DO $$
+DECLARE _t uuid; _pessoa uuid; _p uuid; _antes text; _depois text; _ap int; _cli int;
+BEGIN
+  SELECT id INTO _t FROM public.tenants WHERE is_library LIMIT 1;
+  SELECT p.id INTO _pessoa FROM public.profiles p
+   WHERE p.tenant_id = _t AND p.active AND p.role IN ('admin', 'staff')
+     AND EXISTS (SELECT 1 FROM auth.identities i WHERE i.user_id = p.id)
+   ORDER BY (p.role = 'admin') DESC LIMIT 1;
+  -- um Aprovado sem pedido da empresa e fora da fila (a fila sempre põe "com a gente")
+  SELECT p.id INTO _p FROM public.projects p
+   WHERE p.tenant_id = _t AND p.is_deleted IS NOT TRUE AND p.archived_at IS NULL AND p.status = 'approved'
+     AND NOT EXISTS (SELECT 1 FROM public.tasks k WHERE k.project_id = p.id AND k.origin = 'vistoria_request')
+     AND NOT EXISTS (SELECT 1 FROM public.portal_updates u WHERE u.project_id = p.id AND u.situacao = 'pendente')
+     AND NOT EXISTS (SELECT 1 FROM public.portal_afazeres f WHERE f.project_id = p.id AND f.feito_em IS NULL)
+   ORDER BY p.created_at DESC LIMIT 1;
+
+  PERFORM set_config('request.jwt.claims', json_build_object('role', 'authenticated', 'sub', _pessoa)::text, true);
+  PERFORM set_config('role', 'authenticated', true);
+  SELECT c.com_quem INTO _antes FROM public.ludmilla_carteira() c WHERE c.project_id = _p;
+  SELECT count(*), count(*) FILTER (WHERE c.com_quem = 'cliente') INTO _ap, _cli
+    FROM public.ludmilla_carteira() c WHERE c.status = 'approved';
+  PERFORM set_config('role', 'none', true);
+
+  -- a empresa pede a vistoria pelo painel (o que solicitar_vistoria grava)
+  INSERT INTO public.tasks (tenant_id, title, status, priority, project_id, created_by, assigned_to, origin)
+  VALUES (_t, 'Solicitar vistoria (prova)', 'pending', 'high', _p, _pessoa, _pessoa, 'vistoria_request');
+
+  PERFORM set_config('request.jwt.claims', json_build_object('role', 'authenticated', 'sub', _pessoa)::text, true);
+  PERFORM set_config('role', 'authenticated', true);
+  SELECT c.com_quem INTO _depois FROM public.ludmilla_carteira() c WHERE c.project_id = _p;
+  PERFORM set_config('role', 'none', true);
+
+  INSERT INTO r VALUES
+    ('D1 Aprovado sem pedido da empresa: com a empresa', _antes = 'cliente', coalesce(_antes, 'sem projeto para testar')),
+    ('D2 Aprovado com pedido da empresa: com a gente', _depois = 'nos', coalesce(_depois, 'sem projeto para testar')),
+    ('D3 aprovados com a empresa (para conferir a olho)', true, _cli || ' de ' || _ap);
+END $$;
+
+-- ── (blocos novos entram aqui, antes do resultado) ─────────────────────────
+
 SELECT json_agg(json_build_object('caso', caso, 'ok', ok, 'detalhe', detalhe)
                 ORDER BY ok NULLS FIRST, caso) AS x FROM r;

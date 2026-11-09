@@ -199,12 +199,17 @@ item (não mexe no vínculo).
   sem isso, o `stale_days` da coluna do Kanban; sem nada, não há alerta.
 - **Parado além do normal** = dias na etapa atual maior que o normal.
 
-### 6.4 Com quem está a bola (proposta — confirmar nesta revisão)
+### 6.4 Com quem está a bola (aprovada em 08/11; Aprovado decidido em 09/11)
 | Situação do projeto | Com quem |
 |---|---|
-| Pendência pedida pela concessionária | **Com o cliente** |
+| Pendência pedida pela concessionária; aguardando instalação; **Aprovado com a empresa ainda instalando** (sem pedido de vistoria pelo painel depois de entrar em Aprovado) | **Com a empresa** (a empresa cliente) |
 | Protocolo aberto esperando análise ou aprovação; vistoria solicitada; troca pedida | **Com a concessionária** |
-| Recebido sem protocolo; documentação; aprovado sem vistoria pedida; vistoria aprovada sem pedido de troca; item na fila de decisão | **Com a gente** |
+| Recebido sem protocolo; documentação; **Aprovado com a empresa já tendo pedido a vistoria pelo painel**; vistoria aprovada sem pedido de troca; item na fila de decisão | **Com a gente** |
+
+Decisão do usuário (09/11): "Para pedir vistoria somos nós, para instalar é com a empresa
+cliente". O sinal de instalação feita é o pedido de vistoria da empresa pelo painel
+(`solicitar_vistoria`, tarefas `origin = 'vistoria_request'`). Na tela, o rótulo é "Com a
+empresa" (no banco, `cliente`). Em 09/11, os 49 projetos em Aprovado estavam sem esse pedido.
 
 Parado além do normal **com a gente** vira item da fila ("Pedir a vistoria na
 Elektro"), um por projeto e etapa; some quando a etapa muda.
@@ -285,7 +290,9 @@ o modal do projeto, o contador da barra lateral, outros tenants.
 ## 11. Riscos e decisões em aberto
 - **Amostra pequena**: o histórico estruturado só existe a partir de 19/07; nos
   primeiros meses muitos normais serão "estimados". A tela diz isso.
-- **Com quem está a bola** (6.4) é proposta minha; precisa do seu ok.
+- **Com quem está a bola** (6.4): aprovada; Aprovado decidido em 09/11 (instalar é da empresa,
+  pedir a vistoria é nosso). Projeto instalado sem o pedido pelo painel (avisado por telefone ou
+  WhatsApp) continua aparecendo "com a empresa" até alguém registrar o pedido.
 - **Destinatário do resumo**: "só o gestor" = o admin que ligar o aviso.
 - **Concluído** fica fora da chave "Mover etapa" nesta versão.
 - **Passar para outra pessoa** grava o dono no item; não muda o vínculo.

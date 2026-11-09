@@ -2016,13 +2016,20 @@ Ainda sem tela: a página nova (entrega 2) é quem vai ler isto.
   Outro tenant recebe "Sem acesso à Ludmilla." e não lê o registro.
 
 **O que os números já mostram.** Quase todos os atrasados estão em **Aprovado** (o maior:
-157 dias além do normal de 7). Dois cuidados antes de virar item da fila (entrega 3):
+157 dias além do normal de 7).
 - **Viés de quem termina primeiro.** O normal só conta passagens fechadas desde 19/07, e
   as rápidas fecham primeiro. Por isso normais como "Aprovado em 7 dias" estão baixos
   agora e devem subir conforme os dados acumulam.
-- **Com quem está em Aprovado.** Pela regra 6.4 é "com a gente" (pedir a vistoria). Muitos
-  desses projetos podem estar esperando a instalação do cliente. Conferir com o usuário
-  antes de a entrega 3 criar cartões de "parado".
+- **Com quem está em Aprovado (decidido em 09/11/2026).** O usuário: "Para pedir vistoria
+  somos nós, para instalar é com a empresa cliente". Migração
+  `20261109120000_ludmilla_carteira_aprovado.sql` (só troca `ludmilla_carteira`): Aprovado
+  fica `cliente` (na tela, "Com a empresa") até a empresa pedir a vistoria pelo painel
+  (`solicitar_vistoria` → tarefas `origin = 'vistoria_request'` criadas depois de
+  `last_status_change`); daí `nos`. Item aberto na fila continua pondo "com a gente". Na
+  aplicação, 45 de 48 Aprovados ficaram com a empresa (os outros 3 têm item na fila); os
+  12 pedidos de vistoria do tenant eram de projetos que já tinham saído de Aprovado.
+  Limite: instalação avisada por telefone ou WhatsApp não muda nada até alguém registrar o
+  pedido no sistema. Prova: casos D1–D3 (22 no total, todos verdes).
 
 **O que NÃO está provado:** o gatilho com uma troca de etapa real (até o fim da rodada de
 09/11 ninguém tinha mudado etapa depois da aplicação). Conferir com
