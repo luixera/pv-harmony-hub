@@ -71,10 +71,12 @@
   (PRJ-27803), registrado certo no banco. Falta conferir em Enviados do Gmail se saiu uma vez só e
   se a resposta automática da ENEL é lida na leitura de segunda, 09/11. Ficaram para depois: reabrir troca que falhou, anexos, fechar sozinho os A fazer de pedido
   já feito (PRJ-60934, PRJ-67567) e o botão no modal do projeto.
-- **Ludmilla, a melhor funcionária — repaginação da página: entrega 1 (medir) no ar em
-  09/11/2026; falta o plano da entrega 2 (página nova).** Registro das etapas, tempo normal e
-  carteira no banco ([plano](../superpowers/plans/2026-11-08-ludmilla-e1-medir.md), 19 provas
-  verdes). Antes da entrega 3 (parados), decidir com quem está a bola em "Aprovado".
+- **Ludmilla, a melhor funcionária — repaginação da página: entregas 1 (medir) e 2 (página nova)
+  prontas.** Registro das etapas, tempo normal e carteira no banco
+  ([plano da 1](../superpowers/plans/2026-11-08-ludmilla-e1-medir.md)); a página nova no mundo "Conta
+  de luz" ([plano da 2](../superpowers/plans/2026-11-09-ludmilla-e2-pagina.md)), provada em harness —
+  falta conferir com os dados reais depois do deploy. "Com quem está" em Aprovado decidido em 09/11.
+  Próxima: entrega 3 (parados).
   Mockup aprovado em 08/11/2026 (três colunas no mundo "Conta de luz", só na Ludmilla;
   [spec](../superpowers/specs/2026-11-08-ludmilla-repaginacao-design.md)). Seis entregas:
   medir o tempo por etapa e o normal, a página nova, os parados, as chaves de autonomia com

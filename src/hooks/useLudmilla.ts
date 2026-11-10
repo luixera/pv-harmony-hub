@@ -633,6 +633,8 @@ export function useRegistroLudmilla(limite = 120, ator?: AtorLudmilla) {
     },
     enabled: disponivel,
     staleTime: 30_000,
+    // "Ver mais" (120 → 400) troca a chave: a lista de antes fica na tela até a nova chegar
+    placeholderData: anterior => anterior,
   });
 }
 

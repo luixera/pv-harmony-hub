@@ -1927,6 +1927,11 @@ clique, ou rascunho no Gmail).
 
 ## A página como caixa de decisões (22/10/2026)
 
+> **Substituída em nov/2026 pela página nova** (entrega 2 da repaginação, seção "A página nova" no fim
+> deste documento). Ficam valendo daqui: o Desfazer de 8 s, o Aplicar silencioso, o contador da barra
+> lateral, a caixa de e-mail `null` enquanto carrega e a altura das colunas (`decidir/altura.ts`). As abas,
+> a faixa de saúde, a busca e os filtros saíram.
+
 Spec: `docs/superpowers/specs/2026-10-22-ludmilla-pagina-decidir-design.md` · plano:
 `docs/superpowers/plans/2026-10-22-ludmilla-pagina-decidir.md`.
 
@@ -2068,3 +2073,62 @@ Ainda sem tela: a página nova (entrega 2) é quem vai ler isto.
 09/11 ninguém tinha mudado etapa depois da aplicação). Conferir com
 `SELECT origem, count(*), max(em) FROM public.project_stage_log GROUP BY 1` — deve
 aparecer `gatilho`.
+
+## A página nova: estrutura A no mundo "Conta de luz" (entrega 2 da repaginação, nov/2026)
+
+Spec: `docs/superpowers/specs/2026-11-08-ludmilla-repaginacao-design.md` (mockup aprovado em 08/11,
+"v3 — Estrutura A completa"); plano: `docs/superpowers/plans/2026-11-09-ludmilla-e2-pagina.md`. Sem
+mudança no banco: a página lê `ludmilla_carteira()` e `ludmilla_normais()` (entrega 1) e o que já lia.
+
+**O mundo.** Só a `/ludmilla` (o menu do GD e o resto do app não mudam). Cores `lm-*` no Tailwind e a
+classe `.ludmilla-mundo` (`src/index.css`), que redefine as variáveis do shadcn só dentro da página — os
+cartões reaproveitados (contas, regras de e-mail, o detalhe) entram no mundo sem reescrita. Public Sans
+carregada só ao abrir a página (`mundo/useFonteDaLudmilla.ts`). Texto em alerta sobre a caixa é `#8F2F09`
+(o `#C2410C` da spec dá 4,41:1 ali); foco petróleo, branco na faixa. Avatar provisório (`mundo/AvatarDaLudmilla.tsx`).
+
+**A tela.** Faixa petróleo (avatar, "Ludmilla", "Analista de homologação", Ajustes). Coluna da esquerda,
+a única navegação: o recado do dia (montado dos números, sem IA — `ludmillaRecado.ts`), Para decidir
+(Agora / Esta semana / Quando puder, com "Fila de"), Carteira (Parados além do normal, Com a gente, Com
+a concessionária, Com a empresa, Todos), Comigo (Fiz sozinha, Diário) e Leituras (clicar leva aos
+Ajustes). No meio, os cartões completos da fila (prazo, responsável, a ação como título, o porquê em
+primeira pessoa, o histórico pequeno, o botão principal), as linhas da carteira, Fiz sozinha, Diário ou
+Ajustes. À direita, o detalhe de decisão de sempre (`DetalheDaDecisao`, títulos em primeira pessoa, com
+`topo` e `historico`), a ficha do projeto (histórico grande, "O que eu li por último", próximo passo,
+"Ver na fila", "Abrir o projeto"), "O que eu faço sozinha hoje", o recado inteiro ou "Onde eu leio" (os
+cartões das contas, agora com "Ler agora", as criações na CPFL e "Ainda não acompanho …").
+Três colunas a partir de 1280 px; de 960 a 1279, esquerda + lista e o detalhe numa folha; abaixo de 960,
+uma coluna por vez (faixa com menu e engrenagem, recado em uma linha, grupos no topo, detalhe e menu em
+tela cheia). Componentes em `src/components/ludmilla/{pagina,mundo}/`.
+
+**As regras** (todas puras, com vitest):
+- **Grupo** (`ludmillaFila.ts`, spec §6.1): Agora = cobrança da troca, troca que falhou, e-mail que voltou,
+  recomendação de etapa de hoje (dia de Brasília), vistoria aprovada com 7 dias ou mais; Esta semana =
+  recomendação de dias anteriores, vistoria aprovada com menos de 7 dias; Quando puder = documento
+  travado, só gravar protocolo, sem sugestão, aviso. Mais antigo primeiro. O CAPTCHA continua só como o
+  alerta acima de tudo.
+- **Dono** (§6.2): `donos` da carteira pelo projeto do item; sem projeto ou fora da carteira = Sem dono.
+  O projetista abre na própria fila; o gestor em Todos.
+- **Recado:** "desde" = a última visita (localStorage `ludmilla:ultima-visita:<id>`, em try/catch) ou
+  18:00 do último dia útil; no máximo 7 dias. E-mails = linhas novas em `portal_email_mensagens`;
+  protocolos = o maior `protocolos_lidos` de uma varredura `ok`; "Fiz sozinha" = anexo conferido e
+  parecer no card (registro); "Separei" = a fila de todos.
+- **Barras** (`ludmillaBarras.ts`): as colunas do Kanban, passadas, a atual e as que ainda vêm; desvios
+  só se visitados; a atual conta só a estada de agora; traço no normal da concessionária; a atual em sol
+  ou, além do normal (dias inteiros > normal), sol até o traço e alerta acima.
+- **Carteira** (`ludmillaCarteira.ts`): a ordem da spec §4.3 (além do normal primeiro, do maior atraso
+  para o menor; depois todos pelo tempo na etapa); "parado" = dias inteiros > normal; o normal em
+  palavras por fonte (`medido`, `geral` = estimado, `coluna` = prazo do Kanban).
+- **Botão do cartão:** decide direto só Aplicar habilitado e "Marcar como feito"; cobrança e pedido da
+  troca ("Revisar e enviar"), documento travado e sem projeto abrem o detalhe.
+
+**Ficou de fora** (entregas seguintes): as chaves e o Desfazer do "Fiz sozinha" (4), o resumo da manhã
+(5), o item `parado` (3), "Passar para outra pessoa" (coluna nova), a barra da troca do medidor da ENEL
+(consulta nova) e a certeza da sugestão (não há dado). Saíram da página: as abas, a faixa de saúde, a
+busca e os filtros da aba Decidir.
+
+**Prova.** Funções puras com vitest (`ludmillaTempo`, `ludmillaCarteira`, `ludmillaBarras`,
+`ludmillaFila`, `ludmillaRecado`, `ludmillaLeituras`, `pagina/modo`). A página foi provada em harness
+com dados inventados em 1440 × 900, 1100 × 800, 800 × 800 e 375 × 812 e auditada com `web-design-guidelines`
+(prints fora do git). **O que NÃO está provado:** a página com os dados reais — abrir `/ludmilla` depois
+do deploy, como gestor e como projetista, e conferir o recado, as contagens da carteira contra
+`ludmilla_carteira()` e o Desfazer numa decisão de verdade.

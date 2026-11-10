@@ -1,72 +1,46 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { KeyRound, Radar } from 'lucide-react';
 import { MainLayout } from '@/components/layout/MainLayout';
-import { Button } from '@/components/ui/button';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import {
-  estadoDaEstacao, useLudmillaDisponivel, usePedirRun, usePortalCaptchas, useRunsCriacaoCpfl,
-} from '@/hooks/useLudmilla';
+import { useAuth } from '@/contexts/AuthContext';
 import { useAgentConfig } from '@/hooks/useAgentConfig';
+import { useAgora } from '@/hooks/useAgora';
 import { useCaixaDaLudmilla } from '@/hooks/useCaixaDaLudmilla';
 import { useFilaDeDecisoes } from '@/hooks/useFilaDeDecisoes';
-import { useAgora } from '@/hooks/useAgora';
+import {
+  estadoDaEstacao, useLudmillaDisponivel, usePedirRun, usePortalCaptchas, useRegistroLudmilla, useRunsCriacaoCpfl,
+  type PortalAccount,
+} from '@/hooks/useLudmilla';
+import { useAcoesDaCaixa } from '@/hooks/useLudmillaDecidir';
+import { useCarteiraDaLudmilla, useDesdeDoRecado, useLeiturasDesde, useNormaisDaLudmilla } from '@/hooks/useLudmillaPagina';
+import { useStatusLabel, useStatusOrder } from '@/hooks/useStatusLabel';
 import { useWindowSize } from '@/hooks/useWindowSize';
-import { FILTRO_INICIAL, contarPendentes, type FiltroDaCaixa } from '@/lib/ludmillaCaixa';
-import { alertasDasContas, chipsDaFaixa } from '@/lib/ludmillaPainel';
-import { AbaDecidirConectada } from '@/components/ludmilla/decidir/AbaDecidirConectada';
-import { AlertasDasContas } from '@/components/ludmilla/topo/AlertasDasContas';
-import { FaixaDeSaude } from '@/components/ludmilla/topo/FaixaDeSaude';
-import { BarraDeAbas } from '@/components/ludmilla/topo/BarraDeAbas';
-import { ABAS_DA_LUDMILLA, type AbaDaLudmilla } from '@/components/ludmilla/topo/abas';
+import { mensagemDeErro } from '@/lib/ludmillaCartao';
+import { donosPorProjetoDe, fraseDasNaoAcompanhadas, naoAcompanhadas, proximoPasso } from '@/lib/ludmillaCarteira';
+import { resumoDaFila } from '@/lib/ludmillaFila';
+import { fraseDaProximaLeitura, leiturasDasContas, linhasDeLeitura, proximaLeitura, textoDaListaVazia } from '@/lib/ludmillaLeituras';
+import { alertasDasContas } from '@/lib/ludmillaPainel';
+import { diarioPorDia, fezSozinha, recadoDoDia, rotuloDoDesde } from '@/lib/ludmillaRecado';
 import { CartaoCaptcha } from '@/components/ludmilla/abas/CartaoCaptcha';
-import { AbaConcessionarias } from '@/components/ludmilla/abas/AbaConcessionarias';
-import { AbaCriacoesCpfl } from '@/components/ludmilla/abas/CriacoesCpfl';
-import { RegistroDaLudmilla } from '@/components/ludmilla/abas/RegistroDaLudmilla';
+import { DetalheConectado } from '@/components/ludmilla/decidir/DetalheConectado';
+import { FichaConectada } from '@/components/ludmilla/pagina/FichaConectada';
+import { OndeEuLeio } from '@/components/ludmilla/pagina/OndeEuLeio';
+import { PaginaDaLudmilla } from '@/components/ludmilla/pagina/PaginaDaLudmilla';
+import { modoDaPagina } from '@/components/ludmilla/pagina/modo';
+
+/** O registro do Diário: 120 linhas; "Ver mais" leva a 400 (o teto de `ludmilla_registro` é 500). */
+const DIARIO_CURTO = 120;
+const DIARIO_LONGO = 400;
 
 /**
- * LUDMILLA — a caixa de entrada de decisões (spec 2026-10-22).
+ * LUDMILLA — a página nova (spec 2026-11-08, entrega 2): a estrutura A no mundo "Conta de luz".
  *
- * O que a equipe vem fazer aqui é DECIDIR: a aba de abertura é a lista de
- * recomendações + A fazer, com o detalhe ao lado (computador) ou por cima
- * (celular). Configuração e histórico foram para abas secundárias. A Ludmilla
- * só sugere: quem aplica é uma pessoa, pelas MESMAS RPCs de sempre — a decisão
- * espera 8 s antes de ir, e é isso que faz o "Desfazer".
- *
- * O topo vale para todas as abas: o código da imagem da Elektro (expira em 5 min)
- * acima de tudo, os alertas das contas e a faixa de saúde. No celular a barra das
- * abas vem ANTES disso, logo abaixo da barra do app, e gruda ali ao rolar
- * (decisão do usuário, 22/10/2026: embaixo já há a barra de atalhos). Para grudar,
- * ela precisa ser filha direta do contêiner da página — aqui, o `<Tabs>`.
- *
- * Há DOIS meios de acompanhamento, e cada cartão diz qual é o seu
- * (`portal_accounts.acompanhamento`): `portal`, em que ela entra no site da
- * concessionária, e `email`, em que ela lê a caixa e interpreta as mensagens
- * (EDP, ENEL).
+ * A página só liga os hooks à casca (`PaginaDaLudmilla`), que não lê banco. A Ludmilla continua só
+ * sugerindo: quem decide é uma pessoa, pelas MESMAS RPCs de sempre, com o Desfazer de 8 s
+ * (`useFilaDeDecisoes` + `useAcoesDaCaixa`). O que é novo vem da entrega 1 (`ludmilla_carteira`,
+ * `ludmilla_normais`) e das contagens do recado. Só para a equipe do GD Manager.
  */
 export default function Ludmilla() {
   const disponivel = useLudmillaDisponivel();
-  const navigate = useNavigate();
-  const [aba, setAba] = useState<AbaDaLudmilla>('decidir');
-  const [contaId, setContaId] = useState<string | null>(null);
-  // mora aqui, não na aba: o conteúdo da aba desmonta ao trocar e a busca sumia na volta
-  const [filtro, setFiltro] = useState<FiltroDaCaixa>(FILTRO_INICIAL);
-  const caixa = useCaixaDaLudmilla('pendente');
-  const { ocultos, decidir } = useFilaDeDecisoes(caixa.itens);
-  const { data: captchas = [] } = usePortalCaptchas();
-  // a caixa do agente de e-mails é por tenant: uma consulta serve para o topo e para todos os
-  // cartões. Enquanto carrega, null — false acenderia o alerta "caixa não configurada" em toda abertura.
-  // Consulta que falhou sem resposta anterior também é null (não prova que a caixa falta), e o cartão
-  // diz que não deu para conferir. Uma resposta já recebida vale mesmo se a atualização falhar depois.
-  const { data: agente, isLoading: carregandoAgente, isError: erroDoAgente } = useAgentConfig();
-  const semResposta = carregandoAgente || agente === undefined;
-  const caixaPronta = semResposta ? null : !!agente?.is_configured && !!agente?.gmail_email;
-  const caixaFalhou = semResposta && erroDoAgente;
-  const { data: runsCriacao = [] } = useRunsCriacaoCpfl();
-  const pedir = usePedirRun();
-  const agora = useAgora(60_000);
-  const { isMobile } = useWindowSize();
-
   if (!disponivel) {
     return (
       <MainLayout>
@@ -74,79 +48,111 @@ export default function Ludmilla() {
       </MainLayout>
     );
   }
-
-  const estacaoDe = (c: Parameters<typeof estadoDaEstacao>[0]) => estadoDaEstacao(c, agora);
-  const pendentes = contarPendentes(caixa.itens, ocultos);
-  const chips = chipsDaFaixa(caixa.contas, {
-    nomeDaConta: caixa.nomeDaConta, pendentesPorConta: pendentes.porConta, estacaoDe, caixaPronta, agora,
-  });
-  const alertas = alertasDasContas(caixa.contas, caixa.nomeDaConta, caixaPronta, estacaoDe);
-
   return (
     <MainLayout>
-      {/* space-y-3 e a frase de uma linha: em 1280 × 800, com um alerta e a faixa em duas linhas, os
-          botões do detalhe ainda cabem na tela sem rolar (altura.ts) */}
-      <Tabs value={aba} onValueChange={v => setAba(v as AbaDaLudmilla)} className="mx-auto max-w-7xl space-y-3">
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="w-11 h-11 rounded-xl bg-primary/10 flex items-center justify-center"><Radar className="w-6 h-6 text-primary" /></div>
-          <div className="flex-1 min-w-0">
-            <h1 className="text-2xl font-bold">Ludmilla</h1>
-            {/* no celular a frase empurraria a barra das abas para baixo */}
-            <p className="hidden text-sm text-muted-foreground sm:block">
-              O que mudou nas concessionárias, com a recomendação de etapa. Ela lê; você decide.
-            </p>
-          </div>
-          <Button variant="outline" size="sm" className="gap-2" onClick={() => navigate('/admin/energy-concessionaires')}>
-            <KeyRound size={14} /> Acessos aos portais
-          </Button>
-        </div>
-
-        {isMobile && <BarraDeAbas ativa={aba} onTrocar={setAba} contadores={{ decidir: pendentes.total }} />}
-
-        {/* Urgente primeiro, em qualquer aba: o código da imagem expira em 5 min */}
-        {captchas.map(c => <CartaoCaptcha key={c.id} c={c} portal={caixa.nomeDaConta(c.account_id)} />)}
-        <AlertasDasContas alertas={alertas} />
-
-        <FaixaDeSaude
-          chips={chips} contaId={contaId} verificando={pedir.isPending}
-          onFiltrar={id => { setContaId(id); setAba('decidir'); }}
-          onVerificar={c => pedir.mutate({ accountId: c.id, tipo: c.tipoDoRun })}
-        />
-
-        {!isMobile && (
-          <TabsList className="h-auto flex-wrap">
-            {ABAS_DA_LUDMILLA.map(a => (
-              <TabsTrigger key={a.valor} value={a.valor} className="gap-1.5">
-                {a.rotulo}
-                {a.valor === 'decidir' && pendentes.total > 0 && (
-                  <span className="rounded-full bg-primary px-1.5 text-[11px] tabular-nums text-primary-foreground">
-                    {pendentes.total}<span className="sr-only"> pendentes</span>
-                  </span>
-                )}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        )}
-
-        <TabsContent value="decidir" className="mt-0">
-          <AbaDecidirConectada
-            filtro={filtro} onFiltro={setFiltro} contaId={contaId} ocultos={ocultos} decidir={decidir} agora={agora}
-          />
-        </TabsContent>
-        <TabsContent value="concessionarias" className="mt-0">
-          <AbaConcessionarias
-            contas={caixa.contas} nomeDaConta={caixa.nomeDaConta} caixa={agente} caixaPronta={caixaPronta}
-            caixaFalhou={caixaFalhou} agora={agora}
-            verificando={pedir.isPending} onVerificar={(accountId, tipo) => pedir.mutate({ accountId, tipo })}
-          />
-        </TabsContent>
-        <TabsContent value="criacoes" className="mt-0">
-          <AbaCriacoesCpfl runs={runsCriacao} />
-        </TabsContent>
-        <TabsContent value="registro" className="mt-0">
-          <RegistroDaLudmilla />
-        </TabsContent>
-      </Tabs>
+      <PaginaConectada />
     </MainLayout>
+  );
+}
+
+function PaginaConectada() {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const agora = useAgora(60_000);
+  const { width } = useWindowSize();
+  const rotulo = useStatusLabel();
+  const etapas = useStatusOrder();
+  const caixa = useCaixaDaLudmilla('pendente');
+  const { ocultos, decidir } = useFilaDeDecisoes(caixa.itens);
+  const acoes = useAcoesDaCaixa();
+  const carteira = useCarteiraDaLudmilla();
+  const normais = useNormaisDaLudmilla();
+  const { data: captchas = [] } = usePortalCaptchas();
+  // a caixa do agente de e-mails: carregando (ou falhou sem resposta anterior) é null, nunca false
+  const { data: agente, isLoading: carregandoAgente, isError: erroDoAgente } = useAgentConfig();
+  const semResposta = carregandoAgente || agente === undefined;
+  const caixaPronta = semResposta ? null : !!agente?.is_configured && !!agente?.gmail_email;
+  const caixaFalhou = semResposta && erroDoAgente;
+  const { data: runsCriacao = [] } = useRunsCriacaoCpfl();
+  const pedir = usePedirRun();
+  const desde = useDesdeDoRecado(user?.id);
+  const leiturasDesde = useLeiturasDesde(desde, caixa.contas);
+  const [limiteDoDiario, setLimiteDoDiario] = useState(DIARIO_CURTO);
+  const registro = useRegistroLudmilla(limiteDoDiario);
+  const daLudmilla = useRegistroLudmilla(DIARIO_LONGO, 'ludmilla');
+
+  const linhas = useMemo(() => carteira.data ?? [], [carteira.data]);
+  const estacaoDe = (c: PortalAccount) => estadoDaEstacao(c, agora);
+  const feitos = useMemo(() => fezSozinha(daLudmilla.data ?? [], desde), [daLudmilla.data, desde]);
+  const resumo = resumoDaFila(caixa.itens, { ocultos, agora, donosPorProjeto: donosPorProjetoDe(linhas) });
+  const leituras = leiturasDesde.isError
+    ? null
+    : leiturasDasContas(caixa.contas, caixa.nomeDaConta, leiturasDesde.data ?? { protocolos: {}, emails: {} });
+  const recadoCarregando = caixa.carregando || carteira.isLoading || leiturasDesde.isLoading || daLudmilla.isLoading;
+  // sem a carteira não sei o dono de nenhum item: não afirmo "N sem dono" (spec §4.6)
+  const recado = recadoCarregando ? null : recadoDoDia({
+    agora, desde, leituras, fizSozinha: feitos.length, separei: resumo.total, paraAgora: resumo.agora,
+    semDono: carteira.isError ? 0 : resumo.semDono,
+  });
+  // a fila depende da carteira para saber o dono: carregando/falhou é estado da fila, nunca "Nada aqui agora"
+  const erroDaFila = caixa.erro ? (mensagemDeErro(caixa.erro) ?? '')
+    : carteira.isError ? 'Não consegui carregar os responsáveis de cada projeto.'
+    : null;
+  const proxima = fraseDaProximaLeitura(proximaLeitura(caixa.contas, caixa.nomeDaConta, agora), agora);
+  const nao = fraseDasNaoAcompanhadas(naoAcompanhadas(linhas, caixa.contas.map(c => c.concessionaire_id)));
+  const abrirProjeto = (id: string) => navigate(`/project/${id}`);
+
+  return (
+    <PaginaDaLudmilla
+      modo={modoDaPagina(width)} agora={agora}
+      usuario={user ? { id: user.id, role: user.role, name: user.name } : null}
+      rotuloEtapa={rotulo} ordemDasEtapas={etapas.map(e => e.key)}
+      itens={caixa.itens} ocultos={ocultos} decidir={decidir} acoes={acoes}
+      fila={{
+        carregando: caixa.carregando || carteira.isLoading, buscando: caixa.buscando,
+        erro: erroDaFila, tentar: () => { caixa.tentarDeNovo(); void carteira.refetch(); },
+      }}
+      carteira={linhas} normais={normais.data ?? []}
+      estadoDaCarteira={{
+        carregando: carteira.isLoading, buscando: carteira.isFetching,
+        erro: carteira.isError ? (mensagemDeErro(carteira.error) ?? '') : null, tentar: () => { void carteira.refetch(); },
+      }}
+      recado={recado} feitos={feitos} rotuloDoDesde={rotuloDoDesde(desde, agora)}
+      diario={diarioPorDia(registro.data ?? [], agora)}
+      estadoDoDiario={{
+        carregando: registro.isLoading,
+        erro: registro.isError ? (mensagemDeErro(registro.error) ?? '') : null,
+        tentar: () => { void registro.refetch(); },
+        podeVerMais: limiteDoDiario < DIARIO_LONGO && (registro.data?.length ?? 0) >= limiteDoDiario,
+        verMais: () => setLimiteDoDiario(DIARIO_LONGO),
+      }}
+      leituras={linhasDeLeitura(caixa.contas, { nomeDaConta: caixa.nomeDaConta, estacaoDe, caixaPronta, captchas, agora })}
+      textoDaListaVazia={textoDaListaVazia(proxima)}
+      alertaUrgente={captchas.length > 0
+        ? captchas.map(c => <CartaoCaptcha key={c.id} c={c} portal={caixa.nomeDaConta(c.account_id)} />)
+        : null}
+      detalhe={(item, layout, onDecidir, topo, historico) => (
+        // a etapa do detalhe nasce da recomendação: refetch que muda a recomendação recria o detalhe
+        <DetalheConectado
+          key={`${item.chave}|${item.update?.recomendacao ?? ''}`} item={item} layout={layout} etapas={etapas}
+          rotuloEtapa={rotulo} onDecidir={onDecidir} onAbrirProjeto={abrirProjeto} topo={topo} historico={historico}
+        />
+      )}
+      ficha={(linha, historico, onVerNaFila) => (
+        <FichaConectada
+          key={linha.projectId} linha={linha} historico={historico} proximo={proximoPasso(linha, rotulo)}
+          onVerNaFila={onVerNaFila} onAbrirProjeto={abrirProjeto} rotuloEtapa={rotulo}
+        />
+      )}
+      ondeEuLeio={() => (
+        <OndeEuLeio
+          contas={caixa.contas} nomeDaConta={caixa.nomeDaConta} caixa={agente} caixaPronta={caixaPronta} caixaFalhou={caixaFalhou}
+          agora={agora} verificando={pedir.isPending} onVerificar={(accountId, tipo) => pedir.mutate({ accountId, tipo })}
+          alertas={alertasDasContas(caixa.contas, caixa.nomeDaConta, caixaPronta, estacaoDe)} naoAcompanhadas={nao}
+          runsCriacao={runsCriacao}
+        />
+      )}
+      onAbrirProjeto={abrirProjeto}
+    />
   );
 }
