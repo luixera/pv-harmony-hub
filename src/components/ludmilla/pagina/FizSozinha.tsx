@@ -53,7 +53,7 @@ export function FizSozinha({ feitos, rotuloDoDesde, agora, onAbrirProjeto }: {
           <Check size={18} strokeWidth={2.6} className="mt-0.5 shrink-0 text-lm-ok-texto" aria-hidden />
           <span className="min-w-0 flex-1"><strong>{quandoCurto(Date.parse(f.quando), agora)}</strong> {f.texto}</span>
           {f.projectId && (
-            <button type="button" onClick={() => onAbrirProjeto(f.projectId!)} className="shrink-0 text-[13px] font-bold underline underline-offset-4">
+            <button type="button" aria-label={`Abrir o projeto: ${f.texto}`} onClick={() => onAbrirProjeto(f.projectId!)} className="shrink-0 text-[13px] font-bold underline underline-offset-4">
               Abrir
             </button>
           )}

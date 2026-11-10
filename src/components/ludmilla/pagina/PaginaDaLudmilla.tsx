@@ -118,6 +118,8 @@ export function PaginaDaLudmilla(p: PropsDaPagina) {
   const [dono, setDono] = useState<FiltroDeDono>(() => filaInicial(p.usuario));
   const [projetoEscolhido, setProjetoEscolhido] = useState<string | null>(null);
   const [menuAberto, setMenuAberto] = useState(false);
+  const origemDoMenu = useRef<HTMLElement | null>(null);
+  const navegouPeloMenu = useRef(false);
   const ladoALado = p.modo === 'tres';
   const { ref: grade, altura } = useAlturaDaCaixa(p.modo !== 'uma');
 
@@ -145,7 +147,13 @@ export function PaginaDaLudmilla(p: PropsDaPagina) {
   const itemAberto = lista.find(i => i.chave === selecionada) ?? null;
   const linhaAberta = linhas.find(l => l.projectId === projetoAberto) ?? null;
 
+  const abrirMenu = () => {
+    origemDoMenu.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setMenuAberto(true);
+  };
+
   const irPara = (v: VistaDaLudmilla) => {
+    if (menuAberto) navegouPeloMenu.current = true;
     setVista(v);
     setMenuAberto(false);
     setProjetoEscolhido(null);
@@ -297,6 +305,17 @@ export function PaginaDaLudmilla(p: PropsDaPagina) {
       alvo.focus();
     }
   };
+  // o menu não tem Trigger do Radix, então sem isto o foco cai no body ao fechar; depois de escolher uma vista ele vai para a lista
+  const devolverFocoDoMenu = (e: Event) => {
+    const alvo = navegouPeloMenu.current
+      ? document.querySelector<HTMLElement>('[data-coluna="meio"]')
+      : (origemDoMenu.current?.isConnected ? origemDoMenu.current : document.querySelector<HTMLElement>('[data-nav="menu"]'));
+    navegouPeloMenu.current = false;
+    if (alvo) {
+      e.preventDefault();
+      alvo.focus();
+    }
+  };
   const voltarPara = vista.tipo === 'carteira'
     ? FILTROS_DA_CARTEIRA.find(f => f.valor === vista.filtro)?.rotulo ?? 'Carteira'
     : vista.tipo === 'decidir'
@@ -322,14 +341,14 @@ export function PaginaDaLudmilla(p: PropsDaPagina) {
     >
       {p.alertaUrgente && <div className="flex flex-col gap-2 px-4 py-3 sm:px-6">{p.alertaUrgente}</div>}
       {p.modo === 'uma'
-        ? <FaixaDoCelular onMenu={() => setMenuAberto(true)} onAjustes={() => irPara({ tipo: 'ajustes' })} />
+        ? <FaixaDoCelular onMenu={abrirMenu} onAjustes={() => irPara({ tipo: 'ajustes' })} />
         : <FaixaDaLudmilla onAjustes={() => irPara({ tipo: 'ajustes' })} ajustesAberto={vista.tipo === 'ajustes'} />}
 
       {p.modo === 'uma' ? (
         <section aria-label="Lista" tabIndex={-1} data-coluna="meio" className="flex flex-col gap-3 px-4 pb-6 outline-none">
           <div className="-mx-4 flex items-center justify-between gap-2.5 bg-lm-caixa px-4 py-2.5 text-[13px]">
             <span>{p.recado?.curto ?? 'Carregando o recado…'}</span>
-            <button type="button" onClick={() => setMenuAberto(true)} className="shrink-0 whitespace-nowrap font-bold underline underline-offset-4">
+            <button type="button" onClick={abrirMenu} className="shrink-0 whitespace-nowrap font-bold underline underline-offset-4">
               Ler o recado
             </button>
           </div>
@@ -390,7 +409,7 @@ export function PaginaDaLudmilla(p: PropsDaPagina) {
       )}
       {p.modo === 'uma' && (
         <FolhaDaLudmilla
-          aberta={menuAberto} onFechar={() => setMenuAberto(false)} lado="left" titulo="Menu da Ludmilla"
+          aberta={menuAberto} onFechar={() => setMenuAberto(false)} lado="left" titulo="Menu da Ludmilla" onCloseAutoFocus={devolverFocoDoMenu}
           cabecalho={(
             <>
               <span className="pl-1 text-[17px] font-extrabold text-white">Ludmilla</span>

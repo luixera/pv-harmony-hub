@@ -63,7 +63,7 @@ export function ColunaDaEsquerda({ recado, grupos, donos, dono, onDono, carteira
             <p className="m-0 text-sm leading-normal" data-recado>{recado.texto}</p>
           </>
         ) : (
-          <div role="status" aria-label="Carregando o recado" className="h-16 animate-pulse rounded bg-lm-caixa motion-reduce:animate-none" />
+          <div role="status" className="h-16 animate-pulse rounded bg-lm-caixa motion-reduce:animate-none"><span className="sr-only">Carregando o recado</span></div>
         )}
       </div>
 

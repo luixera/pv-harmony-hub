@@ -12,7 +12,7 @@ export function FaixaDoCelular({ onMenu, onAjustes }: { onMenu: () => void; onAj
         <Menu size={22} aria-hidden />
       </button>
       <span className="flex flex-1 items-center gap-2.5">
-        <AvatarDaLudmilla tamanho={32} />
+        <AvatarDaLudmilla tamanho={32} decorativo />
         <span className="text-[17px] font-extrabold">Ludmilla</span>
       </span>
       <button

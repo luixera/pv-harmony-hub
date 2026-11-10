@@ -56,7 +56,8 @@ export function Donos({ donos }: { donos: DonoDoProjeto[] }) {
 /** O lugar do que ainda carrega (spec §4.6). Sem animação para quem pediu menos movimento. */
 export function Esqueleto({ linhas = 3, rotulo }: { linhas?: number; rotulo: string }) {
   return (
-    <div role="status" aria-label={rotulo} className="flex flex-col gap-3">
+    <div role="status" className="flex flex-col gap-3">
+      <span className="sr-only">{rotulo}</span>
       {Array.from({ length: linhas }, (_, i) => (
         <div key={i} className="h-20 animate-pulse rounded-lg bg-lm-caixa motion-reduce:animate-none" />
       ))}

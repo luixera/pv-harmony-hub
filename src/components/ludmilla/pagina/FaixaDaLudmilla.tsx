@@ -6,7 +6,7 @@ export function FaixaDaLudmilla({ onAjustes, ajustesAberto }: { onAjustes: () =>
   return (
     <header className="lm-sobre-petroleo flex flex-wrap items-center justify-between gap-x-6 gap-y-2 bg-lm-petroleo px-6 py-2.5 text-white">
       <div className="flex items-center gap-3">
-        <AvatarDaLudmilla tamanho={40} />
+        <AvatarDaLudmilla tamanho={40} decorativo />
         <div className="flex flex-col">
           <span className="text-lg font-extrabold">Ludmilla</span>
           <span className="text-xs text-lm-faixa-suave">Analista de homologação</span>
