@@ -52,6 +52,10 @@ export interface PropsDoDetalhe {
   urlDoDocumento: (caminho: string) => Promise<string | null>;
   /** a cada tecla no texto da cobrança: quem monta o painel guarda, para a edição sobreviver à saída e à volta da linha */
   onTextoDaCobranca?: (texto: string) => void;
+  /** a página nova (entrega 2): chip, responsável, a ação e o projeto — no lugar do cabeçalho antigo */
+  topo?: ReactNode;
+  /** a página nova (entrega 2): o histórico em barras, logo abaixo do topo */
+  historico?: ReactNode;
 }
 
 const VEREDITO: Record<string, { texto: string; cor: string }> = {
@@ -80,7 +84,7 @@ async function abrirDocumento(caminho: string, urlDoDocumento: PropsDoDetalhe['u
 function Secao({ titulo, children }: { titulo: string; children: ReactNode }) {
   return (
     <section className="space-y-2">
-      <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{titulo}</h3>
+      <h3 className="text-sm font-extrabold">{titulo}</h3>
       {children}
     </section>
   );
@@ -140,7 +144,7 @@ function OQueChegouSecao({ item, chegou, ressalva, v }: {
   item: ItemDaCaixa; chegou: OQueChegou | null; ressalva: string | null; v: VisibilidadeDoDetalhe;
 }) {
   return (
-    <Secao titulo="O que chegou">
+    <Secao titulo="O que eu vi">
       {v.avisoDeBloqueio && (
         <div className="flex items-start gap-2 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-red-900">
           <ShieldAlert size={16} className="mt-0.5 shrink-0" aria-hidden />
@@ -160,7 +164,7 @@ function OQueChegouSecao({ item, chegou, ressalva, v }: {
         <div className="space-y-1.5 text-sm">
           <p className="text-xs text-muted-foreground">
             {chegou.remetente ?? 'remetente desconhecido'} ·{' '}
-            {chegou.recebidoEm ? `e-mail recebido em ${dataCurta(chegou.recebidoEm)}` : `lido pela Ludmilla em ${dataCurta(chegou.lidoEm)}`}
+            {chegou.recebidoEm ? `e-mail recebido em ${dataCurta(chegou.recebidoEm)}` : `lido por mim em ${dataCurta(chegou.lidoEm)}`}
           </p>
           <p className="break-words font-mono text-xs">{chegou.assunto ?? '(sem assunto)'}</p>
           <div className="flex flex-wrap items-center gap-2">
@@ -203,14 +207,14 @@ function CobrancaSecao({ item, texto, onTexto }: { item: ItemDaCaixa; texto: str
   const c = item.afazer?.cobranca;
   if (!c) {
     return (
-      <Secao titulo="O e-mail que vai para a ENEL">
+      <Secao titulo="O e-mail que vai sair">
         <p className="text-xs text-amber-800">Não consegui carregar a cobrança. Recarregue a página.</p>
       </Secao>
     );
   }
   const pendente = item.situacao === 'pendente';
   return (
-    <Secao titulo="O e-mail que vai para a ENEL">
+    <Secao titulo="O e-mail que vai sair">
       <div className="space-y-2 text-sm" data-teste="cobranca">
         <dl className="grid grid-cols-[4.5rem_minmax(0,1fr)] gap-x-3 gap-y-1">
           <dt className="pt-0.5 text-xs text-muted-foreground">Para</dt>
@@ -254,7 +258,7 @@ function CobrancaSecao({ item, texto, onTexto }: { item: ItemDaCaixa; texto: str
  * não haver pedido a fazer. Quem decide é o banco; o destinatário e o assunto vêm prontos dele.
  */
 function PedidoSecao({ pedido, texto, onTexto }: { pedido: PedidoDoDetalhe | undefined; texto: string; onTexto: (t: string) => void }) {
-  const titulo = 'O pedido da troca do relógio';
+  const titulo = 'O e-mail que vai sair';
   if (!pedido || pedido === 'carregando') {
     return <Secao titulo={titulo}><p className="text-xs text-muted-foreground">Conferindo se o pedido já foi feito…</p></Secao>;
   }
@@ -352,13 +356,13 @@ function Sugestao({ item, etapa, onEtapa, etapas, rotuloEtapa, ressalva, v }: {
   const u = item.update;
   if (!u || !v.sugestao) return null;
   return (
-    <Secao titulo="A sugestão">
+    <Secao titulo="O que eu sugiro">
       <div className="space-y-2 text-sm">
         <p className="text-muted-foreground">
           {u.project
-            ? <>No sistema: <b className="text-foreground">{rotuloEtapa(u.project.status)}</b></>
-            : <>Sem projeto casado no sistema</>}
-          {u.recomendacao && <> · a Ludmilla sugere <b className="text-foreground">{rotuloEtapa(u.recomendacao)}</b></>}
+            ? <>No sistema está em <b className="text-foreground">{rotuloEtapa(u.project.status)}</b>.</>
+            : <>Não achei o projeto no sistema.</>}
+          {u.recomendacao && <> Eu sugiro <b className="text-foreground">{rotuloEtapa(u.recomendacao)}</b>.</>}
         </p>
         {v.seletor && (
           <div className="flex flex-wrap items-center gap-2">
@@ -369,7 +373,7 @@ function Sugestao({ item, etapa, onEtapa, etapas, rotuloEtapa, ressalva, v }: {
                 {opcoesDeEtapa(etapas, u.recomendacao, rotuloEtapa).map(e => <SelectItem key={e.key} value={e.key}>{e.label}</SelectItem>)}
               </SelectContent>
             </Select>
-            {u.recomendacao && etapa === u.recomendacao && <span className="text-xs text-emerald-700">recomendação da Ludmilla</span>}
+            {u.recomendacao && etapa === u.recomendacao && <span className="text-xs text-emerald-700">o que eu sugeri</span>}
           </div>
         )}
         {v.trocaDeProtocolo && (
@@ -445,12 +449,12 @@ function BotoesDaDecisao({ item, etapa, texto, pedido, onDecidir, rotuloEtapa }:
 
 function LinhaDoTempo({ eventos }: { eventos: DadosDoDetalhe['linhaDoTempo'] }) {
   return (
-    <Secao titulo="Este projeto na Ludmilla">
+    <Secao titulo="O que eu registrei neste projeto">
       {eventos === 'carregando' ? (
         <p className="text-xs text-muted-foreground">Carregando…</p>
       ) : eventos === 'erro' ? (
         <p className="flex items-center gap-1.5 text-xs text-amber-800">
-          <AlertTriangle size={12} className="shrink-0" aria-hidden /> Não consegui carregar o que a Ludmilla registrou para este projeto.
+          <AlertTriangle size={12} className="shrink-0" aria-hidden /> Não consegui carregar o que eu registrei para este projeto.
         </p>
       ) : eventos.length === 0 ? (
         <p className="text-xs text-muted-foreground">Nada registrado para este projeto.</p>
@@ -463,7 +467,7 @@ function LinhaDoTempo({ eventos }: { eventos: DadosDoDetalhe['linhaDoTempo'] }) 
                 <span className={cn('mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md',
                   e.situacao === 'erro' ? 'bg-red-100 text-red-700'
                     : e.situacao === 'aviso' ? 'bg-amber-100 text-amber-700'
-                    : e.ator === 'ludmilla' ? 'bg-primary/10 text-primary' : 'bg-emerald-100 text-emerald-700')}>
+                    : e.ator === 'ludmilla' ? 'bg-lm-sol-fundo text-lm-sol-texto' : 'bg-emerald-100 text-emerald-700')}>
                   <Icone size={12} aria-hidden />
                 </span>
                 <span className="min-w-0 flex-1">
@@ -483,7 +487,7 @@ function LinhaDoTempo({ eventos }: { eventos: DadosDoDetalhe['linhaDoTempo'] }) 
   );
 }
 
-export function DetalheDaDecisao({ dados, layout, onDecidir, onAbrirProjeto, urlDoDocumento, onTextoDaCobranca }: PropsDoDetalhe) {
+export function DetalheDaDecisao({ dados, layout, onDecidir, onAbrirProjeto, urlDoDocumento, onTextoDaCobranca, topo, historico }: PropsDoDetalhe) {
   const { item } = dados;
   // nasce da recomendação; o componente pai troca a `key` quando ela muda no refetch
   const [etapa, setEtapa] = useState<string>(item.update?.recomendacao ?? '');
@@ -530,10 +534,11 @@ export function DetalheDaDecisao({ dados, layout, onDecidir, onAbrirProjeto, url
   // Nos dois layouts o corpo rola e os botões ficam à vista embaixo (a decisão é a ação
   // principal; com documentos e a troca de protocolo o corpo passa da altura da tela).
   return (
-    // tabIndex -1: a AbaDecidir põe o foco aqui depois de uma decisão ou de escolher a linha
+    // tabIndex -1: a PaginaDaLudmilla (useEscolhaEDecisao) põe o foco aqui depois de uma decisão ou de escolher o cartão
     <div tabIndex={-1} data-detalhe={item.chave} className="flex min-h-0 flex-1 flex-col outline-none">
       <div className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain p-4">
-        {cabecalho}
+        {topo ?? cabecalho}
+        {historico}
         {quem}{chegou}{cobranca}{pedido}{documentos}{sugestao}{linha}
       </div>
       {layout === 'folha' ? (

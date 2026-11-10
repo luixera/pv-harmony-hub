@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import type { ItemDaCaixa } from '@/lib/ludmillaCaixa';
 import { rascunhoDaCobranca } from '@/lib/ludmillaCobranca';
 import { oQueChegou, ressalvaDoCartao, ucDoProjeto, visibilidadeDoDetalhe, type AcaoDaDecisao } from '@/lib/ludmillaPainel';
@@ -10,13 +10,16 @@ import { DetalheDaDecisao, type DadosDoDetalhe } from './PainelDeDetalhe';
 import { guardarRascunho, rascunhoGuardado } from './rascunhosDaCobranca';
 
 /** Liga o painel de detalhe às consultas (mensagem, cadastro, documentos, linha do tempo). */
-export function DetalheConectado({ item, layout, etapas, rotuloEtapa, onDecidir, onAbrirProjeto }: {
+export function DetalheConectado({ item, layout, etapas, rotuloEtapa, onDecidir, onAbrirProjeto, topo, historico }: {
   item: ItemDaCaixa;
   layout: 'painel' | 'folha';
   etapas: DadosDoDetalhe['etapas'];
   rotuloEtapa: DadosDoDetalhe['rotuloEtapa'];
   onDecidir: (acao: AcaoDaDecisao, etapa: string | null, texto?: string) => void;
   onAbrirProjeto: (projectId: string) => void;
+  /** a página nova: o topo e o histórico em barras (PaginaDaLudmilla monta) */
+  topo?: ReactNode;
+  historico?: ReactNode;
 }) {
   const ehEmail = item.origem === 'recomendacao' && item.meio === 'email';
   const { data: mensagem = null } = useMensagemDaRecomendacao(ehEmail ? item.id : null);
@@ -65,7 +68,7 @@ export function DetalheConectado({ item, layout, etapas, rotuloEtapa, onDecidir,
       // o texto nasce UMA vez no detalhe: quando o pedido chega, ele nasce de novo, agora com o rascunho
       key={pedidoPronto?.liberado ? 'com-rascunho' : 'sem-rascunho'}
       dados={dados} layout={layout} onDecidir={onDecidir} onAbrirProjeto={onAbrirProjeto} urlDoDocumento={urlDoDocumento}
-      onTextoDaCobranca={texto => guardarRascunho(item.chave, texto)}
+      onTextoDaCobranca={texto => guardarRascunho(item.chave, texto)} topo={topo} historico={historico}
     />
   );
 }
