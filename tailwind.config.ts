@@ -15,6 +15,8 @@ export default {
     extend: {
       fontFamily: {
         sans: ['Inter', 'system-ui', 'sans-serif'],
+        // só a página da Ludmilla (spec 2026-11-08 §3); carregada por useFonteDaLudmilla
+        lm: ['"Public Sans"', 'system-ui', 'sans-serif'],
       },
       colors: {
         border: "hsl(var(--border))",
@@ -78,6 +80,32 @@ export default {
           progress: "hsl(var(--kanban-progress))",
           approved: "hsl(var(--kanban-approved))",
           completed: "hsl(var(--kanban-completed))",
+        },
+        // O mundo "Conta de luz", SÓ da página /ludmilla (spec 2026-11-08 §3). Os mesmos hex de
+        // src/components/ludmilla/mundo/cores.ts. Nenhum token do GD muda.
+        lm: {
+          papel: "#FFFFFF",
+          petroleo: "#0F3D4C",
+          sol: "#F2B705",
+          "sol-forte": "#E0A800",
+          "sol-fundo": "#FDF1C7",
+          "sol-texto": "#5E4500",
+          caixa: "#E7EEF0",
+          "caixa-forte": "#D9E4E8",
+          alerta: "#C2410C",
+          // texto em alerta sobre a caixa: #C2410C dá 4,41:1 sobre #E7EEF0 (plano, decisão 1)
+          "alerta-texto": "#8F2F09",
+          "alerta-fundo": "#FBE6DC",
+          barra: "#9FB8C0",
+          suave: "#3E5F6A",
+          borda: "#C9D6DA",
+          linha: "#E1E9EC",
+          "ok-fundo": "#E2F1E6",
+          "ok-texto": "#1D5E34",
+          "azul-fundo": "#DDEBF2",
+          "azul-texto": "#0B4F6C",
+          "faixa-borda": "#4F7C8A",
+          "faixa-suave": "#CFE0E5",
         },
       },
       borderRadius: {

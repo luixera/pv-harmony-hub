@@ -312,3 +312,42 @@
 .uppercase-fields .keep-case textarea {
   text-transform: none;
 }
+
+/* ── O mundo "Conta de luz" da página da Ludmilla (spec 2026-11-08 §3) ─────────────────────
+   Só vale DENTRO de .ludmilla-mundo: os tokens do GD não mudam. As variáveis do shadcn são
+   redefinidas aqui (HSL dos hex da spec) para que Button, Textarea, Select e os cartões
+   reaproveitados (contas, regras de e-mail) entrem no mundo sem reescrever cada um.
+   Petróleo #0F3D4C = 195 67% 18% · sol #F2B705 = 45 96% 48% · caixa #E7EEF0 = 193 23% 92%
+   · texto secundário #3E5F6A = 195 26% 33% · borda #C9D6DA = 194 19% 82%. */
+.ludmilla-mundo {
+  --background: 0 0% 100%;
+  --foreground: 195 67% 18%;
+  --card: 0 0% 100%;
+  --card-foreground: 195 67% 18%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 195 67% 18%;
+  --primary: 45 96% 48%;
+  --primary-foreground: 195 67% 18%;
+  --secondary: 193 23% 92%;
+  --secondary-foreground: 195 67% 18%;
+  --muted: 193 23% 92%;
+  --muted-foreground: 195 26% 33%;
+  --accent: 193 23% 92%;
+  --accent-foreground: 195 67% 18%;
+  --border: 194 19% 82%;
+  --input: 194 19% 82%;
+  --ring: 195 67% 18%;
+  background: #ffffff;
+  color: #0f3d4c;
+  font-family: 'Public Sans', system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Foco visível: petróleo sobre o papel (11,7:1); branco sobre a faixa petróleo (plano, decisão 2). */
+.ludmilla-mundo :focus-visible {
+  outline: 2px solid #0f3d4c;
+  outline-offset: 2px;
+}
+.ludmilla-mundo .lm-sobre-petroleo :focus-visible {
+  outline-color: #ffffff;
+}
