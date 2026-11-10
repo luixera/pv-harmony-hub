@@ -28,7 +28,7 @@ export function CartaoCaptcha({ c, portal }: { c: PortalCaptcha; portal: string 
     <div data-teste="captcha" className="rounded-xl border-2 border-amber-400 bg-amber-50 p-4 space-y-3">
       <div className="flex items-center gap-2">
         <ShieldQuestion className="w-5 h-5 text-amber-700" />
-        <span className="font-semibold text-amber-900">A Ludmilla precisa do código da imagem — {portal}</span>
+        <span className="font-semibold text-amber-900">Preciso do código da imagem — {portal}</span>
         <span className="ml-auto text-xs text-amber-800 tabular-nums">{Math.floor(restam / 60)}:{String(restam % 60).padStart(2, '0')}</span>
       </div>
       {c.tentativa > 1 && (

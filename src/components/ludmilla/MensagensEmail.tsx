@@ -118,7 +118,7 @@ export function ContadoresEmail({ run, identificacao = 'protocolo_no_assunto' }:
   if (!run) {
     return (
       <p className="text-xs text-muted-foreground">
-        Ela ainda não leu a caixa. O primeiro "Verificar agora" é manual e de propósito:{' '}
+        Ainda não li esta caixa. A primeira leitura ("Ler agora") é manual e de propósito:{' '}
         {porRemetente
           ? 'a primeira leitura olha os últimos 30 dias dos remetentes das regras abaixo, então pode trazer muita coisa de uma vez.'
           : 'a busca por protocolo acha e-mail antigo, então a primeira leitura pode trazer muita coisa de uma vez.'}

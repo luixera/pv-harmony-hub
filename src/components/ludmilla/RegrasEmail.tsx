@@ -116,8 +116,8 @@ export function RegrasEmail({ accountId, tenantId }: { accountId: string; tenant
         </div>
       ) : regras.length === 0 ? (
         <p className="text-xs text-amber-700 border border-amber-200 bg-amber-50 rounded-md px-2 py-1.5">
-          Nenhuma regra cadastrada. Sem pelo menos uma regra ativa a Ludmilla se recusa a ler a caixa —
-          ela não saberia o que é documento e o que é ruído.
+          Nenhuma regra cadastrada. Sem pelo menos uma regra ativa eu não leio a caixa —
+          eu não saberia o que é documento e o que é ruído.
         </p>
       ) : (
         <div className="space-y-1.5">

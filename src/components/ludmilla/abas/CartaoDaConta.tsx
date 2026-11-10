@@ -31,7 +31,7 @@ function BlocoEmail({ conta, caixa, caixaPronta, caixaFalhou }: {
           // a consulta falhou: não afirmar que a caixa não existe, mas também não ficar "conferindo" para sempre
           <span data-teste="caixa-falhou" className="text-amber-700">
             Não deu para conferir a caixa de e-mail agora. Sem saber se ela está configurada, o
-            "Verificar agora" fica desligado — recarregue a página daqui a pouco.
+            "Ler agora" fica desligado — recarregue a página daqui a pouco.
           </span>
         ) : caixaPronta === null ? (
           <span>Conferindo a caixa de e-mail do tenant…</span>
@@ -134,7 +134,7 @@ export function CartaoDaConta({ conta: c, nome, caixa, caixaPronta, caixaFalhou,
         <Button size="sm" variant="outline" className="gap-2 flex-1"
           disabled={(c.acompanhamento === 'email' ? caixaPronta !== true : !c.login) || verificando}
           onClick={() => onVerificar(c.acompanhamento === 'email' ? 'varredura_email' : 'varredura')}>
-          <RefreshCw size={14} /> Verificar agora
+          <RefreshCw size={14} aria-hidden /> Ler agora
         </Button>
         {c.acompanhamento !== 'email' && (
           <Button size="sm" variant="ghost" className="gap-2" onClick={onAcessoAoPortal}>
