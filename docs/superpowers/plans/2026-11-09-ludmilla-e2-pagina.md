@@ -5171,6 +5171,7 @@ Se a auditoria mudou outros arquivos das Tasks 7–12, acrescente-os ao `git add
 
 **Files:**
 - Modify (reescrita): `src/pages/Ludmilla.tsx`
+- Modify: `src/hooks/useLudmilla.ts` (`useRegistroLudmilla`: `placeholderData` — Step 2b)
 - Delete: `src/components/ludmilla/decidir/AbaDecidir.tsx`, `src/components/ludmilla/decidir/AbaDecidirConectada.tsx`, `src/components/ludmilla/decidir/CaixaDeDecisoes.tsx`, `src/components/ludmilla/decidir/FiltrosDaCaixa.tsx`, `src/components/ludmilla/decidir/LinhaDaCaixa.tsx`, `src/components/ludmilla/topo/BarraDeAbas.tsx`, `src/components/ludmilla/topo/FaixaDeSaude.tsx`, `src/components/ludmilla/topo/abas.ts`, `src/components/ludmilla/abas/AbaConcessionarias.tsx`, `src/components/ludmilla/abas/RegistroDaLudmilla.tsx`
 - Modify: `docs/modules/integrations/ludmilla.md`, `docs/project/roadmap.md`, `CLAUDE.md`
 - Fora do repositório: a memória `C:\Users\luiza\.claude\projects\C--Users-luiza-Desktop-DADOS-DESENVOLVIMENTO---GD-MANAGER-ENERGY-pv-harmony-hub-main-pv-harmony-hub-main\memory\ludmilla.md`
@@ -5348,6 +5349,30 @@ function PaginaConectada() {
 }
 ```
 
+- [ ] **Step 2b: "Ver mais" do Diário não apaga a lista**
+
+O "Ver mais" troca o limite (120 → 400) e, com ele, a chave `['ludmilla-registro', limite, ator]`: sem dado na chave nova, `isLoading` volta a `true` e o Diário troca a lista pelo esqueleto (e perde a rolagem). Em `src/hooks/useLudmilla.ts`, dentro de `useRegistroLudmilla`, troque:
+
+```ts
+    enabled: disponivel,
+    staleTime: 30_000,
+  });
+}
+```
+
+pela versão com o dado anterior enquanto a chave nova carrega (a função inline equivale ao `keepPreviousData` do React Query v5 e não exige import novo — o teste `useLudmilla.aplicar.test.ts` troca o módulo `@tanstack/react-query` por um dublê):
+
+```ts
+    enabled: disponivel,
+    staleTime: 30_000,
+    // "Ver mais" (120 → 400) troca a chave: a lista de antes fica na tela até a nova chegar
+    placeholderData: anterior => anterior,
+  });
+}
+```
+
+Confira que o trecho trocado é o de `useRegistroLudmilla` (o `staleTime: 30_000` + `enabled: disponivel` pode aparecer em outros hooks do arquivo: troque SÓ o desta função). Run: `npx vitest run src/hooks/useLudmilla.aplicar.test.ts` → PASS.
+
 - [ ] **Step 3: Apagar o que a página nova substituiu**
 
 ```bash
@@ -5494,8 +5519,8 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 ```
 
 ```bash
-git add src/pages/Ludmilla.tsx docs/modules/integrations/ludmilla.md docs/project/roadmap.md CLAUDE.md
-git commit -F "$RASCUNHO/msg-e2-t14.txt" -- src/pages/Ludmilla.tsx docs/modules/integrations/ludmilla.md docs/project/roadmap.md CLAUDE.md src/components/ludmilla/decidir/AbaDecidir.tsx src/components/ludmilla/decidir/AbaDecidirConectada.tsx src/components/ludmilla/decidir/CaixaDeDecisoes.tsx src/components/ludmilla/decidir/FiltrosDaCaixa.tsx src/components/ludmilla/decidir/LinhaDaCaixa.tsx src/components/ludmilla/topo/BarraDeAbas.tsx src/components/ludmilla/topo/FaixaDeSaude.tsx src/components/ludmilla/topo/abas.ts src/components/ludmilla/abas/AbaConcessionarias.tsx src/components/ludmilla/abas/RegistroDaLudmilla.tsx
+git add src/pages/Ludmilla.tsx src/hooks/useLudmilla.ts docs/modules/integrations/ludmilla.md docs/project/roadmap.md CLAUDE.md
+git commit -F "$RASCUNHO/msg-e2-t14.txt" -- src/pages/Ludmilla.tsx src/hooks/useLudmilla.ts docs/modules/integrations/ludmilla.md docs/project/roadmap.md CLAUDE.md src/components/ludmilla/decidir/AbaDecidir.tsx src/components/ludmilla/decidir/AbaDecidirConectada.tsx src/components/ludmilla/decidir/CaixaDeDecisoes.tsx src/components/ludmilla/decidir/FiltrosDaCaixa.tsx src/components/ludmilla/decidir/LinhaDaCaixa.tsx src/components/ludmilla/topo/BarraDeAbas.tsx src/components/ludmilla/topo/FaixaDeSaude.tsx src/components/ludmilla/topo/abas.ts src/components/ludmilla/abas/AbaConcessionarias.tsx src/components/ludmilla/abas/RegistroDaLudmilla.tsx
 git show --stat HEAD
 ```
 
