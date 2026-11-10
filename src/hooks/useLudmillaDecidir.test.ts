@@ -44,8 +44,8 @@ describe('useAcoesDaCaixa (a cola das decisões)', () => {
     m.aplicar.mockImplementation(async () => { m.log.push('gravou'); });
     await useAcoesDaCaixa().aplicar('u-1', 'approved');
     expect(m.aplicar).toHaveBeenCalledWith({ id: 'u-1', status: 'approved' });
-    expect(m.log).toEqual(['gravou', 'invalidou', 'invalidou', 'invalidou']);
-    expect(chavesInvalidadas()).toEqual(['ludmilla-linha-do-tempo', 'projeto-do-detalhe', 'ludmilla-registro']);
+    expect(m.log).toEqual(['gravou', 'invalidou', 'invalidou', 'invalidou', 'invalidou']);
+    expect(chavesInvalidadas()).toEqual(['ludmilla-linha-do-tempo', 'projeto-do-detalhe', 'ludmilla-registro', 'ludmilla-carteira']);
   });
 
   it('aplicar sem etapa (só o protocolo) manda status indefinido', async () => {
@@ -64,8 +64,8 @@ describe('useAcoesDaCaixa (a cola das decisões)', () => {
     m.ignorar.mockImplementation(async () => { m.log.push('gravou'); });
     await useAcoesDaCaixa().ignorar('u-3');
     expect(m.ignorar).toHaveBeenCalledWith('u-3');
-    expect(m.log).toEqual(['gravou', 'invalidou', 'invalidou', 'invalidou']);
-    expect(chavesInvalidadas()).toEqual(['ludmilla-linha-do-tempo', 'projeto-do-detalhe', 'ludmilla-registro']);
+    expect(m.log).toEqual(['gravou', 'invalidou', 'invalidou', 'invalidou', 'invalidou']);
+    expect(chavesInvalidadas()).toEqual(['ludmilla-linha-do-tempo', 'projeto-do-detalhe', 'ludmilla-registro', 'ludmilla-carteira']);
   });
 
   it('ignorar REJEITA quando o banco recusa, e não atualiza nada', async () => {
@@ -77,8 +77,8 @@ describe('useAcoesDaCaixa (a cola das decisões)', () => {
   it('feito: devolve se foi esta pessoa que marcou e atualiza linha do tempo e detalhe', async () => {
     m.feito.mockImplementation(async () => { m.log.push('gravou'); return true; });
     expect(await useAcoesDaCaixa().feito('f-1')).toBe(true);
-    expect(m.log).toEqual(['gravou', 'invalidou', 'invalidou', 'invalidou']);
-    expect(chavesInvalidadas()).toEqual(['ludmilla-linha-do-tempo', 'projeto-do-detalhe', 'ludmilla-registro']);
+    expect(m.log).toEqual(['gravou', 'invalidou', 'invalidou', 'invalidou', 'invalidou']);
+    expect(chavesInvalidadas()).toEqual(['ludmilla-linha-do-tempo', 'projeto-do-detalhe', 'ludmilla-registro', 'ludmilla-carteira']);
 
     m.feito.mockResolvedValue(false);
     expect(await useAcoesDaCaixa().feito('f-2')).toBe(false);

@@ -25,7 +25,7 @@ vi.mock('@/hooks/useLudmilla', () => ({
 
 const chaves = () => m.invalidar.mock.calls.map(c => (c[0] as { queryKey: unknown[] }).queryKey[0]);
 // o que `atualizarDetalhe` invalida depois de TODA decisão da caixa (inclui o Registro)
-const DEPOIS_DE_DECIDIR = ['portal-afazeres', 'ludmilla-linha-do-tempo', 'projeto-do-detalhe', 'ludmilla-registro'];
+const DEPOIS_DE_DECIDIR = ['portal-afazeres', 'ludmilla-linha-do-tempo', 'projeto-do-detalhe', 'ludmilla-registro', 'ludmilla-carteira'];
 
 describe('useAcoesDaCaixa — Enviar e Dispensar da cobrança', () => {
   beforeEach(() => {
@@ -38,7 +38,7 @@ describe('useAcoesDaCaixa — Enviar e Dispensar da cobrança', () => {
     m.rpc.mockImplementation(async () => { m.log.push('gravou'); return { data: 'run-1', error: null }; });
     await useAcoesDaCaixa().enviarCobranca('c-1', 'Prezados, bom dia. Texto revisado.');
     expect(m.rpc).toHaveBeenCalledWith('ludmilla_cobranca_aprovar', { p_cobranca_id: 'c-1', p_texto: 'Prezados, bom dia. Texto revisado.' });
-    expect(m.log).toEqual(['gravou', 'invalidou', 'invalidou', 'invalidou', 'invalidou']);
+    expect(m.log).toEqual(['gravou', 'invalidou', 'invalidou', 'invalidou', 'invalidou', 'invalidou']);
     expect(chaves()).toEqual(DEPOIS_DE_DECIDIR);
   });
 

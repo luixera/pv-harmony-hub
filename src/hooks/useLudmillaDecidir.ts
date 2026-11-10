@@ -138,6 +138,8 @@ export function useAcoesDaCaixa() {
       void qc.invalidateQueries({ queryKey: ['ludmilla-linha-do-tempo'] });
       void qc.invalidateQueries({ queryKey: ['projeto-do-detalhe'] });
       void qc.invalidateQueries({ queryKey: ['ludmilla-registro'] });
+      // a decisão muda etapa, "com quem está" e "na fila" da carteira (página nova, entrega 2)
+      void qc.invalidateQueries({ queryKey: ['ludmilla-carteira'] });
     };
     return {
       aplicar: async (id: string, etapa: string | null): Promise<void> => {
