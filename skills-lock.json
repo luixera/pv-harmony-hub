@@ -81,6 +81,13 @@
       "skillPath": "skills/requesting-code-review/SKILL.md",
       "computedHash": "004f340ae65811095d6a9bb0a759c87d0a8085c5e705dbb019b011626293d2e9"
     },
+    "reverse-api-engineer": {
+      "source": "kalil0321/reverse-api-engineer",
+      "sourceType": "github",
+      "skillPath": "skills/reverse-api-engineer/SKILL.md",
+      "computedHash": "5194c64edc18d28770050c47d03ed9c33887c66df4d16d7c69725c3e81995e70",
+      "installMode": "copy"
+    },
     "security-review": {
       "source": "affaan-m/ecc",
       "sourceType": "github",

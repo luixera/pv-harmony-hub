@@ -141,6 +141,21 @@ Reportar ao usuário o que foi encontrado, mesmo quando nada serve.
   4. em produção (VPS Linux) roda como CLI chamada pelo worker: `install
      --with-deps`, `--headed` usa Xvfb sozinho em servidor sem tela.
 
+- `reverse-api-engineer` (`kalil0321/reverse-api-engineer`, 3,3K estrelas, MIT,
+  instalada em 10/11/2026 a pedido do usuário) — descobrir a **API interna** de
+  um portal que não tem API pública e gerar um cliente tipado a partir do
+  tráfego real (CLI `rae`, Python 3.11+; o CLI NÃO vem com a skill — instalar
+  só com o OK do usuário). Serve para conector novo de portal **sem bloqueio
+  anti-robô** (CEMIG, COPEL, Energisa…), na linha "preferir a API interna do
+  portal à tela". Regras da casa:
+  1. **Elektro está fora**: Akamai + CAPTCHA. Cliente gerado que precise passar
+     por eles é burlar detecção de robô — não fazer (a própria skill manda não
+     contornar CAPTCHA/2FA/bot detection).
+  2. Captura (HAR) tem cookie e token: nunca em commit, chat ou issue; fica fora
+     do repositório.
+  3. O cliente gerado é código escrito por modelo: ler antes de rodar; credencial
+     vem do cofre/ambiente, nunca copiada da captura.
+
 Procurado e descartado em 13/09/2026: skills de Playwright/scraping — a
 mais instalada tinha 760 instalações e autor desconhecido; não passava no
 critério. Superado em 17/09/2026 pela `agent-browser` (vercel-labs).
