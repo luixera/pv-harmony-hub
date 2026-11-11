@@ -174,6 +174,11 @@ describe('proximoPasso', () => {
       .toBe('Nada a fazer agora: está com a CPFL Paulista, dentro do normal.');
   });
 
+  it('com a concessionária e sem o normal medido, não diz "dentro do normal"', () => {
+    expect(proximoPasso(linha({ comQuem: 'concessionaria', diasNaEtapa: 3, normalDias: null }), rotulo))
+      .toBe('Nada a fazer agora: está com a CPFL Paulista há 3 dias; ainda não tenho o tempo normal desta etapa.');
+  });
+
   it('com a empresa', () => {
     expect(proximoPasso(linha({ comQuem: 'cliente', status: 'pendencia', diasNaEtapa: 19.2 }), rotulo))
       .toBe('Cobrar a empresa: a CPFL Paulista pediu um ajuste há 19 dias.');

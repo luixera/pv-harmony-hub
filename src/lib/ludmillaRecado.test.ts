@@ -85,6 +85,14 @@ describe('o recado do dia (spec §4.2)', () => {
     expect(r.curto).toBe('Boa tarde. Nada para decidir agora.');
   });
 
+  it('fila que não carregou nunca vira "não separei nada"', () => {
+    const r = recadoDoDia({
+      agora: SEG, desde: SEXTA_18H, leituras: [], fizSozinha: 2, separei: null, paraAgora: 0, semDono: 0,
+    });
+    expect(r.texto).toBe('Bom dia. Desde sexta não li nada novo. Fiz 2 coisas sozinha. Não consegui carregar a fila de decisões.');
+    expect(r.curto).toBe('Bom dia. Não consegui carregar a fila.');
+  });
+
   it('contagem que falhou não vira "não li nada"; sem dono vai no recado', () => {
     const r = recadoDoDia({
       agora: SEG, desde: Date.parse('2026-11-08T20:00:00Z'), leituras: null, fizSozinha: 1, separei: 1, paraAgora: 0, semDono: 1,

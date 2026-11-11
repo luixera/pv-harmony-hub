@@ -88,10 +88,10 @@ function PaginaConectada() {
   const leituras = leiturasDesde.isError
     ? null
     : leiturasDasContas(caixa.contas, caixa.nomeDaConta, leiturasDesde.data ?? { protocolos: {}, emails: {} });
-  const recadoCarregando = caixa.carregando || carteira.isLoading || leiturasDesde.isLoading || daLudmilla.isLoading;
+  const recadoCarregando = caixa.carregando || caixa.carregandoContas ||carteira.isLoading || leiturasDesde.isLoading || daLudmilla.isLoading;
   // sem a carteira não sei o dono de nenhum item: não afirmo "N sem dono" (spec §4.6)
   const recado = recadoCarregando ? null : recadoDoDia({
-    agora, desde, leituras, fizSozinha: feitos.length, separei: resumo.total, paraAgora: resumo.agora,
+    agora, desde, leituras, fizSozinha: feitos.length, separei: caixa.erro ? null : resumo.total, paraAgora: resumo.agora,
     semDono: carteira.isError ? 0 : resumo.semDono,
   });
   // a fila depende da carteira para saber o dono: carregando/falhou é estado da fila, nunca "Nada aqui agora"
@@ -117,7 +117,12 @@ function PaginaConectada() {
         carregando: carteira.isLoading, buscando: carteira.isFetching,
         erro: carteira.isError ? (mensagemDeErro(carteira.error) ?? '') : null, tentar: () => { void carteira.refetch(); },
       }}
-      recado={recado} feitos={feitos} rotuloDoDesde={rotuloDoDesde(desde, agora)}
+      recado={recado} feitos={feitos}
+      estadoDoFizSozinha={{
+        carregando: daLudmilla.isLoading, buscando: daLudmilla.isFetching,
+        erro: daLudmilla.isError ? (mensagemDeErro(daLudmilla.error) ?? '') : null, tentar: () => { void daLudmilla.refetch(); },
+      }}
+      rotuloDoDesde={rotuloDoDesde(desde, agora)}
       diario={diarioPorDia(registro.data ?? [], agora)}
       estadoDoDiario={{
         carregando: registro.isLoading,

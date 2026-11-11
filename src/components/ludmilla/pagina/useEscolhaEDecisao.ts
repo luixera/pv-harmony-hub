@@ -14,7 +14,8 @@ const INTERVALO_ENTRE_DECISOES_MS = 700;
  * (com teste), e quem grava é a fila do Desfazer (`decidir` de `useFilaDeDecisoes`, 8 s).
  *
  * O foco vai para o detalhe só a pedido de um gesto (decidir, ou escolher no computador), nunca ao
- * abrir a página. Decidir pelo botão de um cartão que NÃO é o aberto não mexe no aberto.
+ * abrir a página. Decidir pelo botão de um cartão que NÃO é o aberto não mexe no aberto, mas o foco
+ * vai para o cartão que ocupa o lugar do decidido (ou para a lista), nunca cai no body.
  */
 export function useEscolhaEDecisao(o: {
   lista: ItemDaCaixa[];
@@ -28,8 +29,18 @@ export function useEscolhaEDecisao(o: {
   const efetiva = selecaoValida(o.lista, selecionada, o.abrirPrimeira);
   const ultimaDecisaoEm = useRef(0);
   const focarDetalhe = useRef(false);
+  /** decidido um cartão que não era o aberto: a chave do cartão que fica no lugar dele ('' = não há) */
+  const focarCartao = useRef<string | null>(null);
 
   useEffect(() => {
+    if (focarCartao.current !== null) {
+      const chave = focarCartao.current;
+      focarCartao.current = null;
+      const proximo = chave
+        ? [...document.querySelectorAll<HTMLElement>('[data-abrir]')].find(c => c.dataset.abrir === chave)
+        : undefined;
+      (proximo ?? document.querySelector<HTMLElement>('[data-coluna="meio"]'))?.focus({ preventScroll: true });
+    }
     if (!focarDetalhe.current) return;
     focarDetalhe.current = false;
     if (!efetiva) return;
@@ -37,8 +48,8 @@ export function useEscolhaEDecisao(o: {
     alvo?.focus({ preventScroll: true });
   });
 
-  const escolher = (chave: string | null) => {
-    if (chave && o.abrirPrimeira) focarDetalhe.current = true;
+  const escolher = (chave: string | null, focar = false) => {
+    if (chave && (o.abrirPrimeira || focar)) focarDetalhe.current = true;
     setSelecionada(chave);
   };
 
@@ -53,6 +64,8 @@ export function useEscolhaEDecisao(o: {
     if (item.chave === efetiva) {
       focarDetalhe.current = true;
       setSelecionada(proximaDepoisDe(o.lista, item.chave));
+    } else {
+      focarCartao.current = proximaDepoisDe(o.lista, item.chave) ?? '';
     }
   };
 

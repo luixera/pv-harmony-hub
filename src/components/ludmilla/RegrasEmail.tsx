@@ -104,7 +104,7 @@ export function RegrasEmail({ accountId, tenantId }: { accountId: string; tenant
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap items-baseline gap-x-2">
-        <h4 className="text-sm font-medium">O que ela procura na caixa</h4>
+        <h4 className="text-sm font-medium">O que eu procuro na caixa</h4>
         <span className="text-xs text-muted-foreground">
           assunto e remetente que fazem um e-mail ser reconhecido — {podeEditar ? 'edite aqui' : 'só o admin edita'}
         </span>

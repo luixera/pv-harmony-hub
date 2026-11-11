@@ -62,6 +62,8 @@ export interface PropsDaPagina {
   /** null = carregando */
   recado: RecadoDoDia | null;
   feitos: FeitoSozinha[];
+  /** o registro dela: `feitos` é vazio carregando e falhando, então a vista precisa deste estado */
+  estadoDoFizSozinha: EstadoDaConsulta;
   /** "Desde sexta" */
   rotuloDoDesde: string;
   diario: DiaDoDiario[];
@@ -208,7 +210,7 @@ export function PaginaDaLudmilla(p: PropsDaPagina) {
       setDono(TODOS);
       setVista({ tipo: 'decidir', grupo: grupoDoItem(item, p.agora) });
       setProjetoEscolhido(null);
-      escolher(item.chave);
+      escolher(item.chave, true);
     };
   };
 
@@ -224,7 +226,7 @@ export function PaginaDaLudmilla(p: PropsDaPagina) {
     onClick: () => irPara({ tipo: 'carteira', filtro: f.valor }),
   }));
   const navComigo: ItemDeNavegacao[] = [
-    { chave: 'sozinha', rotulo: 'Fiz sozinha', n: p.feitos.length, ativo: vista.tipo === 'sozinha', onClick: () => irPara({ tipo: 'sozinha' }) },
+    { chave: 'sozinha', rotulo: 'Fiz sozinha', n: semNumero(p.estadoDoFizSozinha) ? null : p.feitos.length, ativo: vista.tipo === 'sozinha', onClick: () => irPara({ tipo: 'sozinha' }) },
     { chave: 'diario', rotulo: 'Diário', n: null, ativo: vista.tipo === 'diario', onClick: () => irPara({ tipo: 'diario' }) },
   ];
 
@@ -246,7 +248,12 @@ export function PaginaDaLudmilla(p: PropsDaPagina) {
           />
         );
       case 'sozinha':
-        return <FizSozinha feitos={p.feitos} rotuloDoDesde={p.rotuloDoDesde} agora={p.agora} onAbrirProjeto={p.onAbrirProjeto} />;
+        return (
+          <FizSozinha
+            feitos={p.feitos} estado={p.estadoDoFizSozinha} rotuloDoDesde={p.rotuloDoDesde} agora={p.agora}
+            onAbrirProjeto={p.onAbrirProjeto}
+          />
+        );
       case 'diario':
         return <Diario dias={p.diario} estado={p.estadoDoDiario} />;
       case 'ajustes':

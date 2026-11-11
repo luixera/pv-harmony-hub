@@ -261,7 +261,7 @@ export function MensagensEmail({ accountId }: { accountId: string }) {
   if (isLoading) {
     return (
       <div className="text-xs text-muted-foreground flex items-center gap-2">
-        <Loader2 size={12} className="animate-spin" /> Carregando o que ela leu…
+        <Loader2 size={12} className="animate-spin" /> Carregando o que eu li…
       </div>
     );
   }
@@ -269,7 +269,7 @@ export function MensagensEmail({ accountId }: { accountId: string }) {
   if (mensagens.length === 0) {
     return (
       <p className="text-xs text-muted-foreground">
-        Nenhum e-mail lido ainda. Quando ela ler, cada mensagem aparece aqui com o documento que chegou ao card —
+        Nenhum e-mail lido ainda. Quando eu ler, cada mensagem aparece aqui com o documento que chegou ao card —
         e as que precisarem de você vêm separadas, no alto.
       </p>
     );
@@ -294,7 +294,7 @@ export function MensagensEmail({ accountId }: { accountId: string }) {
       <button type="button" onClick={() => setVerTudo(v => !v)}
         className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground">
         <ChevronRight size={13} className={cn('transition-transform', verTudo && 'rotate-90')} />
-        {verTudo ? 'Esconder o histórico' : `Ver tudo o que ela leu (${mensagens.length})`}
+        {verTudo ? 'Esconder o histórico' : `Ver tudo o que eu li (${mensagens.length})`}
       </button>
       {verTudo && (
         <div className="rounded-lg border bg-card divide-y">

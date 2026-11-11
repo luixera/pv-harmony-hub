@@ -13,7 +13,7 @@ import { contagemDaLudmilla } from '@/lib/ludmillaContador';
  */
 export function useCaixaDaLudmilla(situacao: SituacaoDoFiltro) {
   const rotulo = useStatusLabel();
-  const { data: contas = [] } = usePortalAccounts();
+  const { data: contas = [], isLoading: carregandoContas } = usePortalAccounts();
   const { data: concessionarias = [] } = useEnergyConcessionaires(false);
   const pendentes = usePortalUpdates('pendente');
   const daSituacao = usePortalUpdates(situacao);
@@ -37,6 +37,8 @@ export function useCaixaDaLudmilla(situacao: SituacaoDoFiltro) {
     itens,
     contas,
     nomeDaConta,
+    /** as contas dos portais ainda carregam: sem elas as leituras do recado nem começam a ser contadas */
+    carregandoContas,
     carregando: consultas.some(q => q.isLoading),
     buscando: consultas.some(q => q.isFetching),
     /** consulta que falhou NÃO é lista vazia: a tela avisa */

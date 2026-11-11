@@ -75,8 +75,8 @@ export interface EntradaDoRecado {
   /** null = a contagem falhou (a tela não pode dizer "não li nada") */
   leituras: LeituraDaConta[] | null;
   fizSozinha: number;
-  /** a fila de todos */
-  separei: number;
+  /** a fila de todos; `null` = a fila não carregou, então a tela não pode dizer "não separei nada" */
+  separei: number | null;
   paraAgora: number;
   semDono: number;
 }
@@ -98,15 +98,19 @@ export function recadoDoDia(e: EntradaDoRecado): RecadoDoDia {
     : `${desde} ${fraseDasLeituras(e.leituras) ?? 'não li nada novo'}.`;
   const sozinha = e.fizSozinha > 0 ? ` Fiz ${quantos(e.fizSozinha, 'coisa', 'coisas')} sozinha.` : '';
   const semDono = e.semDono > 0 ? `; ${e.semDono === 1 ? '1 está' : `${e.semDono} estão`} sem dono` : '';
-  const separei = e.separei > 0
-    ? ` Separei ${quantos(e.separei, 'coisa', 'coisas')} para vocês${semDono}.`
-    : ' Não separei nada para vocês.';
+  const separei = e.separei === null
+    ? ' Não consegui carregar a fila de decisões.'
+    : e.separei > 0
+      ? ` Separei ${quantos(e.separei, 'coisa', 'coisas')} para vocês${semDono}.`
+      : ' Não separei nada para vocês.';
   return {
     data: `${maiuscula(diaDaSemana(e.agora))}, ${diaEMes(e.agora)}, ${horaEMinuto(e.agora)}`,
     texto: `${oi}. ${lido}${sozinha}${separei}`,
-    curto: e.separei > 0
-      ? `${oi}. Separei ${quantos(e.separei, 'coisa', 'coisas')}; ${e.paraAgora} para agora.`
-      : `${oi}. Nada para decidir agora.`,
+    curto: e.separei === null
+      ? `${oi}. Não consegui carregar a fila.`
+      : e.separei > 0
+        ? `${oi}. Separei ${quantos(e.separei, 'coisa', 'coisas')}; ${e.paraAgora} para agora.`
+        : `${oi}. Nada para decidir agora.`,
   };
 }
 

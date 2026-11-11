@@ -25,7 +25,7 @@ function BlocoEmail({ conta, caixa, caixaPronta, caixaFalhou }: {
         {caixa?.gmail_email ? (
           <span>
             Caixa <b className="text-foreground">{caixa.gmail_email}</b> — a mesma do agente de e-mails.
-            Ela só lê: nunca marca como lido nem move mensagem.
+            Eu só leio: nunca marco como lido nem movo mensagem.
           </span>
         ) : caixaFalhou ? (
           // a consulta falhou: não afirmar que a caixa não existe, mas também não ficar "conferindo" para sempre
@@ -53,7 +53,7 @@ function BlocoEmail({ conta, caixa, caixaPronta, caixaFalhou }: {
 
       <div className="space-y-2">
         <div className="flex flex-wrap items-baseline gap-x-2">
-          <h4 className="text-sm font-medium">O que ela leu na caixa</h4>
+          <h4 className="text-sm font-medium">O que eu li na caixa</h4>
           <span className="text-xs text-muted-foreground">
             o que precisa de você vem no alto, separado do histórico
           </span>

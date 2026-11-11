@@ -241,7 +241,8 @@ export function proximoPasso(l: LinhaDaCarteira, rotuloEtapa: (s: string) => str
   const alem = alemDoNormal(l.diasNaEtapa, l.normalDias);
   if (l.naFila) return 'Tem item esperando decisão na fila. Abra o item para decidir.';
   if (l.comQuem === 'concessionaria') {
-    return alem && l.normalDias !== null
+    if (l.normalDias === null) return `Nada a fazer agora: está com a ${conc} há ${dias}; ainda não tenho o tempo normal desta etapa.`;
+    return alem
       ? `Esperar a ${conc}. Passou ${textoDosDias(diasInteiros(l.diasNaEtapa) - l.normalDias)} do normal ${naEtapa}.`
       : `Nada a fazer agora: está com a ${conc}, dentro do normal.`;
   }

@@ -2,7 +2,7 @@ import { Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { FeitoSozinha } from '@/lib/ludmillaRecado';
 import { quandoCurto } from '@/lib/ludmillaTempo';
-import { Chip } from '@/components/ludmilla/mundo/pecas';
+import { AvisoDeFalha, Chip, Esqueleto } from '@/components/ludmilla/mundo/pecas';
 
 /**
  * O que ela faz sozinha HOJE (entrega 2, sem as chaves): só anexar o documento conferido (e pôr o
@@ -32,13 +32,19 @@ export function ListaDoQueFacoSozinha() {
 }
 
 /** O meio da vista "Fiz sozinha": o que ela fez desde a última visita, com a hora. Sem Desfazer nesta entrega. */
-export function FizSozinha({ feitos, rotuloDoDesde, agora, onAbrirProjeto }: {
+export function FizSozinha({ feitos, estado, rotuloDoDesde, agora, onAbrirProjeto }: {
   feitos: FeitoSozinha[];
+  /** carregando e falhou também deixam `feitos` vazio: nunca vira "não fiz nada" */
+  estado: { carregando: boolean; buscando: boolean; erro: string | null; tentar: () => void };
   /** "Desde sexta" */
   rotuloDoDesde: string;
   agora: number;
   onAbrirProjeto: (projectId: string) => void;
 }) {
+  if (estado.carregando) return <Esqueleto rotulo="Carregando o que eu fiz sozinha…" />;
+  if (estado.erro !== null) {
+    return <AvisoDeFalha oQue="o que eu fiz sozinha" detalhe={estado.erro || null} buscando={estado.buscando} onTentar={estado.tentar} />;
+  }
   if (feitos.length === 0) {
     return (
       <p className="m-0 text-sm leading-normal text-lm-suave" data-vista="sozinha">
