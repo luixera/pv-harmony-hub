@@ -88,7 +88,7 @@ function PaginaConectada() {
   const leituras = leiturasDesde.isError
     ? null
     : leiturasDasContas(caixa.contas, caixa.nomeDaConta, leiturasDesde.data ?? { protocolos: {}, emails: {} });
-  const recadoCarregando = caixa.carregando || caixa.carregandoContas ||carteira.isLoading || leiturasDesde.isLoading || daLudmilla.isLoading;
+  const recadoCarregando = caixa.carregando || caixa.carregandoContas || carteira.isLoading || leiturasDesde.isLoading || daLudmilla.isLoading;
   // sem a carteira não sei o dono de nenhum item: não afirmo "N sem dono" (spec §4.6)
   const recado = recadoCarregando ? null : recadoDoDia({
     agora, desde, leituras, fizSozinha: feitos.length, separei: caixa.erro ? null : resumo.total, paraAgora: resumo.agora,
