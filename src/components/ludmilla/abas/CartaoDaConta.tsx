@@ -108,6 +108,22 @@ export function CartaoDaConta({ conta: c, nome, caixa, caixaPronta, caixaFalhou,
           ? (c.ultima_varredura_em ? `última leitura da caixa ${quando(c.ultima_varredura_em)}` : 'ainda não leu a caixa')
           : (c.ultima_varredura_em ? `última varredura ${quando(c.ultima_varredura_em)}` : 'ainda não varreu')}
       </div>
+      {c.ultimo_erro && <p className="text-xs text-red-600">{c.ultimo_erro}</p>}
+      {/* Os botões ficam NO TOPO (13/11/2026): no e-mail, a lista do que ela leu vem depois e pode ter
+          dezenas de telas — no fim do cartão, o "Ler agora" sumia (EDP ~3 telas abaixo, ENEL ~38). */}
+      <div className="flex flex-wrap gap-2">
+        {/* No e-mail não há login de portal: o que destrava o botão é a caixa configurada no tenant. */}
+        <Button size="sm" variant="outline" className="gap-2 flex-1"
+          disabled={(c.acompanhamento === 'email' ? caixaPronta !== true : !c.login) || verificando}
+          onClick={() => onVerificar(c.acompanhamento === 'email' ? 'varredura_email' : 'varredura')}>
+          <RefreshCw size={14} aria-hidden /> Ler agora
+        </Button>
+        {c.acompanhamento !== 'email' && (
+          <Button size="sm" variant="ghost" className="gap-2" onClick={onAcessoAoPortal}>
+            <KeyRound size={14} /> Acesso ao portal
+          </Button>
+        )}
+      </div>
       {c.acompanhamento === 'email' ? (
         <BlocoEmail conta={c} caixa={caixa} caixaPronta={caixaPronta} caixaFalhou={caixaFalhou} />
       ) : (
@@ -128,20 +144,6 @@ export function CartaoDaConta({ conta: c, nome, caixa, caixaPronta, caixaFalhou,
           )}
         </>
       )}
-      {c.ultimo_erro && <p className="text-xs text-red-600">{c.ultimo_erro}</p>}
-      <div className="flex flex-wrap gap-2">
-        {/* No e-mail não há login de portal: o que destrava o botão é a caixa configurada no tenant. */}
-        <Button size="sm" variant="outline" className="gap-2 flex-1"
-          disabled={(c.acompanhamento === 'email' ? caixaPronta !== true : !c.login) || verificando}
-          onClick={() => onVerificar(c.acompanhamento === 'email' ? 'varredura_email' : 'varredura')}>
-          <RefreshCw size={14} aria-hidden /> Ler agora
-        </Button>
-        {c.acompanhamento !== 'email' && (
-          <Button size="sm" variant="ghost" className="gap-2" onClick={onAcessoAoPortal}>
-            <KeyRound size={14} /> Acesso ao portal
-          </Button>
-        )}
-      </div>
     </div>
   );
 }
