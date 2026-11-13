@@ -361,16 +361,25 @@ edge function) e grava o run com `dados.origem = 'api'` e `pedido_por` = quem
 criou a chave — no Registro aparece como visita da API.
 
 **Mapa de status da Elektro (13/11/2026).** A recomendação vem de
-`portal_status_map (tenant, connector, status_portal → project_status)`,
-comparando o texto **EXATO**. O usuário leu as palavras do Portal GD e a
-migração `20261113120000_ludmilla_elektro_status.sql` semeia quatro:
-"Aguardando solicitação de vistoria e Conexão" → `approved`; "Realizando
-vistoria e Conexão" → `vistoria_solicitada`; "Em Análise Técnica" → `analysis`;
-"Solicitação Concluída" → `completed`. Os outros três status do stepper
-("Aguardando Documentação", "Ponto de Conexão Aprovado", "Solicitação
-Cancelada") ficam **sem tradução** de propósito — aparecem como novidade, sem
-sugerir etapa, até alguém decidir (mesmo critério da CPFL). A migração é
-aplicada à mão, com `--yes`; o CI não roda migração.
+`portal_status_map (tenant, connector, status_portal → project_status)`. O
+casamento **normaliza** o status do portal com `ludmilla_normalizar_status()`
+(MAIÚSCULAS, espaços colapsados, divide por `|` e ordena) **antes** de comparar
+— a comparação é por texto exato, mas contra a forma NORMALIZADA. O usuário leu
+as quatro frases do Portal GD e a migração `20261113120000_ludmilla_elektro_status.sql`
+as semeou; a `20261113130000_ludmilla_elektro_status_mapa_normalizado.sql` as
+regravou já na forma do normalizador
+(`UPDATE … SET status_portal = ludmilla_normalizar_status(status_portal)`),
+porque a primeira seed em caixa mista **não casava**: no 1º envio real, 0 de 50
+status traduziram etapa (falha silenciosa). Traduções: "AGUARDANDO SOLICITAÇÃO
+DE VISTORIA E CONEXÃO" → `approved`; "REALIZANDO VISTORIA E CONEXÃO" →
+`vistoria_solicitada`; "EM ANÁLISE TÉCNICA" → `analysis`; "SOLICITAÇÃO
+CONCLUÍDA" → `completed` (esta só vira cartão com vistoria aprovada dentro do
+projeto). Os outros status do stepper ("Aguardando Documentação", "Ponto de
+Conexão Aprovado", "Solicitação Cancelada") ficam **sem tradução** de propósito
+— aparecem como novidade, sem sugerir etapa (mesmo critério da CPFL). **Regra
+ao semear qualquer conector: o texto do mapa deve ser
+`ludmilla_normalizar_status(texto)`, nunca o texto cru da tela.** Migrações
+aplicadas à mão com `--yes`; o CI não roda migração.
 
 **Extensão do Chrome (13/11/2026) — a leitura pela sessão da pessoa.**
 `extensoes/ludmilla-elektro/`: Manifest V3 restrito a
@@ -383,6 +392,18 @@ popup, `background.js` faz o POST com a chave `gdm_`, `popup`/`options` são o
 botão e a tela da chave. Lê a **página aberta** da lista (ela é paginada).
 Isto **substitui** o "fora de escopo" anterior: a leitura acontece na sessão
 real da pessoa, sem disfarçar automação nem burlar a Akamai.
+
+**1º envio real e o casamento pelo projeto mais novo (13/11/2026).** No primeiro
+envio (50 solicitações) 39 casaram com projeto; os dois cartões de etapa reais
+(PRJ-98694 `approved`→`vistoria_solicitada`, PRJ-54710 `analysis`→`vistoria_solicitada`)
+só apareceram depois da correção do mapa acima. Atendendo à regra do usuário "o
+projeto válido é o mais novo", a migração
+`20261113131000_ludmilla_casamento_projeto_mais_novo.sql` faz a
+`ludmilla_registrar_varredura` sempre escolher o projeto mais recente: o
+casamento por **protocolo** ganhou `ORDER BY created_at DESC` e o por **titular**
+passou de `s.visto_em DESC` para `p.created_at DESC` (CPF e UC já ordenavam por
+`created_at DESC`). Reproduz a função viva (`pg_get_functiondef`) mudando só essas
+duas linhas; vale para todos os conectores.
 
 Validador puro em `supabase/functions/_shared/ludmillaStatus.ts` (9 testes no
 vitest); a RPC foi testada em transação com rollback (criação de chave, registro
