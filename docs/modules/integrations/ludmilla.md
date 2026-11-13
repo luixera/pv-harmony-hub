@@ -554,9 +554,11 @@ que criar o projeto novamente" (usuário, 03/11/2026). **Um clique só**: o bot�
 
 ## Próximos
 
-0. **Primeiro run da EDP por e-mail** — manual e acompanhado, antes de
-   qualquer agendamento. O que olhar está em "O que NÃO está provado", no fim
-   deste documento. Pendências pequenas que ficaram para depois dele:
+0. ~~**Primeiro run da EDP por e-mail**~~ — **feito em 10/11/2026, 22h27**, pelo
+   "Ler agora" do usuário: 8 projetos conferidos, 8 documentos anexados, 0 bloqueados
+   por titular, 2 imagens descartadas, 2 e-mails não reconhecidos, 0 falhas. **Desde
+   13/11/2026 a EDP é lida de hora em hora no expediente** (ver "A cobrança da troca
+   do relógio e a leitura de hora em hora"). Pendências pequenas que ficaram para depois dele:
    - o `motivo` mostra "o robô começou a tratar esta mensagem" enquanto o
      tratamento corre, e **permanentemente** se o robô morrer no meio — trocar
      por um texto que diga que começou e **não terminou**;
@@ -1733,7 +1735,7 @@ md5 do corpo conferido antes de copiar.
 dar login a uma conta de e-mail) sem cuidado faria o cron mandar varredura de portal
 para conta de e-mail. A ENEL ganhou agendamento PRÓPRIO em 06/11/2026
 (`ludmilla_agendar_email`, cron `ludmilla-enel-email`, de hora em hora no expediente), sem
-tocar neste agendador; a EDP segue só pelo "Verificar agora".
+tocar neste agendador; a EDP entrou nesse mesmo agendamento de e-mail em 13/11/2026.
 
 ### Incidente de 14/10
 
@@ -1798,8 +1800,13 @@ nova do mesmo projeto ("substituída"), Dispensar, projeto concluído/arquivado 
 **A leitura da ENEL ficou automática:** `ludmilla_agendar_email()` (cron
 `ludmilla-enel-email`, `0 11-21 * * 1-5` UTC, ou seja, seg–sex das 8h às 18h) enfileira
 `varredura_email` para conta de e-mail por remetente, ligada, fora da estação, sem run aberto.
-O agendador da CPFL não mudou (md5 `3d0d2d0f1e7455ec701230bc925e1bde` antes e depois); a EDP
-continua manual.
+O agendador da CPFL não mudou (md5 `3d0d2d0f1e7455ec701230bc925e1bde` antes e depois).
+**Desde 13/11/2026 vale para TODA conta de e-mail, também a EDP** (protocolo no assunto),
+a pedido do usuário depois da 1ª leitura manual dela (10/11). Migração
+`20261113124500_ludmilla_edp_leitura_agendada.sql`: corpo copiado do `prosrc` vivo, muda só o
+filtro (sai `identificacao = 'remetente'`); provada em transação desfeita (enfileirou `edp` e
+`enel`) e aplicada; o nome do cron continua `ludmilla-enel-email`. A IA só é chamada para
+e-mail novo (o que já foi concluído não volta), então ler de hora em hora não repete custo.
 
 Teste do SMTP na VPS: `gh workflow run ludmilla-worker.yml -f smtp=verificar` (conecta e
 autentica, não envia) ou `-f smtp=enviar_para_a_propria_caixa` (de = para = a caixa da
@@ -2111,6 +2118,10 @@ Ajustes. À direita, o detalhe de decisão de sempre (`DetalheDaDecisao`, títul
 `topo` e `historico`), a ficha do projeto (histórico grande, "O que eu li por último", próximo passo,
 "Ver na fila", "Abrir o projeto"), "O que eu faço sozinha hoje", o recado inteiro ou "Onde eu leio" (os
 cartões das contas, agora com "Ler agora", as criações na CPFL e "Ainda não acompanho …").
+**"Ler agora" no topo do cartão (13/11/2026):** o botão (e a linha de erro) ficam logo abaixo da última
+leitura. No fim do cartão ele sumia nas contas por e-mail, porque a lista "O que eu li na caixa" vem antes e é
+longa: medido no ar, a 2.190 px do topo do cartão na EDP e a 30.488 px na ENEL, num painel de 793 px. Teste:
+`CartaoDaConta.test.tsx` (a ordem no HTML renderizado).
 Três colunas a partir de 1280 px; de 960 a 1279, esquerda + lista e o detalhe numa folha; abaixo de 960,
 uma coluna por vez (faixa com menu e engrenagem, recado em uma linha, grupos no topo, detalhe e menu em
 tela cheia). Componentes em `src/components/ludmilla/{pagina,mundo}/`.

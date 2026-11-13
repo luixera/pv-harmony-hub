@@ -40,7 +40,8 @@ export function linhasDeLeitura(contas: PortalAccount[], o: {
 /**
  * Os horários dela, em hora de Brasília (decisão 18). Portal: crons `ludmilla-08h` e `ludmilla-17h`,
  * todo dia. E-mail pelos remetentes (ENEL): cron `ludmilla-enel-email`, de hora em hora das 8h às 18h,
- * seg–sex. E-mail pelo protocolo no assunto (EDP): só pelo "Ler agora". Mudou um cron, mude aqui.
+ * seg–sex — desde 13/11/2026 vale para TODA conta por e-mail, também a EDP (protocolo no assunto),
+ * pelo mesmo `ludmilla_agendar_email`. Mudou um cron, mude aqui.
  */
 export const HORAS_DO_PORTAL: readonly number[] = [8, 17];
 export const HORAS_DO_EMAIL: readonly number[] = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18];
@@ -50,7 +51,7 @@ export interface ProximaLeitura { nome: string; quando: number }
 function proximaDaConta(c: PortalAccount, agora: number): number | null {
   // o agendador (`ludmilla_agendar_varreduras`) só enfileira conta de portal com login guardado
   const horas = c.acompanhamento === 'portal' ? (c.login ? HORAS_DO_PORTAL : null)
-    : c.identificacao === 'remetente' ? HORAS_DO_EMAIL
+    : c.acompanhamento === 'email' ? HORAS_DO_EMAIL
     : null;
   if (!horas) return null;
   const soDiaUtil = c.acompanhamento === 'email';

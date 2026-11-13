@@ -79,10 +79,10 @@ export interface EstadoDaEstacao { online: boolean; texto: string }
 
 /**
  * Duas varreduras de portal por dia (cron `ludmilla-08h`/`ludmilla-17h`, 11h e 20h UTC):
- * mais de 18 h sem ler é rodada perdida. Vale SÓ para o portal. A ENEL por e-mail é lida de
- * hora em hora no expediente (cron `ludmilla-enel-email`, seg–sex 8h–18h, desde a cobrança da
- * troca, 24/10/2026) e a EDP só pelo "Verificar agora": fora do expediente, horas sem ler uma
- * caixa de e-mail não são falha.
+ * mais de 18 h sem ler é rodada perdida. Vale SÓ para o portal. As contas por e-mail (ENEL desde
+ * 24/10/2026, EDP desde 13/11/2026) são lidas de hora em hora no expediente (cron
+ * `ludmilla-enel-email`, seg–sex 8h–18h): fora do expediente, horas sem ler uma caixa de e-mail
+ * não são falha.
  */
 export const HORAS_SEM_LER_ATRASADA = 18;
 

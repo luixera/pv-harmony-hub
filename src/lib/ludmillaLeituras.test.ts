@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { PortalAccount } from '@/hooks/useLudmilla';
-import { AGORA, CONTAS_DE_EXEMPLO, CONTA_CPFL, CONTA_ENEL, nomeDaContaDeExemplo } from './ludmillaCaixa.fixtures';
+import { AGORA, CONTAS_DE_EXEMPLO, CONTA_CPFL, CONTA_EDP, CONTA_ENEL, nomeDaContaDeExemplo } from './ludmillaCaixa.fixtures';
 import {
   fraseDaProximaLeitura, leiturasDasContas, linhasDeLeitura, proximaLeitura, somarLeituras, textoDaListaVazia,
 } from './ludmillaLeituras';
@@ -31,10 +31,15 @@ describe('linhasDeLeitura (coluna da esquerda)', () => {
 });
 
 describe('a próxima leitura (decisão 18)', () => {
-  it('ENEL de hora em hora no expediente; portal às 8h e 17h; EDP só a pedido', () => {
+  it('e-mail (ENEL e EDP) de hora em hora no expediente; portal às 8h e 17h; empate pelo nome', () => {
     const p = proximaLeitura(CONTAS_DE_EXEMPLO, nomeDaContaDeExemplo, AGORA);
-    expect(p).toEqual({ nome: 'ENEL SP', quando: Date.parse('2026-10-22T13:00:00Z') });
-    expect(fraseDaProximaLeitura(p, AGORA)).toBe('A próxima leitura da ENEL SP é às 10:00.');
+    expect(p).toEqual({ nome: 'EDP São Paulo', quando: Date.parse('2026-10-22T13:00:00Z') });
+    expect(fraseDaProximaLeitura(p, AGORA)).toBe('A próxima leitura da EDP São Paulo é às 10:00.');
+  });
+
+  it('EDP (protocolo no assunto) também é lida de hora em hora desde 13/11/2026', () => {
+    const p = proximaLeitura([CONTA_EDP], nomeDaContaDeExemplo, AGORA);
+    expect(fraseDaProximaLeitura(p, AGORA)).toBe('A próxima leitura da EDP São Paulo é às 10:00.');
   });
 
   it('depois das 18h: amanhã; empate pelo nome', () => {
