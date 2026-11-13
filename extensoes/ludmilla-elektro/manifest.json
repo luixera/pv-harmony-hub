@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "Ludmilla — Elektro",
+  "version": "1.0.0",
+  "description": "Lê a lista de solicitações do Portal GD da Elektro, na sua sessão, e envia os status para a Ludmilla. Só leitura.",
+  "permissions": ["storage", "activeTab"],
+  "host_permissions": ["https://yqsqrdndvsnhbsoaoilf.supabase.co/*"],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Enviar para a Ludmilla"
+  },
+  "options_page": "options.html",
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://gdneoenergiaelektro.neoenergia.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["leitura.js"],
+      "matches": ["https://gdneoenergiaelektro.neoenergia.com/*"]
+    }
+  ]
+}

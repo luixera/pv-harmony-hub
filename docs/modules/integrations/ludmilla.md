@@ -360,14 +360,29 @@ diálogo de acesso ao portal da concessionária (`ChavesDaApi`). A RPC
 edge function) e grava o run com `dados.origem = 'api'` e `pedido_por` = quem
 criou a chave — no Registro aparece como visita da API.
 
-**O que ainda falta para a Elektro recomendar etapa.** A recomendação vem de
-`portal_status_map (tenant, connector, status_portal → project_status)`, e a
-Elektro **não tem linhas**: "Aprovado" normaliza para `APROVADO`, não acha
-mapeamento, e o status é guardado **sem** sugestão. Preencher o vocabulário
-exige as palavras exatas do Portal GD — por isso ninguém chutou.
+**Mapa de status da Elektro (13/11/2026).** A recomendação vem de
+`portal_status_map (tenant, connector, status_portal → project_status)`,
+comparando o texto **EXATO**. O usuário leu as palavras do Portal GD e a
+migração `20261113120000_ludmilla_elektro_status.sql` semeia quatro:
+"Aguardando solicitação de vistoria e Conexão" → `approved`; "Realizando
+vistoria e Conexão" → `vistoria_solicitada`; "Em Análise Técnica" → `analysis`;
+"Solicitação Concluída" → `completed`. Os outros três status do stepper
+("Aguardando Documentação", "Ponto de Conexão Aprovado", "Solicitação
+Cancelada") ficam **sem tradução** de propósito — aparecem como novidade, sem
+sugerir etapa, até alguém decidir (mesmo critério da CPFL). A migração é
+aplicada à mão, com `--yes`; o CI não roda migração.
 
-**Fora de escopo, de propósito:** qualquer coisa que leia a página do portal
-por programa (bookmarklet, extrator). O trabalho fica do lado de cá.
+**Extensão do Chrome (13/11/2026) — a leitura pela sessão da pessoa.**
+`extensoes/ludmilla-elektro/`: Manifest V3 restrito a
+`gdneoenergiaelektro.neoenergia.com`. A pessoa entra e abre a lista; a extensão
+**só LÊ** a tabela que está na tela (não faz login, não clica em "Solicitar
+Vistoria", não baixa nada) e manda `{ protocolo, status, titular }` para a API
+acima. O leitor é JS puro em `leitura.js` (teste no vitest, `leitura.test.js`,
+no `include` do `vitest.config.ts`); `content.js` lê a página sob pedido do
+popup, `background.js` faz o POST com a chave `gdm_`, `popup`/`options` são o
+botão e a tela da chave. Lê a **página aberta** da lista (ela é paginada).
+Isto **substitui** o "fora de escopo" anterior: a leitura acontece na sessão
+real da pessoa, sem disfarçar automação nem burlar a Akamai.
 
 Validador puro em `supabase/functions/_shared/ludmillaStatus.ts` (9 testes no
 vitest); a RPC foi testada em transação com rollback (criação de chave, registro
