@@ -405,6 +405,31 @@ passou de `s.visto_em DESC` para `p.created_at DESC` (CPF e UC já ordenavam por
 `created_at DESC`). Reproduz a função viva (`pg_get_functiondef`) mudando só essas
 duas linhas; vale para todos os conectores.
 
+**Casar pelo nome do titular no cadastro do projeto (13/11/2026, noite).** O usuário
+enviou a lista com um projeto novo **sem protocolo gravado** (PRJ-69492, ADRIANO MENDIETA
+MACHADO, protocolo 2611135260) e ele não casou. Causa: o casamento "por titular" só
+procurava **outro protocolo** do mesmo titular já ligado a um projeto em
+`portal_protocol_state` (é o caso do reenvio com protocolo novo); nunca olhava o nome no
+cadastro. E a lista da Elektro só traz protocolo, status e nome — sem CPF nem UC, as outras
+chaves. A migração `20261113230000_ludmilla_casamento_pelo_nome_do_projeto.sql` (corpo do
+`prosrc` vivo, md5 conferido antes de aplicar) muda duas coisas:
+
+- **nome do titular do projeto** (`project_general_data.holder_name`, ou `projects.title` se
+  vazio), só quando o portal **não mandou CPF nem UC** (a CPFL manda; para ela nada muda):
+  projeto da **mesma concessionária** da conta, **sem protocolo**, fora de concluído, nome
+  inteiro igual sem acento, caixa e espaço repetido, e **candidato único** — dois projetos com
+  o mesmo nome e sem protocolo = nenhum casamento. Entra como `casamento = 'titular'`;
+- o cartão de **gravar o protocolo** sai também para protocolo **já visto sem projeto**
+  (antes, só para o nunca visto: quem passou uma vez sem casar nunca ganhava o cartão). Sai
+  uma vez só: o estado passa a guardar o projeto.
+
+Nada é aplicado sozinho: é o cartão de sempre na /ludmilla, para a pessoa confirmar. Prova
+em transação desfeita com o envio das 19h39 (50 linhas, 12 sem projeto): função antiga 0
+cartões; nova 5 — PRJ-69492 (com sugestão "Em análise"), PRJ-58601, PRJ-84489, PRJ-57938,
+PRJ-57098; reenvio 0. As outras 7 não têm projeto ativo com o mesmo nome. **Limite:** nome
+digitado diferente no cadastro (abreviação, erro de grafia) não casa — o cartão não aparece,
+e o protocolo se grava à mão como antes.
+
 Validador puro em `supabase/functions/_shared/ludmillaStatus.ts` (9 testes no
 vitest); a RPC foi testada em transação com rollback (criação de chave, registro
 ok, chave inválida, lista vazia).
